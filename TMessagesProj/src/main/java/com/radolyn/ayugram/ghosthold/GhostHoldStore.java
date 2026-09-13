@@ -27,9 +27,10 @@ import java.util.Map;
  * Fork-owned, per-account storage for Ghost Hold, kept deliberately outside the
  * stock Telegram database.
  *
- * <p>A held message lives as a single row in {@code ghost_held} inside this
- * account's own {@code ghosthold_<account>.db} file -- a table no stock query
- * ever names. That is the point: the no-leak invariant (a held message must
+ * <p>A held message lives in {@code ghost_held} inside this account's own
+ * {@code ghosthold_<account>.db} file, with a paired {@code ghost_held_assets}
+ * ownership row only for a local photo. No stock query names either table.
+ * That is the point: the no-leak invariant (a held message must
  * never reach the server while Ghost is on) becomes <em>structural</em> rather
  * than a set of guards scattered through upstream files. Stock cannot transmit a
  * row it cannot see. A separate file, not a table in {@code cache4.db}, is used
@@ -272,6 +273,7 @@ public final class GhostHoldStore {
             assets.clear();
             loaded = false;
             publish();
+            db.executeFast("DELETE FROM ghost_meta WHERE k < 0").stepThis().dispose();
             db.executeFast("DELETE FROM ghost_held_assets").stepThis().dispose();
             db.executeFast("DELETE FROM ghost_held").stepThis().dispose();
             deleteAssetDirectoryOnQueue();
@@ -491,14 +493,19 @@ public final class GhostHoldStore {
     }
 
     public boolean markAssetHandedOffOnQueue(int mid) {
+        return setAssetHandedOffOnQueue(mid, true);
+    }
+
+    public boolean setAssetHandedOffOnQueue(int mid, boolean handedOff) {
         try {
             ensureLoaded();
             AssetRecord asset = assets.get(mid);
             if (asset == null) {
                 return true;
             }
-            db().executeFast("UPDATE ghost_held_assets SET handed_off = 1 WHERE mid = " + mid).stepThis().dispose();
-            assets.put(mid, asset.withHandedOff(true));
+            db().executeFast("UPDATE ghost_held_assets SET handed_off = " + (handedOff ? 1 : 0)
+                    + " WHERE mid = " + mid).stepThis().dispose();
+            assets.put(mid, asset.withHandedOff(handedOff));
             publish();
             return true;
         } catch (Exception e) {
@@ -507,26 +514,99 @@ public final class GhostHoldStore {
         }
     }
 
-    public void deleteHeldWithAssetOnQueue(int mid) {
-        deleteOnQueue(mid);
-        deleteAssetOnQueue(mid);
+    public boolean putAttemptRandomOnQueue(int mid, long randomId) {
+        try {
+            ensureLoaded();
+            db().executeFast("REPLACE INTO ghost_meta(k, v) VALUES(" + attemptKey(mid) + ", " + randomId + ")").stepThis().dispose();
+            db().executeFast("DELETE FROM ghost_meta WHERE k = " + confirmationKey(mid)).stepThis().dispose();
+            return true;
+        } catch (Exception e) {
+            FileLog.e(e);
+            return false;
+        }
     }
 
-    public void deleteAssetOnQueue(int mid) {
+    public boolean confirmAttemptOnQueue(int mid, long randomId) throws SQLiteException {
+        ensureLoaded();
+        SQLiteCursor cursor = null;
+        try {
+            cursor = db().queryFinalized("SELECT v FROM ghost_meta WHERE k = " + attemptKey(mid));
+            if (!cursor.next() || cursor.longValue(0) != randomId) {
+                return false;
+            }
+        } finally {
+            if (cursor != null) {
+                cursor.dispose();
+            }
+        }
+        db().executeFast("REPLACE INTO ghost_meta(k, v) VALUES(" + confirmationKey(mid) + ", " + randomId + ")").stepThis().dispose();
+        return true;
+    }
+
+    public boolean isAttemptConfirmedOnQueue(int mid) throws SQLiteException {
+        ensureLoaded();
+        Long attempt = readMetaOnQueue(attemptKey(mid));
+        Long confirmed = readMetaOnQueue(confirmationKey(mid));
+        return attempt != null && attempt.equals(confirmed);
+    }
+
+    public void clearAttemptOnQueue(int mid) throws SQLiteException {
+        ensureLoaded();
+        db().executeFast("DELETE FROM ghost_meta WHERE k IN(" + attemptKey(mid) + ", "
+                + confirmationKey(mid) + ")").stepThis().dispose();
+    }
+
+    public boolean isAssetPresentOnQueue(int mid) throws SQLiteException {
+        ensureLoaded();
+        return assets.containsKey(mid);
+    }
+
+    @Nullable
+    private Long readMetaOnQueue(long key) throws SQLiteException {
+        SQLiteCursor cursor = null;
+        try {
+            cursor = db().queryFinalized("SELECT v FROM ghost_meta WHERE k = " + key);
+            return cursor.next() ? cursor.longValue(0) : null;
+        } finally {
+            if (cursor != null) {
+                cursor.dispose();
+            }
+        }
+    }
+
+    private static long attemptKey(int mid) {
+        return (long) mid * 2L;
+    }
+
+    private static long confirmationKey(int mid) {
+        return (long) mid * 2L - 1L;
+    }
+
+    public void deleteHeldWithAssetOnQueue(int mid) {
+        if (deleteOnQueue(mid)) {
+            deleteAssetOnQueue(mid);
+        }
+    }
+
+    public boolean deleteAssetOnQueue(int mid) {
         try {
             ensureLoaded();
             AssetRecord asset = assets.get(mid);
-            db().executeFast("DELETE FROM ghost_held_assets WHERE mid = " + mid).stepThis().dispose();
-            assets.remove(mid);
             if (asset != null) {
                 File file = resolveAssetFile(asset.name);
                 if (file != null && !deleteQuietly(file)) {
                     FileLog.e("ghostHold: could not delete private asset " + asset.name + " for account " + account);
+                    return false;
                 }
             }
+            db().executeFast("DELETE FROM ghost_held_assets WHERE mid = " + mid).stepThis().dispose();
+            clearAttemptOnQueue(mid);
+            assets.remove(mid);
             publish();
+            return true;
         } catch (Exception e) {
             FileLog.e(e);
+            return false;
         }
     }
 
@@ -546,7 +626,7 @@ public final class GhostHoldStore {
             ArrayList<Integer> aborted = new ArrayList<>();
             for (AssetRecord asset : new ArrayList<>(assets.values())) {
                 HeldRecord held = master.get(asset.mid);
-                if (held == null && !asset.handedOff) {
+                if (held == null && !asset.handedOff && asset.localId == 0) {
                     aborted.add(asset.mid);
                 }
             }
@@ -566,6 +646,33 @@ public final class GhostHoldStore {
                 if (file.isFile() && !owned.contains(file.getName())) {
                     deleteQuietly(file);
                 }
+            }
+            HashSet<Long> ownedMeta = new HashSet<>();
+            for (AssetRecord asset : assets.values()) {
+                ownedMeta.add(attemptKey(asset.mid));
+                ownedMeta.add(confirmationKey(asset.mid));
+            }
+            for (HeldRecord held : master.values()) {
+                ownedMeta.add(attemptKey(held.mid));
+                ownedMeta.add(confirmationKey(held.mid));
+            }
+            SQLiteCursor meta = null;
+            ArrayList<Long> staleMeta = new ArrayList<>();
+            try {
+                meta = db().queryFinalized("SELECT k FROM ghost_meta WHERE k < 0");
+                while (meta.next()) {
+                    long key = meta.longValue(0);
+                    if (!ownedMeta.contains(key)) {
+                        staleMeta.add(key);
+                    }
+                }
+            } finally {
+                if (meta != null) {
+                    meta.dispose();
+                }
+            }
+            for (long key : staleMeta) {
+                db().executeFast("DELETE FROM ghost_meta WHERE k = " + key).stepThis().dispose();
             }
         } catch (Exception e) {
             FileLog.e(e);
@@ -667,15 +774,17 @@ public final class GhostHoldStore {
         }
     }
 
-    public void deleteOnQueue(int mid) {
+    public boolean deleteOnQueue(int mid) {
         try {
             ensureLoaded();
             db().executeFast("DELETE FROM ghost_held WHERE mid = " + mid).stepThis().dispose();
             if (master.remove(mid) != null) {
                 publish();
             }
+            return true;
         } catch (Exception e) {
             FileLog.e(e);
+            return false;
         }
     }
 

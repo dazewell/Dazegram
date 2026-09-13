@@ -142,8 +142,20 @@ public final class GhostHoldController {
     // flush whose only row was deleted reports nothing instead of "1 sent". Reset at
     // performFlush start; one flush runs at a time (flushInProgress).
     private static final AtomicInteger flushSent = new AtomicInteger();
-    private static final java.util.concurrent.atomic.AtomicBoolean smokeAlbumBypassLogged = new java.util.concurrent.atomic.AtomicBoolean();
-    private static final java.util.concurrent.atomic.AtomicBoolean smokeUnsupportedBypassLogged = new java.util.concurrent.atomic.AtomicBoolean();
+    private static final android.util.SparseArray<File>[] materializations =
+            new android.util.SparseArray[UserConfig.MAX_ACCOUNT_COUNT];
+    private static final android.util.SparseBooleanArray[] syntheticScheduledDeletes =
+            new android.util.SparseBooleanArray[UserConfig.MAX_ACCOUNT_COUNT];
+    private static final java.util.HashSet<Long>[] smokeGroups =
+            new java.util.HashSet[UserConfig.MAX_ACCOUNT_COUNT];
+
+    static {
+        for (int account = 0; account < UserConfig.MAX_ACCOUNT_COUNT; account++) {
+            materializations[account] = new android.util.SparseArray<>();
+            syntheticScheduledDeletes[account] = new android.util.SparseBooleanArray();
+            smokeGroups[account] = new java.util.HashSet<>();
+        }
+    }
 
     // NagramX: the per-account session tokens this flush pinned at confirm time
     // (promptFlush's collect callback), stashed for the terminal completion report.
@@ -201,18 +213,22 @@ public final class GhostHoldController {
         // them back before the first held send of the new session.
         initAccount(account);
         if (params != null && params.photo != null) {
+            int attempt = System.identityHashCode(params);
             android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold DIAG photo-state account="
-                    + account + " hold_active=" + isHoldActive()
+                    + account + " attempt=" + attempt + " hold_active=" + isHoldActive()
                     + " ghost_active=" + NekoConfig.isGhostModeActive()
                     + " hold_enabled=" + NekoConfig.holdMessagesWhileGhost.Bool());
         }
         LocalPhotoSource photoSource = inspectLocalPhoto(account, params);
         if (!isHoldableSend(account, peer, params, photoSource)) {
             if (params != null && params.photo != null) {
-                if (isGrouped(params) && smokeAlbumBypassLogged.compareAndSet(false, true)) {
-                    android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold EXPECTED album-bypass account=" + account);
-                } else if (!isGrouped(params) && smokeUnsupportedBypassLogged.compareAndSet(false, true)) {
-                    android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold EXPECTED unsupported-bypass account=" + account);
+                long groupId = groupId(params);
+                if (groupId != 0 && smokeGroups[account].add(groupId)) {
+                    android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold EXPECTED album-bypass account="
+                            + account + " attempt=" + groupId);
+                } else if (groupId == 0) {
+                    android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold EXPECTED unsupported-bypass account="
+                            + account + " attempt=" + System.identityHashCode(params));
                 }
             }
             return false;
@@ -221,8 +237,11 @@ public final class GhostHoldController {
     }
 
     private static boolean isGrouped(SendMessagesHelper.SendMessageParams params) {
-        return params.params != null && params.params.containsKey("groupId")
-                && !"0".equalsIgnoreCase(params.params.get("groupId"));
+        return groupId(params) != 0;
+    }
+
+    private static long groupId(SendMessagesHelper.SendMessageParams params) {
+        return params.params == null ? 0 : Utilities.parseLong(params.params.get("groupId"));
     }
 
     /**
@@ -272,15 +291,14 @@ public final class GhostHoldController {
         // whole class rather than admitting a partial group. Inline-result sends
         // carry query_id and have their own resend semantics, so they stay immediate.
         if (p.params != null) {
-            if (p.params.containsKey("groupId")
-                    && !"0".equalsIgnoreCase(p.params.get("groupId"))) {
-            return smokeReject(p, "grouped");
+            if (groupId(p) != 0) {
+                return smokeReject(p, "grouped");
             }
             if (p.params.containsKey("query_id")) {
-            return smokeReject(p, "inline-query");
+                return smokeReject(p, "inline-query");
             }
-            if (p.params.containsKey("final") || p.params.containsKey("parentObject")) {
-            return smokeReject(p, "group-final-or-parent");
+            if (p.params.containsKey("parentObject")) {
+                return smokeReject(p, "parent-object-param");
             }
         }
         if ((!photo && p.photo != null) || p.videoEditedInfo != null
@@ -436,7 +454,8 @@ public final class GhostHoldController {
 
     private static boolean smokeReject(@Nullable SendMessagesHelper.SendMessageParams params, String reason) {
         if (params != null && params.photo != null) {
-            android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold DIAG refusal reason=" + reason);
+            android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold DIAG refusal attempt="
+                    + System.identityHashCode(params) + " reason=" + reason);
         }
         return false;
     }
@@ -532,24 +551,30 @@ public final class GhostHoldController {
             sourceReason = "remote-original-path";
         }
         if (sourceReason != null) {
-            android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold DIAG source-refusal reason=" + sourceReason);
+            android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold DIAG source-refusal attempt="
+                    + System.identityHashCode(p) + " reason=" + sourceReason);
             return null;
         }
         TLRPC.PhotoSize largest = p.photo.sizes.get(p.photo.sizes.size() - 1);
         if (largest == null || largest instanceof TLRPC.TL_photoStrippedSize
                 || largest instanceof TLRPC.TL_photoPathSize || largest.location == null
-                || largest.location instanceof com.radolyn.ayugram.utils.AyuFileLocation) {
-            android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold DIAG source-refusal reason=largest-shape");
+                || largest.location instanceof com.radolyn.ayugram.utils.AyuFileLocation
+                || largest.location.volume_id != Integer.MIN_VALUE
+                || largest.location.local_id >= 0) {
+            android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold DIAG source-refusal attempt="
+                    + System.identityHashCode(p) + " reason=largest-shape");
             return null;
         }
-        File source = FileLoader.getInstance(account).getPathToAttach(largest);
+        File source = FileLoader.getInstance(account).getPathToAttach(largest, null, true, false);
         long length = source != null ? source.length() : 0;
-        if (length <= 0 || length > MAX_PHOTO_ASSET_BYTES || !source.isFile()) {
-            android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold DIAG source-refusal reason=file-boundary"
-                    + " length=" + length + " declared_size=" + largest.size);
+        if (length <= 0 || length > MAX_PHOTO_ASSET_BYTES || length != largest.size || !source.isFile()) {
+            android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold DIAG source-refusal attempt="
+                    + System.identityHashCode(p) + " reason=file-boundary length=" + length
+                    + " declared_size=" + largest.size);
             return null;
         }
-        android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold DIAG source-accepted"
+        android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold DIAG source-accepted attempt="
+                + System.identityHashCode(p)
                 + " photo_id=" + p.photo.id + " dc_id=" + p.photo.dc_id
                 + " volume_id=" + largest.location.volume_id + " local_id=" + largest.location.local_id
                 + " length=" + length + " declared_size=" + largest.size);
@@ -1311,14 +1336,18 @@ public final class GhostHoldController {
                     if (materialization == null) {
                         fresh = null;
                         postScheduledCount(item.account, item.dialogId, session);
+                    } else if (!store.markAssetHandedOffOnQueue(item.mid)
+                            || !store.putAttemptRandomOnQueue(item.mid, fresh.message.random_id)) {
+                        clearMaterializationOnQueue(item.account, store, item.mid, materialization);
+                        fresh = null;
                     }
                 }
                 if (fresh != null && !store.updateStateOnQueue(item.mid, GhostHoldStore.STATE_FLUSHING)) {
-                    if (materialization != null) {
-                        store.updateAssetLocalIdOnQueue(item.mid, 0);
-                        deleteOwnedCacheFile(materialization.file);
-                    }
+                    clearMaterializationOnQueue(item.account, store, item.mid, materialization);
                     fresh = null;
+                } else if (fresh != null && fresh.isPhoto()) {
+                    android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold EXPECTED handoff account="
+                            + item.account + " held_mid=" + item.mid);
                 }
             }
             final HeldItem f = fresh;
@@ -1369,6 +1398,7 @@ public final class GhostHoldController {
                 deleteOwnedCacheFile(target);
                 return null;
             }
+            materializations[item.account].put(item.mid, target);
             android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold EXPECTED cache-materialize account="
                     + item.account + " held_mid=" + item.mid);
             return new PhotoMaterialization(target);
@@ -1420,23 +1450,32 @@ public final class GhostHoldController {
 
     private static boolean clearMaterializationOnQueue(int account, GhostHoldStore store, int mid,
                                                        @Nullable PhotoMaterialization known) {
-        GhostHoldStore.AssetRecord asset = store.selectAssetOnQueue(mid);
-        if (asset == null || asset.localId == 0) {
-            return true;
-        }
-        File target = known != null ? known.file : cacheFileForLocalId(account, asset.localId, asset.size);
-        if (target != null && target.exists()) {
-            boolean owned = known != null;
-            if (!owned) {
-                File source = store.assetFileOnQueue(asset);
-                owned = source != null && filesEqual(source, target, asset.size);
-            }
-            if (owned && !target.delete()) {
-                FileLog.e("ghostHold: could not remove held photo cache materialization " + target.getName());
+        try {
+            boolean assetPresent = store.isAssetPresentOnQueue(mid);
+            GhostHoldStore.AssetRecord asset = assetPresent ? store.selectAssetOnQueue(mid) : null;
+            if (assetPresent && asset == null) {
                 return false;
             }
+            File target = known != null ? known.file : materializations[account].get(mid);
+            if (target != null) {
+                if (target.exists() && !target.delete()) {
+                    FileLog.e("ghostHold: could not remove held photo cache materialization " + target.getName());
+                    return false;
+                }
+                materializations[account].remove(mid);
+            }
+            if (asset != null && asset.localId != 0 && !store.updateAssetLocalIdOnQueue(mid, 0)) {
+                return false;
+            }
+            if (asset != null && !store.setAssetHandedOffOnQueue(mid, false)) {
+                return false;
+            }
+            store.clearAttemptOnQueue(mid);
+            return true;
+        } catch (Exception e) {
+            FileLog.e(e);
+            return false;
         }
-        return store.updateAssetLocalIdOnQueue(mid, 0);
     }
 
     private static File cacheFileForLocalId(int account, int localId, long size) {
@@ -1449,34 +1488,36 @@ public final class GhostHoldController {
         return FileLoader.getInstance(account).getPathToAttach(photoSize);
     }
 
-    private static boolean filesEqual(File first, File second, long expectedSize) {
-        if (!first.isFile() || !second.isFile()
-                || first.length() != expectedSize || second.length() != expectedSize) {
-            return false;
-        }
-        try (FileInputStream a = new FileInputStream(first);
-             FileInputStream b = new FileInputStream(second)) {
-            byte[] aa = new byte[64 * 1024];
-            byte[] bb = new byte[64 * 1024];
-            while (true) {
-                int ar = a.read(aa);
-                int br = b.read(bb);
-                if (ar != br) {
-                    return false;
-                }
-                if (ar < 0) {
-                    return true;
-                }
-                for (int i = 0; i < ar; i++) {
-                    if (aa[i] != bb[i]) {
-                        return false;
-                    }
-                }
-            }
+    @Nullable
+    private static Boolean isAttemptConfirmed(GhostHoldStore store, int mid) {
+        try {
+            return store.isAttemptConfirmedOnQueue(mid);
         } catch (Exception e) {
             FileLog.e(e);
+            return null;
+        }
+    }
+
+    private static boolean releaseConfirmedAssetOnQueue(int account, GhostHoldStore store, int mid) {
+        if (!Boolean.TRUE.equals(isAttemptConfirmed(store, mid))) {
             return false;
         }
+        return releaseAssetOnQueue(account, store, mid, true);
+    }
+
+    private static boolean releaseAssetOnQueue(int account, GhostHoldStore store, int mid,
+                                               boolean serverConfirmed) {
+        if (!clearMaterializationOnQueue(account, store, mid, null)
+                || !store.deleteAssetOnQueue(mid)) {
+            return false;
+        }
+        if (serverConfirmed) {
+            android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold EXPECTED server-confirm-release account="
+                    + account + " held_mid=" + mid);
+            android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold END scenario=single-photo account="
+                    + account + " held_mid=" + mid);
+        }
+        return true;
     }
 
     private static void dispatchFreshItem(HeldItem item, @Nullable HeldItem fresh,
@@ -1646,7 +1687,7 @@ public final class GhostHoldController {
                                         @Nullable Runnable onDone) {
         MessagesStorage storage = MessagesStorage.getInstance(account);
         storage.getStorageQueue().postRunnable(() -> {
-            boolean handedOff = false;
+            Boolean handedOff = null;
             SQLiteCursor probe = null;
             try {
                 SQLiteDatabase db = storage.getDatabase();
@@ -1660,10 +1701,18 @@ public final class GhostHoldController {
                     probe.dispose();
                 }
             }
-            final boolean ho = handedOff;
+            final Boolean ho = handedOff;
             GhostHoldStore store = GhostHoldStore.getInstance(account);
             store.runOwned(epoch, () -> {
-                if (ho) {
+                if (ho == null) {
+                    if (!future) {
+                        AndroidUtilities.runOnUIThread(() -> {
+                            if (sessionEpoch.get(account) == session) {
+                                removeStaleScheduledItem(account, dialogId, mid);
+                            }
+                        });
+                    }
+                } else if (ho) {
                     // NagramX: the funnel wrote the stock twin, but check the
                     // fork row is still present before completing. If it is GONE, the
                     // user deleted the held object during the handoff window and the
@@ -1698,6 +1747,7 @@ public final class GhostHoldController {
                         rowGone = false;
                     }
                     if (rowGone && sentObj != null) {
+                        clearMaterializationOnQueue(account, store, mid, materialization);
                         store.deleteAssetOnQueue(mid);
                         AndroidUtilities.runOnUIThread(() -> {
                             // NagramX: the runOwned gate above is the async store
@@ -1715,21 +1765,12 @@ public final class GhostHoldController {
                             SendMessagesHelper.getInstance(account).cancelSendingMessage(sentObj);
                         });
                     } else {
-                        // A photo's private bytes remain owned until the server confirms
-                        // this exact negative id. Mark that ownership transfer before the
-                        // ghost row disappears; a crash between these writes therefore
-                        // leaves a recoverable AWAITING_CONFIRM asset, never an untracked
-                        // private file.
-                        if (store.markAssetHandedOffOnQueue(mid)) {
-                            store.deleteOnQueue(mid);
-                            if (sentObj != null && sentObj.isPhoto()) {
-                                android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold EXPECTED handoff account="
-                                        + account + " held_mid=" + mid);
-                            }
+                        if (store.deleteOnQueue(mid)) {
                             // Only a genuine, uncancelled handoff counts as sent.
                             flushSent.incrementAndGet();
+                            releaseConfirmedAssetOnQueue(account, store, mid);
                         }
-                        if (!future && !store.isPresentOnQueue(mid)) {
+                        if (!future) {
                             // NagramX: a send-now handoff wrote the messages_v2 twin and
                             // removed the fork row, but an already-open Scheduled list still
                             // holds the display-only held object -- the HELD-only render
@@ -1752,7 +1793,21 @@ public final class GhostHoldController {
                         }
                     }
                 } else {
-                    if (clearMaterializationOnQueue(account, store, mid, materialization)) {
+                    Boolean confirmed = isAttemptConfirmed(store, mid);
+                    if (Boolean.TRUE.equals(confirmed)) {
+                        if (store.deleteOnQueue(mid)) {
+                            releaseConfirmedAssetOnQueue(account, store, mid);
+                            flushSent.incrementAndGet();
+                            if (!future) {
+                                AndroidUtilities.runOnUIThread(() -> {
+                                    if (sessionEpoch.get(account) == session) {
+                                        removeStaleScheduledItem(account, dialogId, mid);
+                                    }
+                                });
+                            }
+                        }
+                    } else if (confirmed != null
+                            && clearMaterializationOnQueue(account, store, mid, materialization)) {
                         store.updateStateOnQueue(mid, GhostHoldStore.STATE_HELD);
                     }
                 }
@@ -1798,8 +1853,9 @@ public final class GhostHoldController {
         }
         ArrayList<Integer> ids = new ArrayList<>(1);
         ids.add(mid);
-        NotificationCenter.getInstance(account).postNotificationName(
-                NotificationCenter.messagesDeleted, ids, channelId, true, false, false, 0);
+        syntheticScheduledDeletes[account].put(mid, true);
+        NotificationCenter.getInstance(account).postNotificationNameInternal(
+                NotificationCenter.messagesDeleted, true, ids, channelId, true, false, false, 0);
     }
 
     /**
@@ -2576,74 +2632,135 @@ public final class GhostHoldController {
         }
     }
 
-    /**
-     * Reconciles records left in FLUSHING by a kill mid-handoff. For each, probe the
-     * stock tables for the reused negative id: present ⇒ the funnel wrote the row and
-     * stock now owns delivery, so delete the fork record; absent ⇒ the write never
-     * landed, or the send already completed and remapped the id (indistinguishable
-     * here), so revert to HELD and let the next flush re-drive it. Failing an absent
-     * probe toward re-drive is the deliberate "duplicate, never loss" direction.
-     */
+    private static final int STOCK_PROBE_ERROR = -1;
+    private static final int STOCK_PROBE_ABSENT = 0;
+    private static final int STOCK_PROBE_PRESENT = 1;
+
     private static void reconcileFlushing(int account) {
         GhostHoldStore store = GhostHoldStore.getInstance(account);
         final int epoch = store.currentGeneration();
         store.runOwned(epoch, () -> {
             ArrayList<GhostHoldStore.HeldRecord> flushing = store.selectByStateOnQueue(GhostHoldStore.STATE_FLUSHING);
             if (flushing.isEmpty()) {
-                restoreAwaitingAssetsAndSweep(account, epoch);
+                reconcileAwaitingAssets(account, epoch);
                 return;
             }
             MessagesStorage storage = MessagesStorage.getInstance(account);
             storage.getStorageQueue().postRunnable(() -> {
-                ArrayList<Integer> present = new ArrayList<>();
-                ArrayList<Integer> absent = new ArrayList<>();
+                HashMap<Integer, Integer> results = new HashMap<>();
                 SQLiteDatabase db = storage.getDatabase();
                 for (GhostHoldStore.HeldRecord rec : flushing) {
-                    boolean found = false;
-                    SQLiteCursor c = null;
-                    try {
-                        c = db.queryFinalized("SELECT 1 FROM messages_v2 WHERE mid = " + rec.mid + " AND uid = " + rec.dialogId + " UNION ALL SELECT 1 FROM scheduled_messages_v2 WHERE mid = " + rec.mid + " AND uid = " + rec.dialogId + " LIMIT 1");
-                        found = c.next();
-                    } catch (Exception e) {
-                        FileLog.e(e);
-                    } finally {
-                        if (c != null) {
-                            c.dispose();
-                        }
-                    }
-                    (found ? present : absent).add(rec.mid);
+                    results.put(rec.mid, probeStockRow(db, rec.mid, rec.dialogId));
                 }
                 store.runOwned(epoch, () -> {
-                    for (int mid : present) {
-                        if (store.markAssetHandedOffOnQueue(mid)) {
-                            store.deleteOnQueue(mid);
+                    for (GhostHoldStore.HeldRecord rec : flushing) {
+                        Boolean confirmed = isAttemptConfirmed(store, rec.mid);
+                        if (confirmed == null) {
+                            continue;
+                        }
+                        if (confirmed) {
+                            if (store.deleteOnQueue(rec.mid)) {
+                                releaseConfirmedAssetOnQueue(account, store, rec.mid);
+                            }
+                            continue;
+                        }
+                        int result = results.get(rec.mid);
+                        if (result == STOCK_PROBE_PRESENT) {
+                            if (store.isAssetPresentOnQueue(rec.mid)) {
+                                GhostHoldStore.AssetRecord asset = store.selectAssetOnQueue(rec.mid);
+                                HeldItem held = toHeldItem(account, rec);
+                                if (asset == null || held == null
+                                        || !asset.handedOff && (!store.markAssetHandedOffOnQueue(rec.mid)
+                                        || !store.putAttemptRandomOnQueue(rec.mid, held.message.random_id))) {
+                                    continue;
+                                }
+                            }
+                            if (store.deleteOnQueue(rec.mid)) {
+                                GhostHoldStore.AssetRecord asset = store.selectAssetOnQueue(rec.mid);
+                                if (asset != null) {
+                                    restoreAssetToCacheOnQueue(account, store, asset);
+                                }
+                            }
+                        } else if (result == STOCK_PROBE_ABSENT
+                                && clearMaterializationOnQueue(account, store, rec.mid, null)) {
+                            store.updateStateOnQueue(rec.mid, GhostHoldStore.STATE_HELD);
                         }
                     }
-                    for (int mid : absent) {
-                        if (clearMaterializationOnQueue(account, store, mid, null)) {
-                            store.updateStateOnQueue(mid, GhostHoldStore.STATE_HELD);
-                        }
-                    }
-                    restoreAwaitingAssetsAndSweep(account, epoch);
-                }, () -> restoreAwaitingAssetsAndSweep(account, epoch));
+                    reconcileAwaitingAssets(account, epoch);
+                }, () -> reconcileAwaitingAssets(account, epoch));
             });
-        }, () -> restoreAwaitingAssetsAndSweep(account, epoch));
+        }, () -> reconcileAwaitingAssets(account, epoch));
     }
 
-    private static void restoreAwaitingAssetsAndSweep(int account, int epoch) {
+    private static void reconcileAwaitingAssets(int account, int epoch) {
         GhostHoldStore store = GhostHoldStore.getInstance(account);
         store.runOwned(epoch, () -> {
+            ArrayList<GhostHoldStore.AssetRecord> awaiting = new ArrayList<>();
             for (GhostHoldStore.AssetRecord asset : store.selectAllAssetsOnQueue()) {
-                GhostHoldStore.HeldRecord held = store.selectOnQueue(asset.mid);
-                if (asset.handedOff && held == null) {
-                    restoreAssetToCacheOnQueue(account, store, asset);
-                } else if (!asset.handedOff && held != null
-                        && held.state == GhostHoldStore.STATE_HELD && asset.localId != 0) {
+                boolean heldPresent = store.isPresentOnQueue(asset.mid);
+                GhostHoldStore.HeldRecord held = heldPresent ? store.selectOnQueue(asset.mid) : null;
+                if (asset.handedOff && !heldPresent) {
+                    awaiting.add(asset);
+                } else if (asset.handedOff && held != null
+                        && held.state == GhostHoldStore.STATE_HELD) {
+                    clearMaterializationOnQueue(account, store, asset.mid, null);
+                } else if (!asset.handedOff && !heldPresent && asset.localId != 0) {
                     clearMaterializationOnQueue(account, store, asset.mid, null);
                 }
             }
-            store.sweepAssetsOnQueue();
+            if (awaiting.isEmpty()) {
+                store.sweepAssetsOnQueue();
+                return;
+            }
+            MessagesStorage storage = MessagesStorage.getInstance(account);
+            storage.getStorageQueue().postRunnable(() -> {
+                HashMap<Integer, Integer> results = new HashMap<>();
+                SQLiteDatabase db = storage.getDatabase();
+                for (GhostHoldStore.AssetRecord asset : awaiting) {
+                    results.put(asset.mid, probeStockRow(db, asset.mid, null));
+                }
+                store.runOwned(epoch, () -> {
+                    for (GhostHoldStore.AssetRecord captured : awaiting) {
+                        if (!store.isAssetPresentOnQueue(captured.mid)
+                                || store.isPresentOnQueue(captured.mid)) {
+                            continue;
+                        }
+                        GhostHoldStore.AssetRecord asset = store.selectAssetOnQueue(captured.mid);
+                        if (asset == null || !asset.handedOff) {
+                            continue;
+                        }
+                        Boolean confirmed = isAttemptConfirmed(store, asset.mid);
+                        if (confirmed == null) {
+                            continue;
+                        }
+                        int result = results.get(asset.mid);
+                        if (confirmed || result == STOCK_PROBE_ABSENT) {
+                            releaseAssetOnQueue(account, store, asset.mid, confirmed);
+                        } else if (result == STOCK_PROBE_PRESENT) {
+                            restoreAssetToCacheOnQueue(account, store, asset);
+                        }
+                    }
+                    store.sweepAssetsOnQueue();
+                });
+            });
         });
+    }
+
+    private static int probeStockRow(SQLiteDatabase db, int mid, @Nullable Long dialogId) {
+        SQLiteCursor cursor = null;
+        try {
+            String dialog = dialogId == null ? "" : " AND uid = " + dialogId;
+            cursor = db.queryFinalized("SELECT 1 FROM messages_v2 WHERE mid = " + mid + dialog
+                    + " UNION ALL SELECT 1 FROM scheduled_messages_v2 WHERE mid = " + mid + dialog + " LIMIT 1");
+            return cursor.next() ? STOCK_PROBE_PRESENT : STOCK_PROBE_ABSENT;
+        } catch (Exception e) {
+            FileLog.e(e);
+            return STOCK_PROBE_ERROR;
+        } finally {
+            if (cursor != null) {
+                cursor.dispose();
+            }
+        }
     }
 
     private static boolean restoreAssetToCacheOnQueue(int account, GhostHoldStore store, GhostHoldStore.AssetRecord asset) {
@@ -2664,7 +2781,11 @@ public final class GhostHoldController {
         if (target == null || target.exists()) {
             return false;
         }
-        return copyFailIfExists(source, target, asset.size);
+        boolean restored = copyFailIfExists(source, target, asset.size);
+        if (restored) {
+            materializations[account].put(asset.mid, target);
+        }
+        return restored;
     }
 
     private static String join(ArrayList<Integer> ids) {
@@ -2716,7 +2837,16 @@ public final class GhostHoldController {
                 // through the reused account slot.
                 sessionEpoch.incrementAndGet(account);
                 GhostHoldStore store = GhostHoldStore.getInstance(account);
-                store.postTeardown();
+                final int teardownEpoch = store.currentGeneration();
+                store.runOwned(teardownEpoch, () -> {
+                    for (GhostHoldStore.AssetRecord asset : store.selectAllAssetsOnQueue()) {
+                        clearMaterializationOnQueue(account, store, asset.mid, null);
+                    }
+                    materializations[account].clear();
+                    store.postTeardown();
+                }, store::postTeardown);
+                syntheticScheduledDeletes[account].clear();
+                smokeGroups[account].clear();
                 accountInited[account] = false;
                 NotificationCenter nc = NotificationCenter.getInstance(account);
                 nc.removeObserver(this, NotificationCenter.messagesDeleted);
@@ -2728,9 +2858,10 @@ public final class GhostHoldController {
             }
             if (id == NotificationCenter.messageReceivedByServer) {
                 int oldId = (Integer) args[0];
-                if (oldId >= 0) {
+                if (oldId >= 0 || args.length < 3 || !(args[2] instanceof TLRPC.Message)) {
                     return;
                 }
+                long randomId = ((TLRPC.Message) args[2]).random_id;
                 final int confirmSession = sessionEpoch.get(account);
                 GhostHoldStore store = GhostHoldStore.getInstance(account);
                 final int epoch = store.currentGeneration();
@@ -2738,13 +2869,16 @@ public final class GhostHoldController {
                     if (sessionEpoch.get(account) != confirmSession) {
                         return;
                     }
+                    if (!store.isAssetPresentOnQueue(oldId)) {
+                        return;
+                    }
                     GhostHoldStore.AssetRecord asset = store.selectAssetOnQueue(oldId);
-                    if (asset != null && asset.handedOff) {
-                        store.deleteAssetOnQueue(oldId);
-                        android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold EXPECTED server-confirm-release account="
-                                + account + " held_mid=" + oldId);
-                        android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold END scenario=single-photo account="
-                                + account + " held_mid=" + oldId);
+                    if (asset == null || !asset.handedOff || asset.localId == 0
+                            || !store.confirmAttemptOnQueue(oldId, randomId)) {
+                        return;
+                    }
+                    if (!store.isPresentOnQueue(oldId)) {
+                        releaseConfirmedAssetOnQueue(account, store, oldId);
                     }
                 });
                 return;
@@ -2762,7 +2896,7 @@ public final class GhostHoldController {
                         return;
                     }
                     GhostHoldStore.AssetRecord asset = store.selectAssetOnQueue(mid);
-                    if (asset != null) {
+                    if (asset != null && asset.handedOff && asset.localId != 0) {
                         restoreAssetToCacheOnQueue(account, store, asset);
                     }
                 });
@@ -2785,6 +2919,10 @@ public final class GhostHoldController {
                 ArrayList<Integer> negs = new ArrayList<>();
                 for (int mid : mids) {
                     if (mid < 0) {
+                        if (syntheticScheduledDeletes[account].get(mid)) {
+                            syntheticScheduledDeletes[account].delete(mid);
+                            continue;
+                        }
                         negs.add(mid);
                     }
                 }
@@ -2800,15 +2938,16 @@ public final class GhostHoldController {
                     java.util.HashSet<Long> dialogs = new java.util.HashSet<>();
                     ArrayList<Integer> toDelete = new ArrayList<>();
                     for (int mid : negs) {
-                        GhostHoldStore.HeldRecord rec = store.selectOnQueue(mid);
-                        if (rec != null) {
+                        boolean heldPresent = store.isPresentOnQueue(mid);
+                        boolean assetPresent = store.isAssetPresentOnQueue(mid);
+                        GhostHoldStore.HeldRecord rec = heldPresent ? store.selectOnQueue(mid) : null;
+                        if (heldPresent && rec != null) {
                             dialogs.add(rec.dialogId);
                         }
-                        GhostHoldStore.AssetRecord asset = store.selectAssetOnQueue(mid);
-                        if (rec != null && asset != null && !asset.handedOff) {
-                            clearMaterializationOnQueue(account, store, mid, null);
+                        if (assetPresent && !clearMaterializationOnQueue(account, store, mid, null)) {
+                            continue;
                         }
-                        if (rec != null || asset != null) {
+                        if (heldPresent || assetPresent) {
                             toDelete.add(mid);
                         }
                     }

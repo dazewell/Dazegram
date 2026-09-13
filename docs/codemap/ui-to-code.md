@@ -589,9 +589,9 @@ earlier from a file location (`SendMessagesHelper.java:4752-4753`), but it is
 not the source this upload branch opens.
 
 Ghost Hold therefore copies the authoritative largest-size file at admission
-(`GhostHoldController.java:486-501`) and, at release, patches only a decoded
+(`GhostHoldController.java:532-577`) and, at release, patches only a decoded
 throwaway largest `PhotoSize` before materializing the private bytes at the
-path returned by `FileLoader` (`GhostHoldController.java:1243-1272`). Treating
+path returned by `FileLoader` (`GhostHoldController.java:1361-1407`). Treating
 `attachPath` as the retained asset would keep the wrong file alive and still
 leave the uploader's real cache source purgeable.
 

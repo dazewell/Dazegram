@@ -993,9 +993,9 @@ occupant would risk another message's bytes.
 
 Ghost Hold's release path re-mints at most eight ids, asks `FileLoader` for
 each target, and creates the target fail-if-exists before copying
-(`GhostHoldController.java:1254-1272`, `:1275-1308`). Startup and send-error
+(`GhostHoldController.java:1361-1407`, `:1410-1443`). Startup and send-error
 restoration similarly copy only when the recorded target is absent
-(`GhostHoldController.java:2463-2481`). Never replace this with a
+(`GhostHoldController.java:2767-2788`). Never replace this with a
 string-built filename or an overwrite: collision refusal is the safety rule,
 not an optimization.
 
@@ -1101,7 +1101,7 @@ then writes that id into the sibling's params before its UI-thread
 `:11244-11264`, videos at `:11521-11565`, and photos at `:11748-11780`. By the
 time the single Ghost Hold hook runs, every sibling is already identifiable as
 grouped; `GhostHoldController.isHoldableSend` refuses a non-zero `groupId` at
-`GhostHoldController.java:236-240`, so it cannot admit only part of an album.
+`GhostHoldController.java:294-297`, so it cannot admit only part of an album.
 
 Cost if missed: admitting one sibling would separate it from the in-memory group
 completion state and leave a partially held, partially sent album.
@@ -1178,7 +1178,7 @@ Cost if missed: any redrive/retry that reconstructs a send via
 stored message" is half right. Ghost Hold's flush hit exactly this: the held
 message stored its entities on the blob but flushed as plain text until the
 re-drive explicitly restored `p.entities = m.entities`
-(`GhostHoldController.java:1348`). The reply header needed no such restore,
+(`GhostHoldController.java:1557`). The reply header needed no such restore,
 which is what makes the asymmetry a trap -- testing a reply-with-formatting
 would show the reply intact and the formatting gone, pointing at the wrong
 half.
@@ -1189,7 +1189,7 @@ Photos add three more gaps. `of(MessageObject)` does not copy
 from the rebuilt params (`SendMessagesHelper.java:4409`, `:4735`, `:5299`).
 Ghost Hold therefore restores entities, invert placement, the media spoiler
 flag, and its stored high-quality bit together in the one re-drive block
-(`GhostHoldController.java:1348-1368`). Masks already ride in the persisted
+(`GhostHoldController.java:1557-1577`). Masks already ride in the persisted
 params map and effect/repeat are restored beside them. This list was audited
 against the current 54-field `SendMessageParams` declaration
 (`SendMessagesHelper.java:12383-12446`) on 2026-09-13; it is not a general
@@ -1197,34 +1197,84 @@ promise that a future field will restore itself.
 
 *(Photo restore audit added 2026-09-13, #ghost-hold.)*
 
-## A stock row proves photo handoff, not private-asset release
+## Handoff-time and startup stock probes answer different questions
 
-The flush's stock-row probe answers only whether Telegram accepted ownership of
-retry/delivery. Final send confirmation is the per-account
+At handoff time, the stock-row probe answers only whether Telegram accepted
+ownership of retry/delivery. Ghost Hold has already marked the asset handed off
+and stored its random id before calling the send funnel
+(`GhostHoldController.java:1340-1353`). The immediate probe then decides only
+whether to delete the fork row or run the reversible re-hold inverse
+(`GhostHoldController.java:1685-1810`); stock presence never releases the
+private asset.
+
+Final live confirmation is the per-account
 `NotificationCenter.messageReceivedByServer` event carrying the original
-negative id (`SendMessagesHelper.java:7934`; equivalent confirmation branches
-also post at `:8484` and `:8506`). The same confirmation path then remaps the
-stock row and renames or removes local photo sizes
-(`SendMessagesHelper.java:8653-8798`), so a cache path that existed at handoff
-is not durable evidence afterward.
+negative id and local outgoing message (`SendMessagesHelper.java:7934`;
+equivalent branches also post at `:8484` and `:8506`). Ghost Hold records a
+confirmation only when both old id and the full 64-bit random id match the
+attempt stored in `ghost_meta` (`GhostHoldStore.java:516-555`,
+`GhostHoldController.java:2860-2880`). That random-id pair fences a delayed
+event from an earlier account-slot owner.
 
-Ghost Hold marks its asset handed off before deleting the fork row
-(`GhostHoldController.java:1552-1556`) and retains the private file through send
-errors. It releases that file only when this account's observer receives
-`messageReceivedByServer` with the tracked old id
-(`GhostHoldController.java:2543-2561`). Startup can restore a missing cache
-materialization for an awaiting asset, but it must not infer confirmation from
-stock-row presence or absence.
+Startup is deliberately different. Once the ghost row is already gone and the
+asset is handed off, a successful stock query that still finds the negative row
+means retry remains live, so cache bytes are restored. A successful query that
+finds no negative row is terminal: the row was confirmed/remapped or explicitly
+deleted, and the private asset may be released. A thrown query proves neither
+and deletes nothing (`GhostHoldController.java:2640-2759`). This post-handoff
+terminal reconciliation is required; treating the handoff-time stock probe as
+the same evidence is forbidden.
+
+*(Established 2026-09-13, #ghost-hold.)*
+
+## Ghost Hold attempt metadata uses a reserved negative-key namespace
+
+`ghost_meta` already reserves `k = 1` for the account owner's user id
+(`GhostHoldStore.java:239-252`). Held message ids are negative, so Wave B uses
+two disjoint negative keys per attempt: `2 * mid` stores the expected 64-bit
+random id and `2 * mid - 1` stores the random id observed at confirmation
+(`GhostHoldStore.java:516-580`). A confirmation is valid only when both values
+exist and match.
+
+Owner rebinding purges every `k < 0` row before stamping the new user
+(`GhostHoldStore.java:275`), the reversible materialization inverse clears both
+keys before re-hold (`GhostHoldController.java:1452-1481`), and asset deletion
+and startup sweeping remove terminal/orphan keys
+(`GhostHoldStore.java:590-676`). Do not turn the confirmation into a boolean:
+local mids reset when account slots are reused, while the random id is the
+attempt identity that prevents a stale delayed event from authorizing the new
+owner's colliding mid.
+
+*(Established 2026-09-13, #ghost-hold.)*
+
+## NotificationCenter delayed posts stay FIFO within one process and one account instance
+
+`NotificationCenter` stores delayed posts on the per-account instance
+(`NotificationCenter.java:399`) and replays them in insertion order by copying
+the list, clearing it, then iterating from index zero
+(`NotificationCenter.java:553-560`). `appDidLogout` is delivered through that
+same center; Ghost Hold bumps its session epoch and queues teardown before it
+removes its observers (`GhostHoldController.java:2822-2850`). A delayed post
+cannot survive a process restart, and store ownership plus the attempt's
+64-bit random id fence any replay that reaches a reused slot.
+
+`messageReceivedByServer2` is allowed through transition animations
+(`NotificationCenter.java:592`), which makes it tempting as a shortcut around
+delay. It must not replace `messageReceivedByServer` for asset release: the
+latter is the existing observed final-confirmation contract, while restart
+reconciliation independently handles a confirmation event the process did not
+observe. Wave B therefore adds no base NotificationCenter API and observes only
+`messageReceivedByServer`.
 
 *(Established 2026-09-13, #ghost-hold.)*
 
 ## Unsupported future Ghost Hold rows are preserved but not rendered
 
 `GhostHoldStore` loads every authored `ghost_held` row without interpreting its
-media (`GhostHoldStore.java:283-329`) and deletion is tied to explicit user,
+media (`GhostHoldStore.java:284-330`) and deletion is tied to explicit user,
 handoff, confirmation, logout, or aborted-asset paths. The controller decodes
 and allowlists supported payloads at `toHeldItem` /
-`isSupportedHeldMessage` (`GhostHoldController.java:2096-2145`); unsupported
+`isSupportedHeldMessage` (`GhostHoldController.java:2334-2383`); unsupported
 rows are skipped by render and flush rather than deleted.
 
 That is the deliberate downgrade/re-upgrade contract for a future app version
