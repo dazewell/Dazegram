@@ -189,6 +189,12 @@ object NaConfig {
             ConfigItem.configTypeBool,
             false
         )
+    val showForwardCount =
+        addConfig(
+            "ShowForwardCount",
+            ConfigItem.configTypeBool,
+            true
+        )
     val showMessageID =
         addConfig(
             "ShowMessageID",
@@ -1349,6 +1355,8 @@ object NaConfig {
             ConfigItem.configTypeBool,
             false
         )
+    val inputTextAnimations = addConfig("InputTextAnimations", ConfigItem.configTypeBool, false)
+    val inputAnimationStrength = addConfig("InputAnimationStrength", ConfigItem.configTypeInt, 2)
     val forceVideoNewRewindMethod =
         addConfig(
             "ForceVideoNewRewindMethod",
@@ -1364,6 +1372,18 @@ object NaConfig {
     val addCommaAfterMention =
         addConfig(
             "AddCommaAfterMention",
+            ConfigItem.configTypeBool,
+            false
+        )
+    val useSystemFontInTitle =
+        addConfig(
+            "UseSystemFontInTitle",
+            ConfigItem.configTypeBool,
+            false
+        )
+    val materialDesign3ChatHeader =
+        addConfig(
+            "MaterialDesign3ChatHeader",
             ConfigItem.configTypeBool,
             false
         )
