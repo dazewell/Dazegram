@@ -30,16 +30,6 @@ public class AnimatedPhoneNumberEditText extends HintEditText {
 
     @Override
     public void setHintText(String value) {
-        if (!xyz.nextalone.nagram.NaConfig.INSTANCE.getInputTextAnimations().Bool()) {
-            if (hintAnimationCallback != null) removeCallbacks(hintAnimationCallback);
-            for (SpringAnimation animation : hintAnimations) animation.cancel();
-            hintAnimations.clear();
-            hintAnimationValues.clear();
-            wasHint = value;
-            wasHintVisible = !TextUtils.isEmpty(value);
-            super.setHintText(value);
-            return;
-        }
         boolean show = !TextUtils.isEmpty(value);
         boolean runAnimation = false;
 
