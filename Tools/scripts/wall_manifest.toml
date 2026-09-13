@@ -188,8 +188,11 @@ caption = "Switch in one tap"
 output = "scheduling.png"
 
 [[wall.panel]]
-source = "new/screenshot_2026-09-08_17-32-33.png"
-crop = [0, 623, 1080, 2192]
+# dazewell's 2026-09-11 capture of the same trigger editor the original
+# panel showed, reshot after presets landed -- so this panel now carries
+# the pattern rows, their clear buttons, and the Presets card.
+source = "trigger-presets-sheet.png"
+crop = [0, 0, 1080, 1795]
 caption = "Not just a clock"
 
 [[wall.panel]]
