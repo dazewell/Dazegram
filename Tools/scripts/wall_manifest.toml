@@ -261,9 +261,15 @@ caption = "Save the whole setup"
 #
 # Plain cropped screenshots (no canvas/caption/shadow), replacing the two
 # GitHub user-attachments CDN images previously on the #timezones entry so
-# every FEATURES.md figure is versioned in the repo instead. Raw sources
-# are the gitignored captures staged under docs/screenshots/new/ for this
-# change; see that directory's shot list for what each one depicts.
+# every FEATURES.md figure is versioned in the repo instead.
+#
+# Raw sources are gitignored and resolve under `screenshots_dir`
+# (docs/screenshots). Earlier entries point at the raw capture filenames
+# under new/; later ones point at descriptively renamed copies sitting
+# directly in that directory. Both are local-only, so a committed figure is
+# the repository's only copy of what its crop shows: a figure is a plain
+# crop downscaled to a 1000px longest side, so figure plus crop rectangle
+# is enough to rebuild that region of a lost source.
 
 [[figure]]
 output = "timezones-1.png"
