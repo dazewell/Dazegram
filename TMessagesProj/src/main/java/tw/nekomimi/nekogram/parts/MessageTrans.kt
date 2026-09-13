@@ -38,6 +38,8 @@ const val TRANSLATE_MODE_WITH_ORIGINAL_ALL = 2
 
 const val TRANSLATION_SEPARATOR = "\n\n--------\n\n"
 
+private const val EMPTY_TRANSLATION_ERROR = "Translation result was empty"
+
 object RichMessageTransHelper {
     private const val MAX_CACHE_SIZE = 2048
 
@@ -357,6 +359,7 @@ private suspend fun ChatActivity.translateSummary(
     // Translate summary
     val translatedSummary = runCatching {
         translateText(targetLocale, summaryText.text, summaryText.entities, provider, llmContext)
+            .also { check(!it.text.isNullOrBlank()) { EMPTY_TRANSLATION_ERROR } }
     }.getOrElse { e ->
         handleTranslationError(parentActivity, e, msg, translateController) {
             translateMessages(targetLocale, provider, listOf(msg))
@@ -387,6 +390,7 @@ private suspend fun ChatActivity.translateRichMessageContent(
                 async(dispatcher) {
                     if (!isActive) return@async
                     val translated = Translator.translate(target, text, Translator.providerGoogle) // Google Translate is forced here due to rate limits
+                    check(!translated.isNullOrBlank()) { EMPTY_TRANSLATION_ERROR }
                     RichMessageTransHelper.putCachedTranslation(richMessage, targetLanguage, text, translated)
                 }
             }.awaitAll()
@@ -410,6 +414,7 @@ private suspend fun ChatActivity.translatePoll(
     // Translate question
     val translatedQuestion = runCatching {
         Translator.translate(target, poll.question.text, provider)
+            .also { check(!it.isNullOrBlank()) { EMPTY_TRANSLATION_ERROR } }
     }.getOrElse { e ->
         handleTranslationError(parentActivity, e, msg, translateController) {
             translateMessages(target, provider, listOf(msg))
@@ -422,6 +427,7 @@ private suspend fun ChatActivity.translatePoll(
     for (answer in poll.answers) {
         val translatedAnswer = runCatching {
             Translator.translate(target, answer.text.text, provider)
+                .also { check(!it.isNullOrBlank()) { EMPTY_TRANSLATION_ERROR } }
         }.getOrElse { e ->
             handleTranslationError(parentActivity, e, msg, translateController) {
                 translateMessages(target, provider, listOf(msg))
@@ -448,7 +454,7 @@ private suspend fun ChatActivity.translateMessageContent(
             msg.messageOwner.entities,
             provider,
             llmContext
-        )
+        ).also { check(!it.text.isNullOrBlank()) { EMPTY_TRANSLATION_ERROR } }
     }.getOrElse { e ->
         handleTranslationError(parentActivity, e, msg, translateController) {
             translateMessages(target, provider, listOf(msg))
