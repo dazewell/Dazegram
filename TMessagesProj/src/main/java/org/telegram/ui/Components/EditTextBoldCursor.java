@@ -865,6 +865,12 @@ public class EditTextBoldCursor extends EditTextEffects {
 
     @Override
     protected void onDraw(Canvas canvas) {
+        beginInputAnimation(canvas);
+        drawWithCursor(canvas);
+        endInputAnimation(canvas);
+    }
+
+    private void drawWithCursor(Canvas canvas) {
         drawHint(canvas);
 
         if (ellipsizeByGradient) {

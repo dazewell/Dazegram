@@ -66,6 +66,7 @@ import tw.nekomimi.nekogram.config.cell.ConfigCellTextCheck;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextCheck2;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextCheckIcon;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextInput;
+import tw.nekomimi.nekogram.settings.cell.InputAnimationStrengthSeekBar;
 import tw.nekomimi.nekogram.helpers.ChatsHelper;
 import tw.nekomimi.nekogram.helpers.TranscribeHelper;
 import tw.nekomimi.nekogram.helpers.remote.EmojiHelper;
@@ -125,9 +126,12 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
     private final AbstractConfigCell useChatAttachMediaMenuRow = cellGroup.appendCell(new ConfigCellTextCheck(NekoConfig.useChatAttachMediaMenu, getString(R.string.UseChatAttachEnterMenuNotice)));
     private final AbstractConfigCell quickScheduleButtonRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getQuickScheduleButton(), getString(R.string.QuickScheduleButtonNotice)));
     private final AbstractConfigCell inputTextSizeRow = cellGroup.appendCell(new ConfigCellCustom("InputTextSize", ConfigCellCustom.CUSTOM_ITEM_InputTextSize, false));
+    private final AbstractConfigCell inputTextAnimationsRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getInputTextAnimations()));
+    private final AbstractConfigCell inputAnimationStrengthRow = cellGroup.appendCell(new ConfigCellCustom("InputAnimationStrength", ConfigCellCustom.CUSTOM_ITEM_InputAnimationStrength, true));
     private final AbstractConfigCell fixLinkPreviewRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getFixLinkPreview(), "x.com -> fixupx.com"));
     private final AbstractConfigCell disableLinkPreviewByDefaultRow = cellGroup.appendCell(new ConfigCellTextCheck(NekoConfig.disableLinkPreviewByDefault));
     private final AbstractConfigCell deleteChatForBothSidesRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getDeleteChatForBothSides()));
+    private final AbstractConfigCell showForwardCountRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getShowForwardCount()));
     private final AbstractConfigCell showMessageIDRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getShowMessageID()));
     private final AbstractConfigCell personalRepliesRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getPersonalReplies(), getString(R.string.PersonalRepliesNotice)));
     private final AbstractConfigCell showSeconds = cellGroup.appendCell(new ConfigCellTextCheck(NekoConfig.showSeconds));
@@ -1051,6 +1055,9 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
                     break;
                 case ConfigCellCustom.CUSTOM_ITEM_InputTextSize:
                     view = new InputTextSizeSeekBar(mContext);
+                    break;
+                case ConfigCellCustom.CUSTOM_ITEM_InputAnimationStrength:
+                    view = new InputAnimationStrengthSeekBar(mContext);
                     break;
                 case CellGroup.ITEM_TYPE_CHECK2:
                     view = new TextCheckCell2(mContext);
