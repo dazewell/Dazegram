@@ -962,12 +962,71 @@ discarded pre-rebuild design.)*
 
 Established 2026-09-09 (#ghost-hold). `AutoDeleteMediaTask` keeps its "don't
 delete this file yet" set in an in-memory structure with `lockFile`/`unlockFile`
-(`AutoDeleteMediaTask.java:17`, `:243-267`); nothing persists it, so a process
-restart drops every pin, and the sweep itself is time-based and runs at most
-once per 24h (`AutoDeleteMediaTask.java:21`, `:118-125`). This is why holding a
-*media* message across an arbitrary Ghost duration can't lean on the existing
-pin — a kill during the hold would leave the file eligible for the next sweep.
-It's the recorded reason Ghost Hold v1 is text-only.
+(`AutoDeleteMediaTask.java:17`, `:249-274`). Both the age pass and the
+over-limit pass exclude paths present in that set
+(`AutoDeleteMediaTask.java:76-130`, `:142-190`, `:220-236`), but nothing
+persists the set, so a process restart drops every pin. The task runs at most
+once per 24 hours (`AutoDeleteMediaTask.java:21-25`); that cadence is not a
+retention guarantee after the process-memory protection is gone.
+
+The media cache itself is built from Android's external or internal cache
+directory (`AndroidUtilities.java:2627-2674`,
+`ImageLoader.java:2416-2428`), and Clear Cache directly walks the selected
+`FileLoader.MEDIA_DIR_CACHE` directory (`CacheControlActivity.java:1022-1074`).
+Neither path provides indefinite ownership. App-private files under
+`ApplicationLoader.getFilesDirFixed()` are outside those media-cache sweeps
+(`ApplicationLoader.java:188-212`), but a private copy alone does not make the
+stock uploader read those bytes; see the photo upload-path trap below.
+
+*(Photo-retention implications re-verified 2026-09-13, #ghost-hold, after
+PR #363 was closed unmerged.)*
+
+## Local photo upload re-resolves the largest PhotoSize; attachPath is not its byte identity
+
+Local photo preparation creates a small size and then a full-size entry
+(`SendMessagesHelper.java:9365-9394`). The outgoing placeholder records an
+`attachPath` from the last size's location (`SendMessagesHelper.java:4749-4753`),
+but the delayed upload keeps the last `PhotoSize` separately
+(`SendMessagesHelper.java:5623-5628`). When upload runs, it resolves that
+`PhotoSize` again through `FileLoader.getPathToAttach(...)` and passes the
+resulting path to `uploadFile(...)`; it does not read `Message.attachPath` or
+verify the file's bytes first (`SendMessagesHelper.java:6624-6642`).
+`FileLoader` keys and constructs the upload operation from that path string
+alone (`FileLoader.java:401-427`, `FileUploadOperation.java:98-104`).
+
+Locally generated sizes use `volume_id = Integer.MIN_VALUE` and a negative
+`SharedConfig.getLastLocalId()` value, then write into the media cache under a
+name built from that pair (`ImageLoader.java:4183-4233`).
+`FileLoader.getPathToAttach(...)` routes that location back to
+`MEDIA_DIR_CACHE` (`FileLoader.java:1374-1385`) and
+`getAttachFileName(...)` repeats the same `volume_id_local_id.jpg` identity
+(`FileLoader.java:1696-1702`). A retry therefore owns only that shared cache
+name, not an immutable association with the bytes originally generated there.
+
+*(Established 2026-09-13, #ghost-hold, while preserving the failure evidence
+from closed PR #363.)*
+
+## SharedConfig local photo ids can rewind onto an existing cache name
+
+`SharedConfig.getLastLocalId()` only decrements the process-memory counter
+(`SharedConfig.java:535-539`). Persistence is a separate broader config write
+(`SharedConfig.java:489`), and startup reloads the last persisted value
+(`SharedConfig.java:563`), so a hard kill can reissue ids consumed since the
+last save. `ImageLoader` then derives the cache filename from the reissued
+volume/local pair and opens that path for output
+(`ImageLoader.java:4183-4233`).
+
+If that name still represents a held photo retry, ordinary stock photo
+generation can replace its bytes. The retry later follows the shared
+`PhotoSize` name to `uploadFile(...)` without a byte-identity check
+(`SendMessagesHelper.java:6624-6642`, `FileLoader.java:401-427`,
+`FileUploadOperation.java:98-104`), so it can upload an unrelated photo.
+Refusing to overwrite an existing target avoids that direction but does not
+make restore-to-the-same-id safe; the discarded design is recorded in
+`dead-ends.md`.
+
+*(Established 2026-09-13, #ghost-hold, from current-tree mechanics and the
+collision found during PR #363 review.)*
 
 ## Sync guard check validates protected pins against the branch tree, not the PR merge ref
 
