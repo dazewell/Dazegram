@@ -500,9 +500,19 @@ public final class GhostHoldController {
     }
 
     private static boolean isStaticLocation(@Nullable TLRPC.MessageMedia media) {
-        return (media instanceof TLRPC.TL_messageMediaGeo
-                || media instanceof TLRPC.TL_messageMediaVenue)
-                && media.geo != null;
+        if (media instanceof TLRPC.TL_messageMediaGeo) {
+            return media.geo != null;
+        }
+        if (media instanceof TLRPC.TL_messageMediaVenue) {
+            TLRPC.TL_messageMediaVenue venue = (TLRPC.TL_messageMediaVenue) media;
+            // Positive query ids/result ids belong to inline venue results. Those
+            // custom fields are not part of TL_messageMediaVenue serialization, so
+            // they cannot survive the fork-store round trip.
+            return venue.geo != null
+                    && venue.query_id <= 0
+                    && android.text.TextUtils.isEmpty(venue.result_id);
+        }
+        return false;
     }
 
     /**
