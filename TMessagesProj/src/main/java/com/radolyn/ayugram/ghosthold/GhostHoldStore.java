@@ -548,8 +548,6 @@ public final class GhostHoldStore {
                 HeldRecord held = master.get(asset.mid);
                 if (held == null && !asset.handedOff) {
                     aborted.add(asset.mid);
-                } else if (held != null && held.state == STATE_HELD && asset.localId != 0) {
-                    updateAssetLocalIdOnQueue(asset.mid, 0);
                 }
             }
             for (int mid : aborted) {

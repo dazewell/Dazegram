@@ -1282,7 +1282,8 @@ public final class GhostHoldController {
                 }
             }
             final HeldItem f = fresh;
-            AndroidUtilities.runOnUIThread(() -> dispatchFreshItem(item, f, remaining, pending, epoch, session));
+            final PhotoMaterialization pm = materialization;
+            AndroidUtilities.runOnUIThread(() -> dispatchFreshItem(item, f, pm, remaining, pending, epoch, session));
         }, () -> AndroidUtilities.runOnUIThread(() -> onItemTerminal(remaining, pending)));
     }
 
@@ -1291,6 +1292,15 @@ public final class GhostHoldController {
         GhostHoldStore.AssetRecord asset = store.selectAssetOnQueue(item.mid);
         if (asset == null || asset.handedOff || !asset.valid) {
             return null;
+        }
+        if (asset.localId != 0) {
+            if (!clearMaterializationOnQueue(item.account, store, item.mid, null)) {
+                return null;
+            }
+            asset = store.selectAssetOnQueue(item.mid);
+            if (asset == null || !asset.valid) {
+                return null;
+            }
         }
         File source = store.assetFileOnQueue(asset);
         TLRPC.PhotoSize largest = item.largestPhotoSize();
@@ -1368,7 +1378,70 @@ public final class GhostHoldController {
         }
     }
 
-    private static void dispatchFreshItem(HeldItem item, @Nullable HeldItem fresh, AtomicInteger remaining, int pending, int epoch, int session) {
+    private static boolean clearMaterializationOnQueue(int account, GhostHoldStore store, int mid,
+                                                       @Nullable PhotoMaterialization known) {
+        GhostHoldStore.AssetRecord asset = store.selectAssetOnQueue(mid);
+        if (asset == null || asset.localId == 0) {
+            return true;
+        }
+        File target = known != null ? known.file : cacheFileForLocalId(account, asset.localId, asset.size);
+        if (target != null && target.exists()) {
+            boolean owned = known != null;
+            if (!owned) {
+                File source = store.assetFileOnQueue(asset);
+                owned = source != null && filesEqual(source, target, asset.size);
+            }
+            if (owned && !target.delete()) {
+                FileLog.e("ghostHold: could not remove held photo cache materialization " + target.getName());
+                return false;
+            }
+        }
+        return store.updateAssetLocalIdOnQueue(mid, 0);
+    }
+
+    private static File cacheFileForLocalId(int account, int localId, long size) {
+        TLRPC.TL_photoSize photoSize = new TLRPC.TL_photoSize_layer127();
+        photoSize.type = "x";
+        photoSize.size = (int) size;
+        photoSize.location = new TLRPC.TL_fileLocation_layer82();
+        photoSize.location.volume_id = Integer.MIN_VALUE;
+        photoSize.location.local_id = localId;
+        return FileLoader.getInstance(account).getPathToAttach(photoSize);
+    }
+
+    private static boolean filesEqual(File first, File second, long expectedSize) {
+        if (!first.isFile() || !second.isFile()
+                || first.length() != expectedSize || second.length() != expectedSize) {
+            return false;
+        }
+        try (FileInputStream a = new FileInputStream(first);
+             FileInputStream b = new FileInputStream(second)) {
+            byte[] aa = new byte[64 * 1024];
+            byte[] bb = new byte[64 * 1024];
+            while (true) {
+                int ar = a.read(aa);
+                int br = b.read(bb);
+                if (ar != br) {
+                    return false;
+                }
+                if (ar < 0) {
+                    return true;
+                }
+                for (int i = 0; i < ar; i++) {
+                    if (aa[i] != bb[i]) {
+                        return false;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+            return false;
+        }
+    }
+
+    private static void dispatchFreshItem(HeldItem item, @Nullable HeldItem fresh,
+                                          @Nullable PhotoMaterialization materialization,
+                                          AtomicInteger remaining, int pending, int epoch, int session) {
         final int account = item.account;
         final long dialogId = item.dialogId;
         final int mid = item.mid;
@@ -1381,7 +1454,7 @@ public final class GhostHoldController {
         // Ghost flipped back on during the re-read hop -> keep it held. Revert the
         // FLUSHING mark so it renders and re-drives cleanly on the next flush.
         if (NekoConfig.isGhostModeActive()) {
-            revertToHeld(account, mid, epoch, () -> onItemTerminal(remaining, pending));
+            revertToHeld(account, mid, epoch, materialization, () -> onItemTerminal(remaining, pending));
             return;
         }
 
@@ -1452,7 +1525,7 @@ public final class GhostHoldController {
         // re-drive it. It stays visible in Scheduled, the flush bulletin reports it as
         // not sent, and the user can send it by hand at the price they are shown.
         if (isPaidDialog(account, dialogId)) {
-            revertToHeld(account, mid, epoch, () -> onItemTerminal(remaining, pending));
+            revertToHeld(account, mid, epoch, materialization, () -> onItemTerminal(remaining, pending));
             return;
         }
         final boolean fut = future;
@@ -1492,7 +1565,7 @@ public final class GhostHoldController {
                     return;
                 }
                 if (NekoConfig.isGhostModeActive() || isPaidDialog(account, dialogId)) {
-                    revertToHeld(account, mid, epoch, () -> onItemTerminal(remaining, pending));
+                    revertToHeld(account, mid, epoch, materialization, () -> onItemTerminal(remaining, pending));
                     return;
                 }
                 SendMessagesHelper.getInstance(account).sendMessage(sendParams);
@@ -1504,7 +1577,8 @@ public final class GhostHoldController {
                 // return / became paid), the record is reverted to HELD for the next
                 // flush; nothing is ever lost. mo is passed so a send-now twin can be
                 // cancelled if the user deleted the held object during the handoff.
-                completeHandoff(account, mid, dialogId, fut, epoch, session, mo, () -> onItemTerminal(remaining, pending));
+                completeHandoff(account, mid, dialogId, fut, epoch, session, mo, materialization,
+                        () -> onItemTerminal(remaining, pending));
             });
         }, () -> AndroidUtilities.runOnUIThread(() -> onItemTerminal(remaining, pending)));
     }
@@ -1526,7 +1600,10 @@ public final class GhostHoldController {
      * absent-by-{@code -N} and is re-driven, producing a duplicate. Per the design that
      * is the correct direction to fail -- duplicate, never loss.
      */
-    private static void completeHandoff(int account, int mid, long dialogId, boolean future, int epoch, int session, @Nullable MessageObject sentObj, @Nullable Runnable onDone) {
+    private static void completeHandoff(int account, int mid, long dialogId, boolean future, int epoch,
+                                        int session, @Nullable MessageObject sentObj,
+                                        @Nullable PhotoMaterialization materialization,
+                                        @Nullable Runnable onDone) {
         MessagesStorage storage = MessagesStorage.getInstance(account);
         storage.getStorageQueue().postRunnable(() -> {
             boolean handedOff = false;
@@ -1635,7 +1712,9 @@ public final class GhostHoldController {
                         }
                     }
                 } else {
-                    store.updateStateOnQueue(mid, GhostHoldStore.STATE_HELD);
+                    if (clearMaterializationOnQueue(account, store, mid, materialization)) {
+                        store.updateStateOnQueue(mid, GhostHoldStore.STATE_HELD);
+                    }
                 }
                 postScheduledCount(account, dialogId, session);
                 // Signal the item terminal only after this resolution has run, whatever
@@ -1689,7 +1768,9 @@ public final class GhostHoldController {
      * the UI thread. The record stays visible in Scheduled and re-drives cleanly on
      * the next flush.
      */
-    private static void revertToHeld(int account, int mid, int epoch, @Nullable Runnable onDone) {
+    private static void revertToHeld(int account, int mid, int epoch,
+                                     @Nullable PhotoMaterialization materialization,
+                                     @Nullable Runnable onDone) {
         GhostHoldStore store = GhostHoldStore.getInstance(account);
         Runnable finish = () -> {
             if (onDone != null) {
@@ -1697,7 +1778,9 @@ public final class GhostHoldController {
             }
         };
         store.runOwned(epoch, () -> {
-            store.updateStateOnQueue(mid, GhostHoldStore.STATE_HELD);
+            if (clearMaterializationOnQueue(account, store, mid, materialization)) {
+                store.updateStateOnQueue(mid, GhostHoldStore.STATE_HELD);
+            }
             finish.run();
         }, finish);
     }
@@ -2497,8 +2580,9 @@ public final class GhostHoldController {
                         }
                     }
                     for (int mid : absent) {
-                        store.updateStateOnQueue(mid, GhostHoldStore.STATE_HELD);
-                        store.updateAssetLocalIdOnQueue(mid, 0);
+                        if (clearMaterializationOnQueue(account, store, mid, null)) {
+                            store.updateStateOnQueue(mid, GhostHoldStore.STATE_HELD);
+                        }
                     }
                     restoreAwaitingAssetsAndSweep(account, epoch);
                 }, () -> restoreAwaitingAssetsAndSweep(account, epoch));
@@ -2510,8 +2594,12 @@ public final class GhostHoldController {
         GhostHoldStore store = GhostHoldStore.getInstance(account);
         store.runOwned(epoch, () -> {
             for (GhostHoldStore.AssetRecord asset : store.selectAllAssetsOnQueue()) {
-                if (asset.handedOff && store.selectOnQueue(asset.mid) == null) {
+                GhostHoldStore.HeldRecord held = store.selectOnQueue(asset.mid);
+                if (asset.handedOff && held == null) {
                     restoreAssetToCacheOnQueue(account, store, asset);
+                } else if (!asset.handedOff && held != null
+                        && held.state == GhostHoldStore.STATE_HELD && asset.localId != 0) {
+                    clearMaterializationOnQueue(account, store, asset.mid, null);
                 }
             }
             store.sweepAssetsOnQueue();
@@ -2676,7 +2764,11 @@ public final class GhostHoldController {
                         if (rec != null) {
                             dialogs.add(rec.dialogId);
                         }
-                        if (rec != null || store.selectAssetOnQueue(mid) != null) {
+                        GhostHoldStore.AssetRecord asset = store.selectAssetOnQueue(mid);
+                        if (rec != null && asset != null && !asset.handedOff) {
+                            clearMaterializationOnQueue(account, store, mid, null);
+                        }
+                        if (rec != null || asset != null) {
                             toDelete.add(mid);
                         }
                     }
