@@ -664,15 +664,20 @@ looks right in the code and is still reversed on the device.
 
 ## Composer zone constants do not match their on-screen labels
 
-The composer toolbar layout editor has four zones. Three of the four internal
-constant names match what the user reads on screen; the second one does not.
+The composer toolbar layout editor has four zones. **Only one of the four
+constants is named for the label it produces.** Do not infer a zone's label
+from its constant, or the reverse.
 
-| Constant | On-screen label |
-|---|---|
-| `ZONE_START` (`ComposerButtons.java:20`) | "Leading — up to 2" |
-| `ZONE_MIDDLE` (`ComposerButtons.java:21`) | **"Scrolling"** |
-| `ZONE_END` (`ComposerButtons.java:22`) | "Trailing" |
-| `ZONE_HIDDEN` (`ComposerButtons.java:23`) | "Hidden" |
+| Constant | On-screen label | Same? |
+|---|---|---|
+| `ZONE_START` (`ComposerButtons.java:20`) | "Leading — up to 2" | no |
+| `ZONE_MIDDLE` (`ComposerButtons.java:21`) | "Scrolling" | no |
+| `ZONE_END` (`ComposerButtons.java:22`) | "Trailing" | no |
+| `ZONE_HIDDEN` (`ComposerButtons.java:23`) | "Hidden" | yes |
+
+`ZONE_MIDDLE` is the dangerous one. `START`/`END` are obviously positional and
+nobody mistakes them for user-facing words, but "Middle" reads like a label —
+so it is the one that gets written down as if it were.
 
 The mapping is made in `headerTitle(int zone)`
 (`ComposerLayoutActivity.java:769-775`), which resolves `ZONE_MIDDLE` to
@@ -680,10 +685,18 @@ The mapping is made in `headerTitle(int zone)`
 (`strings_nax.xml:657`). Footer text maps the same way through
 `footerText(int zone)` (`:789-793`).
 
-`ZONE_START`/`ZONE_END` are also worth noting: neither is named for its label,
-and `START_CAPACITY` is what enforces the "up to 2" in the Leading label
-(`ComposerLayoutActivity.java:645-646`), so the cap is not readable from the
-zone constants alone.
+The "up to 2" in the Leading label is enforced by `START_CAPACITY`
+(`ComposerLayoutActivity.java:645-646`), not by anything on the zone constant,
+so the cap is not readable from `ZONE_START` alone either.
+
+The trap is that the source's own comments use the internal vocabulary — see
+"Only Middle/Trailing/Hidden ever produce this row"
+(`ComposerLayoutActivity.java:649`) — so reading the code leaves you fluent in
+names no user ever sees. That is how `FEATURES.md` came to document the zones
+as "Leading, Middle, Trailing, Hidden": the internal name leaked into a
+user-facing catalog and sat there uncorrected, because no screenshot of that
+screen existed to contradict it. Writing about this screen, use the labels;
+reading the code, expect the constants.
 
 The trap is that the source's own comments use the internal vocabulary — see
 "Only Middle/Trailing/Hidden ever produce this row"
