@@ -1508,25 +1508,23 @@ snapshot, and the previous unconditional non-empty-manifest startup check also
 prevented an empty manifest from reaching `-SelfTestOnly`, real-candidate, or
 `-LandCheckOnly` assertions.
 
+Advancing or replacing the parent is not a supported sync-land operation.
+sync-land only ever fast-forwards nbase onto a snapshot of a commit that descends
+from the pinned ANCHOR_SRC in the pinned upstream repo. A -LandCheckOnly pass
+never implies a parent change is permitted; a parent transition is a human,
+attended, pre-certified transaction.
+
 The transition order is load-bearing. First land the two-policy guard while
 `WORKFLOW_POLICY=manifest` remains pinned (`.github/sync/pins.env:23-30`).
-Later, `sync-land.yml` fast-forwards the workflow-free Telegram snapshot to
-live `nbase` and auto-opens a pins PR containing only the three anchor pins
-(`.github/workflows/sync-land.yml:368-374,397`). That same PR must receive a
-manual follow-up commit before its required check can pass: set
-`WORKFLOW_POLICY=none`, truncate `workflow-manifest.tsv` to its header row, and
-correct the generated body's "only three anchor pins" claim. The policy
-validator makes a header-only manifest legal only under `none`, while `none`
-rejects every observed workflow path
-(`.github/sync/sync-guard.ps1:185-220,988-1009`). The no-op fast path also
-checks live `nbase` before returning up-to-date, so a premature `none` flip
-cannot bless the current workflow-bearing tree
-(`.github/sync/sync-guard.ps1:1075-1081`). Land checks enforce the workflow
-tree only after the trusted PRE policy is already `none`; `manifest` deliberately
-keeps the one-time workflow-free cutover valid
-(`.github/sync/sync-guard.ps1:227-230,1201`). The always-on fixture exercises
-the workflow-free fast, real-candidate, and land paths, plus the
-forbidden-workflow cases (`.github/workflows/sync-guard-check.yml:254-344`).
+The later parent bootstrap does not use `sync-land`; its attended transaction is
+pre-certified before any ref moves with source/snapshot tree equality, snapshot
+parent equality with live `nbase`, `dev` anchor ancestry and tree identity, sync
+identity, an empty workflow tree, disabled workflows with `dev` frozen, and a
+pre-reviewed pins PR. Routine land checks keep the strict pinned policy:
+`manifest` requires the exact approved workflow set and `none` permits only an
+empty set (`.github/sync/sync-guard.ps1:185-215,1185-1192`). The always-on
+fixtures prove clean/changed/added/removed manifest land cases and empty/present
+none land cases (`.github/workflows/sync-guard-check.yml:260-324,377-413`).
 
 *(Established 2026-09-13, `#infra`; Telegram root tree verified through the
 GitHub tree object for the commit above.)*

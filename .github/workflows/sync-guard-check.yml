@@ -90,7 +90,7 @@ jobs:
           } 'header must be exactly'
           exit 0
 
-      - name: sync-upstream.yml invokes the guard, uncommented, before the push
+      - name: Production workflows use trusted guard config; guard precedes sync push
         shell: pwsh
         run: |
           $wf = './.github/workflows/sync-upstream.yml'
@@ -120,7 +120,13 @@ jobs:
           foreach ($override in '-AnchorOverride', '-PinsFile', '-ProtectedFile', '-WorkflowManifest') {
             if ($active -match [regex]::Escape($override)) { Write-Host "::error::sync-upstream.yml passes $override; test/config overrides must not appear in the real sync"; exit 1 }
           }
-          Write-Host 'guard wiring intact: active invocation, before the push, input-less dispatch, trusted PRE policy/config only.'
+          $land = './.github/workflows/sync-land.yml'
+          if (-not (Test-Path $land)) { Write-Host '::error::sync-land.yml is missing'; exit 1 }
+          $landActive = ((Get-Content $land | Where-Object { -not $_.TrimStart().StartsWith('#') }) -join "`n")
+          foreach ($override in '-AnchorOverride', '-PinsFile', '-ProtectedFile', '-WorkflowManifest') {
+            if ($landActive -match [regex]::Escape($override)) { Write-Host "::error::sync-land.yml passes $override; test/config overrides must not appear in the real land path"; exit 1 }
+          }
+          Write-Host 'guard wiring intact: active invocation, before the push, input-less dispatch, trusted PRE policy/config only in sync and land paths.'
 
       - name: Full real-candidate fixture (clean passes, tampered/double-modified block)
         shell: pwsh
@@ -251,6 +257,72 @@ jobs:
           if ($dblOut -notmatch 'DOUBLE-MODIFIED') { Write-Host '::error::guard blocked the double-modified candidate for the WRONG reason (no DOUBLE-MODIFIED)'; exit 1 }
           if ($dblOut -notmatch [regex]::Escape($F)) { Write-Host "::error::DOUBLE-MODIFIED did not name the expected file $F"; exit 1 }
 
+          # Land-check enforces the same strict manifest contract as the real guard.
+          # Build one clean topology, then vary only the snapshot/source workflow tree.
+          $manifestLandBranch = 'manifest-land-fixture'
+          $manifestLandRef = "refs/remotes/nagram/$manifestLandBranch"
+          $manifestLandPins = Join-Path $env:RUNNER_TEMP 'gc-manifest-land-pins.env'
+          $manifestLandPinText = Get-Content .github/sync/pins.env -Raw
+          $manifestLandPinText = $manifestLandPinText -replace '(?m)^ANCHOR_SRC=.*$', "ANCHOR_SRC=$anchor"
+          $manifestLandPinText = $manifestLandPinText -replace '(?m)^OLD_NBASE=.*$', "OLD_NBASE=$oldNbase"
+          $manifestLandPinText = $manifestLandPinText -replace '(?m)^OLD_NBASE_TREE=.*$', "OLD_NBASE_TREE=$anchorTree"
+          $manifestLandPinText = $manifestLandPinText -replace '(?m)^NAGRAM_BRANCH=.*$', "NAGRAM_BRANCH=$manifestLandBranch"
+          $manifestLandPinText = $manifestLandPinText -replace '(?m)^SYNC_IDENTITY_NAME=.*$', 'SYNC_IDENTITY_NAME=guard-check'
+          $manifestLandPinText = $manifestLandPinText -replace '(?m)^SYNC_IDENTITY_EMAIL=.*$', 'SYNC_IDENTITY_EMAIL=guard-check@dazegram.local'
+          Set-Content -LiteralPath $manifestLandPins -Value $manifestLandPinText -NoNewline -Encoding utf8
+
+          function Assert-ManifestLand([string]$name, [string]$source, [string]$snapshot, [string]$candidate, [string]$failurePattern) {
+            git update-ref $manifestLandRef $source
+            $out = (& ./.github/sync/sync-guard.ps1 -LandCheckOnly -OldNbase $oldNbase -NewSnapshot $snapshot -NewDev $candidate -PinsFile $manifestLandPins *>&1 | Out-String -Width 8192)
+            $code = $LASTEXITCODE
+            Write-Host "--- manifest land $name (exit $code) ---"
+            Write-Host $out
+            if (-not $failurePattern -and $code -ne 0) { Write-Host "::error::clean manifest land fixture failed"; exit 1 }
+            if ($failurePattern -and $code -eq 0) { Write-Host "::error::manifest land $name unexpectedly passed"; exit 1 }
+            if ($failurePattern -and $out -notmatch $failurePattern) { Write-Host "::error::manifest land $name failed for the wrong reason"; exit 1 }
+          }
+
+          Assert-ManifestLand 'clean' $newSrc $snap $clean ''
+          $headTree = (git rev-parse "$head^{tree}").Trim()
+          $debugPath = '.github/workflows/debug.yml'
+
+          $changedIdx = Join-Path $env:RUNNER_TEMP 'gc-manifest-changed.idx'
+          Remove-Item -LiteralPath $changedIdx -ErrorAction SilentlyContinue
+          $env:GIT_INDEX_FILE = $changedIdx
+          git read-tree $anchorTree
+          git update-index --cacheinfo "100644,$badBlob,$debugPath"
+          $changedTree = (git write-tree).Trim()
+          Remove-Item Env:\GIT_INDEX_FILE
+          $changedSrc = (git commit-tree $changedTree -p $anchor -m "guard-check manifest changed source #infra").Trim()
+          $changedSnap = (git commit-tree $changedTree -p $oldNbase -m "guard-check manifest changed snapshot #infra").Trim()
+          $changedDev = (git commit-tree $headTree -p $head -p $changedSnap -m "guard-check manifest changed dev #infra").Trim()
+          Assert-ManifestLand 'changed' $changedSrc $changedSnap $changedDev 'workflow blob CHANGED'
+
+          $addedIdx = Join-Path $env:RUNNER_TEMP 'gc-manifest-added.idx'
+          Remove-Item -LiteralPath $addedIdx -ErrorAction SilentlyContinue
+          $env:GIT_INDEX_FILE = $addedIdx
+          git read-tree $anchorTree
+          git update-index --add --cacheinfo "100644,$badBlob,.github/workflows/evil.yml"
+          $addedTree = (git write-tree).Trim()
+          Remove-Item Env:\GIT_INDEX_FILE
+          $addedSrc = (git commit-tree $addedTree -p $anchor -m "guard-check manifest added source #infra").Trim()
+          $addedSnap = (git commit-tree $addedTree -p $oldNbase -m "guard-check manifest added snapshot #infra").Trim()
+          $addedDev = (git commit-tree $headTree -p $head -p $addedSnap -m "guard-check manifest added dev #infra").Trim()
+          Assert-ManifestLand 'added' $addedSrc $addedSnap $addedDev 'workflow ADDED'
+
+          $removedIdx = Join-Path $env:RUNNER_TEMP 'gc-manifest-removed.idx'
+          Remove-Item -LiteralPath $removedIdx -ErrorAction SilentlyContinue
+          $env:GIT_INDEX_FILE = $removedIdx
+          git read-tree $anchorTree
+          git ls-tree -r --name-only $oldNbase -- .github/workflows |
+            ForEach-Object { git update-index --force-remove -- $_ }
+          $removedTree = (git write-tree).Trim()
+          Remove-Item Env:\GIT_INDEX_FILE
+          $removedSrc = (git commit-tree $removedTree -p $anchor -m "guard-check manifest removed source #infra").Trim()
+          $removedSnap = (git commit-tree $removedTree -p $oldNbase -m "guard-check manifest removed snapshot #infra").Trim()
+          $removedDev = (git commit-tree $headTree -p $head -p $removedSnap -m "guard-check manifest removed dev #infra").Trim()
+          Assert-ManifestLand 'removed' $removedSrc $removedSnap $removedDev 'approved workflow MISSING'
+
           # Future Telegram steady state: old nbase and its successor snapshot both
           # have no .github tree. Build that topology entirely from synthetic commits
           # and use the existing fixture-only AnchorOverride; production gets no
@@ -270,7 +342,6 @@ jobs:
           $noneOld = (git commit-tree $noneTree -p $oldNbase -m "guard-check none old nbase #infra").Trim()
           $noneSrc = (git commit-tree $noneTree -p $noneAnchor -m "guard-check none source #infra").Trim()
           $noneSnap = (git commit-tree $noneTree -p $noneOld -m "guard-check none snapshot #infra").Trim()
-          $headTree = (git rev-parse "$head^{tree}").Trim()
           $nonePre = (git commit-tree $headTree -p $noneOld -m "guard-check none pre #infra").Trim()
           $noneCandidate = (git commit-tree $headTree -p $nonePre -p $noneSnap -m "guard-check none candidate #infra").Trim()
 

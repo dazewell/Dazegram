@@ -182,7 +182,7 @@ function Test-SelfProtect([hashtable]$preBlobs, [hashtable]$candBlobs, [string[]
 # Guard 5: the snapshot's .github/workflows policy. `manifest` requires the
 # snapshot to match every approved path/blob exactly. `none` requires both an
 # empty manifest and zero workflow paths in the snapshot.
-function Test-WorkflowPolicy([string]$policy, $manifestRows) {
+function Test-Workflows([string]$policy, [hashtable]$snapWf, $manifestRows) {
     $f = @()
     if ($policy -notin @('manifest', 'none')) {
         $f += "workflow policy '$policy' is unknown or malformed (expected manifest or none)"
@@ -194,11 +194,6 @@ function Test-WorkflowPolicy([string]$policy, $manifestRows) {
     if ($policy -eq 'none' -and $manifestRows.Count -ne 0) {
         $f += 'workflow policy none requires an empty workflow-manifest.tsv'
     }
-    return $f
-}
-
-function Test-Workflows([string]$policy, [hashtable]$snapWf, $manifestRows) {
-    $f = @(Test-WorkflowPolicy $policy $manifestRows)
     if ($f.Count -gt 0) { return $f }
     if ($policy -eq 'none') {
         foreach ($p in $snapWf.Keys) {
@@ -222,11 +217,6 @@ function Test-Workflows([string]$policy, [hashtable]$snapWf, $manifestRows) {
 function Test-FastPathWorkflows([string]$decision, [string]$policy, [hashtable]$liveNbaseWf, $manifestRows) {
     if ($decision -ne 'uptodate') { return @() }
     return @(Test-Workflows $policy $liveNbaseWf $manifestRows)
-}
-
-function Test-LandCheckWorkflows([string]$policy, [hashtable]$snapWf, $manifestRows) {
-    if ($policy -ne 'none') { return @() }
-    return @(Test-Workflows $policy $snapWf $manifestRows)
 }
 
 # Guard 9 + 11 + "every tree delta must be partitioned; unclassified means BLOCK".
@@ -636,10 +626,6 @@ function Invoke-SelfTest([hashtable]$pins) {
     $ok = (Assert-Passes 'Test-FastPathWorkflows(none)'         (Test-FastPathWorkflows 'uptodate' 'none' @{} @()) ([ref]$log)) -and $ok
     $ok = (Assert-Passes 'Test-FastPathWorkflows(manifest)'     (Test-FastPathWorkflows 'uptodate' 'manifest' $wfGood $man) ([ref]$log)) -and $ok
     $ok = (Assert-Passes 'Test-FastPathWorkflows(proceed)'      (Test-FastPathWorkflows 'proceed' 'none' $wfGood @()) ([ref]$log)) -and $ok
-    $ok = (Assert-Fails  'Test-LandCheckWorkflows(none-present)' (Test-LandCheckWorkflows 'none' $wfGood @()) ([ref]$log)) -and $ok
-    $ok = (Assert-Passes 'Test-LandCheckWorkflows(none-empty)'   (Test-LandCheckWorkflows 'none' @{} @()) ([ref]$log)) -and $ok
-    $ok = (Assert-Passes 'Test-LandCheckWorkflows(manifest)'     (Test-LandCheckWorkflows 'manifest' $wfGood $man) ([ref]$log)) -and $ok
-    $ok = (Assert-Passes 'Test-LandCheckWorkflows(cutover)'      (Test-LandCheckWorkflows 'manifest' @{} $man) ([ref]$log)) -and $ok
 
     # Guard 9 / 11 partition (fork ∩ upstream)
     $pre = @{ 'a' = '1'; 'b' = '2' }
@@ -1002,7 +988,9 @@ foreach ($r in $manifestRows) {
         Write-Host "::error::workflow-manifest.tsv malformed row: '$($r.Path)' -> '$($r.Blob)'"; exit 2
     }
 }
-$workflowPolicyProblems = @(Test-WorkflowPolicy $pins['WORKFLOW_POLICY'] $manifestRows)
+$manifestBlobs = @{}
+foreach ($r in $manifestRows) { $manifestBlobs[$r.Path] = $r.Blob }
+$workflowPolicyProblems = @(Test-Workflows $pins['WORKFLOW_POLICY'] $manifestBlobs $manifestRows)
 if ($workflowPolicyProblems.Count -gt 0) {
     $workflowPolicyProblems | ForEach-Object { Write-Host "::error::$_" }
     exit 2
@@ -1198,7 +1186,7 @@ if ($LandCheckOnly) {
     if (-not $anchorSrcNew) {
         $failures += "land: the snapshot tree $snapTree matches no commit in nagram/$branch — it is not a faithful copy of any upstream commit"
     }
-    $failures += Test-LandCheckWorkflows $pins['WORKFLOW_POLICY'] (Get-WorkflowBlobs $snap) $manifestRows
+    $failures += Test-Workflows $pins['WORKFLOW_POLICY'] (Get-WorkflowBlobs $snap) $manifestRows
     $failures += Test-LandCheck $snapParents $expectedOldNbase $revMinusOld $snap $snapTree $srcTree $srcDescends `
         $expectedOldNbaseTree $pinnedAnchorTree $pins['OLD_NBASE'] $pins['OLD_NBASE_TREE'] $snapDescendsDev
     $failures += Test-SnapshotIdentity $an $ae $cn $ce $pins['SYNC_IDENTITY_NAME'] $pins['SYNC_IDENTITY_EMAIL']

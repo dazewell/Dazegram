@@ -190,6 +190,12 @@ above) — `sync-land` drafts that edit, it does not bypass the review. What it 
 is that the review is now backed by machine-verified evidence rather than three
 opaque hex strings, and the pins PR is genuinely gated:
 
+Advancing or replacing the parent is not a supported sync-land operation.
+sync-land only ever fast-forwards nbase onto a snapshot of a commit that descends
+from the pinned ANCHOR_SRC in the pinned upstream repo. A -LandCheckOnly pass
+never implies a parent change is permitted; a parent transition is a human,
+attended, pre-certified transaction.
+
 - **`sync-guard.ps1 -LandCheckOnly` runs before any ref moves.** The two obvious
   ancestry facts — old `nbase` is an ancestor of the snapshot, and the snapshot is
   reachable from `dev` — both pass for a snapshot whose *tree was hand-edited
@@ -280,15 +286,23 @@ surfacing only a generic auth error after a ref has already moved.
 - **`none`** requires an empty manifest and zero `.github/workflows/*` paths in the
   snapshot. Any workflow path blocks.
 
-The parent transition keeps `manifest` while this capability lands. Later,
-`sync-land.yml` first makes the workflow-free Telegram snapshot the live
-`nbase`, then opens its pins PR with only the three anchor pins. Before that PR
-can pass `sync-guard-check`, add a manual follow-up commit on the same PR that
-sets `WORKFLOW_POLICY=none` and truncates `workflow-manifest.tsv` to its
-`path<TAB>blob` header row. Also correct the generated PR body, whose normal
-"only three anchor pins change" claim does not describe this one transition.
-The final pins-PR head must contain all five changes; flipping the policy in an
-earlier PR while the Nagram workflow tree is still live would fail closed.
+The parent transition keeps `manifest` while this capability lands. The later
+parent bootstrap never uses `sync-land`: strict land validation continues to
+enforce the current policy with no transition exception. Before the attended
+transaction may move any ref, its reviewed evidence must pre-certify:
+
+- source and snapshot tree equality;
+- snapshot parent equality with live `nbase`;
+- `dev` anchor ancestry and anchor-tree identity;
+- the pinned sync author and committer identity;
+- an empty snapshot workflow tree;
+- disabled sync workflows and a frozen `dev`; and
+- a pre-reviewed pins PR carrying the new parent pins, `WORKFLOW_POLICY=none`,
+  and a header-only `workflow-manifest.tsv`.
+
+The operator applies that pre-certified transaction as one coordinated parent
+change. Routine `sync-land` remains limited to descendants of the already-pinned
+parent.
 
 ## Files
 
