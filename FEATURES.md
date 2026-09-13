@@ -2,30 +2,34 @@
 
 Extra bits I've added on top of [NagramX](https://github.com/risin42/NagramX). Most are on out of the box. Where something has a setting, I've said so.
 
+<!-- House style: an entry is a definition, not a writeup. Max 70 words of prose
+     under the ### heading (images and tables don't count); most sit around 35.
+     What it does and where it is, then its setting and default. No edge cases,
+     no failure behaviour, no rationale. Extending a feature means folding it
+     into the existing entry and re-counting, never a second heading. -->
+
 ## Chats and privacy
 
 ### Per-chat time zones <!-- #timezones -->
 
-Set a time zone for any personal chat or group through the profile edit view. The chat header and contacts list show the peer's current local time as a clock pill. Tap the pill to get a side-by-side time converter in a bottom sheet. Slide the strip to line up a moment in both zones, or hit "Now". You can drop the lined-up time into the message box. The template renders from a collapsible *Message format* section, where you can tap tokens like `{peer_time}`, `{offset}`, `{my_range}`, or `{duration}` into the template, and you can pick the language the message renders in. Next to "Now", there's a *Range* pill for when you need a window instead of a single moment. When you schedule a message to a chat with a zone set, the schedule sheet gains a *My time* / *Peer's time* tab above the picker wheels to schedule in their time.
+Set a time zone for any personal chat or group from its profile edit view. The chat header and contacts list then show the peer's local time as a clock pill; tap it for a time converter you can drop into the message box as a formatted line. Scheduling a message to a chat with a zone set adds *My time* / *Peer's time* tabs to the picker.
 
 <img height="200" alt="time zone picker sheet listing selectable IANA time zones under a search field" src="docs/images/features/timezones-1.png" />
 <img height="200" alt="chat list row showing a peer's name with a clock pill giving their local time" src="docs/images/features/timezones-2.png" />
 
 ### Customized privacy <!-- #customized-privacy --> <!-- #hide-last-message --> <!-- #require-password --> <!-- #disguise-alerting -->
 
-Each chat has one `Chat privacy` item in its ⋯ menu, opening one sheet with `Hide last message` (custom placeholder text for the chat list, not search results) and `Require password`. Turning `Require password` on still auto-enables hiding only when hiding was off; turning it off does not turn hiding off.
-
-The same sheet has `Disguise notifications` with cover persona selection and `Preview notification`. The old per-chat `Alert normally` row is gone: covered notifications now follow Telegram's own silent-vs-alert signal per event, and can alert only when that covered dialog has newly represented members since its last posted cover. Mute/per-chat sound/channel/watch tuning stays in Telegram/Android settings. The sheet uses compact section cards (privacy card, notifications card, collapsed `How covers work` footer disclosure), and its bulletins use Telegram's stock bottom placement.
+Each chat's ⋯ menu has one `Chat privacy` item, opening a sheet with `Hide last message` (with its own placeholder text for the chat list), `Require password`, and `Disguise notifications` — cover persona selection plus a preview button. Turning `Require password` on also switches hiding on if it was off. Covered notifications follow Telegram's own silent-vs-alert signal; mute, sound and watch tuning stay in Telegram and Android settings.
 
 <img height="260" alt="Chat privacy sheet with Hide last message and Require password switched on, a custom placeholder text row between them, and the Disguise notifications card below" src="docs/images/features/chat-privacy-sheet.png" />
 
 ### Privacy profiles <!-- #privacy-profiles -->
 
-Save a set of auto-lock timeouts under Nagram Settings > Passcode and switch between them. Activate a profile for now, for a stretch of time, or until a specific moment. Long-press the Settings tab for the "Auto-lock profile" list to quickly switch. Each profile gets its own icon and colour. Changing the auto-lock timeout through the regular picker, restoring a backup, or clearing your passcode will drop whatever profile was active and adopt the new baseline value.
+Save sets of auto-lock timeouts under Nagram Settings → Passcode and switch between them, each with its own icon and colour. Activate a profile for now, for a stretch of time, or until a specific moment; long-press the Settings tab for a quick switcher. Changing the auto-lock timeout the normal way, restoring a backup, or clearing your passcode drops the active profile.
 
 ### Passcode setup safety <!-- #passcode-setup-safety -->
 
-Setting a Panic Code that matches an unlock code is a security risk. Setup now ensures your Panic Code is unique; it cannot match your app passcode or any account's passcode. The setup screens also state clearly which code you are setting (App, Panic, or Account) to prevent confusion. Old Panic Codes set before this safety check existed might clash; the settings screen will prompt you to re-set your Panic Code if you are unsure it is unique.
+A Panic Code that matches an unlock code is a security risk, so setup now requires yours to be unique — it can't match your app passcode or any account's passcode. The setup screens also name which code you're setting (App, Panic, or Account). Codes set before this check existed may clash, so the settings screen will prompt you to re-set your Panic Code.
 
 ### Reply threads in private chats <!-- #personal-replies -->
 
@@ -43,7 +47,7 @@ A launcher shortcut (long-press the app icon, or pin it to your home screen) tha
 
 ### Hold messages while Ghost Mode is on <!-- #ghost-hold -->
 
-Turn on **Hold Messages** under Settings → Ghost Mode (off by default) and, while Ghost Mode is active, most plain text messages you send or schedule stay on your device instead of going to the server, so they can't reveal that you're online. Held messages land in that chat's Scheduled list marked "Held — not sent", and a bulletin reminds you each time. When you turn Ghost Mode off you're asked to confirm, then everything held sends, spaced out over a few seconds; a message you scheduled for a future time is handed to the server as a normal scheduled message instead. Attachments and a few special sends — paid chats, disappearing messages — never hold and go out right away; and if a held message is in a chat that now charges to send, it stays held rather than paying on your behalf, so turn-off reports it as not sent and you send it by hand at the price shown. Held messages live only in the database — uninstalling the app discards them.
+Turn on **Hold Messages** under Settings → Ghost Mode (off by default) and, while Ghost Mode is active, most plain text messages you send stay on your device rather than the server. They wait in that chat's Scheduled list captioned "Held — not sent". Switching Ghost Mode off asks you to confirm, then sends them; anything that now costs to send stays held. Attachments and disappearing messages never hold.
 
 <img height="260" alt="the Hold Messages toggle in its Ghost Mode section with the explanatory footer beneath it" src="docs/images/features/ghost-hold-setting.png" />
 <img height="260" alt="a chat's Scheduled list with three held messages, each captioned Held — not sent" src="docs/images/features/ghost-hold-scheduled.png" />
@@ -56,7 +60,7 @@ With Ghost Mode on, the ghost indicator next to the chat list title stays visibl
 
 ### Ghost send warning <!-- #ghost-send-warning --> <!-- #ghost-type-warning -->
 
-Ghost Mode hides read receipts, typing and online status, but on its own it never holds a send back. The first time you start typing into an empty message box in a chat this Ghost session, you get a heads-up that also points you at Hold Messages — unless Hold Messages is already on, in which case there's no heads-up at all, because most plain text stays on this device instead, with the "Held" caption in the Scheduled list as the feedback for it. Only that heads-up, not Hold Messages being on, starts the chat's quiet period for the rest of the session: once shown, it won't warn you again for almost anything you send there, typed or not, until you turn Ghost Mode off and on again. In a chat that hasn't had its quiet period start yet, a send that still reaches the network warns — the same warning as before with Hold Messages off, or one telling you Hold Messages didn't catch this one (an attachment, a paid or disappearing-message chat, or a held message you sent by hand) with it on. In a chat you haven't typed into at all, sends still warn as they go out — a forward, a photo from the gallery, a file shared in from another app, a sticker or a voice message — and go on warning, because only the typing heads-up starts the quiet period.
+Ghost Mode hides read receipts, typing and online status, but never holds a send back. With Hold Messages off, the first time you type into an empty message box in a chat each Ghost session you get a heads-up pointing you at Hold Messages, and that chat then stays quiet for the rest of the session. A chat that hasn't shown the heads-up yet still warns on each send.
 
 ### Clear Message Database removes only this install's media <!-- #clear-db-own-media -->
 
@@ -64,15 +68,15 @@ Clear Message Database now removes only the media this install has database rows
 
 ### Keep a chat's messages off your watch <!-- #wear-messages -->
 
-Each chat's Notifications screen (open a chat → its name → Notifications, or long-press it in the list → Notifications) has a **Show on Watch** switch under Message Preview, on by default. Turn it off and that chat's own message notification stops reaching a paired Wear OS watch, while the phone notification is unaffected. It doesn't hide the grouped summary Android shows for unread chats, or an incoming call, and isn't available on secret chats — set it on a forum's main chat to cover every topic.
+Each chat's Notifications screen (open a chat → its name → Notifications) has a **Show on Watch** switch under Message Preview, on by default. Turn it off and that chat's message notifications stop reaching a paired Wear OS watch, while the phone notification is unaffected. It isn't available on secret chats — set it on a forum's main chat to cover every topic.
 
 ## Composer and input
 
 ### Composer toolbar <!-- #composer-toolbar --> <!-- #composer-bubbles --> <!-- #toggle-formatting -->
 
-The compose field sits in a glass text pill with Send or mic at its trailing end. A row of action bubbles in the same glass style sits below it — Quote, Spoiler, Select All, and Clear enable when text is selected or the field has text.
+The compose field sits in a glass text pill with Send or mic at its trailing end, and a row of action bubbles below it — Quote, Spoiler, Select All and Clear — which enable when there's text to act on.
 
-Bold, Italic, Monospace, Strikethrough, Underline, Spoiler, Quote, and Code now toggle off if you re-apply them to already-styled text, from this toolbar, the platform's own selection popup, or the chat header's formatting menu — instead of stacking or doing nothing.
+Style buttons (Bold, Italic, Monospace, Strikethrough, Underline, Spoiler, Quote, Code) toggle off if you re-apply them to already-styled text, here or in the platform's selection popup.
 
 <img height="180" alt="compose field with a phrase selected, so the action bubbles in the row below render enabled rather than greyed out" src="docs/images/features/composer-toolbar-live.png" />
 
@@ -158,11 +162,7 @@ Select text in a message and tap *Cite* to drop it into your input box as a quot
 
 ### Scheduled message triggers <!-- #reschedule --> <!-- #eventschedule -->
 
-Pick several scheduled messages and use *Reschedule* to move them all at once with a base time and interval (give messages three minutes or more of spacing — Telegram's own scheduler can run a minute or two late).
-
-*Send on event* can be armed in the schedule picker or directly from bulk *Reschedule*. One trigger can watch message type, text patterns, or both, then send early while each message keeps its fallback schedule. The trigger sheet labels are now explicit (`Video message`, `Any text message`) and use compact collapsible section cards (`By message type`, `Or by text`) with summaries when collapsed. Hidden invalid regex rows still auto-expand on Done and focus the exact row error. A `Presets` section lets you save the sheet's current setup under a name and reapply it later from a name-sorted list, each row showing a quick summary of what it contains. The first pattern row also gets its own clear (×) button so you can wipe its text without needing a second row to remove.
-
-Armed triggers are managed from Chats nav ⋯ → *Message Triggers*. A disguised chat still suppresses trigger fire/stop heads-up alerts so trigger activity is not exposed through notifications.
+Pick several scheduled messages and use *Reschedule* to move them all at once with a base time and interval. *Send on event* arms from the schedule picker or from bulk *Reschedule*: one trigger watches message type, text patterns, or both, and sends early while each message keeps its fallback schedule. Setups save as presets, and armed triggers live under Chats nav ⋯ → *Message Triggers*.
 
 <img height="260" alt="bulk Reschedule sheet with a base time, per-message interval, and a delay slider" src="docs/images/features/reschedule.png" />
 <img height="260" alt="Send on event trigger editor with By message type and Or by text collapsible sections" src="docs/images/features/trigger-editor.png" />
@@ -185,9 +185,7 @@ Telegram's forward API cannot forward a message that hasn't been sent yet. The s
 
 ### Repost as Copy <!-- #repost-reply --> <!-- #repost-spread -->
 
-*Repost as Copy* comes from NagramX. Turn it on in settings (it's off by default) and it re-sends a message without a "Forwarded from" header, re-uploading the media. This fork adds three things — it keeps the original reply and quote, offers to delete the original once the repost lands, and spreads a scheduled repost across its own send times.
-
-Reposting several messages this way — the selection bar's *NoQuote* button — sends them as copies to a chat you pick, without offering to delete the originals, spacing each one three minutes apart by default instead of stacking them on one shared timestamp, so you can reschedule or edit them individually afterwards. If something in the batch can't be reposted as a copy (polls, locations, contacts), that button falls back to an ordinary one-time forward instead. Forwarding through the chat picker's own *Send* button instead lets you set your own interval, but refuses the spread with an error rather than falling back if anything can't be reposted.
+*Repost as Copy* comes from NagramX — turn it on in settings (it's off by default) and it re-sends a message without a "Forwarded from" header, re-uploading the media. This fork keeps the original reply and quote, offers to delete the original once the repost lands, and spreads a scheduled repost across its own send times. Reposting a selection through *NoQuote* spaces the copies three minutes apart.
 
 <img height="150" alt="Reposted as a copy confirmation bar with a Delete action for the original messages" src="docs/images/features/repost-copy.png" />
 
@@ -233,7 +231,7 @@ When camera mode is set to Ask, the camera choice popup has an External Micropho
 
 ### Infinite video message <!-- #infinite-video -->
 
-*Infinite Recording* stitches 60-second round video message segments end to end instead of stopping at the usual cap. Toggle it from the camera overlay while recording — off by default, and unavailable during slow mode, paid messages, secret chats, or view-once. In a scheduled chat (camera mode set to Ask), the first segment needs at least 3 minutes' lead time (rather than the stock 1 minute) so each following segment can keep its 2-minute spacing. N-Settings → Chat → Camera → *Infinite Recording cap* sets how long it can run before it stops itself: 10 (default), 15, 20, 30, 60 minutes, or Unlimited.
+*Infinite Recording* stitches 60-second round video message segments end to end instead of stopping at the usual cap. Toggle it from the camera overlay while recording — off by default, and unavailable during slow mode, paid messages, secret chats, or view-once. N-Settings → Chat → Camera → *Infinite Recording cap* sets how long it can run before it stops itself: 10 (default), 15, 20, 30, 60 minutes, or Unlimited.
 
 ### Warning before a round video message hits its limit <!-- #video-limit-warning -->
 
@@ -255,15 +253,15 @@ The pause button and the view-once "(1)" toggle are larger and lifted slightly h
 
 ### Don't lose an unsent video message <!-- #video-draft-guard -->
 
-A round video message you've recorded but haven't sent is no longer lost by accident — backing out of the chat, switching apps mid-recording, or the chat locking behind a passcode all leave the finished clip waiting in the preview (trimmed the way you left it, for up to a day) instead of discarding it. What comes back after the app or chat was torn down is the trim strip and send button, not the round preview itself, so you can send the clip but not watch it back first. One gap remains: a round video recorded in the scheduled composer isn't kept this way.
+A round video message you've recorded but haven't sent survives backing out of the chat, switching apps mid-recording, or the chat locking behind a passcode — the clip waits in the preview, trimmed the way you left it, for up to a day. What comes back after the app or chat was torn down is the trim strip and send button rather than the round preview itself.
 
 ### Custom file names for saved media <!-- #custom-file-names -->
 
-Turn on *Custom File Names* (N-Settings → General → Storage) to save videos, voice, and round messages using the message's send date and time — `20260101_173812.mp4` by default — instead of Telegram's generic `video.mp4`, `video (1).mp4`, and so on. The setting's dialog lets you customize the pattern with `{date}`, `{time}`, and `{name}` (the sender's original filename, usually blank for voice and round messages), with a live preview as you type. Two messages saved in the same second still get separate files. Saved photos are unaffected.
+Turn on *Custom File Names* (N-Settings → General → Storage) to save videos, voice, and round messages under the message's send date and time — `20260101_173812.mp4` by default — instead of Telegram's generic `video.mp4`. The setting's dialog lets you customize the pattern with `{date}`, `{time}`, and `{name}` (the sender's original filename), with a live preview as you type. Saved photos are unaffected.
 
 ### Send a muted gallery video as a real video <!-- #silent-video -->
 
-Muting a video in the gallery editor before you send it used to force it into a low-quality looping GIF with no scrubber or duration. Now the quality button stays live after you mute — tap it once and the clip becomes an ordinary silent video instead: audio stripped, but sent at a quality you pick from the usual SD/HD sheet, with a real duration and scrubber. Unmute and mute again to go back to GIF.
+Muting a video in the gallery editor before you send it used to force it into a low-quality looping GIF. Now the quality button stays live after you mute — tap it once and the clip becomes an ordinary silent video instead, sent at a quality you pick from the usual SD/HD sheet, with a real duration and scrubber. Unmute and mute again to go back to GIF.
 
 ## Transcription
 
@@ -298,7 +296,7 @@ You can apply a chat pattern over your live Material You color. Turn it off by o
 
 ### Fixed app icon uses Default art on DazegramX <!-- #app-icon-fallback -->
 
-On DazegramX (Unofficial), the app's fixed system-level icon — the one Android shows in the app switcher and permission dialogs, separate from your chosen home-screen launcher icon — is the same *Default* art as the Chat Settings > App Icon picker's Default option. Dazegram (Official) keeps its usual Blue icon, unchanged. Picking a different launcher icon under Chat Settings > App Icon still works exactly as before on both variants and doesn't affect this one.
+On DazegramX (Unofficial), the app's fixed system-level icon — the one Android shows in the app switcher and permission dialogs — is the same *Default* art as the Chat Settings → App Icon picker's Default option. Dazegram (Official) keeps its usual Blue icon. Picking a launcher icon under Chat Settings → App Icon works as before on both variants.
 
 <!-- Retired entries, plus sync-reconciliation and superseded feature slugs that have no catalog entry of their own.
      The behaviour still ships; it is documented in README instead of here.
