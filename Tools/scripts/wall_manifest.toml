@@ -215,6 +215,39 @@ source = "new/screenshot_2026-09-08_16-15-40.png"
 crop = [0, 1500, 1080, 2192]
 caption = "Extera Dark"
 
+[[wall]]
+output = "ghost-hold.png"
+
+[[wall.panel]]
+source = "ghost-hold-settings-toggle.png"
+crop = [0, 690, 1080, 1265]
+caption = "Hold them on the device"
+
+[[wall.panel]]
+# The held run reads oldest-top here, matching the order they will send in
+# (the ordering corrected in #352). Shot on a build carrying that fix.
+source = "ghost-hold-scheduled-list.png"
+crop = [0, 1090, 1080, 1900]
+caption = "They wait in Scheduled"
+
+[[wall.panel]]
+source = "ghost-hold-turn-off-dialog.png"
+crop = [0, 840, 1080, 1345]
+caption = "Out when you're done"
+
+[[wall]]
+output = "trigger-presets.png"
+
+[[wall.panel]]
+source = "trigger-presets-sheet.png"
+crop = [0, 360, 1080, 900]
+caption = "Clear a row in place"
+
+[[wall.panel]]
+source = "trigger-presets-sheet.png"
+crop = [0, 1330, 1080, 1795]
+caption = "Save the whole setup"
+
 # --- FEATURES.md figures ------------------------------------------------
 #
 # Plain cropped screenshots (no canvas/caption/shadow), replacing the two
