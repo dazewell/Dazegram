@@ -283,6 +283,11 @@ to that heading and fold the behaviour into its prose instead of writing a new
 heading — then re-count the merged entry and cut old detail to keep it under 70.
 If the entry you're touching is already over, trim it back in the same change.
 
+**When you shorten an entry, re-check what survives against the code.** Dropping
+a qualifier is the cheapest way to lose words and the easiest way to make a
+sentence false, so read every remaining sentence against the implementation —
+not only the ones you rewrote.
+
 **Separately, if your work on this branch established a durable fact** — a
 UI→code mapping, an upstream trap, or a hypothesis you investigated and
 disproved — write it into `docs/codemap/` in the same pull request, per
