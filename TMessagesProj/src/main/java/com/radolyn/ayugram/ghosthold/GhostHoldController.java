@@ -10,6 +10,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.DialogObject;
+import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
@@ -19,6 +20,7 @@ import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SendMessageChatArguments;
 import org.telegram.messenger.SendMessagesHelper;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.ConnectionsManager;
@@ -29,6 +31,9 @@ import org.telegram.ui.ChatActivity;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.LaunchActivity;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -91,6 +96,8 @@ public final class GhostHoldController {
     // re-driven send correlated with any prior attempt. Carry it in params and restore
     // it in toHeldItem.
     private static final String PARAM_RANDOM = "ghost_hold_random";
+    private static final String PARAM_HIGH_QUALITY = "ghost_hold_high_quality";
+    private static final String PARAM_ASSET_MISSING = "ghost_hold_asset_missing";
     // Set on a re-driven send after a durable-write failure, so the divert hook
     // lets it through to the network instead of trying to hold it again (which
     // would loop while the write keeps failing). See persistHeld's failure path.
@@ -107,6 +114,8 @@ public final class GhostHoldController {
     // Gap between successive sends on flush, so an entire backlog does not leave
     // in the same instant -- a simultaneous burst is itself a signal Ghost ended.
     private static final long FLUSH_STAGGER_MS = 1500;
+    private static final long MAX_PHOTO_ASSET_BYTES = 200L * 1024L * 1024L;
+    private static final int MAX_CACHE_MATERIALIZE_ATTEMPTS = 8;
 
     private static volatile boolean flushInProgress;
 
@@ -168,6 +177,11 @@ public final class GhostHoldController {
         return m != null && m.params != null && PARAM_VALUE.equals(m.params.get(PARAM_MARKER));
     }
 
+    public static boolean isHeldMissing(@Nullable MessageObject mo) {
+        return mo != null && mo.messageOwner != null && mo.messageOwner.params != null
+                && PARAM_VALUE.equals(mo.messageOwner.params.get(PARAM_ASSET_MISSING));
+    }
+
     // ---- the send-time hook ----
 
     /**
@@ -184,16 +198,17 @@ public final class GhostHoldController {
         // observers would stay unregistered. Re-arming at the send chokepoint puts
         // them back before the first held send of the new session.
         initAccount(account);
-        if (!isHoldableSend(account, peer, params)) {
+        LocalPhotoSource photoSource = inspectLocalPhoto(account, params);
+        if (!isHoldableSend(account, peer, params, photoSource)) {
             return false;
         }
-        return persistHeld(account, peer, params);
+        return persistHeld(account, peer, params, photoSource);
     }
 
     /**
-     * The hold allowlist: true only for plain text, a contact, or a static location
-     * whose every property we can persist on the stored {@link TLRPC.Message} (or
-     * carry in its params) and restore faithfully on flush.
+     * The hold allowlist: true only for plain text, a contact, a static location, or
+     * one local photo whose every property we can persist on the stored
+     * {@link TLRPC.Message} (or carry in its params) and restore faithfully on flush.
      *
      * <p>This is deliberately an allowlist, not a denylist of known media fields.
      * A denylist fails unsafe -- a future SendMessageParams field nobody here has
@@ -208,7 +223,8 @@ public final class GhostHoldController {
      * silent flag, a user-picked schedule date, scheduleRepeatPeriod, effect_id,
      * and link-preview suppression (searchLinks). Everything else excludes the send.
      */
-    private static boolean isHoldableSend(int account, long peer, @Nullable SendMessagesHelper.SendMessageParams p) {
+    private static boolean isHoldableSend(int account, long peer, @Nullable SendMessagesHelper.SendMessageParams p,
+                                          @Nullable LocalPhotoSource photoSource) {
         if (p == null || !isHoldActive()) {
             return false;
         }
@@ -227,7 +243,9 @@ public final class GhostHoldController {
         boolean text = p.message != null && p.location == null && p.user == null;
         boolean contact = p.message == null && p.location == null && p.user != null;
         boolean staticLocation = p.message == null && p.user == null && isStaticLocation(p.location);
-        if (!text && !contact && !staticLocation) {
+        boolean photo = p.message == null && p.location == null && p.user == null
+                && p.photo != null && photoSource != null;
+        if (!text && !contact && !staticLocation && !photo) {
             return false;
         }
         // Every sibling in an album carries groupId before this hook. Refuse the
@@ -241,8 +259,11 @@ public final class GhostHoldController {
             if (p.params.containsKey("query_id")) {
                 return false;
             }
+            if (p.params.containsKey("final") || p.params.containsKey("parentObject")) {
+                return false;
+            }
         }
-        if (p.photo != null || p.videoEditedInfo != null
+        if ((!photo && p.photo != null) || p.videoEditedInfo != null
                 || p.document != null || p.game != null || p.poll != null
                 || p.pollSendParams != null || p.todo != null || p.invoice != null
                 || p.mediaWebPage != null || p.cover != null
@@ -385,7 +406,7 @@ public final class GhostHoldController {
         // param class grew a field upstream that this method has not been taught. A
         // new field then defaults to "refuse to hold" (send now, correctly, and let
         // the exposure warning speak) rather than "hold and mangle".
-        if (!onlyPersistedFieldsSet(p)) {
+        if (!onlyPersistedFieldsSet(p, photo)) {
             return false;
         }
         return true;
@@ -437,15 +458,15 @@ public final class GhostHoldController {
      * non-null on 100% of composer sends, so the backstop refused every ordinary message
      * and it fell through to the network with Ghost on.
      */
-    private static boolean onlyPersistedFieldsSet(SendMessagesHelper.SendMessageParams p) {
+    private static boolean onlyPersistedFieldsSet(SendMessagesHelper.SendMessageParams p, boolean photo) {
         // Fields we neither persist nor can faithfully rebuild on flush, and which no
         // guard above already tests. Any one non-default marks a send we must not hold.
-        if (p.caption != null
+        if (!photo && p.caption != null
                 || p.path != null
                 || p.parentObject != null
                 || p.pollIndex != 0
-                || p.hasMediaSpoilers
-                || p.sendingHighQuality
+                || !photo && p.hasMediaSpoilers
+                || !photo && p.sendingHighQuality
                 || p.isLivePhoto
                 || p.livePhotoTimestamp != 0
                 || p.stars != 0
@@ -456,6 +477,28 @@ public final class GhostHoldController {
         // Name-independent add-detector: a field appearing (or disappearing) upstream
         // changes the declared instance-field count, so refuse until it is triaged.
         return ACTUAL_PARAM_FIELD_COUNT == KNOWN_PARAM_FIELD_COUNT;
+    }
+
+    @Nullable
+    private static LocalPhotoSource inspectLocalPhoto(int account, @Nullable SendMessagesHelper.SendMessageParams p) {
+        if (p == null || p.photo == null || p.path != null || p.photo.access_hash != 0
+                || p.isLivePhoto || p.ttl != 0 || p.parentObject != null
+                || p.photo.sizes == null || p.photo.sizes.isEmpty()
+                || p.photo.video_sizes != null && !p.photo.video_sizes.isEmpty()) {
+            return null;
+        }
+        TLRPC.PhotoSize largest = p.photo.sizes.get(p.photo.sizes.size() - 1);
+        if (largest == null || largest instanceof TLRPC.TL_photoStrippedSize
+                || largest instanceof TLRPC.TL_photoPathSize || largest.location == null
+                || largest.location instanceof com.radolyn.ayugram.utils.AyuFileLocation) {
+            return null;
+        }
+        File source = FileLoader.getInstance(account).getPathToAttach(largest);
+        long length = source != null ? source.length() : 0;
+        if (length <= 0 || length > MAX_PHOTO_ASSET_BYTES || !source.isFile()) {
+            return null;
+        }
+        return new LocalPhotoSource(source, length);
     }
 
     private static int countInstanceFields(Class<?> cls) {
@@ -534,17 +577,25 @@ public final class GhostHoldController {
         return ChatObject.getSendAsPeerId(chat, controller.getChatFull(-peer), true) != selfId;
     }
 
-    private static boolean persistHeld(int account, long peer, SendMessagesHelper.SendMessageParams params) {
+    private static boolean persistHeld(int account, long peer, SendMessagesHelper.SendMessageParams params,
+                                       @Nullable LocalPhotoSource photoSource) {
         final MessagesController controller = MessagesController.getInstance(account);
         final UserConfig userConfig = UserConfig.getInstance(account);
 
         TLRPC.TL_message msg = new TLRPC.TL_message();
-        msg.message = params.message != null ? params.message : "";
+        msg.message = photoSource != null && params.caption != null
+                ? params.caption : params.message != null ? params.message : "";
         if (params.entities != null && !params.entities.isEmpty()) {
             msg.entities = params.entities;
             msg.flags |= TLRPC.MESSAGE_FLAG_HAS_ENTITIES;
         }
-        if (params.location != null) {
+        if (photoSource != null) {
+            TLRPC.TL_messageMediaPhoto media = new TLRPC.TL_messageMediaPhoto();
+            media.flags |= 3;
+            media.photo = params.photo;
+            media.spoiler = params.hasMediaSpoilers;
+            msg.media = media;
+        } else if (params.location != null) {
             msg.media = params.location;
         } else if (params.user != null) {
             TLRPC.TL_messageMediaContact contact = new TLRPC.TL_messageMediaContact();
@@ -638,6 +689,9 @@ public final class GhostHoldController {
         if (params.effect_id != 0) {
             stored.put(PARAM_EFFECT, Long.toString(params.effect_id));
         }
+        if (params.sendingHighQuality) {
+            stored.put(PARAM_HIGH_QUALITY, PARAM_VALUE);
+        }
         // Carry random_id so toHeldItem can restore it (the blob does not hold it).
         // msg.random_id was just minted above and is always non-zero.
         stored.put(PARAM_RANDOM, Long.toString(msg.random_id));
@@ -683,8 +737,49 @@ public final class GhostHoldController {
         final int epoch = store.currentGeneration();
         final int holdSession = sessionEpoch.get(account);
         store.runOwned(epoch, () -> {
+            GhostHoldStore.AssetRecord asset = null;
+            if (photoSource != null) {
+                if (sessionEpoch.get(account) != holdSession) {
+                    return;
+                }
+                if (!isHoldActive() || isPaidDialog(account, peer)) {
+                    AndroidUtilities.runOnUIThread(() -> redriveAfterPersistFailure(account, originalParams, holdSession));
+                    return;
+                }
+                asset = store.copyPrivatePhotoOnQueue(stableMsg.id, photoSource.file, photoSource.length);
+                if (asset == null) {
+                    AndroidUtilities.runOnUIThread(() -> redriveAfterPersistFailure(account, originalParams, holdSession));
+                    return;
+                }
+                if (sessionEpoch.get(account) != holdSession) {
+                    store.discardUncommittedAssetOnQueue(asset);
+                    return;
+                }
+                if (!isHoldActive() || isPaidDialog(account, peer)) {
+                    store.discardUncommittedAssetOnQueue(asset);
+                    AndroidUtilities.runOnUIThread(() -> redriveAfterPersistFailure(account, originalParams, holdSession));
+                    return;
+                }
+                if (!store.insertAssetOnQueue(asset)) {
+                    store.discardUncommittedAssetOnQueue(asset);
+                    AndroidUtilities.runOnUIThread(() -> redriveAfterPersistFailure(account, originalParams, holdSession));
+                    return;
+                }
+                if (sessionEpoch.get(account) != holdSession) {
+                    store.deleteAssetOnQueue(stableMsg.id);
+                    return;
+                }
+                if (!isHoldActive() || isPaidDialog(account, peer)) {
+                    store.deleteAssetOnQueue(stableMsg.id);
+                    AndroidUtilities.runOnUIThread(() -> redriveAfterPersistFailure(account, originalParams, holdSession));
+                    return;
+                }
+            }
             boolean ok = store.insertOnQueue(record);
             if (!ok) {
+                if (asset != null) {
+                    store.deleteAssetOnQueue(stableMsg.id);
+                }
                 // The durable write failed (e.g. disk full). We already told the
                 // funnel we would hold this send, so it did nothing; if we also drop
                 // it here the user's message is lost (P2). Re-drive it through the
@@ -1111,24 +1206,32 @@ public final class GhostHoldController {
         store.runOwned(epoch, () -> {
             final GhostHoldStore.HeldRecord rec = store.selectOnQueue(item.mid);
             HeldItem fresh = null;
+            PhotoMaterialization materialization = null;
             // Only proceed to dispatch once the FLUSHING claim has durably persisted.
             // If the UPDATE fails, leave the row HELD and skip it this cycle: it
             // re-drives on the next flush. Dispatching on a failed claim would let a
             // kill after the stock write but before fork deletion strand the row as
             // HELD, which reconcile (FLUSHING-only) would then re-send -- a duplicate.
-            if (rec != null && store.updateStateOnQueue(item.mid, GhostHoldStore.STATE_FLUSHING)) {
+            if (rec != null) {
                 fresh = toHeldItem(item.account, rec);
                 if (fresh == null) {
-                    // Row was durably marked FLUSHING but its stored blob will not
-                    // decode. Left as-is it is hidden (HELD-only render/collect) and
-                    // never retried until a restart reconcile, while the flush counts
-                    // it terminal -- an unsent message that silently vanishes. Put it
-                    // back to HELD so it renders and re-drives, and refresh the count.
-                    // dispatchFreshItem's fresh==null branch must stay the pure "record
-                    // deleted" case, so this revert belongs here where rec proves the
-                    // row still exists.
-                    store.updateStateOnQueue(item.mid, GhostHoldStore.STATE_HELD);
+                    // An unsupported or corrupt row stays HELD and remains authored
+                    // data. This build cannot dispatch it, so refresh the visible count
+                    // without mutating or deleting the row.
                     postScheduledCount(item.account, item.dialogId, session);
+                } else if (fresh.isPhoto()) {
+                    materialization = materializePhotoOnQueue(store, fresh);
+                    if (materialization == null) {
+                        fresh = null;
+                        postScheduledCount(item.account, item.dialogId, session);
+                    }
+                }
+                if (fresh != null && !store.updateStateOnQueue(item.mid, GhostHoldStore.STATE_FLUSHING)) {
+                    if (materialization != null) {
+                        store.updateAssetLocalIdOnQueue(item.mid, 0);
+                        deleteOwnedCacheFile(materialization.file);
+                    }
+                    fresh = null;
                 }
             }
             final HeldItem f = fresh;
@@ -1136,12 +1239,87 @@ public final class GhostHoldController {
         }, () -> AndroidUtilities.runOnUIThread(() -> onItemTerminal(remaining, pending)));
     }
 
+    @Nullable
+    private static PhotoMaterialization materializePhotoOnQueue(GhostHoldStore store, HeldItem item) {
+        GhostHoldStore.AssetRecord asset = store.selectAssetOnQueue(item.mid);
+        if (asset == null || asset.handedOff || !asset.valid) {
+            return null;
+        }
+        File source = store.assetFileOnQueue(asset);
+        TLRPC.PhotoSize largest = item.largestPhotoSize();
+        if (source == null || largest == null || source.length() != asset.size) {
+            return null;
+        }
+        for (int attempt = 0; attempt < MAX_CACHE_MATERIALIZE_ATTEMPTS; attempt++) {
+            int localId = SharedConfig.getLastLocalId();
+            largest.location.volume_id = Integer.MIN_VALUE;
+            largest.location.local_id = localId;
+            largest.location.dc_id = 0;
+            largest.size = (int) asset.size;
+            File target = FileLoader.getInstance(item.account).getPathToAttach(largest);
+            if (target == null || target.exists()) {
+                continue;
+            }
+            if (!copyFailIfExists(source, target, asset.size)) {
+                return null;
+            }
+            if (!store.updateAssetLocalIdOnQueue(item.mid, localId)) {
+                deleteOwnedCacheFile(target);
+                return null;
+            }
+            return new PhotoMaterialization(target);
+        }
+        return null;
+    }
+
+    private static boolean copyFailIfExists(File source, File target, long expectedSize) {
+        boolean created = false;
+        boolean success = false;
+        try {
+            File parent = target.getParentFile();
+            if (parent == null || !parent.exists() && !parent.mkdirs() || !target.createNewFile()) {
+                return false;
+            }
+            created = true;
+            try (FileInputStream input = new FileInputStream(source);
+                 FileOutputStream output = new FileOutputStream(target, false)) {
+                byte[] buffer = new byte[64 * 1024];
+                long written = 0;
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    output.write(buffer, 0, read);
+                    written += read;
+                }
+                output.flush();
+                output.getFD().sync();
+                if (written != expectedSize || target.length() != expectedSize) {
+                    return false;
+                }
+            }
+            success = true;
+            return true;
+        } catch (Exception e) {
+            FileLog.e(e);
+            return false;
+        } finally {
+            if (created && !success) {
+                deleteOwnedCacheFile(target);
+            }
+        }
+    }
+
+    private static void deleteOwnedCacheFile(File file) {
+        if (file != null && file.exists() && !file.delete()) {
+            FileLog.e("ghostHold: could not remove incomplete cache materialization " + file.getName());
+        }
+    }
+
     private static void dispatchFreshItem(HeldItem item, @Nullable HeldItem fresh, AtomicInteger remaining, int pending, int epoch, int session) {
         final int account = item.account;
         final long dialogId = item.dialogId;
         final int mid = item.mid;
-        // The record vanished during the stagger (user deleted it): nothing to send,
-        // nothing to remove.
+        // The record vanished during the stagger, or a photo could not be
+        // materialized from its private copy: nothing is handed to the send funnel.
         if (fresh == null) {
             onItemTerminal(remaining, pending);
             return;
@@ -1169,6 +1347,7 @@ public final class GhostHoldController {
         // onto the stored message, so omitting either here would silently clear it.
         p.entities = m.entities;
         p.invert_media = m.invert_media;
+        p.hasMediaSpoilers = m.media != null && m.media.spoiler;
         p.scheduleDate = scheduleDate;
         p.searchLinks = m.params == null || !PARAM_VALUE.equals(m.params.get(PARAM_NO_WEBPAGE));
         if (m.params != null) {
@@ -1186,6 +1365,7 @@ public final class GhostHoldController {
                 } catch (NumberFormatException ignore) {
                 }
             }
+            p.sendingHighQuality = PARAM_VALUE.equals(m.params.get(PARAM_HIGH_QUALITY));
         }
         // Once handed to the funnel this is a normal outgoing message, so it must not
         // still carry our hold markers -- the funnel writes the stock row from this
@@ -1199,6 +1379,8 @@ public final class GhostHoldController {
             m.params.remove(PARAM_REPEAT);
             m.params.remove(PARAM_EFFECT);
             m.params.remove(PARAM_RANDOM);
+            m.params.remove(PARAM_HIGH_QUALITY);
+            m.params.remove(PARAM_ASSET_MISSING);
         }
 
         // Re-drive in place. The funnel keys its destination table off scheduleDate
@@ -1345,6 +1527,7 @@ public final class GhostHoldController {
                         rowGone = false;
                     }
                     if (rowGone && sentObj != null) {
+                        store.deleteAssetOnQueue(mid);
                         AndroidUtilities.runOnUIThread(() -> {
                             // NagramX: the runOwned gate above is the async store
                             // generation, which only moves once logout's queued teardown
@@ -1361,10 +1544,17 @@ public final class GhostHoldController {
                             SendMessagesHelper.getInstance(account).cancelSendingMessage(sentObj);
                         });
                     } else {
-                        store.deleteOnQueue(mid);
-                        // Only a genuine, uncancelled handoff counts as sent.
-                        flushSent.incrementAndGet();
-                        if (!future) {
+                        // A photo's private bytes remain owned until the server confirms
+                        // this exact negative id. Mark that ownership transfer before the
+                        // ghost row disappears; a crash between these writes therefore
+                        // leaves a recoverable AWAITING_CONFIRM asset, never an untracked
+                        // private file.
+                        if (store.markAssetHandedOffOnQueue(mid)) {
+                            store.deleteOnQueue(mid);
+                            // Only a genuine, uncancelled handoff counts as sent.
+                            flushSent.incrementAndGet();
+                        }
+                        if (!future && !store.isPresentOnQueue(mid)) {
                             // NagramX: a send-now handoff wrote the messages_v2 twin and
                             // removed the fork row, but an already-open Scheduled list still
                             // holds the display-only held object -- the HELD-only render
@@ -1608,6 +1798,12 @@ public final class GhostHoldController {
             TLRPC.Message m = GhostHoldStore.decode(rec.data, selfId);
             if (!isSupportedHeldMessage(m)) {
                 continue;
+            }
+            if (m.media instanceof TLRPC.TL_messageMediaPhoto && !store.isAssetUsable(rec.mid)) {
+                if (m.params == null) {
+                    m.params = new HashMap<>();
+                }
+                m.params.put(PARAM_ASSET_MISSING, PARAM_VALUE);
             }
             m.id = rec.mid;
             m.dialog_id = rec.dialogId;
@@ -1932,6 +2128,15 @@ public final class GhostHoldController {
                     && media.last_name != null
                     && media.vcard != null;
         }
+        if (media instanceof TLRPC.TL_messageMediaPhoto) {
+            return media.photo != null
+                    && media.photo.access_hash == 0
+                    && media.photo.sizes != null
+                    && !media.photo.sizes.isEmpty()
+                    && media.photo.sizes.get(media.photo.sizes.size() - 1).location != null
+                    && !(media.photo.sizes.get(media.photo.sizes.size() - 1).location
+                    instanceof com.radolyn.ayugram.utils.AyuFileLocation);
+        }
         return isStaticLocation(media);
     }
 
@@ -2028,10 +2233,13 @@ public final class GhostHoldController {
             observers[account] = obs;
             nc.addObserver(obs, NotificationCenter.messagesDeleted);
             nc.addObserver(obs, NotificationCenter.appDidLogout);
+            nc.addObserver(obs, NotificationCenter.messageReceivedByServer);
+            nc.addObserver(obs, NotificationCenter.messageSendError);
             GhostHoldStore store = GhostHoldStore.getInstance(account);
-            store.runOwned(() -> store.selectAllOnQueue());
-            migrateAccount(account);
-            reconcileFlushing(account);
+            store.runOwned(() -> {
+                store.selectAllOnQueue();
+                migrateAccount(account, () -> reconcileFlushing(account));
+            });
         });
     }
 
@@ -2044,7 +2252,7 @@ public final class GhostHoldController {
      * REPLACEs). A row whose blob will not decode is left in the stock table (still
      * guarded) and logged rather than dropped.
      */
-    private static void migrateAccount(int account) {
+    private static void migrateAccount(int account, Runnable onDone) {
         MessagesStorage storage = MessagesStorage.getInstance(account);
         long selfId = UserConfig.getInstance(account).getClientUserId();
         final GhostHoldStore store = GhostHoldStore.getInstance(account);
@@ -2080,6 +2288,7 @@ public final class GhostHoldController {
             // desynchronise the paired delete.
             java.util.Collections.sort(toInsert, (a, b) -> Integer.compare(b.mid, a.mid));
             if (toInsert.isEmpty()) {
+                onDone.run();
                 return;
             }
             store.runOwned(genAtStart, () -> {
@@ -2098,6 +2307,7 @@ public final class GhostHoldController {
                 // slot's new owner could have its rows inserted here. Both layers are
                 // loss-free for the reason above.
                 if (sessionEpoch.get(account) != sessionAtStart) {
+                    onDone.run();
                     return;
                 }
                 java.util.HashSet<Integer> insertedOk = new java.util.HashSet<>();
@@ -2107,6 +2317,7 @@ public final class GhostHoldController {
                     }
                 }
                 if (insertedOk.isEmpty()) {
+                    onDone.run();
                     return;
                 }
                 storage.getStorageQueue().postRunnable(() -> {
@@ -2119,6 +2330,7 @@ public final class GhostHoldController {
                     // loss-free for the same reason the insert-side guard is: the legacy
                     // stock rows stay in place and the next init re-migrates them.
                     if (sessionEpoch.get(account) != sessionAtStart) {
+                        onDone.run();
                         return;
                     }
                     // Delete a legacy stock row only once its fork insert is confirmed
@@ -2141,8 +2353,9 @@ public final class GhostHoldController {
                     for (long d : dialogs) {
                         postScheduledCount(account, d, sessionAtStart);
                     }
+                    onDone.run();
                 });
-            });
+            }, onDone);
         });
     }
 
@@ -2196,6 +2409,7 @@ public final class GhostHoldController {
         store.runOwned(epoch, () -> {
             ArrayList<GhostHoldStore.HeldRecord> flushing = store.selectByStateOnQueue(GhostHoldStore.STATE_FLUSHING);
             if (flushing.isEmpty()) {
+                restoreAwaitingAssetsAndSweep(account, epoch);
                 return;
             }
             MessagesStorage storage = MessagesStorage.getInstance(account);
@@ -2219,15 +2433,52 @@ public final class GhostHoldController {
                     (found ? present : absent).add(rec.mid);
                 }
                 store.runOwned(epoch, () -> {
-                    if (!present.isEmpty()) {
-                        store.deleteManyOnQueue(present);
+                    for (int mid : present) {
+                        if (store.markAssetHandedOffOnQueue(mid)) {
+                            store.deleteOnQueue(mid);
+                        }
                     }
                     for (int mid : absent) {
                         store.updateStateOnQueue(mid, GhostHoldStore.STATE_HELD);
+                        store.updateAssetLocalIdOnQueue(mid, 0);
                     }
-                });
+                    restoreAwaitingAssetsAndSweep(account, epoch);
+                }, () -> restoreAwaitingAssetsAndSweep(account, epoch));
             });
+        }, () -> restoreAwaitingAssetsAndSweep(account, epoch));
+    }
+
+    private static void restoreAwaitingAssetsAndSweep(int account, int epoch) {
+        GhostHoldStore store = GhostHoldStore.getInstance(account);
+        store.runOwned(epoch, () -> {
+            for (GhostHoldStore.AssetRecord asset : store.selectAllAssetsOnQueue()) {
+                if (asset.handedOff && store.selectOnQueue(asset.mid) == null) {
+                    restoreAssetToCacheOnQueue(account, store, asset);
+                }
+            }
+            store.sweepAssetsOnQueue();
         });
+    }
+
+    private static boolean restoreAssetToCacheOnQueue(int account, GhostHoldStore store, GhostHoldStore.AssetRecord asset) {
+        if (asset == null || !asset.valid || asset.localId == 0) {
+            return false;
+        }
+        File source = store.assetFileOnQueue(asset);
+        if (source == null || source.length() != asset.size) {
+            return false;
+        }
+        TLRPC.TL_photoSize size = new TLRPC.TL_photoSize_layer127();
+        size.type = "x";
+        size.size = (int) asset.size;
+        size.location = new TLRPC.TL_fileLocation_layer82();
+        size.location.volume_id = Integer.MIN_VALUE;
+        size.location.local_id = asset.localId;
+        File target = FileLoader.getInstance(account).getPathToAttach(size);
+        if (target == null || target.exists()) {
+            return false;
+        }
+        return copyFailIfExists(source, target, asset.size);
     }
 
     private static String join(ArrayList<Integer> ids) {
@@ -2284,7 +2535,47 @@ public final class GhostHoldController {
                 NotificationCenter nc = NotificationCenter.getInstance(account);
                 nc.removeObserver(this, NotificationCenter.messagesDeleted);
                 nc.removeObserver(this, NotificationCenter.appDidLogout);
+                nc.removeObserver(this, NotificationCenter.messageReceivedByServer);
+                nc.removeObserver(this, NotificationCenter.messageSendError);
                 observers[account] = null;
+                return;
+            }
+            if (id == NotificationCenter.messageReceivedByServer) {
+                int oldId = (Integer) args[0];
+                if (oldId >= 0) {
+                    return;
+                }
+                final int confirmSession = sessionEpoch.get(account);
+                GhostHoldStore store = GhostHoldStore.getInstance(account);
+                final int epoch = store.currentGeneration();
+                store.runOwned(epoch, () -> {
+                    if (sessionEpoch.get(account) != confirmSession) {
+                        return;
+                    }
+                    GhostHoldStore.AssetRecord asset = store.selectAssetOnQueue(oldId);
+                    if (asset != null && asset.handedOff) {
+                        store.deleteAssetOnQueue(oldId);
+                    }
+                });
+                return;
+            }
+            if (id == NotificationCenter.messageSendError) {
+                int mid = (Integer) args[0];
+                if (mid >= 0) {
+                    return;
+                }
+                final int errorSession = sessionEpoch.get(account);
+                GhostHoldStore store = GhostHoldStore.getInstance(account);
+                final int epoch = store.currentGeneration();
+                store.runOwned(epoch, () -> {
+                    if (sessionEpoch.get(account) != errorSession) {
+                        return;
+                    }
+                    GhostHoldStore.AssetRecord asset = store.selectAssetOnQueue(mid);
+                    if (asset != null) {
+                        restoreAssetToCacheOnQueue(account, store, asset);
+                    }
+                });
                 return;
             }
             if (id == NotificationCenter.messagesDeleted) {
@@ -2322,13 +2613,17 @@ public final class GhostHoldController {
                         GhostHoldStore.HeldRecord rec = store.selectOnQueue(mid);
                         if (rec != null) {
                             dialogs.add(rec.dialogId);
+                        }
+                        if (rec != null || store.selectAssetOnQueue(mid) != null) {
                             toDelete.add(mid);
                         }
                     }
                     if (toDelete.isEmpty()) {
                         return;
                     }
-                    store.deleteManyOnQueue(toDelete);
+                    for (int mid : toDelete) {
+                        store.deleteHeldWithAssetOnQueue(mid);
+                    }
                     for (long d : dialogs) {
                         postScheduledCount(account, d, deleteSession);
                     }
@@ -2356,6 +2651,37 @@ public final class GhostHoldController {
             this.mid = mid;
             this.dialogId = dialogId;
             this.message = message;
+        }
+
+        boolean isPhoto() {
+            return message.media instanceof TLRPC.TL_messageMediaPhoto;
+        }
+
+        @Nullable
+        TLRPC.PhotoSize largestPhotoSize() {
+            if (!isPhoto() || message.media.photo == null || message.media.photo.sizes == null
+                    || message.media.photo.sizes.isEmpty()) {
+                return null;
+            }
+            return message.media.photo.sizes.get(message.media.photo.sizes.size() - 1);
+        }
+    }
+
+    private static final class LocalPhotoSource {
+        final File file;
+        final long length;
+
+        LocalPhotoSource(File file, long length) {
+            this.file = file;
+            this.length = length;
+        }
+    }
+
+    private static final class PhotoMaterialization {
+        final File file;
+
+        PhotoMaterialization(File file) {
+            this.file = file;
         }
     }
 }

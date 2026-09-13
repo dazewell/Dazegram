@@ -60,10 +60,10 @@ import tw.nekomimi.nekogram.NekoConfig;
  * NagramX: Ghost Hold (PR #347) added a Hold Messages setting. This reminder
  * goes silent whenever Hold Messages is on, regardless of whether the message
  * the user is about to type will actually be one Hold holds. Most plain text,
- * contacts and static locations are diverted upstream in SendMessagesHelper
- * before they reach a request, with the Scheduled list's "Held" caption as
- * feedback. Hold's allowlist excludes file-backed and unsupported attachments,
- * paid and disappearing-message chats and a few other cases (see
+ * contacts, static locations and single local photos are diverted upstream in
+ * SendMessagesHelper before they reach a request, with the Scheduled list's
+ * "Held" caption as feedback. Hold's allowlist excludes albums, unsupported
+ * attachments, paid and disappearing-message chats and a few other cases (see
  * {@code GhostHoldSwitchNotice}); those reach the send-time warning below
  * unaffected by this reminder's silence. No bulletin, and no reminded-state
  * recorded for that chat, either way. That means a chat's

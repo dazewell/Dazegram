@@ -4446,10 +4446,11 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         }
 
         // NagramX: single Ghost Hold chokepoint. When Ghost Mode is on and Hold
-        // Messages is enabled, supported text, contact and static-location sends are
-        // persisted to the Scheduled list and held locally instead of going to the
-        // server. Placed before newMsg is built, before the DB write and before
-        // putToSendingMessages, so nothing is left half-started when it diverts.
+        // Messages is enabled, supported text, contact, static-location and single
+        // local-photo sends are persisted to the Scheduled list and held locally
+        // instead of going to the server. Placed before newMsg is built, before the DB
+        // write and before putToSendingMessages, so nothing is left half-started when
+        // it diverts.
         if (com.radolyn.ayugram.ghosthold.GhostHoldController.maybeHold(currentAccount, peer, sendMessageParams)) {
             return;
         }

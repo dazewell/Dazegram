@@ -966,8 +966,40 @@ delete this file yet" set in an in-memory structure with `lockFile`/`unlockFile`
 restart drops every pin, and the sweep itself is time-based and runs at most
 once per 24h (`AutoDeleteMediaTask.java:21`, `:118-125`). This is why holding a
 *media* message across an arbitrary Ghost duration can't lean on the existing
-pin — a kill during the hold would leave the file eligible for the next sweep.
-It's the recorded reason Ghost Hold v1 is text-only.
+pin: a kill during the hold would leave the file eligible for the next sweep.
+
+There are two independent cache deletion paths to account for. The
+over-capacity loop deletes eligible files without consulting
+`usingFilePaths` (`AutoDeleteMediaTask.java:170-190`), and Clear Cache walks
+and deletes the selected cache directory directly
+(`CacheControlActivity.java:932-981`). Both operate under
+`FileLoader.MEDIA_DIR_CACHE`; neither reaches the app-private root returned by
+`ApplicationLoader.getFilesDirFixed()` (`ApplicationLoader.java:188-206`).
+Ghost Hold photos therefore own an immutable per-account copy under that
+private root (`GhostHoldStore.java:355-412`) and use cache only as a temporary
+upload handoff. A cache pin or a second cache copy is not durable ownership.
+
+*(Private-copy requirement updated 2026-09-13, #ghost-hold.)*
+
+## SharedConfig local photo ids can rewind onto an existing cache name
+
+`SharedConfig.getLastLocalId()` decrements an in-memory process counter
+(`SharedConfig.java:535-539`), while persistence happens only when the broader
+config save writes `lastLocalId` (`SharedConfig.java:489`). A hard kill can
+therefore restart from an older value and mint a local photo location whose
+`volume_id/local_id` cache name already exists. The uploader resolves that
+name through `FileLoader.getPathToAttach`, so deleting or overwriting the
+occupant would risk another message's bytes.
+
+Ghost Hold's release path re-mints at most eight ids, asks `FileLoader` for
+each target, and creates the target fail-if-exists before copying
+(`GhostHoldController.java:1254-1272`, `:1275-1308`). Startup and send-error
+restoration similarly copy only when the recorded target is absent
+(`GhostHoldController.java:2463-2481`). Never replace this with a
+string-built filename or an overwrite: collision refusal is the safety rule,
+not an optimization.
+
+*(Established 2026-09-13, #ghost-hold.)*
 
 ## Sync guard check validates protected pins against the branch tree, not the PR merge ref
 
@@ -1115,7 +1147,7 @@ disabled Ghost Hold's backstop in the minified build only). It did not; the real
 cause was the `sendAnimationData` trap above. Re-deriving this costs a minified
 build + DEX inspection.
 
-## `SendMessageParams.of(MessageObject)` restores the reply header but NOT entities
+## `SendMessageParams.of(MessageObject)` has explicit restore gaps
 
 On the retry/re-drive path (`retryMessageObject != null`) the outgoing text
 request pulls its two formatting-bearing fields from two different places, and
@@ -1146,10 +1178,62 @@ Cost if missed: any redrive/retry that reconstructs a send via
 stored message" is half right. Ghost Hold's flush hit exactly this: the held
 message stored its entities on the blob but flushed as plain text until the
 re-drive explicitly restored `p.entities = m.entities`
-(`GhostHoldController.java:1065-1073`, the `dispatchFreshItem` `of(mo)` block,
-2026-09-10, #ghost-hold). The reply header needed no such restore, which is what makes the
-asymmetry a trap -- testing a reply-with-formatting would show the reply intact
-and the formatting gone, pointing at the wrong half.
+(`GhostHoldController.java:1348`). The reply header needed no such restore,
+which is what makes the asymmetry a trap -- testing a reply-with-formatting
+would show the reply intact and the formatting gone, pointing at the wrong
+half.
+
+Photos add three more gaps. `of(MessageObject)` does not copy
+`invert_media`, `hasMediaSpoilers`, or `sendingHighQuality`
+(`SendMessagesHelper.java:12452-12464`); the send funnel reads those values
+from the rebuilt params (`SendMessagesHelper.java:4409`, `:4735`, `:5299`).
+Ghost Hold therefore restores entities, invert placement, the media spoiler
+flag, and its stored high-quality bit together in the one re-drive block
+(`GhostHoldController.java:1348-1368`). Masks already ride in the persisted
+params map and effect/repeat are restored beside them. This list was audited
+against the current 54-field `SendMessageParams` declaration
+(`SendMessagesHelper.java:12383-12446`) on 2026-09-13; it is not a general
+promise that a future field will restore itself.
+
+*(Photo restore audit added 2026-09-13, #ghost-hold.)*
+
+## A stock row proves photo handoff, not private-asset release
+
+The flush's stock-row probe answers only whether Telegram accepted ownership of
+retry/delivery. Final send confirmation is the per-account
+`NotificationCenter.messageReceivedByServer` event carrying the original
+negative id (`SendMessagesHelper.java:7934`; equivalent confirmation branches
+also post at `:8484` and `:8506`). The same confirmation path then remaps the
+stock row and renames or removes local photo sizes
+(`SendMessagesHelper.java:8653-8798`), so a cache path that existed at handoff
+is not durable evidence afterward.
+
+Ghost Hold marks its asset handed off before deleting the fork row
+(`GhostHoldController.java:1552-1556`) and retains the private file through send
+errors. It releases that file only when this account's observer receives
+`messageReceivedByServer` with the tracked old id
+(`GhostHoldController.java:2543-2561`). Startup can restore a missing cache
+materialization for an awaiting asset, but it must not infer confirmation from
+stock-row presence or absence.
+
+*(Established 2026-09-13, #ghost-hold.)*
+
+## Unsupported future Ghost Hold rows are preserved but not rendered
+
+`GhostHoldStore` loads every authored `ghost_held` row without interpreting its
+media (`GhostHoldStore.java:283-329`) and deletion is tied to explicit user,
+handoff, confirmation, logout, or aborted-asset paths. The controller decodes
+and allowlists supported payloads at `toHeldItem` /
+`isSupportedHeldMessage` (`GhostHoldController.java:2096-2145`); unsupported
+rows are skipped by render and flush rather than deleted.
+
+That is the deliberate downgrade/re-upgrade contract for a future app version
+that writes a newer media kind: its row and private bytes survive in the
+per-account store, but an older build can under-count it and offers no
+compatibility UI. Making unknown payloads visible and count-consistent needs a
+truthful generic row and is deferred rather than guessed inside the photo wave.
+
+*(Established 2026-09-13, #ghost-hold.)*
 
 ## `commit-tag.yml`'s job name is declared unquoted, so its real status-check context is the truncated string `Every commit carries a`, and the required-checks ruleset pins that exact truncation
 

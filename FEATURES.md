@@ -47,7 +47,7 @@ A launcher shortcut (long-press the app icon, or pin it to your home screen) tha
 
 ### Hold messages while Ghost Mode is on <!-- #ghost-hold -->
 
-Turn on **Hold Messages** under Settings → Ghost Mode (off by default) and most plain text messages, contacts and static locations stay on this device while Ghost Mode is active. They wait in the chat's Scheduled list marked "Held — not sent" and remain delete-only. Turning Ghost Mode off asks before releasing them; future-scheduled items keep their schedule. Unsupported sends use Telegram's normal send or schedule path.
+Turn on **Hold Messages** under Settings → Ghost Mode (off by default) and most plain text messages, contacts, static locations and single local photos stay on this device while Ghost Mode is active. They appear in the chat's Scheduled list marked "Held — not sent" and remain delete-only. Turning Ghost Mode off asks before releasing them. Unsupported sends use Telegram's normal send or schedule path.
 
 <img height="260" alt="the Hold Messages toggle in its Ghost Mode section with the explanatory footer beneath it" src="docs/images/features/ghost-hold-setting.png" />
 <img height="260" alt="a chat's Scheduled list with three held messages, each captioned Held — not sent" src="docs/images/features/ghost-hold-scheduled.png" />
@@ -60,7 +60,7 @@ With Ghost Mode on, the ghost indicator next to the chat list title stays visibl
 
 ### Ghost send warning <!-- #ghost-send-warning --> <!-- #ghost-type-warning -->
 
-Ghost Mode hides read receipts, typing and online status, but does not hold sends by itself. With Hold Messages off, the first time you type in a chat each Ghost session you get a heads-up, and that chat then stays quiet for the session. With it on, held text, contacts and static locations use the Scheduled-list caption as feedback; unsupported sends still warn before the quiet period starts.
+Ghost Mode hides read receipts, typing and online status, but does not hold sends by itself. With Hold Messages off, you get one heads-up per chat each Ghost session. With it on, held text, contacts, static locations and single local photos use the Scheduled-list caption as feedback; unsupported sends still warn before the quiet period starts.
 
 ### Clear Message Database removes only this install's media <!-- #clear-db-own-media -->
 

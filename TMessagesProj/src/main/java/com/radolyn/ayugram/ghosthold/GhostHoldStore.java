@@ -12,10 +12,13 @@ import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.NativeByteBuffer;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -76,9 +79,12 @@ public final class GhostHoldStore {
 
     // Queue-confined master view of every row, mid -> record, insertion-ordered.
     private final LinkedHashMap<Integer, HeldRecord> master = new LinkedHashMap<>();
+    // Queue-confined private-photo ownership rows, keyed by the held local id.
+    private final HashMap<Integer, AssetRecord> assets = new HashMap<>();
     // Immutable snapshot grouped by dialog, republished after each mutation and
     // read without locking by the injection on the message-load thread.
     private volatile Map<Long, List<HeldRecord>> byDialog = new HashMap<>();
+    private volatile Map<Integer, AssetRecord> assetSnapshot = new HashMap<>();
     private volatile boolean loaded;
     // The user id this file's rows belong to, mirrored out of the DB so the
     // off-queue readers (render injection, count post) can refuse a snapshot that
@@ -206,6 +212,7 @@ public final class GhostHoldStore {
                 db.executeFast("PRAGMA journal_mode = WAL").stepThis().dispose();
                 db.executeFast("PRAGMA journal_size_limit = 10485760").stepThis().dispose();
                 db.executeFast("CREATE TABLE IF NOT EXISTS ghost_held(mid INTEGER PRIMARY KEY, dialog_id INTEGER, date INTEGER, state INTEGER, data BLOB)").stepThis().dispose();
+                db.executeFast("CREATE TABLE IF NOT EXISTS ghost_held_assets(mid INTEGER PRIMARY KEY, name TEXT NOT NULL, size INTEGER NOT NULL, local_id INTEGER NOT NULL DEFAULT 0, handed_off INTEGER NOT NULL DEFAULT 0)").stepThis().dispose();
                 db.executeFast("CREATE TABLE IF NOT EXISTS ghost_meta(k INTEGER PRIMARY KEY, v INTEGER)").stepThis().dispose();
                 if (create) {
                     db.executeFast("PRAGMA user_version = 1").stepThis().dispose();
@@ -262,9 +269,12 @@ public final class GhostHoldStore {
             // delete leaves an empty view and an un-bound owner, so the next access
             // re-runs this gate rather than leaking the previous owner's rows.
             master.clear();
+            assets.clear();
             loaded = false;
             publish();
+            db.executeFast("DELETE FROM ghost_held_assets").stepThis().dispose();
             db.executeFast("DELETE FROM ghost_held").stepThis().dispose();
+            deleteAssetDirectoryOnQueue();
             db.executeFast("REPLACE INTO ghost_meta(k, v) VALUES(1, " + current + ")").stepThis().dispose();
         }
         snapshotOwner = current;
@@ -299,6 +309,24 @@ public final class GhostHoldStore {
                 cursor.dispose();
             }
         }
+        assets.clear();
+        SQLiteCursor assetCursor = null;
+        try {
+            assetCursor = db().queryFinalized("SELECT mid, name, size, local_id, handed_off FROM ghost_held_assets");
+            while (assetCursor.next()) {
+                int mid = assetCursor.intValue(0);
+                String name = assetCursor.stringValue(1);
+                long size = assetCursor.longValue(2);
+                int localId = assetCursor.intValue(3);
+                boolean handedOff = assetCursor.intValue(4) != 0;
+                AssetRecord asset = new AssetRecord(mid, name, size, localId, handedOff, false);
+                assets.put(mid, asset.withValid(isAssetFileValid(asset)));
+            }
+        } finally {
+            if (assetCursor != null) {
+                assetCursor.dispose();
+            }
+        }
         loaded = true;
         publish();
     }
@@ -315,6 +343,284 @@ public final class GhostHoldStore {
             list.add(rec);
         }
         byDialog = grouped;
+        assetSnapshot = new HashMap<>(assets);
+    }
+
+    public boolean isAssetUsable(int mid) {
+        AssetRecord asset = assetSnapshot.get(mid);
+        return asset != null && asset.valid;
+    }
+
+    @Nullable
+    public AssetRecord copyPrivatePhotoOnQueue(int mid, File source, long expectedSize) {
+        try {
+            ensureLoaded();
+            if (source == null || expectedSize <= 0 || !source.isFile() || source.length() != expectedSize) {
+                return null;
+            }
+            File dir = assetDirectory();
+            if (!dir.exists() && !dir.mkdirs() || !dir.isDirectory()) {
+                return null;
+            }
+            String name = "photo_" + Math.abs((long) mid) + ".asset";
+            File target = resolveAssetFile(name);
+            if (target == null || target.exists()) {
+                return null;
+            }
+            File temp = resolveAssetFile(name + ".tmp");
+            if (temp == null) {
+                return null;
+            }
+            if (temp.exists() && !temp.delete() || !temp.createNewFile()) {
+                return null;
+            }
+            boolean copied = false;
+            try (FileInputStream input = new FileInputStream(source);
+                 FileOutputStream output = new FileOutputStream(temp, false)) {
+                byte[] buffer = new byte[64 * 1024];
+                long written = 0;
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    output.write(buffer, 0, read);
+                    written += read;
+                }
+                output.flush();
+                output.getFD().sync();
+                copied = written == expectedSize && temp.length() == expectedSize;
+            } finally {
+                if (!copied) {
+                    deleteQuietly(temp);
+                }
+            }
+            if (!copied || target.exists()) {
+                deleteQuietly(temp);
+                return null;
+            }
+            if (!temp.renameTo(target)) {
+                deleteQuietly(temp);
+                return null;
+            }
+            if (target.length() != expectedSize) {
+                deleteQuietly(target);
+                return null;
+            }
+            return new AssetRecord(mid, name, expectedSize, 0, false, true);
+        } catch (Exception e) {
+            FileLog.e(e);
+            return null;
+        }
+    }
+
+    public boolean insertAssetOnQueue(AssetRecord asset) {
+        try {
+            ensureLoaded();
+            if (asset == null || resolveAssetFile(asset.name) == null || assets.containsKey(asset.mid)) {
+                return false;
+            }
+            org.telegram.SQLite.SQLitePreparedStatement state =
+                    db().executeFast("INSERT INTO ghost_held_assets(mid, name, size, local_id, handed_off) VALUES(?, ?, ?, ?, ?)");
+            try {
+                state.bindInteger(1, asset.mid);
+                state.bindString(2, asset.name);
+                state.bindLong(3, asset.size);
+                state.bindInteger(4, asset.localId);
+                state.bindInteger(5, asset.handedOff ? 1 : 0);
+                state.step();
+            } finally {
+                state.dispose();
+            }
+            assets.put(asset.mid, asset.withValid(isAssetFileValid(asset)));
+            publish();
+            return true;
+        } catch (Exception e) {
+            FileLog.e(e);
+            return false;
+        }
+    }
+
+    @Nullable
+    public AssetRecord selectAssetOnQueue(int mid) {
+        try {
+            ensureLoaded();
+            AssetRecord asset = assets.get(mid);
+            if (asset == null) {
+                return null;
+            }
+            AssetRecord refreshed = asset.withValid(isAssetFileValid(asset));
+            assets.put(mid, refreshed);
+            publish();
+            return refreshed;
+        } catch (Exception e) {
+            FileLog.e(e);
+            return null;
+        }
+    }
+
+    public ArrayList<AssetRecord> selectAllAssetsOnQueue() {
+        try {
+            ensureLoaded();
+            ArrayList<AssetRecord> result = new ArrayList<>();
+            for (AssetRecord asset : assets.values()) {
+                AssetRecord refreshed = asset.withValid(isAssetFileValid(asset));
+                assets.put(asset.mid, refreshed);
+                result.add(refreshed);
+            }
+            publish();
+            return result;
+        } catch (Exception e) {
+            FileLog.e(e);
+            return new ArrayList<>();
+        }
+    }
+
+    public boolean updateAssetLocalIdOnQueue(int mid, int localId) {
+        try {
+            ensureLoaded();
+            AssetRecord asset = assets.get(mid);
+            if (asset == null) {
+                return false;
+            }
+            db().executeFast("UPDATE ghost_held_assets SET local_id = " + localId + " WHERE mid = " + mid).stepThis().dispose();
+            assets.put(mid, asset.withLocalId(localId));
+            publish();
+            return true;
+        } catch (Exception e) {
+            FileLog.e(e);
+            return false;
+        }
+    }
+
+    public boolean markAssetHandedOffOnQueue(int mid) {
+        try {
+            ensureLoaded();
+            AssetRecord asset = assets.get(mid);
+            if (asset == null) {
+                return true;
+            }
+            db().executeFast("UPDATE ghost_held_assets SET handed_off = 1 WHERE mid = " + mid).stepThis().dispose();
+            assets.put(mid, asset.withHandedOff(true));
+            publish();
+            return true;
+        } catch (Exception e) {
+            FileLog.e(e);
+            return false;
+        }
+    }
+
+    public void deleteHeldWithAssetOnQueue(int mid) {
+        deleteOnQueue(mid);
+        deleteAssetOnQueue(mid);
+    }
+
+    public void deleteAssetOnQueue(int mid) {
+        try {
+            ensureLoaded();
+            AssetRecord asset = assets.get(mid);
+            db().executeFast("DELETE FROM ghost_held_assets WHERE mid = " + mid).stepThis().dispose();
+            assets.remove(mid);
+            if (asset != null) {
+                File file = resolveAssetFile(asset.name);
+                if (file != null && !deleteQuietly(file)) {
+                    FileLog.e("ghostHold: could not delete private asset " + asset.name + " for account " + account);
+                }
+            }
+            publish();
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
+    public void discardUncommittedAssetOnQueue(AssetRecord asset) {
+        if (asset == null) {
+            return;
+        }
+        File file = resolveAssetFile(asset.name);
+        if (file != null) {
+            deleteQuietly(file);
+        }
+    }
+
+    public void sweepAssetsOnQueue() {
+        try {
+            ensureLoaded();
+            ArrayList<Integer> aborted = new ArrayList<>();
+            for (AssetRecord asset : new ArrayList<>(assets.values())) {
+                HeldRecord held = master.get(asset.mid);
+                if (held == null && !asset.handedOff) {
+                    aborted.add(asset.mid);
+                } else if (held != null && held.state == STATE_HELD && asset.localId != 0) {
+                    updateAssetLocalIdOnQueue(asset.mid, 0);
+                }
+            }
+            for (int mid : aborted) {
+                deleteAssetOnQueue(mid);
+            }
+            File dir = assetDirectory();
+            File[] files = dir.listFiles();
+            if (files == null) {
+                return;
+            }
+            HashSet<String> owned = new HashSet<>();
+            for (AssetRecord asset : assets.values()) {
+                owned.add(asset.name);
+            }
+            for (File file : files) {
+                if (file.isFile() && !owned.contains(file.getName())) {
+                    deleteQuietly(file);
+                }
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
+    @Nullable
+    public File assetFileOnQueue(AssetRecord asset) {
+        return asset == null ? null : resolveAssetFile(asset.name);
+    }
+
+    private File assetDirectory() {
+        return new File(new File(ApplicationLoader.getFilesDirFixed(), "ghosthold"), Integer.toString(account));
+    }
+
+    @Nullable
+    private File resolveAssetFile(String name) {
+        if (name == null || name.isEmpty() || name.contains("/") || name.contains("\\") || name.contains("..")) {
+            return null;
+        }
+        try {
+            File dir = assetDirectory().getCanonicalFile();
+            File file = new File(dir, name).getCanonicalFile();
+            return dir.equals(file.getParentFile()) ? file : null;
+        } catch (Exception e) {
+            FileLog.e(e);
+            return null;
+        }
+    }
+
+    private boolean isAssetFileValid(AssetRecord asset) {
+        File file = resolveAssetFile(asset.name);
+        return file != null && file.isFile() && asset.size > 0 && file.length() == asset.size;
+    }
+
+    private void deleteAssetDirectoryOnQueue() {
+        File dir = assetDirectory();
+        File[] files = dir.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.isFile()) {
+                    deleteQuietly(file);
+                }
+            }
+        }
+        deleteQuietly(dir);
+        File parent = dir.getParentFile();
+        if (parent != null) {
+            File[] remaining = parent.listFiles();
+            if (remaining != null && remaining.length == 0) {
+                deleteQuietly(parent);
+            }
+        }
     }
 
     public boolean insertOnQueue(HeldRecord rec) {
@@ -532,6 +838,11 @@ public final class GhostHoldStore {
                     FileLog.e(e);
                 }
                 try {
+                    database.executeFast("DELETE FROM ghost_held_assets").stepThis().dispose();
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
+                try {
                     // WAL mode (see db(): journal_mode = WAL): the DELETEs above are
                     // written to the -wal sidecar, not the main file, and this SQLite
                     // wrapper's close() does not checkpoint. Merge them into the main file
@@ -563,7 +874,9 @@ public final class GhostHoldStore {
             deleteQuietly(new File(dir, "ghosthold_" + account + ".db-wal"));
             deleteQuietly(new File(dir, "ghosthold_" + account + ".db-shm"));
         }
+        deleteAssetDirectoryOnQueue();
         master.clear();
+        assets.clear();
         loaded = false;
         // Drop ownership so no off-queue reader trusts the snapshot until the next
         // activated open re-stamps it. If the main file could not be removed, the
@@ -662,6 +975,36 @@ public final class GhostHoldStore {
 
         HeldRecord withState(int newState) {
             return new HeldRecord(mid, dialogId, date, newState, data);
+        }
+    }
+
+    public static final class AssetRecord {
+        public final int mid;
+        public final String name;
+        public final long size;
+        public final int localId;
+        public final boolean handedOff;
+        public final boolean valid;
+
+        public AssetRecord(int mid, String name, long size, int localId, boolean handedOff, boolean valid) {
+            this.mid = mid;
+            this.name = name;
+            this.size = size;
+            this.localId = localId;
+            this.handedOff = handedOff;
+            this.valid = valid;
+        }
+
+        AssetRecord withLocalId(int value) {
+            return new AssetRecord(mid, name, size, value, handedOff, valid);
+        }
+
+        AssetRecord withHandedOff(boolean value) {
+            return new AssetRecord(mid, name, size, localId, value, valid);
+        }
+
+        AssetRecord withValid(boolean value) {
+            return new AssetRecord(mid, name, size, localId, handedOff, value);
         }
     }
 }

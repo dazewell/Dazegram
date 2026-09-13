@@ -578,6 +578,25 @@ the local row is not swept. The in-bubble "held" caption is the one thing not
 free — it's a fork branch in `ChatMessageCell`'s time-string block
 (`ChatMessageCell.java:18692`+).
 
+## A local photo upload reads the largest PhotoSize cache path, not attachPath
+
+For an ordinary local photo, `SendMessagesHelper` assigns the last
+`photo.sizes` member to `DelayedMessage.photoSize`
+(`SendMessagesHelper.java:5626`) and the upload path later comes from
+`FileLoader.getPathToAttach(message.photoSize)`
+(`SendMessagesHelper.java:6621-6626`). The message's `attachPath` is populated
+earlier from a file location (`SendMessagesHelper.java:4752-4753`), but it is
+not the source this upload branch opens.
+
+Ghost Hold therefore copies the authoritative largest-size file at admission
+(`GhostHoldController.java:486-501`) and, at release, patches only a decoded
+throwaway largest `PhotoSize` before materializing the private bytes at the
+path returned by `FileLoader` (`GhostHoldController.java:1243-1272`). Treating
+`attachPath` as the retained asset would keep the wrong file alive and still
+leave the uploader's real cache source purgeable.
+
+*(Established 2026-09-13, #ghost-hold.)*
+
 ## isGhostModeActive() is a derived predicate, and the five toggles are flipped individually
 
 Established 2026-09-09 (#ghost-hold). `NekoConfig.isGhostModeActive()` is not a

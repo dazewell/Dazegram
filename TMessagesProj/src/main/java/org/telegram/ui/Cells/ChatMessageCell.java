@@ -18696,7 +18696,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             // render a blank time instead of the held caption. Both that sentinel and
             // our own undated sentinel display as undated; the value is kept for flush.
             int heldDate = currentMessageObject.messageOwner.date;
-            if (heldDate == com.radolyn.ayugram.ghosthold.GhostHoldController.GHOST_HELD_DATE_SENTINEL || heldDate == 0x7FFFFFFE) {
+            if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeldMissing(currentMessageObject)) {
+                timeString = getString(R.string.GhostHoldMissingCaption);
+            } else if (heldDate == com.radolyn.ayugram.ghosthold.GhostHoldController.GHOST_HELD_DATE_SENTINEL || heldDate == 0x7FFFFFFE) {
                 timeString = getString(R.string.GhostHoldCaption);
             } else {
                 timeString = formatString(R.string.GhostHoldCaptionDated, LocaleController.getInstance().getFormatterDay().format((long) heldDate * 1000));
@@ -27711,7 +27713,8 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                             // instead of the misleading "Sending" the isSending() branch
                             // below would otherwise read out.
                             sb.append("\n");
-                            sb.append(getString(R.string.GhostHoldContentDescription));
+                            sb.append(getString(com.radolyn.ayugram.ghosthold.GhostHoldController.isHeldMissing(currentMessageObject)
+                                    ? R.string.GhostHoldMissingContentDescription : R.string.GhostHoldContentDescription));
                         } else if (currentMessageObject.isSent()) {
                             sb.append("\n");
                             if (currentMessageObject.scheduled) {

@@ -813,8 +813,8 @@ tracked by #339.)*
 
 Disproven by reading the serialization path on 2026-09-11. The automated
 reviewer flagged `GhostHoldStore.decode()` calling `message.readAttachPath(nbb,
-selfId)` (`GhostHoldStore.java:610`) while `encode()`
-(`GhostHoldStore.java:625-640`) "does not append an attach-path payload despite
+selfId)` (`GhostHoldStore.java:915-935`) while `encode()`
+(`GhostHoldStore.java:945-958`) "does not append an attach-path payload despite
 the docstring saying it does," suspecting a decode misparse. It does append it,
 implicitly. `encode()` allocates `message.getObjectSize()` bytes and calls
 `message.serializeToStream(data)` -- byte-for-byte the stock store pattern at
@@ -830,9 +830,9 @@ stock. No code change was made.
 
 The same generic blob also round-trips the TL-defined send payload of
 media-bearing held messages. The `TLRPC.Message`, including its serialized
-`media`, is encoded and decoded at `GhostHoldStore.java:602-640`; Wave A assigns
+`media`, is encoded and decoded at `GhostHoldStore.java:915-958`; Wave A assigns
 the contact or static geo/venue object before encoding
-(`GhostHoldController.java:547-563`). For venues that preserves geo, title,
+(`GhostHoldController.java:599-613`). For venues that preserves geo, title,
 address, provider, venue id and venue type (`TLRPC.java:7382-7407`), but not the
 fork-only icon, emoji, query/result ids or geo address fields. Inline-result
 venues are therefore refused before persistence. No media-specific store column
@@ -840,6 +840,23 @@ or second serialization path is needed.
 
 *(Established 2026-09-11, #ghost-hold. Media-bearing round-trip re-verified
 2026-09-12.)*
+
+## "Point a held photo at its private file with AyuFileLocation"
+
+Rejected on 2026-09-13. `AyuFileLocation` exposes a raw `path` field but defines
+no TL constructor or `serializeToStream` implementation
+(`AyuFileLocation.java:14-20`), while its base `TLRPC.FileLocation` is abstract
+and expects concrete TL subclasses (`TLRPC.java:43233-43242`). Putting one into
+the held photo's serialized `TLRPC.Message` would therefore make the durable
+row structurally unserializable or corrupt the stock row when the message is
+handed back.
+
+Ghost Hold keeps the private path only in its fork-owned asset table and gives
+the uploader bytes by copying into a fresh ordinary local `PhotoSize` target
+resolved through `FileLoader` (`GhostHoldController.java:1243-1272`). No custom
+file-location carrier crosses the store or stock send boundary.
+
+*(Established 2026-09-13, #ghost-hold.)*
 
 ## `verCode`'s low digit does not encode a distribution channel in this fork
 
