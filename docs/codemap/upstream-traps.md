@@ -1795,9 +1795,17 @@ symbol the fork already has (never by importing the upstream one):
   `isDeveloper()` and `ArrayUtil` — none of which the fork carries (the fork has
   `ArrayUtils` with an s, and no NekoX developer-badge config) — and the fork's own
   heavily-modified `TLRPC.java` won the merge, so the method never arrived. Resolution:
-  revert those call sites to plain `.verified`, which for a non-developer account is
-  exactly what `verifiedExtended()` returns anyway. After the revert both files are
-  byte-identical to `dev`.
+  revert those call sites to plain `.verified`, and record this as a **deliberate
+  exclusion of an upstream feature**, not a behavioural equivalence. It is *not*
+  behaviour-preserving: `NekoXConfig.isDeveloper()` seeds its cached result to `true`
+  (`NekoXConfig.java:129-140` upstream) before the real check runs, so
+  `verifiedExtended()` hands a local "verified" badge to every viewer of the
+  hard-coded developer / official-chat IDs — and even with that corrected it scans
+  *all* active accounts rather than the one account actually displaying the badge, so
+  it is wrong under this fork's multi-account model too. The fork removed Nagram's
+  hard-coded developer-identity layer on purpose; `.verified` (the real server flag)
+  is the intended post-removal behaviour, not an approximation of the upstream method.
+  After the revert both files are byte-identical to `dev`.
 - **Relocated string keys collide as duplicate resources.** The fork moved ~11 strings
   (e.g. `GhostMode`, `DeleteCloudBackup`, `ResetSettings`, `TestBackendOn`) out of
   `strings_na.xml` / `strings_neko.xml` into fork-owned `strings_nax.xml`. Upstream
