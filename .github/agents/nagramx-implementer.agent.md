@@ -266,14 +266,22 @@ format of its neighbours — read three neighbouring entries before you write it
 and match their voice. If a `humanizer` skill is available in your session, run
 the prose through it. A user-visible change without its entry will fail CI.
 
-**One short paragraph, rarely two.** Say what the feature does and how to use,
-configure, or turn it off — nothing else. No edge-case enumeration, no
-implementation rationale — that belongs in a code comment or a codemap entry,
-not here. The one exception is a caveat a user genuinely needs to use the
-feature correctly (e.g. a real limitation, not a "why it works this way");
-keep even that to one sentence. If the feature you're adding extends one that already
-has an entry, add your `<!-- #slug -->` to that heading and fold the new
-behaviour into its existing prose instead of writing a new heading.
+**70 words, hard ceiling — count them.** That's the prose under the `###`
+heading, images and shortcut tables excluded. Most entries are around 35. Two
+beats: what the feature does and where you find it, then its setting and default
+if it has one. Nothing else.
+
+Cut edge cases and exclusions, failure and can't-apply behaviour, interaction
+step-by-steps, storage and lifetime detail, why it works the way it does, and
+how it used to work. A sentence opening with *unless*, *except* or *note that*,
+or explaining a fallback, comes out — rationale belongs in a code comment or a
+codemap entry. One caveat sentence survives only when a user would misuse the
+feature without it.
+
+If your feature extends one that already has an entry, add your `<!-- #slug -->`
+to that heading and fold the behaviour into its prose instead of writing a new
+heading — then re-count the merged entry and cut old detail to keep it under 70.
+If the entry you're touching is already over, trim it back in the same change.
 
 **Separately, if your work on this branch established a durable fact** — a
 UI→code mapping, an upstream trap, or a hypothesis you investigated and

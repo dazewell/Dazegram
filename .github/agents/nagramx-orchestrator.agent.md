@@ -1188,7 +1188,10 @@ Confirm, one by one:
 - The missing-tag query returns nothing. **Any output is blocking.**
 - The two hard-line greps return nothing. **Any hit is blocking**, and it is the
   most valuable thing you can mechanically catch.
-- A user-visible change has its `FEATURES.md` entry in the same pull request.
+- A user-visible change has its `FEATURES.md` entry in the same pull request,
+  and that entry is **within the 70-word bar** and reads as a definition rather
+  than a writeup (`nagramx-workflow` step 6). Count it yourself — nothing in CI
+  does. An extended entry counts whole, not just the added sentences.
 - A change the brief marked `Codemap: required` has its `docs/codemap/` entry in
   the same pull request. Check the diff for it rather than taking the child's
   word — a branch that touched no codemap file when the brief required one is a
