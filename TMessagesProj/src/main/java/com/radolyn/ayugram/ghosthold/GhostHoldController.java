@@ -177,6 +177,14 @@ public final class GhostHoldController {
      * before any in-flight send state is created.
      */
     public static boolean maybeHold(int account, long peer, SendMessagesHelper.SendMessageParams params) {
+        String smokeKind = smokeKind(params);
+        if (smokeKind != null) {
+            android.util.Log.i("NAX_SMOKE_ghost-hold",
+                    "NAX_SMOKE_ghost-hold BEGIN scenario=wave_a_contact_static_live"
+                            + " build=" + org.telegram.messenger.BuildConfig.BUILD_VERSION_STRING
+                            + " app=" + org.telegram.messenger.BuildConfig.APPLICATION_ID
+                            + " account=" + account + " kind=" + smokeKind);
+        }
         // Re-arm this account lazily. initAccount is guarded by accountInited and is
         // a cheap boolean check after the first run, but on an in-process re-login
         // (LoginActivity reuses the slot without going back through
@@ -185,7 +193,17 @@ public final class GhostHoldController {
         // them back before the first held send of the new session.
         initAccount(account);
         if (!isHoldableSend(account, peer, params)) {
+            if (params != null && params.location instanceof TLRPC.TL_messageMediaGeoLive) {
+                android.util.Log.i("NAX_SMOKE_ghost-hold",
+                        "NAX_SMOKE_ghost-hold END scenario=wave_a_contact_static_live"
+                                + " account=" + account + " result=live_location_immediate");
+            }
             return false;
+        }
+        if (isSmokeForbiddenAdmission(params)) {
+            android.util.Log.e("NAX_SMOKE_ghost-hold",
+                    "NAX_SMOKE_ghost-hold FORBIDDEN admitted_competing_path"
+                            + " account=" + account + " kind=" + smokeKind);
         }
         return persistHeld(account, peer, params);
     }
@@ -505,6 +523,34 @@ public final class GhostHoldController {
                 && media.geo != null;
     }
 
+    @Nullable
+    private static String smokeKind(@Nullable SendMessagesHelper.SendMessageParams params) {
+        if (params == null) {
+            return null;
+        }
+        if (params.user != null) {
+            return "contact";
+        }
+        if (params.location instanceof TLRPC.TL_messageMediaVenue) {
+            return "venue";
+        }
+        if (params.location instanceof TLRPC.TL_messageMediaGeo) {
+            return "static_location";
+        }
+        if (params.location instanceof TLRPC.TL_messageMediaGeoLive) {
+            return "live_location";
+        }
+        return null;
+    }
+
+    private static boolean isSmokeForbiddenAdmission(SendMessagesHelper.SendMessageParams params) {
+        return params.location instanceof TLRPC.TL_messageMediaGeoLive
+                || params.params != null && (
+                        params.params.containsKey("query_id")
+                                || params.params.containsKey("groupId")
+                                && !"0".equalsIgnoreCase(params.params.get("groupId")));
+    }
+
     /**
      * True if a send to {@code peer} would resolve a send-as sender other than this
      * account's own user. Mirrors the funnel, which only applies send-as for a
@@ -683,6 +729,12 @@ public final class GhostHoldController {
                 // guarded helper checks.
                 AndroidUtilities.runOnUIThread(() -> redriveAfterPersistFailure(account, originalParams, holdSession));
                 return;
+            }
+            String kind = smokeKind(params);
+            if (kind != null) {
+                android.util.Log.i("NAX_SMOKE_ghost-hold",
+                        "NAX_SMOKE_ghost-hold EXPECTED admitted_persisted=" + kind
+                                + " account=" + account);
             }
             postScheduledCount(account, peer, holdSession);
             AndroidUtilities.runOnUIThread(() -> {
