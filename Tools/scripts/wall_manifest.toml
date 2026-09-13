@@ -225,7 +225,9 @@ output = "ghost-hold.png"
 
 [[wall.panel]]
 source = "ghost-hold-settings-toggle.png"
-crop = [0, 690, 1080, 1265]
+# Right edge stops at 1070: the same teal sliver of the chat behind the
+# settings screen that the trigger-sheet crops avoid (x >= 1075, y 738-1072).
+crop = [0, 690, 1070, 1265]
 caption = "Hold them on the device"
 
 [[wall.panel]]
@@ -381,3 +383,34 @@ crop = [0, 240, 1080, 570]
 # (distinct from the large bulk-numbering digits used in bulk-actions.png)
 # going from 1 to 2. Blurred: the one reply-quote author name in this crop.
 blur = [[40, 370, 340, 430]]
+
+[[figure]]
+output = "ghost-hold-setting.png"
+source = "ghost-hold-settings-toggle.png"
+crop = [0, 690, 1070, 1265]
+# The Hold Messages row in its Ghost Mode section, with the explanatory
+# footer beneath it. Generic settings text, no sensitive content. Right
+# edge stops at 1070 to drop a teal sliver of the chat behind the screen.
+
+[[figure]]
+output = "ghost-hold-scheduled.png"
+source = "ghost-hold-scheduled-list.png"
+crop = [0, 1090, 1080, 1900]
+# A held run in a chat's Scheduled list, each row captioned "Held -- not
+# sent". Shot on a build carrying #352, so the run reads oldest-top in
+# send order. "DazeTest" is a fake demo persona, not a real name.
+
+[[figure]]
+output = "ghost-hold-turn-off.png"
+source = "ghost-hold-turn-off-dialog.png"
+crop = [0, 840, 1080, 1345]
+# The confirmation asked when Ghost Mode is switched off with messages
+# still held. Generic dialog text, no sensitive content.
+
+[[figure]]
+output = "trigger-presets-card.png"
+source = "trigger-presets-sheet.png"
+crop = [0, 1300, 1070, 1795]
+# The Presets card: one saved preset listed by name with a summary of its
+# conditions, above the "Save current as preset" row. Right edge stops at
+# 1070 to drop a teal sliver of the chat visible behind the sheet.
