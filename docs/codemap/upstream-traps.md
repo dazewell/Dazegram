@@ -1766,3 +1766,33 @@ reaching `processNewMessages` in `MODE_SAVED` is real, but reaching this PR's ho
 a held row is not; do not conflate the two.
 
 *(Established 2026-09-12, #ghost-hold.)*
+
+## `headerItem` is null in `MODE_SCHEDULED`, and creating one switches on unrelated menu behaviour
+
+A Scheduled list has no overflow menu to add a row to. `headerItem` is assigned
+in exactly two places, gated on
+`((chatMode == 0 && (threadMessageId == 0 || isTopic)) || chatMode == MODE_SUGGESTIONS)`
+(`ChatActivity.java:5017-5022`) and on `chatMode == MODE_EDIT_BUSINESS_LINK`
+(`ChatActivity.java:5280`). Neither admits `MODE_SCHEDULED`, so in a Scheduled
+list the field stays null and that screen's action bar carries only the back
+arrow and title.
+
+The trap is the obvious workaround. Relaxing the gate at `:5017` so a Scheduled
+list gets a `headerItem` does not just add an empty menu — several unrelated
+base-file features treat `headerItem != null` as "this screen has an overflow
+menu" and start populating it. `checkLeaveChannelButton()` guards only on
+`headerItem == null || chatMode == MODE_SAVED` (`ChatActivity.java:49273-49274`)
+and is reached from the `chatInfoDidLoad` handler at `ChatActivity.java:24808`,
+which is not chatMode-gated — so a "Leave channel" / "Delete and exit" row
+appears in the Scheduled screen's overflow. `updateBotButtons()`
+(`ChatActivity.java:21555`) has the same shape, as does the `BuildConfig.DEBUG`
+"Dump Canvas" item.
+
+So a fork action that belongs on the Scheduled list needs its own fork-owned
+`ActionBarMenuItem` field created in a `MODE_SCHEDULED` branch of the menu
+block — never an assignment to the base `headerItem` field. That is also the
+smaller footprint of the two, and it matches how the fork's existing
+`nkheaderbtn_*` items are already built.
+
+*(Established 2026-09-12 while designing #332, which was closed won't-do before
+any code was written. The trap is a property of `dev`, not of that change.)*
