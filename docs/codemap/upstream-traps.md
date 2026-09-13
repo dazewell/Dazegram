@@ -1791,8 +1791,19 @@ appears in the Scheduled screen's overflow. `updateBotButtons()`
 So a fork action that belongs on the Scheduled list needs its own fork-owned
 `ActionBarMenuItem` field created in a `MODE_SCHEDULED` branch of the menu
 block — never an assignment to the base `headerItem` field. That is also the
-smaller footprint of the two, and it matches how the fork's existing
-`nkheaderbtn_*` items are already built.
+smaller footprint of the two.
+
+Note which existing fork pattern to copy, because the two are easy to confuse.
+The `nkheaderbtn_*` ids are **not** the precedent: they are
+`headerItem.lazilyAddSubItem(...)` calls that hang off the shared base field
+(`ChatActivity.java:457-498` for the ids, `:5182-5239` for the calls), so they
+are the very pattern this entry warns against and they exist only on screens
+that already have a `headerItem`. The precedent is `nkactionbarbtn_*`
+(`ChatActivity.java:453-455`, `:492-493`), which are fork-owned ids added
+straight to a menu with `addItemWithWidth` (`:11475-11509`) and dispatched from
+the fork's own `onItemClick` branch (`:4412-4414`) — including
+`nkactionbarbtn_send_now`, which already lives on the Scheduled list's
+selection action mode.
 
 *(Established 2026-09-12 while designing #332, which was closed won't-do before
 any code was written. The trap is a property of `dev`, not of that change.)*
