@@ -2357,7 +2357,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             }
 
             glassDrawable.setBounds(left, t, right, b);
-            if (!NaConfig.INSTANCE.getMaterialDesign3ChatHeader().Bool()) {
+            if (chatAvatarContainer == null || !NaConfig.INSTANCE.getMaterialDesign3ChatHeader().Bool()) {
                 glassDrawable.draw(canvas);
             }
         }
