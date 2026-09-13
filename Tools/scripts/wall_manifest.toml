@@ -190,9 +190,11 @@ output = "scheduling.png"
 [[wall.panel]]
 # dazewell's 2026-09-11 capture of the same trigger editor the original
 # panel showed, reshot after presets landed -- so this panel now carries
-# the pattern rows, their clear buttons, and the Presets card.
+# the pattern rows, their remove controls, and the Presets card.
 source = "trigger-presets-sheet.png"
-crop = [0, 0, 1080, 1795]
+# Right edge trimmed to 1070: a teal sliver of the chat behind the sheet
+# intrudes at x >= ~1074. The card itself ends near x = 1048.
+crop = [0, 0, 1070, 1795]
 caption = "Not just a clock"
 
 [[wall.panel]]
@@ -243,12 +245,14 @@ output = "trigger-presets.png"
 
 [[wall.panel]]
 source = "trigger-presets-sheet.png"
-crop = [0, 360, 1080, 900]
-caption = "Clear a row in place"
+crop = [0, 360, 1070, 900]
+# Two rows are showing, so the trailing icon is remove-mode -- it announces
+# "Remove pattern N". Clear-mode ("Clear pattern") only applies at one row.
+caption = "Stack up the patterns"
 
 [[wall.panel]]
 source = "trigger-presets-sheet.png"
-crop = [0, 1330, 1080, 1795]
+crop = [0, 1330, 1070, 1795]
 caption = "Save the whole setup"
 
 # --- FEATURES.md figures ------------------------------------------------
