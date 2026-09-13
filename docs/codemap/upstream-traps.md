@@ -1060,6 +1060,22 @@ state — making it work would have required editing stock
 `updateMessageStateAndIdInternal`, changing message-receipt behaviour for every
 chat in the app.
 
+## Grouped media carries `groupId` before every sibling reaches the send funnel
+
+The grouped-media preparation paths mint or retain a group id before dispatching
+any sibling (`SendMessagesHelper.java:11070-11076`). Each supported grouped branch
+then writes that id into the sibling's params before its UI-thread
+`sendMessage(SendMessageParams)` call: documents at `:9686-9720`, search media at
+`:11244-11264`, videos at `:11521-11565`, and photos at `:11748-11780`. By the
+time the single Ghost Hold hook runs, every sibling is already identifiable as
+grouped; `GhostHoldController.isHoldableSend` refuses a non-zero `groupId` at
+`GhostHoldController.java:235-241`, so it cannot admit only part of an album.
+
+Cost if missed: admitting one sibling would separate it from the in-memory group
+completion state and leave a partially held, partially sent album.
+
+*(Established 2026-09-12, #ghost-hold.)*
+
 ## `SendMessageParams.sendAnimationData` is non-null on every ordinary composer send
 
 `ChatActivityEnterView` builds a fresh `MessageObject.SendAnimationData` for a

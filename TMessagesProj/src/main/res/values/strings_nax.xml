@@ -207,7 +207,7 @@
     <string name="MarkReadAfterSendNotice">Automatically reads message when you send a new one or tap a reaction.</string>
     <string name="SendWithoutSoundRowNotice">Automatically sends outgoing messages without sound.</string>
     <string name="GhostHoldSwitch">Hold Messages</string>
-    <string name="GhostHoldSwitchNotice">With Hold Messages on, most plain text messages you send or schedule while Ghost Mode is active stay on this device and go out when you turn Ghost Mode off. If a chat starts charging to send while one of your messages is already held, that message stays held so you can send it by hand. Attachments always send right away, and some messages — paid chats, disappearing messages and other special sends — do too.</string>
+    <string name="GhostHoldSwitchNotice">With Hold Messages on, most plain text messages, contacts and static locations you send or schedule while Ghost Mode is active stay on this device and go out when you turn Ghost Mode off. If a chat starts charging to send while one of your messages is already held, that message stays held so you can send it by hand. Photos, videos, files, live locations and other unsupported attachments send right away, and some messages — paid chats, disappearing messages and other special sends — do too.</string>
     <string name="GhostHoldSwitchNoticeWithCount">%1$s\n%2$s</string>
     <string name="GhostHoldPending_one">%1$d message held</string>
     <string name="GhostHoldPending_other">%1$d messages held</string>

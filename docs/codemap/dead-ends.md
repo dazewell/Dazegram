@@ -828,7 +828,14 @@ the blob and the allocation already accounts for it. `decode()`'s
 rather than a misparse. The docstring is accurate; there is no asymmetry versus
 stock. No code change was made.
 
-*(Established 2026-09-11, #ghost-hold.)*
+The same generic blob also round-trips media-bearing held messages. The full
+`TLRPC.Message`, including its `media`, is serialized and deserialized at
+`GhostHoldStore.java:602-640`; Wave A assigns the exact contact or static
+geo/venue media object before encoding (`GhostHoldController.java:538-558`).
+No media-specific store column or second serialization path is needed.
+
+*(Established 2026-09-11, #ghost-hold. Media-bearing round-trip re-verified
+2026-09-12.)*
 
 ## `verCode`'s low digit does not encode a distribution channel in this fork
 
