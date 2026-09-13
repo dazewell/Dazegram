@@ -284,6 +284,22 @@ and still be wrong for this repo.
   marketing), matching neighboring entries' format (shortcut table / screenshot
   where they have one), tagged `<!-- #slug -->`? It rides *with* the code in the
   same PR, so its absence on a user-visible change is a finding.
+- **Is the entry within the 70-word bar, and is it a definition?** Count the
+  prose under the `###` heading (images and shortcut tables excluded). Over 70
+  is a finding, and so is an entry under the bar that still reads as a writeup —
+  edge cases, exclusions, failure behaviour, storage detail, rationale, or how
+  it used to work. With no CI check behind this, round 2 is where it gets
+  caught; every bloated entry in the catalog got there by passing a review that
+  only asked whether an entry existed. An extended entry is counted whole, not
+  by the sentences this change added.
+- **A trimmed entry is re-checked against the code, not just against the word
+  count.** Dropping a qualifier is the cheapest way to lose words and the
+  easiest way to make a sentence false — *most* plain text messages becoming
+  plain text messages, or a condition falling off the front of a sentence that
+  then contradicts the one above it. When a change shortens an existing entry,
+  read every surviving sentence against the implementation, not only the ones
+  it rewrote. The change that introduced this bar shipped two such defects into
+  review, both from trimming rather than from the original prose.
 - **Does any surviving artefact still describe something this change
   invalidated?** A deletion isn't complete until every artefact that described
   the removed thing is corrected — class javadoc, interface contracts, call-site
