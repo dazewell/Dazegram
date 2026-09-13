@@ -34,7 +34,6 @@ public class ConfigCellTextInput extends AbstractConfigCell implements WithBindC
     private final Runnable onClickCustom;
     private final Function<String, String> inputChecker;
     private final BiPredicate<String, String> invalidInputChecker;
-    private final boolean rebuildOnChange;
 
     public ConfigCellTextInput(String customTitle, ConfigItem bind, String hint, Runnable customOnClick) {
         this(customTitle, bind, hint, customOnClick, null);
@@ -42,19 +41,11 @@ public class ConfigCellTextInput extends AbstractConfigCell implements WithBindC
 
     // default: customTitle=null customOnClick=null
     public ConfigCellTextInput(String customTitle, ConfigItem bind, String hint, Runnable customOnClick, Function<String, String> inputChecker) {
-        this(customTitle, bind, hint, customOnClick, inputChecker, (BiPredicate<String, String>) null);
+        this(customTitle, bind, hint, customOnClick, inputChecker, null);
     }
 
     // default: customTitle=null customOnClick=null
     public ConfigCellTextInput(String customTitle, ConfigItem bind, String hint, Runnable customOnClick, Function<String, String> inputChecker, BiPredicate<String, String> invalidInputChecker) {
-        this(customTitle, bind, hint, customOnClick, inputChecker, invalidInputChecker, true);
-    }
-
-    public ConfigCellTextInput(String customTitle, ConfigItem bind, String hint, Runnable customOnClick, Function<String, String> inputChecker, boolean rebuildOnChange) {
-        this(customTitle, bind, hint, customOnClick, inputChecker, null, rebuildOnChange);
-    }
-
-    public ConfigCellTextInput(String customTitle, ConfigItem bind, String hint, Runnable customOnClick, Function<String, String> inputChecker, BiPredicate<String, String> invalidInputChecker, boolean rebuildOnChange) {
         this.bindConfig = bind;
         this.hint = Objects.requireNonNullElse(hint, "");
         if (customTitle == null) {
@@ -65,7 +56,6 @@ public class ConfigCellTextInput extends AbstractConfigCell implements WithBindC
         this.onClickCustom = customOnClick;
         this.inputChecker = inputChecker;
         this.invalidInputChecker = invalidInputChecker;
-        this.rebuildOnChange = rebuildOnChange;
     }
 
     public int getType() {
@@ -151,9 +141,7 @@ public class ConfigCellTextInput extends AbstractConfigCell implements WithBindC
             // refresh
             cellGroup.listAdapter.notifyItemChanged(cellGroup.rows.indexOf(this));
             dialog.dismiss();
-            if (rebuildOnChange) {
-                cellGroup.thisFragment.getParentLayout().rebuildFragments(0);
-            }
+            cellGroup.thisFragment.getParentLayout().rebuildFragments(0);
 
             cellGroup.runCallback(bindConfig.getKey(), newV);
         }));
