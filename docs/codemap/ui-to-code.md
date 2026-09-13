@@ -698,13 +698,4 @@ user-facing catalog and sat there uncorrected, because no screenshot of that
 screen existed to contradict it. Writing about this screen, use the labels;
 reading the code, expect the constants.
 
-The trap is that the source's own comments use the internal vocabulary — see
-"Only Middle/Trailing/Hidden ever produce this row"
-(`ComposerLayoutActivity.java:649`) — so reading the code leaves you fluent in
-names no user ever sees. That is how `FEATURES.md` came to document the zones
-as "Leading, Middle, Trailing, Hidden": the internal name leaked into a
-user-facing catalog and sat there uncorrected, because no screenshot of that
-screen existed to contradict it. Writing about this screen, use the labels;
-reading the code, expect the constants.
-
 *(Established 2026-09-13, #docs.)*
