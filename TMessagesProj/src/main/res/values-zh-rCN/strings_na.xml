@@ -107,11 +107,6 @@
     <string name="VideoPlayerDecoderHardware">仅硬解</string>
     <string name="VideoPlayerDecoderPreferHW">硬解优先</string>
     <string name="TabStyleStroke">标签指示器描边</string>
-    <string name="NagramMessages">消息</string>
-    <string name="MessagePreviewText">既然我想让代码变得糟糕，那就靠||感觉编程||吧。</string>
-    <string name="MessagePreviewPollQuestion">代码怎么样？</string>
-    <string name="MessagePreviewPollAnswerTerrible">很糟糕</string>
-    <string name="MessagePreviewPollAnswerWorse">更糟糕</string>
     <string name="InputTextAnimations">输入动画与删除粒子效果</string>
     <string name="InputAnimationStrength">动画强度</string>
     <string name="InputAnimationWeakest">最弱</string>
