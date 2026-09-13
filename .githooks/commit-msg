@@ -19,7 +19,7 @@ subject=$(head -n 1 "$msg_file")
 
 # Auto-generated / non-authored commits don't need a tag.
 case "$subject" in
-  "Merge "*|"Revert "*|"fixup! "*|"squash! "*|"amend! "*|"Initial plan") exit 0 ;;
+  "Merge "*|"Revert "*|"fixup! "*|"squash! "*|"amend! "*) exit 0 ;;
 esac
 
 # A hashtag token: # followed by lowercase letters/digits/-, with at least one

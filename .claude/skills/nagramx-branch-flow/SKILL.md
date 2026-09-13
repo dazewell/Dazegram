@@ -140,15 +140,6 @@ subject or body — e.g. `add chat lock #chatlock`. Rules:
   commits touching `.github/sync/` and the sync workflows, 27 use `#infra`,
   16 `#docs`, 3 `#ci`, and none use a feature-style slug.
 - Merge commits are exempt (they're auto-generated).
-- **A Copilot coding agent PR's seed commit, subject exactly `Initial plan`,
-  is exempt too** (`commit-tag.yml`, `.githooks/commit-msg`). It's placed
-  before any of the agent's own tagged work exists, so nothing to fold it into
-  yet, and the branch's append-only rule (below) means an agent session can't
-  safely reword or amend it away once it's pushed — a same-session reword also
-  requires the full commit history, which a fresh shallow clone doesn't carry
-  until fetched, so it isn't a mechanical fix even when attempted immediately.
-  Fixed 2026-09-12 after PR #353 shipped with an untagged one and tripped the
-  check on every push.
 - Put the tag **inline**, not alone at the start of a line — a line beginning
   with `#` can be stripped as a comment by git's editor cleanup.
 
