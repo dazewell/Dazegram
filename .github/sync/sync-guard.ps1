@@ -202,7 +202,7 @@ function Test-Workflows([string]$policy, [hashtable]$snapWf, $manifestRows) {
     if ($f.Count -gt 0) { return $f }
     if ($policy -eq 'none') {
         foreach ($p in $snapWf.Keys) {
-            $f += "workflow present under none policy (manual audit required): $p"
+            $f += "workflow forbidden under none policy: $p"
         }
         return $f
     }
@@ -217,6 +217,11 @@ function Test-Workflows([string]$policy, [hashtable]$snapWf, $manifestRows) {
         if (-not $snapWf.ContainsKey($p)) { $f += "approved workflow MISSING from snapshot: $p" }
     }
     return $f
+}
+
+function Test-FastPathWorkflows([string]$decision, [string]$policy, [hashtable]$liveNbaseWf, $manifestRows) {
+    if ($decision -ne 'uptodate') { return @() }
+    return @(Test-Workflows $policy $liveNbaseWf $manifestRows)
 }
 
 # Guard 9 + 11 + "every tree delta must be partitioned; unclassified means BLOCK".
@@ -622,6 +627,10 @@ function Invoke-SelfTest([hashtable]$pins) {
     $ok = (Assert-Passes 'Test-Workflows(none)'             (Test-Workflows 'none' @{} @()) ([ref]$log)) -and $ok
     $ok = (Assert-Fails  'Test-Workflows(policy-empty)'     (Test-Workflows '' @{} @()) ([ref]$log)) -and $ok
     $ok = (Assert-Fails  'Test-Workflows(policy-unknown)'   (Test-Workflows 'unknown' @{} @()) ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-FastPathWorkflows(none-present)' (Test-FastPathWorkflows 'uptodate' 'none' $wfGood @()) ([ref]$log)) -and $ok
+    $ok = (Assert-Passes 'Test-FastPathWorkflows(none)'         (Test-FastPathWorkflows 'uptodate' 'none' @{} @()) ([ref]$log)) -and $ok
+    $ok = (Assert-Passes 'Test-FastPathWorkflows(manifest)'     (Test-FastPathWorkflows 'uptodate' 'manifest' $wfGood $man) ([ref]$log)) -and $ok
+    $ok = (Assert-Passes 'Test-FastPathWorkflows(proceed)'      (Test-FastPathWorkflows 'proceed' 'none' $wfGood @()) ([ref]$log)) -and $ok
 
     # Guard 9 / 11 partition (fork ∩ upstream)
     $pre = @{ 'a' = '1'; 'b' = '2' }
@@ -967,6 +976,10 @@ if ($pinProblems.Count) {
 # them only on the real-candidate path, so -SelfTestOnly could pass while a
 # manifest was empty or a pin was stale — which is exactly how the stale README
 # pin survived. Reading and sanity-checking them here closes that.
+$workflowManifestLines = @(Get-Content $WorkflowManifest)
+if ($workflowManifestLines.Count -lt 1 -or $workflowManifestLines[0] -cne "path`tblob") {
+    Write-Host '::error::workflow-manifest.tsv header must be exactly path<TAB>blob'; exit 2
+}
 $protectedRows = @(Read-Tsv $ProtectedFile)
 $manifestRows  = @(Read-Tsv $WorkflowManifest)
 if ($protectedRows.Count -lt 1) { Write-Host '::error::protected-paths.tsv is empty or unreadable'; exit 2 }
@@ -1050,6 +1063,13 @@ if ($FastPathOnly) {
     $devContainsNbase = ($mbExit -eq 0)
 
     $d = Test-SyncFastPath $srcTree $OldNbase $liveNbaseTree $pins['OLD_NBASE'] $pins['OLD_NBASE_TREE'] $devContainsNbase
+    $fastWorkflowFailures = @(Test-FastPathWorkflows $d.Decision $pins['WORKFLOW_POLICY'] (Get-WorkflowBlobs $OldNbase) $manifestRows)
+    if ($fastWorkflowFailures.Count -gt 0) {
+        Write-Host '::error::fast path BLOCKED — live nbase violates the pinned workflow policy:'
+        $fastWorkflowFailures | ForEach-Object { Write-Host "::error::  - $_" }
+        Write-Host '::error::No snapshot created, no ref pushed.'
+        exit 1
+    }
     switch ($d.Decision) {
         'proceed' {
             Write-Host "fast path: proceeding to the full sync path — $($d.Reason)."
@@ -1169,7 +1189,6 @@ if ($LandCheckOnly) {
     if (-not $anchorSrcNew) {
         $failures += "land: the snapshot tree $snapTree matches no commit in nagram/$branch — it is not a faithful copy of any upstream commit"
     }
-    $failures += Test-Workflows $pins['WORKFLOW_POLICY'] (Get-WorkflowBlobs $snap) $manifestRows
     $failures += Test-LandCheck $snapParents $expectedOldNbase $revMinusOld $snap $snapTree $srcTree $srcDescends `
         $expectedOldNbaseTree $pinnedAnchorTree $pins['OLD_NBASE'] $pins['OLD_NBASE_TREE'] $snapDescendsDev
     $failures += Test-SnapshotIdentity $an $ae $cn $ce $pins['SYNC_IDENTITY_NAME'] $pins['SYNC_IDENTITY_EMAIL']

@@ -50,7 +50,9 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $basePins = Get-Content .github/sync/pins.env -Raw
           $emptyManifest = Join-Path $env:RUNNER_TEMP 'workflow-manifest-empty.tsv'
+          $badHeaderManifest = Join-Path $env:RUNNER_TEMP 'workflow-manifest-bad-header.tsv'
           Set-Content -LiteralPath $emptyManifest -Value "path`tblob" -Encoding utf8
+          Set-Content -LiteralPath $badHeaderManifest -Value "wrong`theader" -Encoding utf8
 
           function Write-Pins([string]$name, [string]$policyLine) {
             $path = Join-Path $env:RUNNER_TEMP $name
@@ -83,6 +85,9 @@ jobs:
           Assert-FailsWith 'missing workflow policy' @{
             SelfTestOnly = $true; PinsFile = $missingPins; WorkflowManifest = $emptyManifest
           } 'missing/empty: WORKFLOW_POLICY'
+          Assert-FailsWith 'malformed workflow manifest header' @{
+            SelfTestOnly = $true; PinsFile = $nonePins; WorkflowManifest = $badHeaderManifest
+          } 'header must be exactly'
           exit 0
 
       - name: sync-upstream.yml invokes the guard, uncommented, before the push
@@ -281,6 +286,23 @@ jobs:
           $nonePinText = $nonePinText -replace '(?m)^SYNC_IDENTITY_EMAIL=.*$', 'SYNC_IDENTITY_EMAIL=guard-check@dazegram.local'
           Set-Content -LiteralPath $nonePins -Value $nonePinText -NoNewline -Encoding utf8
 
+          # A premature none flip must not let the no-op fast path bless the
+          # current workflow-bearing nbase just because source and nbase match.
+          $earlyNonePins = Join-Path $env:RUNNER_TEMP 'gc-none-early-pins.env'
+          Set-Content -LiteralPath $earlyNonePins -Value ((Get-Content .github/sync/pins.env -Raw) -replace '(?m)^WORKFLOW_POLICY=.*$', 'WORKFLOW_POLICY=none') -NoNewline -Encoding utf8
+          $earlyNoneOut = (& ./.github/sync/sync-guard.ps1 -FastPathOnly -PreRef $head -OldNbase $oldNbase -NewSrc $oldNbase -PinsFile $earlyNonePins -WorkflowManifest $noneManifest *>&1 | Out-String -Width 8192)
+          $earlyNoneExit = $LASTEXITCODE
+          Write-Host $earlyNoneOut
+          if ($earlyNoneExit -eq 0 -or $earlyNoneExit -eq 3) { Write-Host '::error::none policy fast path passed a workflow-bearing live nbase'; exit 1 }
+          if ($earlyNoneOut -notmatch 'workflow forbidden under none policy') { Write-Host '::error::none policy fast path blocked for the wrong reason'; exit 1 }
+
+          # In the intended future steady state, equal workflow-free trees remain
+          # a clean no-op (exit 3), now after policy validation.
+          $noneFastOut = (& ./.github/sync/sync-guard.ps1 -FastPathOnly -PreRef $nonePre -OldNbase $noneOld -NewSrc $noneSrc -PinsFile $nonePins -WorkflowManifest $noneManifest *>&1 | Out-String -Width 8192)
+          $noneFastExit = $LASTEXITCODE
+          Write-Host $noneFastOut
+          if ($noneFastExit -ne 3) { Write-Host "::error::none policy workflow-free fast path expected exit 3, got $noneFastExit"; exit 1 }
+
           Write-Host '--- running guard on NONE-POLICY candidate with no .github tree (expect exit 0) ---'
           ./.github/sync/sync-guard.ps1 -PreRef $nonePre -OldNbase $noneOld -NewSnapshot $noneSnap -NewSrc $noneSrc -NewDev $noneCandidate -AnchorOverride $noneAnchor -PinsFile $nonePins -WorkflowManifest $noneManifest
           if ($LASTEXITCODE -ne 0) { Write-Host '::error::guard blocked a none-policy candidate with zero workflows'; exit 1 }
@@ -310,15 +332,8 @@ jobs:
           $noneBadExit = $LASTEXITCODE
           Write-Host $noneBadOut
           if ($noneBadExit -eq 0) { Write-Host '::error::none policy passed a snapshot containing a workflow'; exit 1 }
-          if ($noneBadOut -notmatch 'workflow present under none policy') { Write-Host '::error::none policy blocked for the wrong reason'; exit 1 }
+          if ($noneBadOut -notmatch 'workflow forbidden under none policy') { Write-Host '::error::none policy blocked for the wrong reason'; exit 1 }
 
-          git update-ref refs/remotes/nagram/dev $badNoneSrc
-          $noneBadLandOut = (& ./.github/sync/sync-guard.ps1 -LandCheckOnly -OldNbase $noneOld -NewSnapshot $badNoneSnap -NewDev $badNoneCandidate -PinsFile $nonePins -WorkflowManifest $noneManifest *>&1 | Out-String -Width 8192)
-          $noneBadLandExit = $LASTEXITCODE
-          Write-Host $noneBadLandOut
-          if ($noneBadLandExit -eq 0) { Write-Host '::error::none policy land check passed a snapshot containing a workflow'; exit 1 }
-          if ($noneBadLandOut -notmatch 'workflow present under none policy') { Write-Host '::error::none policy land check blocked for the wrong reason'; exit 1 }
-
-          Write-Host 'fixture OK: manifest clean passed; tampered and double-modified blocked; none-policy zero-workflow real candidate and land check passed; none-policy workflow path blocked in both modes.'
+          Write-Host 'fixture OK: manifest clean passed; tampered and double-modified blocked; none-policy fast path failed closed on workflows and passed on an empty tree; zero-workflow real candidate and land initialization passed; workflow-bearing real candidate blocked.'
           # The blocking runs intentionally left $LASTEXITCODE=1; end the step green.
           exit 0

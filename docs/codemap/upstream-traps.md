@@ -1516,12 +1516,14 @@ live `nbase` and auto-opens a pins PR containing only the three anchor pins
 manual follow-up commit before its required check can pass: set
 `WORKFLOW_POLICY=none`, truncate `workflow-manifest.tsv` to its header row, and
 correct the generated body's "only three anchor pins" claim. The policy
-validator makes an empty manifest legal only under `none`, while `none` rejects
-every observed workflow path
-(`.github/sync/sync-guard.ps1:185-220,983-987`). The always-on fixture exercises
-the workflow-free real candidate and land-check paths, plus the forbidden
-single-workflow case in both modes
-(`.github/workflows/sync-guard-check.yml:249-322`).
+validator makes a header-only manifest legal only under `none`, while `none`
+rejects every observed workflow path
+(`.github/sync/sync-guard.ps1:185-220,979-1000`). The no-op fast path also
+checks live `nbase` before returning up-to-date, so a premature `none` flip
+cannot bless the current workflow-bearing tree
+(`.github/sync/sync-guard.ps1:1066-1072`). The always-on fixture exercises the
+workflow-free fast, real-candidate, and land-initialization paths, plus the
+forbidden-workflow cases (`.github/workflows/sync-guard-check.yml:254-337`).
 
 *(Established 2026-09-13, `#infra`; Telegram root tree verified through the
 GitHub tree object for the commit above.)*
