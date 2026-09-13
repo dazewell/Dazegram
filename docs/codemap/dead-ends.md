@@ -841,6 +841,37 @@ or second serialization path is needed.
 *(Established 2026-09-11, #ghost-hold. Media-bearing round-trip re-verified
 2026-09-12.)*
 
+## "Copy a held photo privately, then restore it to its original local-id cache path"
+
+Rejected on 2026-09-13 after
+[PR #363](https://github.com/dazewell/Dazegram/pull/363) was closed unmerged.
+An app-private copy is outside the media-cache sweeps
+(`ApplicationLoader.java:188-212`, `ImageLoader.java:2416-2428`), so it can
+preserve bytes that cache cleanup would remove. It does not preserve the stock
+upload identity: `SharedConfig.getLastLocalId()` can restart from an older
+persisted value (`SharedConfig.java:489`, `:535-539`, `:563`), and both
+`ImageLoader` and `FileLoader` derive the shared cache target from only
+`volume_id/local_id` (`ImageLoader.java:4183-4233`,
+`FileLoader.java:1374-1385`, `:1696-1702`).
+
+That leaves two wrong-byte directions. Stock photo generation can reuse the id
+and replace the old cache path, after which the held retry uploads the unrelated
+photo because upload re-resolves the `PhotoSize` without checking byte identity
+(`SendMessagesHelper.java:6624-6642`, `FileLoader.java:401-427`,
+`FileUploadOperation.java:98-104`). In the other direction, restoring the
+private held bytes to a reassigned id while its cache file is absent can put
+those bytes under the path now referenced by another message. Refusing an
+existing file only detects one instant of the collision; it cannot establish
+durable ownership of the name.
+
+The direct private-copy plus restore-to-original-id design was therefore
+discarded after its failure and review evidence, not shipped. A future photo
+hold design needs an identity-preserving retry interlock or collision-safe
+repointing whose behavior is proven across stock unsent-message startup. Which
+mechanism should provide that property remains open.
+
+*(Established 2026-09-13, #ghost-hold, PR #363.)*
+
 ## `verCode`'s low digit does not encode a distribution channel in this fork
 
 Raised in review on PR #351 (the 1262 -> 1263 bump): that upstream treats the
