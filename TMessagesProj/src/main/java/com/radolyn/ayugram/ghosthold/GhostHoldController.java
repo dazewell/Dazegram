@@ -41,8 +41,8 @@ import tw.nekomimi.nekogram.NekoConfig;
 /**
  * "Hold Messages" for Ghost Mode.
  *
- * <p>When Ghost Mode is active and the Hold Messages preference is on, a plain
- * text send is not transmitted. Instead it is persisted in a fork-owned,
+ * <p>When Ghost Mode is active and the Hold Messages preference is on, a supported
+ * send is not transmitted. Instead it is persisted in a fork-owned,
  * per-account database ({@code ghosthold_<account>.db}, see {@link GhostHoldStore})
  * that no stock query ever names, so it renders in that chat's Scheduled list and
  * survives an app kill while being structurally invisible to the send path. That
@@ -172,11 +172,19 @@ public final class GhostHoldController {
 
     /**
      * Consulted once, at the single {@code sendMessage(SendMessageParams)} funnel.
-     * Reads Ghost state and the hold preference as one act and, when a plain text
+     * Reads Ghost state and the hold preference as one act and, when a supported
      * message should be held, persists it and returns true so the caller returns
      * before any in-flight send state is created.
      */
     public static boolean maybeHold(int account, long peer, SendMessagesHelper.SendMessageParams params) {
+        String smokeKind = smokeKind(params);
+        if (smokeKind != null) {
+            android.util.Log.i("NAX_SMOKE_ghost-hold",
+                    "NAX_SMOKE_ghost-hold BEGIN scenario=wave_a_contact_static_live"
+                            + " build=" + org.telegram.messenger.BuildConfig.BUILD_VERSION_STRING
+                            + " app=" + org.telegram.messenger.BuildConfig.APPLICATION_ID
+                            + " account=" + account + " kind=" + smokeKind);
+        }
         // Re-arm this account lazily. initAccount is guarded by accountInited and is
         // a cheap boolean check after the first run, but on an in-process re-login
         // (LoginActivity reuses the slot without going back through
@@ -184,16 +192,26 @@ public final class GhostHoldController {
         // observers would stay unregistered. Re-arming at the send chokepoint puts
         // them back before the first held send of the new session.
         initAccount(account);
-        if (!isHoldableTextSend(account, peer, params)) {
+        if (!isHoldableSend(account, peer, params)) {
+            if (params != null && params.location instanceof TLRPC.TL_messageMediaGeoLive) {
+                android.util.Log.i("NAX_SMOKE_ghost-hold",
+                        "NAX_SMOKE_ghost-hold END scenario=wave_a_contact_static_live"
+                                + " account=" + account + " result=live_location_immediate");
+            }
             return false;
+        }
+        if (isSmokeForbiddenAdmission(params)) {
+            android.util.Log.e("NAX_SMOKE_ghost-hold",
+                    "NAX_SMOKE_ghost-hold FORBIDDEN admitted_competing_path"
+                            + " account=" + account + " kind=" + smokeKind);
         }
         return persistHeld(account, peer, params);
     }
 
     /**
-     * The hold allowlist: true only for a plain text send whose every property we
-     * can persist on the stored {@link TLRPC.Message} (or carry in its params) and
-     * restore faithfully on flush.
+     * The hold allowlist: true only for plain text, a contact, or a static location
+     * whose every property we can persist on the stored {@link TLRPC.Message} (or
+     * carry in its params) and restore faithfully on flush.
      *
      * <p>This is deliberately an allowlist, not a denylist of known media fields.
      * A denylist fails unsafe -- a future SendMessageParams field nobody here has
@@ -208,7 +226,7 @@ public final class GhostHoldController {
      * silent flag, a user-picked schedule date, scheduleRepeatPeriod, effect_id,
      * and link-preview suppression (searchLinks). Everything else excludes the send.
      */
-    private static boolean isHoldableTextSend(int account, long peer, @Nullable SendMessagesHelper.SendMessageParams p) {
+    private static boolean isHoldableSend(int account, long peer, @Nullable SendMessagesHelper.SendMessageParams p) {
         if (p == null || !isHoldActive()) {
             return false;
         }
@@ -224,14 +242,28 @@ public final class GhostHoldController {
         if (DialogObject.isEncryptedDialog(peer)) {
             return false;
         }
-        // Must be a text send: text present, no media of any kind.
-        if (p.message == null) {
+        boolean text = p.message != null && p.location == null && p.user == null;
+        boolean contact = p.message == null && p.location == null && p.user != null;
+        boolean staticLocation = p.message == null && p.user == null && isStaticLocation(p.location);
+        if (!text && !contact && !staticLocation) {
             return false;
         }
-        if (p.location != null || p.photo != null || p.videoEditedInfo != null
+        // Every sibling in an album carries groupId before this hook. Refuse the
+        // whole class rather than admitting a partial group. Inline-result sends
+        // carry query_id and have their own resend semantics, so they stay immediate.
+        if (p.params != null) {
+            if (p.params.containsKey("groupId")
+                    && !"0".equalsIgnoreCase(p.params.get("groupId"))) {
+                return false;
+            }
+            if (p.params.containsKey("query_id")) {
+                return false;
+            }
+        }
+        if (p.photo != null || p.videoEditedInfo != null
                 || p.document != null || p.game != null || p.poll != null
                 || p.pollSendParams != null || p.todo != null || p.invoice != null
-                || p.mediaWebPage != null || p.cover != null || p.user != null
+                || p.mediaWebPage != null || p.cover != null
                 || p.richMessage != null || p.sendingStory != null) {
             return false;
         }
@@ -397,7 +429,7 @@ public final class GhostHoldController {
             countInstanceFields(SendMessagesHelper.SendMessageParams.class);
 
     /**
-     * The fail-closed half of {@link #isHoldableTextSend}: true iff no SendMessageParams
+     * The fail-closed half of {@link #isHoldableSend}: true iff no SendMessageParams
      * field the explicit guards above do not already cover is carrying non-default state
      * we would silently drop when {@code of()} rebuilds the message on flush.
      *
@@ -485,6 +517,40 @@ public final class GhostHoldController {
         return dice != null && dice.contains(message.replace("\ufe0f", ""));
     }
 
+    private static boolean isStaticLocation(@Nullable TLRPC.MessageMedia media) {
+        return (media instanceof TLRPC.TL_messageMediaGeo
+                || media instanceof TLRPC.TL_messageMediaVenue)
+                && media.geo != null;
+    }
+
+    @Nullable
+    private static String smokeKind(@Nullable SendMessagesHelper.SendMessageParams params) {
+        if (params == null) {
+            return null;
+        }
+        if (params.user != null) {
+            return "contact";
+        }
+        if (params.location instanceof TLRPC.TL_messageMediaVenue) {
+            return "venue";
+        }
+        if (params.location instanceof TLRPC.TL_messageMediaGeo) {
+            return "static_location";
+        }
+        if (params.location instanceof TLRPC.TL_messageMediaGeoLive) {
+            return "live_location";
+        }
+        return null;
+    }
+
+    private static boolean isSmokeForbiddenAdmission(SendMessagesHelper.SendMessageParams params) {
+        return params.location instanceof TLRPC.TL_messageMediaGeoLive
+                || params.params != null && (
+                        params.params.containsKey("query_id")
+                                || params.params.containsKey("groupId")
+                                && !"0".equalsIgnoreCase(params.params.get("groupId")));
+    }
+
     /**
      * True if a send to {@code peer} would resolve a send-as sender other than this
      * account's own user. Mirrors the funnel, which only applies send-as for a
@@ -509,12 +575,30 @@ public final class GhostHoldController {
         final UserConfig userConfig = UserConfig.getInstance(account);
 
         TLRPC.TL_message msg = new TLRPC.TL_message();
-        msg.message = params.message;
+        msg.message = params.message != null ? params.message : "";
         if (params.entities != null && !params.entities.isEmpty()) {
             msg.entities = params.entities;
             msg.flags |= TLRPC.MESSAGE_FLAG_HAS_ENTITIES;
         }
-        msg.media = new TLRPC.TL_messageMediaEmpty();
+        if (params.location != null) {
+            msg.media = params.location;
+        } else if (params.user != null) {
+            TLRPC.TL_messageMediaContact contact = new TLRPC.TL_messageMediaContact();
+            contact.phone_number = params.user.phone;
+            contact.first_name = params.user.first_name != null ? params.user.first_name : "";
+            contact.last_name = params.user.last_name != null ? params.user.last_name : "";
+            contact.user_id = params.user.id;
+            contact.vcard = "";
+            if (!params.user.restriction_reason.isEmpty()) {
+                String text = params.user.restriction_reason.get(0).text;
+                if (text != null && text.startsWith("BEGIN:VCARD")) {
+                    contact.vcard = text;
+                }
+            }
+            msg.media = contact;
+        } else {
+            msg.media = new TLRPC.TL_messageMediaEmpty();
+        }
         msg.flags |= TLRPC.MESSAGE_FLAG_HAS_MEDIA;
         msg.local_id = msg.id = userConfig.getNewMessageId();
         userConfig.saveConfig(false);
@@ -600,7 +684,7 @@ public final class GhostHoldController {
         try {
             blob = GhostHoldStore.encode(stableMsg);
         } catch (Exception e) {
-            // Serializing a plain-text message does not fail in practice; if it
+            // Serializing a supported message does not fail in practice; if it
             // somehow does we must not hold a message we could not persist. Return
             // false so maybeHold falls through to the normal send path, where the
             // message is actually sent (and the send-exposure warning fires) rather
@@ -645,6 +729,12 @@ public final class GhostHoldController {
                 // guarded helper checks.
                 AndroidUtilities.runOnUIThread(() -> redriveAfterPersistFailure(account, originalParams, holdSession));
                 return;
+            }
+            String kind = smokeKind(params);
+            if (kind != null) {
+                android.util.Log.i("NAX_SMOKE_ghost-hold",
+                        "NAX_SMOKE_ghost-hold EXPECTED admitted_persisted=" + kind
+                                + " account=" + account);
             }
             postScheduledCount(account, peer, holdSession);
             AndroidUtilities.runOnUIThread(() -> {
@@ -1119,7 +1209,7 @@ public final class GhostHoldController {
         // Entities are the exception: of(mo) leaves p.entities null, and the funnel's
         // outgoing request reads its entities from the params, not from the stored
         // message (SendMessagesHelper:4399,5462). So bold/links/mentions -- which we do
-        // persist onto the blob, and which isHoldableTextSend's "Held faithfully" list
+        // persist onto the blob, and which isHoldableSend's "Held faithfully" list
         // promises -- would silently vanish on flush, degrading the held message into
         // something other than what was held. Restore them from the stored message so
         // the outgoing request carries them.
@@ -1162,7 +1252,7 @@ public final class GhostHoldController {
         // future-dated one writes scheduled_messages_v2 -- both under the reused
         // negative id, which is what completeHandoff probes for.
         // An automated flush never opens a paywall. The dialog was not paid when this
-        // row was held (isHoldableTextSend excludes paid dialogs), but it can become
+        // row was held (isHoldableSend excludes paid dialogs), but it can become
         // paid before the flush. Re-driving it now would make the funnel open the Stars
         // paywall; if Ghost is re-enabled while that paywall is open and the user then
         // accepts, the funnel's deferred callback -- which we do not own -- would
@@ -1561,7 +1651,7 @@ public final class GhostHoldController {
                 continue;
             }
             TLRPC.Message m = GhostHoldStore.decode(rec.data, selfId);
-            if (m == null) {
+            if (!isSupportedHeldMessage(m)) {
                 continue;
             }
             m.id = rec.mid;
@@ -1855,7 +1945,7 @@ public final class GhostHoldController {
     private static HeldItem toHeldItem(int account, GhostHoldStore.HeldRecord rec) {
         long selfId = UserConfig.getInstance(account).getClientUserId();
         TLRPC.Message message = GhostHoldStore.decode(rec.data, selfId);
-        if (message == null) {
+        if (!isSupportedHeldMessage(message)) {
             return null;
         }
         message.id = rec.mid;
@@ -1871,6 +1961,23 @@ public final class GhostHoldController {
             }
         }
         return new HeldItem(account, rec.mid, rec.dialogId, message);
+    }
+
+    private static boolean isSupportedHeldMessage(@Nullable TLRPC.Message message) {
+        if (!isHeldMessage(message) || message.message == null) {
+            return false;
+        }
+        TLRPC.MessageMedia media = message.media;
+        if (media instanceof TLRPC.TL_messageMediaEmpty) {
+            return true;
+        }
+        if (media instanceof TLRPC.TL_messageMediaContact) {
+            return media.phone_number != null
+                    && media.first_name != null
+                    && media.last_name != null
+                    && media.vcard != null;
+        }
+        return isStaticLocation(media);
     }
 
     /**
