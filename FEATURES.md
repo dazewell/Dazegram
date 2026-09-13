@@ -47,7 +47,7 @@ A launcher shortcut (long-press the app icon, or pin it to your home screen) tha
 
 ### Hold messages while Ghost Mode is on <!-- #ghost-hold -->
 
-Turn on **Hold Messages** under Settings → Ghost Mode (off by default) and, while Ghost Mode is active, plain text messages you send stay on your device instead of going to the server. They wait in that chat's Scheduled list captioned "Held — not sent". Switching Ghost Mode off asks you to confirm, then sends everything held. Attachments, paid chats and disappearing messages always go out right away.
+Turn on **Hold Messages** under Settings → Ghost Mode (off by default) and, while Ghost Mode is active, most plain text messages you send stay on your device rather than the server. They wait in that chat's Scheduled list captioned "Held — not sent". Switching Ghost Mode off asks you to confirm, then sends them; anything that now costs to send stays held. Attachments and disappearing messages never hold.
 
 <img height="260" alt="the Hold Messages toggle in its Ghost Mode section with the explanatory footer beneath it" src="docs/images/features/ghost-hold-setting.png" />
 <img height="260" alt="a chat's Scheduled list with three held messages, each captioned Held — not sent" src="docs/images/features/ghost-hold-scheduled.png" />
@@ -60,7 +60,7 @@ With Ghost Mode on, the ghost indicator next to the chat list title stays visibl
 
 ### Ghost send warning <!-- #ghost-send-warning --> <!-- #ghost-type-warning -->
 
-Ghost Mode hides read receipts, typing and online status, but never holds a send back. The first time you type into an empty message box in a chat each Ghost session, you get a heads-up pointing you at Hold Messages, and that chat then stays quiet for the rest of the session. A chat you haven't typed into keeps warning as sends go out.
+Ghost Mode hides read receipts, typing and online status, but never holds a send back. With Hold Messages off, the first time you type into an empty message box in a chat each Ghost session you get a heads-up pointing you at Hold Messages, and that chat then stays quiet for the rest of the session. Sends that still reach the network keep warning.
 
 ### Clear Message Database removes only this install's media <!-- #clear-db-own-media -->
 
