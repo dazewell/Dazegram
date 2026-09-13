@@ -161,15 +161,21 @@ whole placeholder/thumbnail/paint block on that flag (`DialogCell.java:2765-2771
 
 Search binds message objects through overloads that set the flag to false
 (`DialogCell.java:862-894`; `org/telegram/ui/Adapters/DialogsSearchAdapter.java:2140-2150`;
-`org/telegram/ui/FilteredSearchView.java:1088-1094`). Topic search uses
+`org/telegram/ui/FilteredSearchView.java:1088-1094`). The same overload serves
+in-chat search, including Saved Messages (`org/telegram/ui/Adapters/MessagesSearchAdapter.java:232-259`),
+universal search rows (`org/telegram/ui/Components/UniversalAdapter.java:1002-1013`),
+and Saved Messages search results (`org/telegram/ui/Components/SharedMediaLayout.java:10162-10169`).
+Topic search uses
 `setForumTopic`, which also clears the flag (`org/telegram/ui/TopicsFragment.java:3861`;
 `DialogCell.java:281-293`). Do not infer search context from highlighted words:
 media-only results need the same separation without a text match.
 
-This boundary also leaves topic-list previews inside an opened forum and
-profile-channel message previews undisguised: those are message-object bindings,
+This boundary also leaves topic-list previews inside an opened forum,
+profile-channel message previews, and the Saved Messages dialog list
+undisguised: those are message-object bindings,
 not normal chat-list rows (`TopicsFragment.java:3032-3036`;
-`org/telegram/ui/Cells/ProfileChannelCell.java:217`).
+`org/telegram/ui/Cells/ProfileChannelCell.java:217`;
+`org/telegram/ui/Components/SharedMediaLayout.java:9933-9938`).
 
 *(Established 2026-09-13.)*
 
