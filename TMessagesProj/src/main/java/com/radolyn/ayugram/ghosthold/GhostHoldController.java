@@ -1161,17 +1161,14 @@ public final class GhostHoldController {
         MessageObject mo = new MessageObject(account, m, false, true);
         mo.scheduled = future;
         // of(MessageObject) rebuilds the send from the stored message: text, the full
-        // reply header, silent, invert_media and params (including our marker) all ride
-        // along. It forces searchLinks/scheduleDate on, so override both below.
+        // reply header, silent and params (including our marker) all ride along. It
+        // forces searchLinks/scheduleDate on and leaves entities/invert_media at their
+        // defaults, so restore those fields below.
         SendMessagesHelper.SendMessageParams p = SendMessagesHelper.SendMessageParams.of(mo);
-        // Entities are the exception: of(mo) leaves p.entities null, and the funnel's
-        // outgoing request reads its entities from the params, not from the stored
-        // message (SendMessagesHelper:4399,5462). So bold/links/mentions -- which we do
-        // persist onto the blob, and which isHoldableSend's "Held faithfully" list
-        // promises -- would silently vanish on flush, degrading the held message into
-        // something other than what was held. Restore them from the stored message so
-        // the outgoing request carries them.
+        // The funnel reads entities and invert_media from params and writes them back
+        // onto the stored message, so omitting either here would silently clear it.
         p.entities = m.entities;
+        p.invert_media = m.invert_media;
         p.scheduleDate = scheduleDate;
         p.searchLinks = m.params == null || !PARAM_VALUE.equals(m.params.get(PARAM_NO_WEBPAGE));
         if (m.params != null) {

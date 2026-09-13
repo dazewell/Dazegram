@@ -828,11 +828,15 @@ the blob and the allocation already accounts for it. `decode()`'s
 rather than a misparse. The docstring is accurate; there is no asymmetry versus
 stock. No code change was made.
 
-The same generic blob also round-trips media-bearing held messages. The full
-`TLRPC.Message`, including its `media`, is serialized and deserialized at
-`GhostHoldStore.java:602-640`; Wave A assigns the exact contact or static
-geo/venue media object before encoding (`GhostHoldController.java:547-563`).
-No media-specific store column or second serialization path is needed.
+The same generic blob also round-trips the TL-defined send payload of
+media-bearing held messages. The `TLRPC.Message`, including its serialized
+`media`, is encoded and decoded at `GhostHoldStore.java:602-640`; Wave A assigns
+the contact or static geo/venue object before encoding
+(`GhostHoldController.java:547-563`). For venues that preserves geo, title,
+address, provider, venue id and venue type (`TLRPC.java:7382-7407`), but not the
+fork-only icon, emoji, query/result ids or geo address fields. Inline-result
+venues are therefore refused before persistence. No media-specific store column
+or second serialization path is needed.
 
 *(Established 2026-09-11, #ghost-hold. Media-bearing round-trip re-verified
 2026-09-12.)*
