@@ -353,12 +353,14 @@ public final class GhostHoldController {
         // a held ephemeral message would flush as an ordinary, non-vanishing one -- a
         // privacy degradation, not a cosmetic one. The explicit ephemeralReceiverBotId
         // field is only one source: also refuse a reply to an ephemeral message and
-        // an ephemeral slash command. The command case is keyed on the funnel's own
-        // getEphemeralCommandBotId -- a side-effect-free lookup that returns 0 for any
-        // text not starting with '/' or a non-chat peer -- so the two cannot disagree.
+        // an ephemeral slash command. Mirror the funnel's caption-before-message
+        // choice: photo text lives in caption, while plain text lives in message.
+        // getEphemeralCommandBotId is side-effect-free and returns 0 for any text not
+        // starting with '/' or a non-chat peer, so the two cannot disagree.
         if (p.ephemeralReceiverBotId != 0
                 || (p.replyToMsg != null && p.replyToMsg.isEphemeral())
-                || org.telegram.messenger.utils.EphemeralMessagesHelper.getInstance(account).getEphemeralCommandBotId(p.message, peer) != 0) {
+                || org.telegram.messenger.utils.EphemeralMessagesHelper.getInstance(account)
+                .getEphemeralCommandBotId(!android.text.TextUtils.isEmpty(p.caption) ? p.caption : p.message, peer) != 0) {
             return false;
         }
         // Send-as identity: a channel/megagroup post can resolve a non-self sender
