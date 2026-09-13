@@ -76,7 +76,7 @@ Each chat's Notifications screen (open a chat → its name → Notifications) ha
 
 The compose field sits in a glass text pill with Send or mic at its trailing end, and a row of action bubbles below it — Quote, Spoiler, Select All and Clear — which enable when there's text to act on.
 
-The style buttons — Bold, Italic, Monospace, Strikethrough, Underline, Spoiler, Quote, Code — toggle off if you re-apply them to already-styled text, here or in the platform's own selection popup.
+Style buttons (Bold, Italic, Monospace, Strikethrough, Underline, Spoiler, Quote, Code) toggle off if you re-apply them to already-styled text, here or in the platform's selection popup.
 
 <img height="180" alt="compose field with a phrase selected, so the action bubbles in the row below render enabled rather than greyed out" src="docs/images/features/composer-toolbar-live.png" />
 
