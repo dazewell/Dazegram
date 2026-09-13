@@ -1069,7 +1069,7 @@ then writes that id into the sibling's params before its UI-thread
 `:11244-11264`, videos at `:11521-11565`, and photos at `:11748-11780`. By the
 time the single Ghost Hold hook runs, every sibling is already identifiable as
 grouped; `GhostHoldController.isHoldableSend` refuses a non-zero `groupId` at
-`GhostHoldController.java:235-241`, so it cannot admit only part of an album.
+`GhostHoldController.java:236-240`, so it cannot admit only part of an album.
 
 Cost if missed: admitting one sibling would separate it from the in-memory group
 completion state and leave a partially held, partially sent album.
