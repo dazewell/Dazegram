@@ -142,6 +142,8 @@ public final class GhostHoldController {
     // flush whose only row was deleted reports nothing instead of "1 sent". Reset at
     // performFlush start; one flush runs at a time (flushInProgress).
     private static final AtomicInteger flushSent = new AtomicInteger();
+    private static final java.util.concurrent.atomic.AtomicBoolean smokeAlbumBypassLogged = new java.util.concurrent.atomic.AtomicBoolean();
+    private static final java.util.concurrent.atomic.AtomicBoolean smokeUnsupportedBypassLogged = new java.util.concurrent.atomic.AtomicBoolean();
 
     // NagramX: the per-account session tokens this flush pinned at confirm time
     // (promptFlush's collect callback), stashed for the terminal completion report.
@@ -200,9 +202,21 @@ public final class GhostHoldController {
         initAccount(account);
         LocalPhotoSource photoSource = inspectLocalPhoto(account, params);
         if (!isHoldableSend(account, peer, params, photoSource)) {
+            if (params != null && params.photo != null) {
+                if (isGrouped(params) && smokeAlbumBypassLogged.compareAndSet(false, true)) {
+                    android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold EXPECTED album-bypass account=" + account);
+                } else if (!isGrouped(params) && smokeUnsupportedBypassLogged.compareAndSet(false, true)) {
+                    android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold EXPECTED unsupported-bypass account=" + account);
+                }
+            }
             return false;
         }
         return persistHeld(account, peer, params, photoSource);
+    }
+
+    private static boolean isGrouped(SendMessagesHelper.SendMessageParams params) {
+        return params.params != null && params.params.containsKey("groupId")
+                && !"0".equalsIgnoreCase(params.params.get("groupId"));
     }
 
     /**
@@ -617,6 +631,18 @@ public final class GhostHoldController {
         msg.flags |= TLRPC.MESSAGE_FLAG_HAS_MEDIA;
         msg.local_id = msg.id = userConfig.getNewMessageId();
         userConfig.saveConfig(false);
+        if (photoSource != null) {
+            android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold BEGIN scenario=single-photo build="
+                    + org.telegram.messenger.BuildConfig.BUILD_VERSION_STRING + " app="
+                    + org.telegram.messenger.BuildConfig.APPLICATION_ID + " account=" + account + " held_mid=" + msg.id);
+            android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold EXPECTED admission account="
+                    + account + " held_mid=" + msg.id);
+        } else if (params.photo != null) {
+            android.util.Log.e("GhostHoldSmoke", "NAX_SMOKE_ghost-hold FORBIDDEN unsupported-admission account=" + account);
+        }
+        if (params.photo != null && isGrouped(params)) {
+            android.util.Log.e("GhostHoldSmoke", "NAX_SMOKE_ghost-hold FORBIDDEN album-admission account=" + account);
+        }
         msg.out = true;
         msg.from_id = new TLRPC.TL_peerUser();
         msg.from_id.user_id = userConfig.getClientUserId();
@@ -751,6 +777,8 @@ public final class GhostHoldController {
                     AndroidUtilities.runOnUIThread(() -> redriveAfterPersistFailure(account, originalParams, holdSession));
                     return;
                 }
+                android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold EXPECTED private-copy account="
+                        + account + " held_mid=" + stableMsg.id);
                 if (sessionEpoch.get(account) != holdSession) {
                     store.discardUncommittedAssetOnQueue(asset);
                     return;
@@ -765,6 +793,8 @@ public final class GhostHoldController {
                     AndroidUtilities.runOnUIThread(() -> redriveAfterPersistFailure(account, originalParams, holdSession));
                     return;
                 }
+                android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold EXPECTED asset-row account="
+                        + account + " held_mid=" + stableMsg.id);
                 if (sessionEpoch.get(account) != holdSession) {
                     store.deleteAssetOnQueue(stableMsg.id);
                     return;
@@ -788,6 +818,10 @@ public final class GhostHoldController {
                 // guarded helper checks.
                 AndroidUtilities.runOnUIThread(() -> redriveAfterPersistFailure(account, originalParams, holdSession));
                 return;
+            }
+            if (photoSource != null) {
+                android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold EXPECTED held-row account="
+                        + account + " held_mid=" + stableMsg.id);
             }
             postScheduledCount(account, peer, holdSession);
             AndroidUtilities.runOnUIThread(() -> {
@@ -1257,7 +1291,12 @@ public final class GhostHoldController {
             largest.location.dc_id = 0;
             largest.size = (int) asset.size;
             File target = FileLoader.getInstance(item.account).getPathToAttach(largest);
-            if (target == null || target.exists()) {
+            if (target == null) {
+                continue;
+            }
+            if (target.exists()) {
+                android.util.Log.e("GhostHoldSmoke", "NAX_SMOKE_ghost-hold FORBIDDEN overwrite-existing-target account="
+                        + item.account + " held_mid=" + item.mid);
                 continue;
             }
             if (!copyFailIfExists(source, target, asset.size)) {
@@ -1267,6 +1306,8 @@ public final class GhostHoldController {
                 deleteOwnedCacheFile(target);
                 return null;
             }
+            android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold EXPECTED cache-materialize account="
+                    + item.account + " held_mid=" + item.mid);
             return new PhotoMaterialization(target);
         }
         return null;
@@ -1551,6 +1592,10 @@ public final class GhostHoldController {
                         // private file.
                         if (store.markAssetHandedOffOnQueue(mid)) {
                             store.deleteOnQueue(mid);
+                            if (sentObj != null && sentObj.isPhoto()) {
+                                android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold EXPECTED handoff account="
+                                        + account + " held_mid=" + mid);
+                            }
                             // Only a genuine, uncancelled handoff counts as sent.
                             flushSent.incrementAndGet();
                         }
@@ -2555,6 +2600,10 @@ public final class GhostHoldController {
                     GhostHoldStore.AssetRecord asset = store.selectAssetOnQueue(oldId);
                     if (asset != null && asset.handedOff) {
                         store.deleteAssetOnQueue(oldId);
+                        android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold EXPECTED server-confirm-release account="
+                                + account + " held_mid=" + oldId);
+                        android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold END scenario=single-photo account="
+                                + account + " held_mid=" + oldId);
                     }
                 });
                 return;
