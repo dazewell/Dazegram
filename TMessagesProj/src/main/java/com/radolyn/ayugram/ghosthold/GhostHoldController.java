@@ -200,6 +200,12 @@ public final class GhostHoldController {
         // observers would stay unregistered. Re-arming at the send chokepoint puts
         // them back before the first held send of the new session.
         initAccount(account);
+        if (params != null && params.photo != null) {
+            android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold DIAG photo-state account="
+                    + account + " hold_active=" + isHoldActive()
+                    + " ghost_active=" + NekoConfig.isGhostModeActive()
+                    + " hold_enabled=" + NekoConfig.holdMessagesWhileGhost.Bool());
+        }
         LocalPhotoSource photoSource = inspectLocalPhoto(account, params);
         if (!isHoldableSend(account, peer, params, photoSource)) {
             if (params != null && params.photo != null) {
@@ -240,19 +246,19 @@ public final class GhostHoldController {
     private static boolean isHoldableSend(int account, long peer, @Nullable SendMessagesHelper.SendMessageParams p,
                                           @Nullable LocalPhotoSource photoSource) {
         if (p == null || !isHoldActive()) {
-            return false;
+            return smokeReject(p, "hold-inactive");
         }
         // A re-drive after a failed durable write is explicitly not to be held.
         if (p.params != null && PARAM_VALUE.equals(p.params.get(PARAM_BYPASS))) {
-            return false;
+            return smokeReject(p, "bypass");
         }
         // A flush re-drive carries retryMessageObject; it must never be re-held.
         if (p.retryMessageObject != null) {
-            return false;
+            return smokeReject(p, "retry");
         }
         // Secret chats have their own send machinery and lifetime; leave them alone.
         if (DialogObject.isEncryptedDialog(peer)) {
-            return false;
+            return smokeReject(p, "secret-chat");
         }
         boolean text = p.message != null && p.location == null && p.user == null;
         boolean contact = p.message == null && p.location == null && p.user != null;
@@ -260,7 +266,7 @@ public final class GhostHoldController {
         boolean photo = p.message == null && p.location == null && p.user == null
                 && p.photo != null && photoSource != null;
         if (!text && !contact && !staticLocation && !photo) {
-            return false;
+            return smokeReject(p, "shape-or-photo-source");
         }
         // Every sibling in an album carries groupId before this hook. Refuse the
         // whole class rather than admitting a partial group. Inline-result sends
@@ -268,13 +274,13 @@ public final class GhostHoldController {
         if (p.params != null) {
             if (p.params.containsKey("groupId")
                     && !"0".equalsIgnoreCase(p.params.get("groupId"))) {
-                return false;
+            return smokeReject(p, "grouped");
             }
             if (p.params.containsKey("query_id")) {
-                return false;
+            return smokeReject(p, "inline-query");
             }
             if (p.params.containsKey("final") || p.params.containsKey("parentObject")) {
-                return false;
+            return smokeReject(p, "group-final-or-parent");
             }
         }
         if ((!photo && p.photo != null) || p.videoEditedInfo != null
@@ -282,7 +288,7 @@ public final class GhostHoldController {
                 || p.pollSendParams != null || p.todo != null || p.invoice != null
                 || p.mediaWebPage != null || p.cover != null
                 || p.richMessage != null || p.sendingStory != null) {
-            return false;
+            return smokeReject(p, "other-media");
         }
         // The chat-arguments bundle is ALWAYS attached on a composer send:
         // ChatActivity.getMessageChatSendParams() builds a fresh non-null object
@@ -298,7 +304,7 @@ public final class GhostHoldController {
         if (chatArgs != null && (chatArgs.welcomeMessageChatId != 0
                 || chatArgs.quickReplyShortcut != null
                 || chatArgs.quickReplyShortcutId != 0)) {
-            return false;
+            return smokeReject(p, "chat-arguments");
         }
         // Metadata we do not persist and restore -> refuse rather than degrade:
         //  reply markup (an inline keyboard attached to the send),
@@ -345,7 +351,7 @@ public final class GhostHoldController {
                 || p.ttl != 0
                 || isDiceEmojiText(account, p.message)
                 || p.canUsePangu != null) {
-            return false;
+            return smokeReject(p, "unsupported-metadata");
         }
         // Ephemeral receiver: the funnel picks the ephemeral target from three
         // sources (SendMessagesHelper ~:4470-4476) and our hook runs before that
@@ -361,14 +367,14 @@ public final class GhostHoldController {
                 || (p.replyToMsg != null && p.replyToMsg.isEphemeral())
                 || org.telegram.messenger.utils.EphemeralMessagesHelper.getInstance(account)
                 .getEphemeralCommandBotId(!android.text.TextUtils.isEmpty(p.caption) ? p.caption : p.message, peer) != 0) {
-            return false;
+            return smokeReject(p, "ephemeral");
         }
         // Send-as identity: a channel/megagroup post can resolve a non-self sender
         // (a linked channel, an anonymous admin, a broadcast identity). persistHeld
         // hardcodes from_id = self, so holding such a send would flush it under the
         // wrong identity. Mirror the funnel's resolution and refuse a non-self one.
         if (resolvesNonSelfSendAs(account, peer)) {
-            return false;
+            return smokeReject(p, "send-as");
         }
         // Paid direct messages: holding one defers a payment to a later moment the
         // user did not choose (a flush triggered by toggling Ghost off), possibly at
@@ -381,7 +387,7 @@ public final class GhostHoldController {
         // which becomes paid *after* it was held is not auto-re-driven into a paywall:
         // an automated flush never opens a paywall.
         if (isPaidDialog(account, peer)) {
-            return false;
+            return smokeReject(p, "paid");
         }
         // Cross-chat reply: replying to a message in a DIFFERENT dialog than the send
         // target (SendMessagesHelper:5152-5183). The funnel sets reply_to_peer_id and
@@ -397,7 +403,7 @@ public final class GhostHoldController {
         // media, ephemeral and poll/todo replies: the message is sent now, exactly as
         // composed, and the send-exposure warning speaks.
         if (p.replyToMsg != null && p.replyToMsg.getDialogId() != peer) {
-            return false;
+            return smokeReject(p, "cross-chat-reply");
         }
         // A same-dialog cross-topic forum reply is the other half of that trap. In a
         // forum the funnel takes its anotherTopic path (SendMessagesHelper:5164-5180)
@@ -414,7 +420,7 @@ public final class GhostHoldController {
             if (ChatObject.isForum(chat)
                     && p.replyToTopMsg.getId() != p.replyToMsg.getId()
                     && MessageObject.getTopicId(account, p.replyToMsg.messageOwner, true) != p.replyToTopMsg.getId()) {
-                return false;
+                return smokeReject(p, "cross-topic-reply");
             }
         }
         // Fail-closed backstop for the remaining fields no explicit guard above
@@ -423,9 +429,16 @@ public final class GhostHoldController {
         // new field then defaults to "refuse to hold" (send now, correctly, and let
         // the exposure warning speak) rather than "hold and mangle".
         if (!onlyPersistedFieldsSet(p, photo)) {
-            return false;
+            return smokeReject(p, "field-backstop");
         }
         return true;
+    }
+
+    private static boolean smokeReject(@Nullable SendMessagesHelper.SendMessageParams params, String reason) {
+        if (params != null && params.photo != null) {
+            android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold DIAG refusal reason=" + reason);
+        }
+        return false;
     }
 
     // Count of declared instance fields on SendMessageParams this method was written
@@ -497,24 +510,49 @@ public final class GhostHoldController {
 
     @Nullable
     private static LocalPhotoSource inspectLocalPhoto(int account, @Nullable SendMessagesHelper.SendMessageParams p) {
-        if (p == null || p.photo == null || p.path != null || p.photo.access_hash != 0
-                || p.isLivePhoto || p.ttl != 0 || p.parentObject != null
-                || p.photo.sizes == null || p.photo.sizes.isEmpty()
-                || p.photo.video_sizes != null && !p.photo.video_sizes.isEmpty()
-                || hasRemoteOriginalPath(p.params)) {
+        if (p == null || p.photo == null) {
+            return null;
+        }
+        String sourceReason = null;
+        if (p.path != null) {
+            sourceReason = "path";
+        } else if (p.photo.access_hash != 0) {
+            sourceReason = "access-hash";
+        } else if (p.isLivePhoto) {
+            sourceReason = "live-photo";
+        } else if (p.ttl != 0) {
+            sourceReason = "ttl";
+        } else if (p.parentObject != null) {
+            sourceReason = "parent-object";
+        } else if (p.photo.sizes == null || p.photo.sizes.isEmpty()) {
+            sourceReason = "no-sizes";
+        } else if (p.photo.video_sizes != null && !p.photo.video_sizes.isEmpty()) {
+            sourceReason = "video-sizes";
+        } else if (hasRemoteOriginalPath(p.params)) {
+            sourceReason = "remote-original-path";
+        }
+        if (sourceReason != null) {
+            android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold DIAG source-refusal reason=" + sourceReason);
             return null;
         }
         TLRPC.PhotoSize largest = p.photo.sizes.get(p.photo.sizes.size() - 1);
         if (largest == null || largest instanceof TLRPC.TL_photoStrippedSize
                 || largest instanceof TLRPC.TL_photoPathSize || largest.location == null
                 || largest.location instanceof com.radolyn.ayugram.utils.AyuFileLocation) {
+            android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold DIAG source-refusal reason=largest-shape");
             return null;
         }
         File source = FileLoader.getInstance(account).getPathToAttach(largest);
         long length = source != null ? source.length() : 0;
         if (length <= 0 || length > MAX_PHOTO_ASSET_BYTES || !source.isFile()) {
+            android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold DIAG source-refusal reason=file-boundary"
+                    + " length=" + length + " declared_size=" + largest.size);
             return null;
         }
+        android.util.Log.i("GhostHoldSmoke", "NAX_SMOKE_ghost-hold DIAG source-accepted"
+                + " photo_id=" + p.photo.id + " dc_id=" + p.photo.dc_id
+                + " volume_id=" + largest.location.volume_id + " local_id=" + largest.location.local_id
+                + " length=" + length + " declared_size=" + largest.size);
         return new LocalPhotoSource(source, length);
     }
 
