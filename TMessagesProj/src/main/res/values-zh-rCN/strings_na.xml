@@ -16,6 +16,7 @@
     <string name="PhotoCopied">图片已复制到剪贴板</string>
     <string name="ToTheBeginning">回到顶部</string>
     <string name="DateOfForwardedMsg">显示转发消息日期</string>
+    <string name="ShowForwardCount">显示转发次数</string>
     <string name="ShowMessageID">显示消息 ID</string>
     <string name="ShowRPCError">显示 RPC 错误</string>
     <string name="ShowPremiumStickersAnimation">显示 Premium 贴纸动画</string>
@@ -106,4 +107,11 @@
     <string name="VideoPlayerDecoderHardware">仅硬解</string>
     <string name="VideoPlayerDecoderPreferHW">硬解优先</string>
     <string name="TabStyleStroke">标签指示器描边</string>
+    <string name="InputTextAnimations">输入动画与删除粒子效果</string>
+    <string name="InputAnimationStrength">动画强度</string>
+    <string name="InputAnimationWeakest">最弱</string>
+    <string name="InputAnimationWeak">较弱</string>
+    <string name="InputAnimationModerate">适中</string>
+    <string name="InputAnimationStrong">较强</string>
+    <string name="InputAnimationStrongest">最强</string>
 </resources>

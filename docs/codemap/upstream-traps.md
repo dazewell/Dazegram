@@ -1766,3 +1766,61 @@ reaching `processNewMessages` in `MODE_SAVED` is real, but reaching this PR's ho
 a held row is not; do not conflate the two.
 
 *(Established 2026-09-12, #ghost-hold.)*
+
+## A clean 3-way auto-merge from upstream is not a compiling one: base-file call sites can bind to upstream symbols the fork never carried
+
+Established reconciling Nagram `309f143df` (snapshot `1c2ea112b9`) onto the
+nbase anchor. `git merge-tree` produced 63 conflicts, but the breakages that
+actually stopped the build were all in files that auto-merged with **no**
+conflict marker. The pattern each time: an upstream commit changed a base-file
+call site to reference a helper method or config key that lives in upstream but
+not in this fork, and the merge driver took that line cleanly because the fork
+had not touched that exact line. Nothing surfaces until `compileDebugJavaWithJavac`.
+Grepping the merged tree for the conflicted files is not enough; the whole
+incoming delta has to compile.
+
+Three concrete instances from this sync, each fixed by reconciling onto the
+symbol the fork already has (never by importing the upstream one):
+
+- **Camera guard.** Upstream `365c3129b1` added `&& !getHideInstantCamera().Bool()`
+  onto the fork's existing instant-camera guard. The fork has no `HideInstantCamera`
+  key; it guards on `NekoConfig.disableInstantCamera` instead
+  (`ChatAttachAlertPhotoLayout.java:840`, `:4168`). Resolution: drop the incoming
+  clause. This is the same call edge that shipped a non-compiling `dev` once before
+  (the 12.10.1 -> `94ee739c` reconciliation), so it is worth checking on every sync.
+- **`verifiedExtended()`.** Upstream added `TLRPC.User.verifiedExtended()` /
+  `TLRPC.Chat.verifiedExtended()` (`verified || developer-badge check`) and switched
+  ~12 title/badge call sites in `ChatActivity.java` and `ProfileActivity.java` to it.
+  The method body depends on `NekoXConfig.developers` / `officialChats` /
+  `isDeveloper()` and `ArrayUtil` — none of which the fork carries (the fork has
+  `ArrayUtils` with an s, and no NekoX developer-badge config) — and the fork's own
+  heavily-modified `TLRPC.java` won the merge, so the method never arrived. Resolution:
+  revert those call sites to plain `.verified`, and record this as a **deliberate
+  exclusion of an upstream feature**, not a behavioural equivalence. It is *not*
+  behaviour-preserving: `NekoXConfig.isDeveloper()` seeds its cached result to `true`
+  (`NekoXConfig.java:129-140` upstream) before the real check runs, so
+  `verifiedExtended()` hands a local "verified" badge to every viewer of the
+  hard-coded developer / official-chat IDs — and even with that corrected it scans
+  *all* active accounts rather than the one account actually displaying the badge, so
+  it is wrong under this fork's multi-account model too. The fork removed Nagram's
+  hard-coded developer-identity layer on purpose; `.verified` (the real server flag)
+  is the intended post-removal behaviour, not an approximation of the upstream method.
+  After the revert both files are byte-identical to `dev`.
+- **Relocated string keys collide as duplicate resources.** The fork moved ~11 strings
+  (e.g. `GhostMode`, `DeleteCloudBackup`, `ResetSettings`, `TestBackendOn`) out of
+  `strings_na.xml` / `strings_neko.xml` into fork-owned `strings_nax.xml`. Upstream
+  still ships them in `strings_na` / `strings_neko`, so a blanket union of those
+  tables re-imports upstream's copies and `aapt` fails with `Duplicate resources`
+  against the `strings_nax` copy (81 collisions this sync, default + localized). A union
+  of `na` / `neko` must exclude any key already present in the sibling `strings_nax`;
+  the genuinely-new upstream keys are the only ones that should land.
+
+Separately, a **brand-new upstream file cannot always be adopted wholesale**:
+`MessagesPreviewCell` (upstream's "live message previews" settings preview) binds to
+the fork-removed update subsystem via `UpdateUtil.channelUsername` and to config keys
+the fork lacks (`ShowEditedIcon`, `ShowVoteCountBeforeVote`). It was dropped this sync
+rather than rewired, since reintroducing `UpdateUtil` would widen the merge well beyond
+the feature. When a new upstream file references a subsystem this fork deleted, dropping
+the file is usually cheaper and safer than resurrecting the subsystem.
+
+*(Established 2026-09-13, #infra.)*

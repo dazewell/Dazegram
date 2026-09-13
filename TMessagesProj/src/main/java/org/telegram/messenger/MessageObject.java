@@ -6113,7 +6113,7 @@ public class MessageObject {
                         }
                     }
                 }
-            } else if (messageOwner.translated) {
+            } else if (messageOwner.translated && !TextUtils.isEmpty(messageOwner.translatedMessage)) {
                 messageText = MessageHelper.zalgoFilter(messageOwner.translatedMessage);
             } else {
                 if (messageOwner.message != null) {
@@ -7676,7 +7676,7 @@ public class MessageObject {
             newCaptionSummarized = false;
             newCaptionTranslated = true;
             text = messageText != null ? messageText.toString() : messageOwner.translatedText.text;
-        } else if (messageOwner.translated) {
+        } else if (messageOwner.translated && !TextUtils.isEmpty(messageOwner.translatedMessage)) {
             // NekoX Translate
             newCaptionSummarized = false;
             newCaptionTranslated = false;
@@ -7701,7 +7701,7 @@ public class MessageObject {
             entities = messageOwner.summaryText.entities;
         } else if (messageOwner.translatedText != null && translated) {
             entities = MessageHelper.getEntitiesForText(this, text, false);
-        } else if (messageOwner.translated) {
+        } else if (messageOwner.translated && !TextUtils.isEmpty(messageOwner.translatedMessage)) {
             // NekoX Translate
             entities = MessageHelper.getEntitiesForText(this, text, summarized);
         }
