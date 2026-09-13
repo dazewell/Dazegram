@@ -70,8 +70,9 @@ jobs:
           ./.github/sync/sync-guard.ps1 -SelfTestOnly -CheckPinsAgainst HEAD -PinsFile $nonePins -WorkflowManifest $emptyManifest
           if ($LASTEXITCODE -ne 0) { Write-Host '::error::none policy failed to initialize with an empty manifest'; exit 1 }
 
+          $manifestPins = Write-Pins 'pins-manifest.env' 'WORKFLOW_POLICY=manifest'
           Assert-FailsWith 'manifest with empty manifest' @{
-            SelfTestOnly = $true; PinsFile = '.github/sync/pins.env'; WorkflowManifest = $emptyManifest
+            SelfTestOnly = $true; PinsFile = $manifestPins; WorkflowManifest = $emptyManifest
           } 'manifest requires a non-empty'
           $unknownPins = Write-Pins 'pins-unknown.env' 'WORKFLOW_POLICY=unknown'
           Assert-FailsWith 'unknown workflow policy' @{
