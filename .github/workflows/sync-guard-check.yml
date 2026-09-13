@@ -82,6 +82,7 @@ jobs:
           Assert-FailsWith 'missing workflow policy' @{
             SelfTestOnly = $true; PinsFile = $missingPins; WorkflowManifest = $emptyManifest
           } 'missing/empty: WORKFLOW_POLICY'
+          exit 0
 
       - name: sync-upstream.yml invokes the guard, uncommented, before the push
         shell: pwsh

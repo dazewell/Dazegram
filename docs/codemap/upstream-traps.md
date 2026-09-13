@@ -1516,7 +1516,7 @@ The policy validator now makes an empty manifest legal only under `none`, while
 `none` rejects every observed workflow path
 (`.github/sync/sync-guard.ps1:185-221,975-986`). The always-on fixture exercises
 the workflow-free real candidate and land-check paths, plus the forbidden
-single-workflow case (`.github/workflows/sync-guard-check.yml:247-311`).
+single-workflow case (`.github/workflows/sync-guard-check.yml:248-312`).
 
 *(Established 2026-09-13, `#infra`; Telegram root tree verified through the
 GitHub tree object for the commit above.)*
