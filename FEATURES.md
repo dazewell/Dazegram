@@ -85,7 +85,7 @@ If your chat wallpaper has a pattern on it, it now reads through the glass compo
 
 ### Composer toolbar layout editor <!-- #composer-layout --> <!-- #composer-layout-tap-toggle --> <!-- #composer-leading-2slot -->
 
-The button row under the compose box is yours to arrange via chat settings. You can place any action in any zone (Leading, Middle, Trailing, Hidden). The Leading zone is capped at two slots. Tapping a row in Hidden or Middle toggles it straight to the other section without dragging. Hold any button on the live toolbar for about one second to open this editor directly.
+The button row under the compose box is yours to arrange via chat settings. You can place any action in any zone (Leading, Scrolling, Trailing, Hidden). The Leading zone is capped at two slots. Tapping a row in Hidden or Scrolling toggles it straight to the other section without dragging. Hold any button on the live toolbar for about one second to open this editor directly.
 
 <img height="260" alt="layout editor listing draggable toolbar buttons under a Leading zone capped at two slots, a drop hint, and the start of the Scrolling zone" src="docs/images/features/composer-layout-zones.png" />
 
