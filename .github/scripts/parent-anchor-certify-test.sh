@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Manual regression gate: run whenever this script, the certification helper,
+# or commit-tag.yml changes. It stays off the PR path so PR validation is unchanged.
+
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 WORKFLOW=$(cd "$SCRIPT_DIR/.." && pwd)/workflows/commit-tag.yml
 source "$SCRIPT_DIR/parent-anchor-certify.sh"
@@ -89,25 +92,40 @@ wrong_branch() (
   require_branch_name
 )
 
+workflow_wiring() (
+  grep -Fxq "    branches: ['*-parent-anchor-certify']" "$WORKFLOW"
+  grep -Fxq "    types: [opened, reopened, synchronize]" "$WORKFLOW"
+  grep -Fxq "    name: Every commit carries a #tag" "$WORKFLOW"
+  ! grep -Eq '^    if:' "$WORKFLOW"
+  awk '
+    $0 == "      - name: Resolve pull request range" {
+      getline
+      found_pr = ($0 == "        if: github.event_name == '\''pull_request'\''")
+    }
+    $0 == "      - name: Certify parent anchor" {
+      getline
+      found_push = ($0 == "        if: github.event_name == '\''push'\''")
+    }
+    END { exit !(found_pr && found_push) }
+  ' "$WORKFLOW"
+)
+
 underscore_branch() (
   BRANCH_NAME=2026-09-13_parent-anchor-certify
   require_branch_name
 )
 
 dev_not_ancestor() (
-  DEV=$DEV
   HEAD=$(printf 'unrelated\n' | git -C "$REPO" commit-tree "$DEV_TREE")
   require_dev_ancestor
 )
 
 empty_range() (
-  DEV=$DEV
   HEAD=$DEV
   require_two_commit_range
 )
 
 extra_range() (
-  DEV=$DEV
   local x1 x2
   x1=$(printf 'extra one\n' | git -C "$REPO" commit-tree "$DEV_TREE" -p "$DEV")
   x2=$(printf 'extra two\n' | git -C "$REPO" commit-tree "$DEV_TREE" -p "$x1")
@@ -116,13 +134,11 @@ extra_range() (
 )
 
 head_tree_differs() (
-  DEV=$DEV
   HEAD=$(printf 'changed tree\n' | git -C "$REPO" commit-tree "$NBASE_TREE" -p "$DEV")
   require_head_tree_matches_dev
 )
 
 merge_count_wrong() (
-  DEV=$DEV
   local x1
   x1=$(printf 'plain one\n' | git -C "$REPO" commit-tree "$DEV_TREE" -p "$DEV")
   HEAD=$(printf 'plain two\n' | git -C "$REPO" commit-tree "$DEV_TREE" -p "$x1")
@@ -130,37 +146,31 @@ merge_count_wrong() (
 )
 
 merge_not_head() (
-  M=$M
   HEAD=$S
   require_merge_is_head
 )
 
 merge_parent_order_wrong() (
-  DEV=$DEV
   M=$(printf 'wrong order\n' | git -C "$REPO" commit-tree "$DEV_TREE" -p "$S" -p "$DEV")
   require_merge_parents
 )
 
 merge_parent_count_wrong() (
-  DEV=$DEV
   M=$(printf 'three parents\n' | git -C "$REPO" commit-tree "$DEV_TREE" -p "$DEV" -p "$S" -p "$NBASE")
   require_merge_parents
 )
 
 merge_tree_mismatch() (
-  DEV=$DEV
   M=$(printf 'wrong merge tree\n' | git -C "$REPO" commit-tree "$NBASE_TREE" -p "$DEV" -p "$S")
   require_merge_tree_matches_dev
 )
 
 snapshot_parent_wrong() (
-  NBASE=$NBASE
   S=$(printf 'wrong snapshot parent\n' | git -C "$REPO" commit-tree "$NBASE_TREE" -p "$DEV")
   require_snapshot_parent
 )
 
 snapshot_parent_count_wrong() (
-  NBASE=$NBASE
   S=$(printf 'two snapshot parents\n' | git -C "$REPO" commit-tree "$NBASE_TREE" -p "$NBASE" -p "$DEV")
   require_snapshot_parent
 )
@@ -168,10 +178,23 @@ snapshot_parent_count_wrong() (
 commit_set_wrong() (
   local extra
   extra=$(printf 'wrong set\n' | git -C "$REPO" commit-tree "$DEV_TREE" -p "$DEV")
-  M=$M
-  S=$S
   RANGE_COMMITS=("$M" "$extra")
   require_exact_commit_set
+)
+
+malformed_head() (
+  HEAD=not-a-sha
+  require_head_commit
+)
+
+unavailable_head() (
+  HEAD=0000000000000000000000000000000000000000
+  require_head_commit
+)
+
+missing_github_env() (
+  GITHUB_ENV=
+  export_range
 )
 
 valid_topology() (
@@ -204,8 +227,11 @@ untagged_snapshot() (
   BASE_SHA=$DEV HEAD_SHA=$snapshot_merge bash -c "$VALIDATOR"
 )
 
+assert_passes "workflow wiring" workflow_wiring
 assert_rejects "wrong branch name" "branch name must match" wrong_branch
 assert_passes "underscore branch unit fixture" underscore_branch
+assert_rejects "malformed GITHUB_SHA" "not a full commit SHA" malformed_head
+assert_rejects "unavailable GITHUB_SHA" "not an available commit" unavailable_head
 assert_rejects "dev not ancestor" "not an ancestor" dev_not_ancestor
 assert_rejects "empty range" "is empty" empty_range
 assert_rejects "extra range" "exactly two commits" extra_range
@@ -218,6 +244,7 @@ assert_rejects "merge tree mismatch" "merge commit tree must equal" merge_tree_m
 assert_rejects "snapshot parent wrong" "parent must equal live origin/nbase" snapshot_parent_wrong
 assert_rejects "snapshot parent count wrong" "exactly one parent" snapshot_parent_count_wrong
 assert_rejects "range contains an extra commit" "other than the merge and snapshot" commit_set_wrong
+assert_rejects "missing GITHUB_ENV" "GITHUB_ENV is not available" missing_github_env
 assert_passes "valid synthetic snapshot and merge" valid_topology
 assert_passes "unchanged validator accepts tagged snapshot and exempts merge" valid_validator
 assert_rejects "untagged snapshot" "missing a #<slug> change tag" untagged_snapshot

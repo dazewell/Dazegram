@@ -1233,12 +1233,17 @@ success-shaped, vacating the only context required by ruleset `22861936`.
 
 Certification fetches `origin/dev` and `origin/nbase` with explicit live
 refspecs (`.github/scripts/parent-anchor-certify.sh:14-22`) and rejects any
-head tree that differs from live `dev` (`:45-47`), then independently checks
-the merge tree against that same `dev` tree (`:72-78`). Tree identity is the
-safety boundary: the certified merge can change topology but not `dev` content,
-and the push run executes validator bytes identical to live `dev`. Relaxing
-either tree check to carry a reconciliation delta changes the security
-contract, not merely the accepted input shape.
+head tree that differs from live `dev` (`:45-47`), then repeats that requirement
+at merge-tree level (`:72-78`). These are two forms of the same identity
+requirement, not independent evidence. They bound an
+honestly-built carrier to topology-only change; repository push access remains
+the trust anchor because a push workflow executes from the pushed tree. This
+path certifies topology and the existing commit-tag policy, not snapshot
+fidelity, source identity, or pins. Relaxing either tree check to carry a
+reconciliation delta changes the security contract, not merely the accepted
+input shape. The manual synthetic-graph gate must run whenever the helper,
+its test, or `commit-tag.yml` changes
+(`.github/scripts/parent-anchor-certify-test.sh:1-5`).
 
 *(Established 2026-09-13, #infra.)*
 
