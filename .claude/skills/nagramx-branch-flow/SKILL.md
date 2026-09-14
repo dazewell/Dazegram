@@ -863,6 +863,12 @@ and its later fix together. If the fix is user-visible, update the `FEATURES.md`
 entry in the same branch.
 
 ### Sync onto a new upstream (trigger the guarded automation; PC only if it blocks)
+This section covers a new upstream state of the already-pinned parent named by
+`NAGRAM_REPO` / `NAGRAM_BRANCH`. Replacing the parent itself is a separate,
+human-attended transaction and never a `sync-land` operation; follow
+`.github/sync/README.md`'s attended re-anchor section. `-LandCheckOnly` rejects
+a source that does not descend from the pinned `ANCHOR_SRC`.
+
 The routine path is the guarded workflow, not a manual merge — it builds a
 snapshot on `nbase`, 3-way merges it into `dev`, runs `sync-guard.ps1`, and
 pushes `dev`+`nbase` atomically only if the guard is clean (see Automation).
@@ -1144,8 +1150,9 @@ It is idempotent: if `origin/nbase` already equals the snapshot the fast-forward
 is skipped, if the pins branch or its PR already exists they are reused, so a
 partial failure (fast-forward lands, PR creation trips) is fixed by re-running,
 not hand surgery. Token scope is `SYNC_TOKEN` with **Contents: write + Workflows:
-write** (the snapshot tree carries `.github/workflows/`) **+ Pull requests:
-write** (open the pins PR).
+write** retained but not exercised under policy `none`, which rejects every
+workflow path; it is required again if policy returns to `manifest`. **Pull
+requests: write** remains required to open the pins PR.
 
 ### Telegram → GitHub trigger (optional)
 A bot command (or shortcut) that POSTs to
