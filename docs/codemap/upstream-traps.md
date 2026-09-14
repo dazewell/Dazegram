@@ -1508,11 +1508,13 @@ snapshot, and the previous unconditional non-empty-manifest startup check also
 prevented an empty manifest from reaching `-SelfTestOnly`, real-candidate, or
 `-LandCheckOnly` assertions.
 
-Advancing or replacing the parent is not a supported sync-land operation.
-sync-land only ever fast-forwards nbase onto a snapshot of a commit that descends
-from the pinned ANCHOR_SRC in the pinned upstream repo. A -LandCheckOnly pass
-never implies a parent change is permitted; a parent transition is a human,
-attended, pre-certified transaction.
+Advancing or replacing the parent is not a supported `sync-land` operation.
+`sync-land` only fast-forwards `nbase` onto a snapshot of a commit descending
+from `ANCHOR_SRC` in the pinned upstream repository. `-LandCheckOnly` proves
+that steady-state contract; it never permits a parent change
+(`.github/sync/sync-guard.ps1:1101-1107,1132-1168`). Parent replacement is a
+human, attended transaction whose snapshot and anchor topology is
+pre-certified.
 
 The transition order is load-bearing. First land the two-policy guard while
 `WORKFLOW_POLICY=manifest` remains pinned (`.github/sync/pins.env:23-30`).
@@ -1520,7 +1522,24 @@ The later parent bootstrap does not use `sync-land`; its attended transaction is
 pre-certified before any ref moves with source/snapshot tree equality, snapshot
 parent equality with live `nbase`, `dev` anchor ancestry and tree identity, sync
 identity, an empty workflow tree, disabled workflows with `dev` frozen, and a
-pre-reviewed pins PR. Routine land checks keep the strict pinned policy:
+pre-reviewed pins PR. That PR is intentionally red before the ref move because
+the real-candidate fixture compares live `origin/nbase` with its candidate
+`OLD_NBASE` (`.github/workflows/sync-guard-check.yml:152-161`). It must turn
+green after `nbase` moves, with the new parent pins, `WORKFLOW_POLICY=none`, and
+the header-only manifest still together. Weakening the fixture to erase this
+window would also erase the stale-pin detector.
+
+Certification uses three distinct proofs. For snapshot `S`, anchor merge `M`,
+and documentation head `C`, `Every commit carries a #tag` enumerates every
+non-merge commit in `origin/dev..C`: it checks tagged `S` and `C` while
+exempting merge `M` (`.github/workflows/commit-tag.yml:23-39`).
+`sync-guard-check` checks `C`'s final tree for guard health and protected-pin
+identity, then builds its fixture from live `origin/nbase`; it does not inspect
+the `S`/`M` objects (`.github/workflows/sync-guard-check.yml:40-45,137-161`).
+The human transaction record is therefore the authority for snapshot
+parent/tree/identity and anchor parent order/tree/ancestry.
+
+Routine land checks keep the strict pinned policy:
 `manifest` requires the exact approved workflow set and `none` permits only an
 empty set (`.github/sync/sync-guard.ps1:185-215,1185-1192`). The always-on
 fixtures prove clean/changed/added/removed manifest land cases and empty/present

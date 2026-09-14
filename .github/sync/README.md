@@ -190,11 +190,12 @@ above) — `sync-land` drafts that edit, it does not bypass the review. What it 
 is that the review is now backed by machine-verified evidence rather than three
 opaque hex strings, and the pins PR is genuinely gated:
 
-Advancing or replacing the parent is not a supported sync-land operation.
-sync-land only ever fast-forwards nbase onto a snapshot of a commit that descends
-from the pinned ANCHOR_SRC in the pinned upstream repo. A -LandCheckOnly pass
-never implies a parent change is permitted; a parent transition is a human,
-attended, pre-certified transaction.
+Advancing or replacing the parent is not a supported `sync-land` operation.
+`sync-land` only ever fast-forwards `nbase` onto a snapshot of a commit that
+descends from `ANCHOR_SRC` in the pinned upstream repository. A
+`-LandCheckOnly` pass never permits a parent change. Parent replacement is a
+human, attended transaction whose snapshot and anchor topology is pre-certified
+before any production ref moves.
 
 - **`sync-guard.ps1 -LandCheckOnly` runs before any ref moves.** The two obvious
   ancestry facts — old `nbase` is an ancestor of the snapshot, and the snapshot is
@@ -300,9 +301,24 @@ transaction may move any ref, its reviewed evidence must pre-certify:
 - a pre-reviewed pins PR carrying the new parent pins, `WORKFLOW_POLICY=none`,
   and a header-only `workflow-manifest.tsv`.
 
-The operator applies that pre-certified transaction as one coordinated parent
-change. Routine `sync-land` remains limited to descendants of the already-pinned
-parent.
+The pins PR's content is reviewed before the transaction, but its
+`sync-guard-check` is expected to be red until the operator fast-forwards
+`origin/nbase` to the new snapshot: the real-candidate fixture compares live
+`origin/nbase` with the candidate's new `OLD_NBASE`. After that ref move, the
+same PR must be green with the new parent pins, `WORKFLOW_POLICY=none`, and the
+header-only manifest together. Never weaken the fixture to hide this red window.
+
+The certification evidence is deliberately split. For snapshot `S`, anchor
+merge `M`, and documentation head `C`, `Every commit carries a #tag` checks the
+complete `origin/dev..C` range: `S` and `C` are tagged, while `M` is
+merge-exempt. `sync-guard-check` proves guard health and protected-pin identity
+for `C`'s final documentation tree; it does not inspect or certify `S`/`M`
+topology. The attended transaction's recorded human evidence proves the
+snapshot parent, source-tree identity, sync identity, empty workflow tree,
+anchor parent order, anchor tree identity, and ancestry.
+
+The operator applies that evidence as one coordinated parent change. Routine
+`sync-land` remains limited to descendants of the already-pinned parent.
 
 ## Files
 
