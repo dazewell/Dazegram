@@ -309,14 +309,14 @@ trigger a new run for the unchanged PR head. Immediately after the ref move,
 rerun the existing failed workflow run with GitHub's **Re-run jobs** action or
 `gh run rerun <run-id>`. Before merging, verify that rerun's `headSha` still
 equals the reviewed pins PR head, its conclusion is `success`, and the required
-`Every commit carries a #tag` check remains successful. The new parent pins,
+`Every commit carries a` check remains successful. The new parent pins,
 `WORKFLOW_POLICY=none`, and the header-only manifest must remain together in
 that unchanged head. Do not create an empty commit to trigger CI, and do not
 merge if the head moved or the rerun is unavailable or red. Never weaken the
 fixture to hide this red window.
 
 The certification evidence is deliberately split. For snapshot `S`, anchor
-merge `M`, and documentation head `C`, `Every commit carries a #tag` checks the
+merge `M`, and documentation head `C`, `Every commit carries a` checks the
 complete `origin/dev..C` range: `S` and `C` are tagged, while `M` is
 merge-exempt. `sync-guard-check` proves guard health and protected-pin identity
 for `C`'s final documentation tree; it does not inspect or certify `S`/`M`

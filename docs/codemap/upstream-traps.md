@@ -1530,14 +1530,14 @@ pull-request events (`.github/workflows/sync-guard-check.yml:23-25`).
 Immediately after the ref move, rerun the existing failed workflow run with
 GitHub's **Re-run jobs** action or `gh run rerun <run-id>`. Before merging,
 verify its `headSha` still equals the reviewed pins PR head, its conclusion is
-`success`, and `Every commit carries a #tag` remains successful. Keep the new
+`success`, and `Every commit carries a` remains successful. Keep the new
 parent pins, `WORKFLOW_POLICY=none`, and the header-only manifest in that
 unchanged head. Do not create an empty trigger commit, and do not merge if the
 head moved or the rerun is unavailable or red. Weakening the fixture to erase
 this window would also erase the stale-pin detector.
 
 Certification uses three distinct proofs. For snapshot `S`, anchor merge `M`,
-and documentation head `C`, `Every commit carries a #tag` enumerates every
+and documentation head `C`, `Every commit carries a` enumerates every
 non-merge commit in `origin/dev..C`: it checks tagged `S` and `C` while
 exempting merge `M` (`.github/workflows/commit-tag.yml:23-39`).
 `sync-guard-check` checks `C`'s final tree for guard health and protected-pin
