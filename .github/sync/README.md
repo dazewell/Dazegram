@@ -291,21 +291,20 @@ The four build/sync workflows (`ci`, `staging`, `sync-upstream`, `sync-land`)
 remain disabled; `sync-guard-check` and `commit-tag` remain active. No app tree
 changed, so no release build is expected.
 
-**Expected pre-move red window:** this pins PR is reviewed while live
+**Pre-move window:** this pins PR is reviewed while live
 `origin/nbase` is still
 `981806a992a1665b03906aa33e212fb9af3d7f97`. Its candidate pins intentionally
 name `e5cc4221decd4c1e12f3a0eef3602ec304372c2b` and policy `none`.
-The real-candidate guard therefore fails because live `nbase` does not equal
-candidate `OLD_NBASE` (and its tree does not equal candidate
-`OLD_NBASE_TREE`). A targeted policy candidate separately rejects the live
-workflow-bearing tree under policy `none`. Those are predicted transition
-failures, not reasons to weaken the fixture or restore `manifest`.
+The real-candidate fixture exits at
+`.github/workflows/sync-guard-check.yml:155` because live `nbase` does not
+equal candidate `OLD_NBASE`; later manifest/none fixtures do not run. Only
+#368 is expected red in this window.
 
-While that window is open, freeze `dev` and do not merge or reinterpret checks
-on other PRs: each branch's fixture reads live `origin/nbase` against the pins
-in its own checkout. The window begins when `nbase` moves and ends when this
-pins PR merges. Afterwards, affected branches merge updated `dev` and rerun
-their checks.
+**Post-move window:** after `nbase` moves, #368 can pass, but other branches
+whose checkouts still pin the old `nbase` go red until they merge updated
+`dev` and rerun their checks. Freeze `dev` across the whole attended
+transaction: no other PR merges from now until #368 lands and each affected
+active branch has incorporated the updated `dev`.
 
 The human-attended remainder is fail-closed:
 
@@ -314,6 +313,9 @@ The human-attended remainder is fail-closed:
 2. Fast-forward only the exact snapshot with
    `git push origin e5cc4221decd4c1e12f3a0eef3602ec304372c2b:refs/heads/nbase`.
    This is a plain refspec: never force, and never push `dev` from this step.
+   The credential must have Workflows: write because this specific move deletes
+   `debug.yml`, `pr.yml`, and `release.yml` from `nbase`; do not change its
+   configured scope during the transaction.
 3. Moving `nbase` does **not** emit a pull-request event and does not rerun this
    PR's check. Rerun the existing pull-request guard run; select the result only
    when workflow identity, `event=pull_request`, exact reviewed head SHA, and PR
@@ -325,8 +327,10 @@ The human-attended remainder is fail-closed:
 5. The human merges the `.github/sync/**` PR using branch-flow's SHA-bound squash
    command with `--match-head-commit <reviewed-sha>`. Do not use admin/auto mode,
    override the subject/body, or request branch deletion.
-6. Verify live `pins.env`, `origin/nbase`, snapshot tree, configured source tip,
-   and source tree agree. Then re-enable the four disabled workflows.
+6. Verify live `pins.env` and `origin/nbase` agree, the current Telegram master
+   tree equals `OLD_NBASE_TREE`, and current Telegram master descends from
+   `ANCHOR_SRC`. Tip SHA equality is not required. Then re-enable the four
+   disabled workflows.
 7. Immediately before dispatching one verification sync, resolve
    `DrKLO/Telegram` master and its tree again. If the tree still equals
    `b406defb637ed56d392f1b934507221b8243822c`, expect the `uptodate`
