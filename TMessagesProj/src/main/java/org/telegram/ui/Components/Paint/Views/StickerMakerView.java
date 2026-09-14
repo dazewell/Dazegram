@@ -1342,10 +1342,6 @@ public class StickerMakerView extends FrameLayout implements NotificationCenter.
     }
 
     public void uploadStickerFile(String path, VideoEditedInfo videoEditedInfo, String emoji, CharSequence stickerPackName, boolean addToFavorite, long dialogId, TLRPC.StickerSet stickerSet, TLRPC.Document replacedSticker, TLRPC.Document uploadedSticker, String thumbPath, Utilities.Callback<Boolean> whenDone, Utilities.Callback2<String, TLRPC.InputDocument> customStickerHandler) {
-        uploadStickerFile(path, videoEditedInfo, emoji, stickerPackName, addToFavorite, dialogId, stickerSet, replacedSticker, uploadedSticker, thumbPath, whenDone, customStickerHandler, "");
-    }
-
-    public void uploadStickerFile(String path, VideoEditedInfo videoEditedInfo, String emoji, CharSequence stickerPackName, boolean addToFavorite, long dialogId, TLRPC.StickerSet stickerSet, TLRPC.Document replacedSticker, TLRPC.Document uploadedSticker, String thumbPath, Utilities.Callback<Boolean> whenDone, Utilities.Callback2<String, TLRPC.InputDocument> customStickerHandler, CharSequence stickerShortPackName) {
         AndroidUtilities.runOnUIThread(() -> {
             final boolean newStickerUploader = !(whenDone != null && stickerUploader != null && stickerUploader.uploaded);
             if (newStickerUploader) {
@@ -1356,7 +1352,6 @@ public class StickerMakerView extends FrameLayout implements NotificationCenter.
             }
             stickerUploader.emoji = emoji;
             stickerUploader.path = stickerUploader.finalPath = path;
-            stickerUploader.stickerShortPackName = stickerShortPackName;
             stickerUploader.stickerPackName = stickerPackName;
             stickerUploader.addToFavorite = addToFavorite;
             stickerUploader.sendToDialogId = dialogId;
@@ -1509,7 +1504,7 @@ public class StickerMakerView extends FrameLayout implements NotificationCenter.
             TLRPC.TL_stickers_createStickerSet req = new TLRPC.TL_stickers_createStickerSet();
             req.user_id = new TLRPC.TL_inputUserSelf();
             req.title = stickerUploader.stickerPackName.toString();
-            req.short_name = stickerUploader.stickerShortPackName != null ? stickerUploader.stickerShortPackName.toString() : "";
+            req.short_name = "";
             req.stickers.add(stickerUploader.tlInputStickerSetItem);
             ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                 boolean success = false;
@@ -1598,7 +1593,6 @@ public class StickerMakerView extends FrameLayout implements NotificationCenter.
         public String path;
         public String finalPath;
         public String emoji;
-        public CharSequence stickerShortPackName;
         public CharSequence stickerPackName;
         public TLRPC.TL_inputStickerSetItem tlInputStickerSetItem;
         public TLRPC.TL_messageMediaDocument mediaDocument;

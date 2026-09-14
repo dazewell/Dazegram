@@ -77,7 +77,6 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -93,7 +92,6 @@ import androidx.dynamicanimation.animation.SpringForce;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import org.jetbrains.annotations.NotNull;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.AnimationNotificationsLocker;
 import org.telegram.messenger.BuildVars;
@@ -184,18 +182,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Locale;
-import java.util.concurrent.atomic.AtomicBoolean;
-
-import kotlin.Unit;
-import tw.nekomimi.nekogram.NekoConfig;
-import tw.nekomimi.nekogram.transtale.TranslateDb;
-import tw.nekomimi.nekogram.transtale.Translator;
-import tw.nekomimi.nekogram.transtale.TranslatorKt;
-import tw.nekomimi.nekogram.utils.AlertUtil;
-import tw.nekomimi.nekogram.utils.VibrateUtil;
-import xyz.nextalone.nagram.NaConfig;
-
 import java.util.Objects;
 
 import me.vkryl.android.animator.BoolAnimator;
@@ -261,7 +247,6 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
 
     public boolean canOpenPreview = false;
     private boolean isSoundPicker = false;
-    private boolean isEmojiPicker = false;
     public boolean isStoryLocationPicker = false;
     public boolean isBizLocationPicker = false;
     public boolean isLocationPicker = false;
@@ -710,7 +695,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
         default void onCameraOpened() {
         }
 
-       default View getRevealView() {
+        default View getRevealView() {
             return null;
         }
 
@@ -725,6 +710,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
         default void doOnIdle(Runnable runnable) {
             runnable.run();
         }
+
         default void openAvatarsSearch() {
 
         }
@@ -2781,9 +2767,6 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                     if (!photosEnabled && !videosEnabled) {
                         showLayout(restrictedLayout = new ChatAttachRestrictedLayout(1, this, getContext(), resourcesProvider));
                     }
-                    if ((photosEnabled || videosEnabled) && NaConfig.INSTANCE.getUseSystemPhotoPicker().Bool() && photoLayout.openSystemPhotoPicker()) {
-                        return;
-                    }
                     showLayout(photoLayout);
                 } else if (num == 3) {
                     if (!musicEnabled && checkCanRemoveRestrictionsByBoosts()) {
@@ -3962,30 +3945,6 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                 }
             }
             final boolean self = UserObject.isUserSelf(user);
-            if (chatActivity != null) {
-                final long finalDialogId = dialogId;
-                options.add(R.drawable.ic_translate, getString(R.string.Translate), () -> {
-                    if (messageSendPreview != null) {
-                        messageSendPreview.dismiss(false);
-                    }
-                    translateComment(parentFragment.getParentActivity(), TranslateDb.getChatLanguage(finalDialogId, TranslatorKt.getCode2Locale(NekoConfig.translateInputLang.String())));
-                });
-                // TODO: nekox
-//                itemCells[a].setOnLongClickListener(v -> {
-//                    if (num == 0) {
-//                        Translator.showTargetLangSelect(itemCells[num], true, (locale) -> {
-//                            if (sendPopupWindow != null && sendPopupWindow.isShowing()) {
-//                                sendPopupWindow.dismiss();
-//                            }
-//                            translateComment(parentFragment.getParentActivity(), locale);
-//                            TranslateDb.saveChatLanguage(finalDialogId, locale);
-//                            return Unit.INSTANCE;
-//                        });
-//                        return true;
-//                    }
-//                    return false;
-//                });
-            }
             if (editingMessageObject == null && (chatActivity == null || !ChatObject.isMonoForum(chatActivity.getCurrentChat())) && ((chatActivity != null && chatActivity.canScheduleMessage()) || currentAttachLayout.canScheduleMessages())) {
                 final long finalDialogId = dialogId;
                 options.add(R.drawable.msg_calendar2, getString(self ? R.string.SetReminder : R.string.ScheduleMessage), () -> {
@@ -4081,11 +4040,9 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
 
             messageSendPreview.show();
 
-            if (!NekoConfig.disableVibration.Bool()) {
-                try {
-                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
-                } catch (Exception ignored) {}
-            }
+            try {
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+            } catch (Exception ignored) {}
 
             return true;
         });
@@ -4416,56 +4373,6 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
         return currentAttachLayout == photoLayout && photoLayout.cameraExpanded;
     }
 
-    private void translateComment(Context ctx, Locale target) {
-
-
-        TranslateDb db = TranslateDb.forLocale(target);
-        String origin = commentTextView.getText().toString();
-
-        if (db.contains(origin)) {
-
-            String translated = db.query(origin);
-            commentTextView.getEditText().setText(translated);
-
-            return;
-
-        }
-
-        Translator.translate(target, origin, new Translator.Companion.TranslateCallBack() {
-
-            final AtomicBoolean cancel = new AtomicBoolean();
-            AlertDialog status = AlertUtil.showProgress(ctx);
-
-            {
-
-                status.setOnCancelListener((__) -> {
-                    cancel.set(true);
-                });
-
-                status.show();
-
-            }
-
-            @Override
-            public void onSuccess(@NotNull String translation) {
-                status.dismiss();
-                commentTextView.getEditText().setText(translation);
-            }
-
-            @Override
-            public void onFailed(boolean unsupported, @NotNull String message) {
-                status.dismiss();
-                AlertUtil.showTransFailedDialog(ctx, unsupported, message, () -> {
-                    status = AlertUtil.showProgress(ctx);
-                    status.show();
-                    Translator.translate(origin, this);
-                });
-            }
-
-        });
-
-    }
-
     @Override
     public void show() {
         super.show();
@@ -4545,7 +4452,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
             TLRPC.Chat chat = chatActivity.getCurrentChat();
             TLRPC.User user = chatActivity.getCurrentUser();
             if (user != null || ChatObject.isChannel(chat) && chat.megagroup || !ChatObject.isChannel(chat)) {
-                MessagesController.getNotificationsSettings(currentAccount).edit().putBoolean("silent_" + chatActivity.getDialogId(), !notify).apply();
+                MessagesController.getNotificationsSettings(currentAccount).edit().putBoolean("silent_" + chatActivity.getDialogId(), !notify).commit();
             }
         }
         if (checkCaption(getCommentView().getText())) {
@@ -5064,7 +4971,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
             }
         }
         if (documentLayout == null) {
-            int type = isEmojiPicker ? ChatAttachAlertDocumentLayout.TYPE_EMOJI : isSoundPicker ? ChatAttachAlertDocumentLayout.TYPE_RINGTONE : ChatAttachAlertDocumentLayout.TYPE_DEFAULT;
+            int type = isSoundPicker ? ChatAttachAlertDocumentLayout.TYPE_RINGTONE : ChatAttachAlertDocumentLayout.TYPE_DEFAULT;
             layouts[4] = documentLayout = new ChatAttachAlertDocumentLayout(this, getContext(), type, resourcesProvider);
             documentLayout.setDelegate(new ChatAttachAlertDocumentLayout.DocumentSelectActivityDelegate() {
                 @Override
@@ -5114,10 +5021,9 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
             documentLayout.setMaxSelectedFiles(currentChat != null && !ChatObject.hasAdminRights(currentChat) && currentChat.slowmode_enabled || editingMessageObject != null ? 1 : -1);
         } else {
             documentLayout.setMaxSelectedFiles(maxSelectedPhotos);
-            documentLayout.setCanSelectOnlyImageFiles(!isSoundPicker && !isEmojiPicker && !allowEnterCaption);
+            documentLayout.setCanSelectOnlyImageFiles(!isSoundPicker && !allowEnterCaption);
         }
         documentLayout.isSoundPicker = isSoundPicker;
-        documentLayout.isEmojiPicker = isEmojiPicker;
         if (show) {
             showLayout(documentLayout);
         }
@@ -5211,7 +5117,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
         commentTextView.hidePopup(true);
         topCommentTextView.hidePopup(true);
         if (show) {
-            if (!isSoundPicker && !isEmojiPicker) {
+            if (!isSoundPicker) {
                 frameLayout2.setVisibility(View.VISIBLE);
             }
             writeButtonContainer.setVisibility(View.VISIBLE);
@@ -5260,7 +5166,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                 public void onAnimationEnd(Animator animation) {
                     if (animation.equals(commentsAnimator)) {
                         if (!show) {
-                            if (!isSoundPicker && !isEmojiPicker) {
+                            if (!isSoundPicker) {
                                 frameLayout2.setVisibility(View.INVISIBLE);
                             }
                             writeButtonContainer.setVisibility(View.INVISIBLE);
@@ -6156,7 +6062,6 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                 pollsEnabled = UserObject.isBot(user) || UserObject.isUserSelf(user);
                 todoEnabled = !(baseFragment instanceof ChatActivity) || ((ChatActivity) baseFragment).getCurrentEncryptedChat() == null;
             }
-            todoEnabled = todoEnabled && (!NaConfig.INSTANCE.getDisablePremiumSendTodo().Bool() || UserConfig.getInstance(currentAccount).isPremium());
         }
 
         if (restrictEphemeralMessageTypes) {
@@ -6188,7 +6093,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
             openAudioLayout(false);
             layoutToSet = audioLayout;
             selectedId = 3;
-        } else if (isSoundPicker || isEmojiPicker) {
+        } else if (isSoundPicker) {
             openDocumentsLayout(false);
             layoutToSet = documentLayout;
             selectedId = 4;
@@ -6453,12 +6358,6 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
         selectedTextView.setText(getString(R.string.ChoosePhotoOrVideo));
     }
 
-    public void setEmojiPicker() {
-        isEmojiPicker = true;
-        buttonsRecyclerView.setVisibility(View.GONE);
-        selectedTextView.setText(LocaleController.getString("ChoosePhotoOrVideo", R.string.ChoosePhotoOrVideo));
-    }
-
     public boolean storyLocationPickerFileIsVideo;
     public File storyLocationPickerPhotoFile;
     public double[] storyLocationPickerLatLong;
@@ -6542,7 +6441,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
 
     private boolean shownAiButton;
     private void showAiButton(boolean show_) {
-        final boolean show = show_ && (baseFragment instanceof ChatActivity && !((ChatActivity) baseFragment).isSecretChat()) && !NaConfig.INSTANCE.getDisableAiEditor().Bool();
+        final boolean show = show_ && (baseFragment instanceof ChatActivity && !((ChatActivity) baseFragment).isSecretChat());
 
         if (shownAiButton == show) return;
         if (show) {
@@ -6690,7 +6589,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                     } else if (position == contactButton) {
                         attachButton.setTextAndIcon(5, getString(R.string.AttachContact), GlassTabView.TabAnimation.CONTACTS);
                         attachButton.setTag(5);
-//                        err = !checkContactsPermission(mContext);
+                        err = !checkContactsPermission(mContext);
                     } else if (position == quickRepliesButton) {
                         attachButton.setTextAndIcon(11, getString(R.string.AttachQuickReplies), GlassTabView.TabAnimation.REPLIES);
                         attachButton.setTag(11);
@@ -7012,43 +6911,6 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
             TextView button = (TextView) dialog.getButton(DialogInterface.BUTTON_POSITIVE);
             if (button != null) {
                 button.setTextColor(getThemedColor(Theme.key_text_RedBold));
-            }
-            return;
-        }
-        if (commentTextView != null) {
-            AndroidUtilities.hideKeyboard(commentTextView.getEditText());
-        }
-        if (!allowPassConfirmationAlert && baseFragment != null && currentAttachLayout.getSelectedItemsCount() > 0) {
-            if (confirmationAlertShown) {
-                return;
-            }
-            confirmationAlertShown = true;
-            AlertDialog dialog =
-                new AlertDialog.Builder(baseFragment.getParentActivity(), parentThemeDelegate)
-                    .setTitle(LocaleController.getString("DiscardSelectionAlertTitle", R.string.DiscardSelectionAlertTitle))
-                    .setMessage(LocaleController.getString("DiscardSelectionAlertMessage", R.string.DiscardSelectionAlertMessage))
-                    .setPositiveButton(LocaleController.getString("PassportDiscard", R.string.PassportDiscard), (dialogInterface, i) -> {
-                        allowPassConfirmationAlert = true;
-                        dismiss();
-                    })
-                    .setNegativeButton(LocaleController.getString("Cancel", R.string.Cancel), null)
-                    .setOnCancelListener(di -> {
-                        if (appearSpringAnimation != null) {
-                            appearSpringAnimation.cancel();
-                        }
-                        appearSpringAnimation = new SpringAnimation(super.containerView, DynamicAnimation.TRANSLATION_Y, 0);
-                        appearSpringAnimation.getSpring().setDampingRatio(1.5f);
-                        appearSpringAnimation.getSpring().setStiffness(1500.0f);
-                        appearSpringAnimation.start();
-                    })
-                    .setOnPreDismissListener(di -> {
-                        confirmationAlertShown = false;
-                    })
-                    .create();
-            dialog.show();
-            TextView button = (TextView) dialog.getButton(DialogInterface.BUTTON_POSITIVE);
-            if (button != null) {
-                button.setTextColor(getThemedColor(Theme.key_dialogTextRed));
             }
             return;
         }

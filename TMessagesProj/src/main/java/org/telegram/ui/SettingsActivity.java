@@ -59,7 +59,6 @@ import androidx.collection.LongSparseArray;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
-import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.common.collect.Lists;
@@ -98,7 +97,6 @@ import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.INavigationLayout;
 import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
-import org.telegram.ui.Cells.CollapseTextCell;
 import org.telegram.ui.Cells.SettingsSearchCell;
 import org.telegram.ui.Components.AlertsCreator;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
@@ -150,22 +148,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-import kotlin.Unit;
 import me.vkryl.android.animator.BoolAnimator;
 import me.vkryl.android.animator.FactorAnimator;
-import tw.nekomimi.nekogram.NekoConfig;
-import tw.nekomimi.nekogram.NekoXConfig;
-import tw.nekomimi.nekogram.helpers.PasscodeHelper;
-import tw.nekomimi.nekogram.settings.NekoSettingsActivity;
-import tw.nekomimi.nekogram.utils.AlertUtil;
-import xyz.nextalone.nagram.NaConfig;
-import xyz.nextalone.nagram.ui.ItemOptionsPatch;
 
 public class SettingsActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate, ImageUpdater.ImageUpdaterDelegate, MainTabsActivity.TabFragmentDelegate, FactorAnimator.Target {
 
     private static final int ANIMATOR_ID_SEARCH_PAGE_VISIBLE = 0;
-    private static final int ACCOUNT_COLLAPSE_ID = -1000;
-    private static final int COLLAPSED_ACCOUNT_COUNT = 5;
 
     private final BoolAnimator animatorSearchPageVisible = new BoolAnimator(ANIMATOR_ID_SEARCH_PAGE_VISIBLE,
             this, CubicBezierInterpolator.EASE_OUT_QUINT, 350);
@@ -362,12 +350,6 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         listView = new UniversalRecyclerView(this, this::fillItems, this::onClick, this::onLongClick);
         listView.adapter.setApplyBackground(false);
         listView.setSections();
-        if (listView.getItemAnimator() != null) {
-            listView.getItemAnimator().setAddDuration(120);
-            listView.getItemAnimator().setRemoveDuration(120);
-            listView.getItemAnimator().setMoveDuration(220);
-            ((DefaultItemAnimator) listView.getItemAnimator()).setDelayAnimations(true);
-        }
         listView.setPadding(0, AndroidUtilities.statusBarHeight + dp(12), 0, AndroidUtilities.navigationBarHeight + additionNavigationBarHeight);
         listView.setClipToPadding(false);
         listView.addOnScrollListener(new RecyclerView.OnScrollListener() {
@@ -491,24 +473,16 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         versionView.setGravity(Gravity.CENTER);
         versionView.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector), Theme.RIPPLE_MASK_ALL));
         versionView.setOnClickListener(v -> {
-            openNagramDebugMenu(v);
-        });
-        versionView.setOnLongClickListener(v -> {
             versionViewPressCount++;
-            if (versionViewPressCount >= 5) {
-                NaConfig.INSTANCE.getShowHiddenFeature().toggleConfigBool();
-                Toast.makeText(getParentActivity(), LocaleController.getString("ErrorOccurred", R.string.ErrorOccurred), Toast.LENGTH_SHORT).show();
-            }
             if (versionViewPressCount < 2 && !BuildVars.DEBUG_PRIVATE_VERSION) {
                 try {
                     Toast.makeText(getParentActivity(), getString(R.string.DebugMenuLongPress), Toast.LENGTH_SHORT).show();
                 } catch (Exception e) {
                     FileLog.e(e);
                 }
-                return true;
+                return;
             }
             openDebugMenu();
-            return true;
         });
 
         navigationBar = new View(context);
@@ -561,13 +535,9 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         avatarView.setForUserOrChat(user, avatarDrawable);
         titleView.setText(UserObject.getUserName(user));
         final StringBuilder sb = new StringBuilder();
-        String value = LocaleController.getString(R.string.NumberUnknown);
-        if (!NekoConfig.hidePhone.Bool()) {
-            if (user != null && user.phone != null && !user.phone.isEmpty()) {
-                value = PhoneFormat.getInstance().format("+" + user.phone);
-            }
+        if (user != null) {
+            sb.append(PhoneFormat.getInstance().format("+" + user.phone));
         }
-        sb.append(value);
         final String username = UserObject.getPublicUsername(user);
         if (username != null) {
             sb.append(" • @").append(username);
@@ -643,8 +613,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         }
     }
 
-    private final ArrayList<Integer> accountNumbers = new ArrayList<>();
-
+    private ArrayList<Integer> accountNumbers = new ArrayList<>();
     private void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
         if (searchItem.isSearchFieldVisible2()) {
             items.add(UItem.asSpace(ActionBar.getCurrentActionBarHeight()));
@@ -656,7 +625,6 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
         accountNumbers.clear();
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
-            if (PasscodeHelper.isAccountHidden(a)) continue;
             if (UserConfig.getInstance(a).isClientActivated() && currentAccount != a) {
                 accountNumbers.add(a);
             }
@@ -714,26 +682,11 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
         if (accountNumbers.size() > 0) {
             items.add(UItem.asHeader(getString(R.string.SettingsAccounts)));
-            final boolean accountsCollapsed = MainTabsActivity.isAccountListCollapsed();
-            final int accountsCount = accountsCollapsed
-                    ? Math.min(COLLAPSED_ACCOUNT_COUNT, accountNumbers.size())
-                    : accountNumbers.size();
-            for (int i = 0; i < accountsCount; ++i) {
+            for (int i = 0; i < accountNumbers.size(); ++i) {
                 items.add(AccountCell.Factory.of(i, accountNumbers.get(i)));
             }
-            if (accountNumbers.size() > COLLAPSED_ACCOUNT_COUNT) {
-                items.add(UItem.asShadowCollapseButton(
-                                ACCOUNT_COLLAPSE_ID,
-                                getString(accountsCollapsed ? R.string.ShowMore : R.string.ShowLess))
-                        .setCollapsed(accountsCollapsed)
-                        .onBind(view -> ((CollapseTextCell) view).setCentered(true)));
-            } else {
-                items.add(UItem.asShadow(null));
-            }
+            items.add(UItem.asShadow(null));
         }
-
-        items.add(SettingCell.Factory.of(100, 0xFF1BA4ED, 0xFF1488E1, R.drawable.msg_settings, getString(R.string.N_Config)));
-        items.add(UItem.asShadow(null));
 
         items.add(SettingCell.Factory.of(1, IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom, R.drawable.settings_account, getString(R.string.SettingsAccount), getString(R.string.SettingsAccountInfo)));
         items.add(SettingCell.Factory.of(2, IconBackgroundColors.ORANGE.top, IconBackgroundColors.ORANGE.bottom, R.drawable.settings_chat, getString(R.string.SettingsChat), getString(R.string.SettingsChatInfo)));
@@ -842,10 +795,6 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 LaunchActivity.instance.switchToAccount(account, true);
             }
             return;
-        } else if (item.id == ACCOUNT_COLLAPSE_ID) {
-            MainTabsActivity.setAccountListCollapsed(!MainTabsActivity.isAccountListCollapsed());
-            listView.adapter.update(true);
-            return;
         } else if (item.instanceOf(SettingsSearchCell.Factory.class)) {
             if (item.object instanceof ProfileActivity.SearchAdapter.SearchResult) {
                 final ProfileActivity.SearchAdapter.SearchResult r = (ProfileActivity.SearchAdapter.SearchResult) item.object;
@@ -931,10 +880,6 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 }
                 break;
             }
-            case 100: {
-                presentFragment(new NekoSettingsActivity());
-                break;
-            }
         }
     }
 
@@ -970,7 +915,29 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
     }
 
     public String getVersionName() {
-        return AndroidUtilities.getBuildVersionInfo();
+        try {
+            PackageInfo pInfo = ApplicationLoader.applicationContext.getPackageManager().getPackageInfo(ApplicationLoader.applicationContext.getPackageName(), 0);
+            int code = pInfo.versionCode / 10;
+            String abi = "";
+            switch (pInfo.versionCode % 10) {
+                case 1:
+                case 2:
+                    abi = "store bundled " + Build.CPU_ABI + " " + Build.CPU_ABI2;
+                    break;
+                default:
+                case 9:
+                    if (ApplicationLoader.isStandaloneBuild()) {
+                        abi = "direct " + Build.CPU_ABI + " " + Build.CPU_ABI2;
+                    } else {
+                        abi = "universal " + Build.CPU_ABI + " " + Build.CPU_ABI2;
+                    }
+                    break;
+            }
+            return formatString(R.string.TelegramVersion, String.format(Locale.US, "v%s (%d)\n%s", pInfo.versionName, code, abi));
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+        return null;
     }
 
     @Override
@@ -1042,8 +1009,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             counterView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 11);
             counterView.setTypeface(AndroidUtilities.bold());
             counterView.setGravity(Gravity.CENTER);
-            counterView.setTextColor(Theme.getColor(Theme.key_chats_unreadCounterText, resourcesProvider));
-            counterView.setBackground(Theme.createRoundRectDrawable(dp(10), Theme.getColor(Theme.key_chats_unreadCounter, resourcesProvider)));
+            counterView.setTextColor(Theme.getColor(Theme.key_featuredStickers_buttonText, resourcesProvider));
+            counterView.setBackground(Theme.createRoundRectDrawable(dp(10), Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider)));
 
             arrowView = new ImageView(context);
             arrowView.setImageResource(R.drawable.msg_arrowright);
@@ -1221,7 +1188,6 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             subtitleView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText, resourcesProvider));
             valueView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText, resourcesProvider));
             iconBackground.setDrawBorder(resourcesProvider != null ? resourcesProvider.isDark() : Theme.isCurrentThemeDark());
-            Theme.applyThemeMonetColor(iconView, resourcesProvider, false);
         }
 
         private boolean twoLines;
@@ -1270,20 +1236,13 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             }
 
             public void setColor(int topColor, int bottomColor) {
-                setColor(topColor, bottomColor, Theme.isCurrentThemeMonet());
-            }
-
-            public void setColor(int topColor, int bottomColor, boolean useAccentColor) {
-                if (useAccentColor) {
-                    topColor = bottomColor = Theme.getColor(Theme.key_chats_actionBackground);
-                }
                 gradient = new LinearGradient(0, 0, 0, dp(28), new int[] { topColor, bottomColor }, new float[] { 0, 1 }, Shader.TileMode.CLAMP);
                 paint.setShader(gradient);
             }
 
             private boolean border;
             public void setDrawBorder(boolean drawBorder) {
-                this.border = drawBorder && !Theme.isCurrentThemeMonet();
+                this.border = drawBorder;
             }
 
             @Override
@@ -1453,71 +1412,6 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 return item;
             }
         }
-    }
-
-    public void openNagramDebugMenu(View view) {
-        ItemOptions o = ItemOptions.makeOptions(this, view);
-        o.setScrimViewBackground(listView.getClipBackground(view));
-
-        String finalMessage = getVersionName();
-        o.add(R.drawable.msg_copy, LocaleController.getString(R.string.Copy), () -> {
-            AndroidUtilities.addToClipboard(finalMessage);
-            AlertUtil.showToast(LocaleController.getString(R.string.TextCopied));
-        });
-        o.add(R.drawable.baseline_bug_report_24, BuildVars.LOGS_ENABLED ? LocaleController.getString(R.string.DebugMenuDisableLogs) : LocaleController.getString(R.string.DebugMenuEnableLogs), () -> {
-            BuildVars.LOGS_ENABLED = BuildVars.DEBUG_VERSION = BuildVars.DEBUG_PRIVATE_VERSION = !BuildVars.LOGS_ENABLED;
-            SharedPreferences sharedPreferences = ApplicationLoader.applicationContext.getSharedPreferences("systemConfig", Context.MODE_PRIVATE);
-            sharedPreferences.edit().putBoolean("logsEnabled", BuildVars.LOGS_ENABLED).apply();
-
-            listView.adapter.update(true);
-        });
-        o.add(R.drawable.msg_retry, LocaleController.getString(R.string.SwitchVersion), () -> {
-            Browser.openUrl(getContext(), "https://github.com/NextAlone/Nagram/releases");
-        });
-
-        o.add(R.drawable.msg_search, LocaleController.getString(R.string.CheckUpdate), () -> {
-            Browser.openUrl(getContext(), "tg://update");
-        });
-
-        String currentChannel = " - ";
-        switch (NekoXConfig.autoUpdateReleaseChannel) {
-            case 0:
-                currentChannel += LocaleController.getString(R.string.AutoCheckUpdateOFF);
-                break;
-            case 1:
-                currentChannel += LocaleController.getString(R.string.AutoCheckUpdateStable);
-                break;
-            case 2:
-                currentChannel += LocaleController.getString(R.string.AutoCheckUpdateRc);
-                break;
-            case 3:
-                currentChannel += LocaleController.getString(R.string.AutoCheckUpdatePreview);
-                break;
-        }
-
-        o.add(R.drawable.update_black_24, LocaleController.getString(R.string.AutoCheckUpdateSwitch) + currentChannel, () -> {
-            ItemOptions switchOptions = ItemOptions.makeOptions(this, view);
-            switchOptions.setScrimViewBackground(listView.getClipBackground(view));
-            ItemOptionsPatch.addTitle(switchOptions, LocaleController.getString(R.string.AutoCheckUpdateSwitch), null);
-            ItemOptionsPatch.addRadioItem(switchOptions, LocaleController.getString(R.string.AutoCheckUpdateOFF), NekoXConfig.autoUpdateReleaseChannel == 0, null, radioButtonCell -> {
-                NekoXConfig.setAutoUpdateReleaseChannel(0);
-                ItemOptionsPatch.doRadioCheck(switchOptions, radioButtonCell);
-            });
-            ItemOptionsPatch.addRadioItem(switchOptions, LocaleController.getString(R.string.AutoCheckUpdateStable), NekoXConfig.autoUpdateReleaseChannel == 1, null, radioButtonCell -> {
-                NekoXConfig.setAutoUpdateReleaseChannel(1);
-                ItemOptionsPatch.doRadioCheck(switchOptions, radioButtonCell);
-            });
-            ItemOptionsPatch.addRadioItem(switchOptions, LocaleController.getString(R.string.AutoCheckUpdateRc), NekoXConfig.autoUpdateReleaseChannel == 2, null, radioButtonCell -> {
-                NekoXConfig.setAutoUpdateReleaseChannel(2);
-                ItemOptionsPatch.doRadioCheck(switchOptions, radioButtonCell);
-            });
-            ItemOptionsPatch.addRadioItem(switchOptions, LocaleController.getString(R.string.AutoCheckUpdatePreview), NekoXConfig.autoUpdateReleaseChannel == 3, null, radioButtonCell -> {
-                NekoXConfig.setAutoUpdateReleaseChannel(3);
-                ItemOptionsPatch.doRadioCheck(switchOptions, radioButtonCell);
-            });
-            switchOptions.show();
-        });
-        o.show();
     }
 
     public void openDebugMenu() {

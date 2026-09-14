@@ -51,9 +51,6 @@ import android.text.TextUtils;
 import android.util.Pair;
 import android.util.SparseArray;
 import android.util.SparseBooleanArray;
-import android.text.TextUtils;
-import android.util.SparseArray;
-
 
 import androidx.collection.LongSparseArray;
 import androidx.core.app.NotificationCompat;
@@ -101,10 +98,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.Consumer;
-
-import tw.nekomimi.nekogram.NekoXConfig;
-import tw.nekomimi.nekogram.NekoConfig;
-import xyz.nextalone.nagram.NaConfig;
 
 public class NotificationsController extends BaseController implements NotificationCenter.NotificationCenterDelegate {
 
@@ -185,16 +178,21 @@ public class NotificationsController extends BaseController implements Notificat
         audioManager = (AudioManager) ApplicationLoader.applicationContext.getSystemService(Context.AUDIO_SERVICE);
     }
 
-    private static SparseArray<NotificationsController> Instance = new SparseArray<>();
-    private static final Object lockObject = new Object();
+    private static volatile NotificationsController[] Instance = new NotificationsController[UserConfig.MAX_ACCOUNT_COUNT];
+    private static final Object[] lockObjects = new Object[UserConfig.MAX_ACCOUNT_COUNT];
+    static {
+        for (int i = 0; i < UserConfig.MAX_ACCOUNT_COUNT; i++) {
+            lockObjects[i] = new Object();
+        }
+    }
 
     public static NotificationsController getInstance(int num) {
-        NotificationsController localInstance = Instance.get(num);
+        NotificationsController localInstance = Instance[num];
         if (localInstance == null) {
-            synchronized (lockObject) {
-                localInstance = Instance.get(num);
+            synchronized (lockObjects[num]) {
+                localInstance = Instance[num];
                 if (localInstance == null) {
-                    Instance.put(num, localInstance = new NotificationsController(num));
+                    Instance[num] = localInstance = new NotificationsController(num);
                 }
             }
         }
@@ -203,7 +201,6 @@ public class NotificationsController extends BaseController implements Notificat
 
     public NotificationsController(int instance) {
         super(instance);
-
         notificationId = currentAccount + 1;
         notificationGroup = "messages" + (currentAccount == 0 ? "" : currentAccount);
         SharedPreferences preferences = getAccountInstance().getNotificationsSettings();
@@ -427,59 +424,6 @@ public class NotificationsController extends BaseController implements Notificat
                             if (BuildVars.LOGS_ENABLED) {
                                 FileLog.d("delete channel cleanup " + id);
                             }
-                        }
-                    }
-                } catch (Throwable e) {
-                    FileLog.e(e);
-                }
-                try {
-                    String keyGroup = currentAccount + "group";
-                    List<NotificationChannelGroup> list = systemNotificationManager.getNotificationChannelGroups();
-                    for (NotificationChannelGroup group : list) {
-                        String id = group.getId();
-                        if (id.equals(keyGroup)) {
-                            systemNotificationManager.deleteNotificationChannelGroup(id);
-                        }
-                    }
-                } catch (Throwable e) {
-                    FileLog.e(e);
-                }
-            }
-        });
-    }
-
-    public void cleanupNotificationChannels() {
-        notificationsQueue.postRunnable(() -> {
-            if (Build.VERSION.SDK_INT >= 26) {
-                try {
-                    String keyStart = currentAccount + "channel";
-                    List<NotificationChannel> list = systemNotificationManager.getNotificationChannels();
-                    int count = list.size();
-                    for (int a = 0; a < count; a++) {
-                        NotificationChannel channel = list.get(a);
-                        String id = channel.getId();
-                        if (id.startsWith(keyStart)) {
-                            try {
-                                systemNotificationManager.deleteNotificationChannel(id);
-                            } catch (Exception e) {
-                                FileLog.e(e);
-                            }
-                            if (BuildVars.LOGS_ENABLED) {
-                                FileLog.d("delete channel cleanup " + id);
-                            }
-                        }
-                    }
-                } catch (Throwable e) {
-                    FileLog.e(e);
-                }
-                // Remove shits from 0552bcdc
-                try {
-                    String keyGroup = currentAccount + "group";
-                    List<NotificationChannelGroup> list = systemNotificationManager.getNotificationChannelGroups();
-                    for (NotificationChannelGroup group : list) {
-                        String id = group.getId();
-                        if (id.equals(keyGroup)) {
-                            systemNotificationManager.deleteNotificationChannelGroup(id);
                         }
                     }
                 } catch (Throwable e) {
@@ -1136,10 +1080,6 @@ public class NotificationsController extends BaseController implements Notificat
                     }
                     continue;
                 }
-                if (NekoConfig.ignoreBlocked.Bool() && getMessagesController().blockePeers.indexOfKey(messageObject.getSenderId()) >= 0) {
-                    continue;
-                }
-
                 if (messageObject.isStoryPush) {
                     long date = messageObject.messageOwner == null ? System.currentTimeMillis() : messageObject.messageOwner.date * 1000L;
                     long dialogId = messageObject.getDialogId();
@@ -1783,7 +1723,7 @@ public class NotificationsController extends BaseController implements Notificat
 
     private int getTotalAllUnreadCount() {
         int count = 0;
-        for (int a : SharedConfig.activeAccounts) {
+        for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
             if (!UserConfig.getInstance(a).isClientActivated()) {
                 continue;
             }
@@ -2530,8 +2470,6 @@ public class NotificationsController extends BaseController implements Notificat
             return null;
         }
         StringBuilder stringBuilder = new StringBuilder(text);
-        if (NekoConfig.showSpoilersDirectly.Bool())
-            return stringBuilder.toString();
         if (messageObject != null && messageObject.didSpoilLoginCode()) {
             return stringBuilder.toString();
         }
@@ -3705,7 +3643,7 @@ public class NotificationsController extends BaseController implements Notificat
             } else {
                 icon = IconCompat.createWithResource(ApplicationLoader.applicationContext, R.drawable.book_group);
             }
-            if (supportsBubble && !NekoConfig.disableNotificationBubbles.Bool()) {
+            if (supportsBubble) {
                 NotificationCompat.BubbleMetadata.Builder bubbleBuilder =
                         new NotificationCompat.BubbleMetadata.Builder(
                                 PendingIntent.getActivity(ApplicationLoader.applicationContext, 0, intent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT),
@@ -4148,7 +4086,6 @@ public class NotificationsController extends BaseController implements Notificat
                 // todo: deal with vendor messed up crash here later
                 notificationChannel.setSound(null, builder.build());
             }
-            systemNotificationManager.createNotificationChannel(notificationChannel);
             if (BuildVars.LOGS_ENABLED) {
                 FileLog.d("create new channel " + channelId);
             }
@@ -4239,7 +4176,7 @@ public class NotificationsController extends BaseController implements Notificat
             }
             SharedPreferences preferences = getAccountInstance().getNotificationsSettings();
             int dismissDate = preferences.getInt("dismissDate", 0);
-            if (!lastMessageObject.isStoryPush && (lastMessageObject.messageOwner.date <= dismissDate && NaConfig.INSTANCE.getPushServiceType().Int() != 3)) {
+            if (!lastMessageObject.isStoryPush && lastMessageObject.messageOwner.date <= dismissDate) {
                 dismissNotification();
                 return;
             }
@@ -4385,7 +4322,7 @@ public class NotificationsController extends BaseController implements Notificat
                 for (int i = 0; i < count; i++) {
                     MessageObject messageObject = pushMessages.get(i);
                     String message = getStringForMessage(messageObject, false, text, null);
-                    if (message == null || !messageObject.isStoryPush && (messageObject.messageOwner.date <= dismissDate && NaConfig.INSTANCE.getPushServiceType().Int() != 3)) {
+                    if (message == null || !messageObject.isStoryPush && messageObject.messageOwner.date <= dismissDate) {
                         continue;
                     }
                     if (silent == 2) {
@@ -4644,7 +4581,7 @@ public class NotificationsController extends BaseController implements Notificat
             PendingIntent contentIntent = PendingIntent.getActivity(ApplicationLoader.applicationContext, 0, intent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_ONE_SHOT);
 
             mBuilder.setContentTitle(name)
-                    .setSmallIcon(getNotificationIconResId())
+                    .setSmallIcon(R.drawable.notification)
                     .setAutoCancel(true)
                     .setNumber(total_unread_count)
                     .setContentIntent(contentIntent)
@@ -4652,7 +4589,7 @@ public class NotificationsController extends BaseController implements Notificat
                     .setGroupSummary(true)
                     .setShowWhen(true)
                     .setWhen(((long) lastMessageObject.messageOwner.date) * 1000)
-                    .setColor(NekoXConfig.getNotificationColor());
+                    .setColor(0xff11acfa);
 
             long[] vibrationPattern = null;
             Uri sound = null;
@@ -4801,7 +4738,7 @@ public class NotificationsController extends BaseController implements Notificat
                                     callbackIntent.putExtra("data", buttonTypeCallback.data);
                                 }
                                 callbackIntent.putExtra("mid", lastMessageObject.getId());
-                                mBuilder.addAction(0, button.text, PendingIntent.getBroadcast(ApplicationLoader.applicationContext, lastButtonId++, callbackIntent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE));
+                                mBuilder.addAction(0, button.text, PendingIntent.getBroadcast(ApplicationLoader.applicationContext, lastButtonId++, callbackIntent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
                                 hasCallback = true;
                             }
                         }
@@ -4910,7 +4847,7 @@ public class NotificationsController extends BaseController implements Notificat
             long dialog_id = messageObject.getDialogId();
             long topicId = MessageObject.getTopicId(currentAccount, messageObject.messageOwner, getMessagesController().isForum(messageObject));
             int dismissDate = preferences.getInt("dismissDate" + dialog_id, 0);
-            if (!messageObject.isStoryPush && (messageObject.messageOwner.date <= dismissDate && NaConfig.INSTANCE.getPushServiceType().Int() != 3)) {
+            if (!messageObject.isStoryPush && messageObject.messageOwner.date <= dismissDate) {
                 FileLog.d("showExtraNotifications: dialog " + dialog_id + " is skipped, message date (" + messageObject.messageOwner.date + " <= " + dismissDate + ")");
                 continue;
             }
@@ -5189,8 +5126,8 @@ public class NotificationsController extends BaseController implements Notificat
 
             if (chat != null) {
                 Person.Builder personBuilder = new Person.Builder().setName(name);
-                if (Build.VERSION.SDK_INT >= 28) {
-                    loadRoundAvatar(dialogId, avatarFile, personBuilder, -chat.id, chat.title, null);
+                if (avatarFile != null && avatarFile.exists() && Build.VERSION.SDK_INT >= 28) {
+                    loadRoundAvatar(dialogId, avatarFile, personBuilder);
                 }
                 personCache.put(-chat.id, personBuilder.build());
             }
@@ -5257,13 +5194,10 @@ public class NotificationsController extends BaseController implements Notificat
                     sender = getUserConfig().getCurrentUser();
                 }
                 try {
-                    if (sender != null) {
+                    if (sender != null && sender.photo != null && sender.photo.photo_small != null && sender.photo.photo_small.volume_id != 0 && sender.photo.photo_small.local_id != 0) {
                         Person.Builder personBuilder = new Person.Builder().setName(LocaleController.getString(R.string.FromYou));
-                        File avatar = null;
-                        if (sender.photo != null && sender.photo.photo_small != null && sender.photo.photo_small.volume_id != 0 && sender.photo.photo_small.local_id != 0) {
-                            avatar = getFileLoader().getPathToAttach(sender.photo.photo_small, true);
-                        }
-                        loadRoundAvatar(getUserConfig().getClientUserId(), avatar, personBuilder, sender.id, sender.first_name, sender.last_name);
+                        File avatar = getFileLoader().getPathToAttach(sender.photo.photo_small, true);
+                        loadRoundAvatar(getUserConfig().getClientUserId(), avatar, personBuilder);
                         selfPerson = personBuilder.build();
                         personCache.put(selfUserId, selfPerson);
                     }
@@ -5334,9 +5268,6 @@ public class NotificationsController extends BaseController implements Notificat
                         FileLog.d("showExtraNotifications: ["+dialogId+"] continue; topic id is not equal: topicId=" + topicId + " messageTopicId=" + messageTopicId + "; selfId=" + getUserConfig().getClientUserId());
                         continue;
                     }
-                    if (NekoConfig.ignoreBlocked.Bool() && getMessagesController().blockePeers.indexOfKey(messageObject.getSenderId()) >= 0) {
-                        continue;
-                    }
                     String message = getShortStringForMessage(messageObject, senderName, preview);
                     if (dialogId == UserObject.OAUTH) {
                         senderName[0] = LocaleController.getString(R.string.BotAuthNotificationTitle);
@@ -5403,12 +5334,8 @@ public class NotificationsController extends BaseController implements Notificat
                         Person.Builder personBuilder = new Person.Builder().setName(personName);
                         if (preview[0] && !DialogObject.isEncryptedDialog(dialogId) && Build.VERSION.SDK_INT >= 28) {
                             File avatar = null;
-                            TLRPC.User senderUser = null;
-                            TLRPC.Chat senderChat = null;
                             if (DialogObject.isUserDialog(dialogId) || isChannel) {
                                 avatar = avatarFile;
-                                senderUser = user;
-                                senderChat = chat;
                             } else {
                                 long fromId = messageObject.getSenderId();
                                 TLRPC.User sender = getMessagesController().getUser(fromId);
@@ -5418,39 +5345,24 @@ public class NotificationsController extends BaseController implements Notificat
                                         getMessagesController().putUser(sender, true);
                                     }
                                 }
-                                if (sender != null) {
-                                    senderUser = sender;
-                                    if (sender.photo != null && sender.photo.photo_small != null && sender.photo.photo_small.volume_id != 0 && sender.photo.photo_small.local_id != 0) {
-                                        avatar = getFileLoader().getPathToAttach(sender.photo.photo_small, true);
-                                    }
+                                if (sender != null && sender.photo != null && sender.photo.photo_small != null && sender.photo.photo_small.volume_id != 0 && sender.photo.photo_small.local_id != 0) {
+                                    avatar = getFileLoader().getPathToAttach(sender.photo.photo_small, true);
                                 }
                             }
                             if (avatar == null && dialogId == UserObject.VERIFY && messageObject.getForwardedFromId() != null) {
                                 if (uid >= 0) {
                                     TLRPC.User sender = getMessagesController().getUser(uid);
-                                    if (sender != null) {
-                                        senderUser = sender;
-                                        if (sender.photo != null && sender.photo.photo_small != null && sender.photo.photo_small.volume_id != 0 && sender.photo.photo_small.local_id != 0) {
-                                            avatar = getFileLoader().getPathToAttach(sender.photo.photo_small, true);
-                                        }
+                                    if (sender != null && sender.photo != null && sender.photo.photo_small != null && sender.photo.photo_small.volume_id != 0 && sender.photo.photo_small.local_id != 0) {
+                                        avatar = getFileLoader().getPathToAttach(sender.photo.photo_small, true);
                                     }
                                 } else {
                                     TLRPC.Chat sender = getMessagesController().getChat(-uid);
-                                    if (sender != null) {
-                                        senderChat = sender;
-                                        if (sender.photo != null && sender.photo.photo_small != null && sender.photo.photo_small.volume_id != 0 && sender.photo.photo_small.local_id != 0) {
-                                            avatar = getFileLoader().getPathToAttach(sender.photo.photo_small, true);
-                                        }
+                                    if (sender != null && sender.photo != null && sender.photo.photo_small != null && sender.photo.photo_small.volume_id != 0 && sender.photo.photo_small.local_id != 0) {
+                                        avatar = getFileLoader().getPathToAttach(sender.photo.photo_small, true);
                                     }
                                 }
                             }
-                            if (senderUser != null) {
-                                loadRoundAvatar(dialogId, avatar, personBuilder, senderUser.id, senderUser.first_name, senderUser.last_name);
-                            } else if (senderChat != null) {
-                                loadRoundAvatar(dialogId, avatar, personBuilder, -senderChat.id, senderChat.title, null);
-                            } else {
-                                loadRoundAvatar(dialogId, avatar, personBuilder);
-                            }
+                            loadRoundAvatar(dialogId, avatar, personBuilder);
                         }
                         person = personBuilder.build();
                         personCache.put(uid, person);
@@ -5671,11 +5583,11 @@ public class NotificationsController extends BaseController implements Notificat
 
             NotificationCompat.Builder builder = new NotificationCompat.Builder(ApplicationLoader.applicationContext)
                     .setContentTitle(name)
-                    .setSmallIcon(getNotificationIconResId())
+                    .setSmallIcon(R.drawable.notification)
                     .setContentText(text.toString())
                     .setAutoCancel(true)
                     .setNumber(dialogKey.story ? storyPushMessages.size() : messageObjects.size())
-                    .setColor(NekoXConfig.getNotificationColor())
+                    .setColor(0xff11acfa)
                     .setGroupSummary(false)
                     .setWhen(date)
                     .setShowWhen(true)
@@ -5902,66 +5814,29 @@ public class NotificationsController extends BaseController implements Notificat
     }
 
     public static Person.Builder loadRoundAvatar(long dialogId, File avatar, Person.Builder personBuilder) {
-        return loadRoundAvatar(dialogId, avatar, personBuilder, 0, null, null);
-    }
-
-    public static Person.Builder loadRoundAvatar(long dialogId, File avatar, Person.Builder personBuilder, long id, String firstName, String lastName) {
         if (dialogId == UserObject.OAUTH) {
             personBuilder.setIcon(IconCompat.createWithResource(ApplicationLoader.applicationContext, R.drawable.ic_launcher_dr));
             return personBuilder;
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        if (avatar != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             try {
-                Bitmap bitmap = null;
-                if (avatar != null && avatar.exists()) {
-                    bitmap = ImageDecoder.decodeBitmap(ImageDecoder.createSource(avatar), (decoder, info, src) -> {
-                        decoder.setPostProcessor((canvas) -> {
-                            Path path = new Path();
-                            path.setFillType(Path.FillType.INVERSE_EVEN_ODD);
-                            int width = canvas.getWidth();
-                            int height = canvas.getHeight();
-                            path.addRoundRect(0, 0, width, height, width / 2, width / 2, Path.Direction.CW);
-                            Paint paint = new Paint();
-                            paint.setAntiAlias(true);
-                            paint.setColor(Color.TRANSPARENT);
-                            paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC));
-                            canvas.drawPath(path, paint);
-                            return PixelFormat.TRANSLUCENT;
-                        });
+                Bitmap bitmap = ImageDecoder.decodeBitmap(ImageDecoder.createSource(avatar), (decoder, info, src) -> {
+                    decoder.setPostProcessor((canvas) -> {
+                        Path path = new Path();
+                        path.setFillType(Path.FillType.INVERSE_EVEN_ODD);
+                        int width = canvas.getWidth();
+                        int height = canvas.getHeight();
+                        path.addRoundRect(0, 0, width, height, width / 2, width / 2, Path.Direction.CW);
+                        Paint paint = new Paint();
+                        paint.setAntiAlias(true);
+                        paint.setColor(Color.TRANSPARENT);
+                        paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC));
+                        canvas.drawPath(path, paint);
+                        return PixelFormat.TRANSLUCENT;
                     });
-                } else if (firstName != null || lastName != null) {
-                    int sz = AndroidUtilities.dp(64);
-                    bitmap = Bitmap.createBitmap(sz, sz, Bitmap.Config.ARGB_8888);
-                    Canvas canvas = new Canvas(bitmap);
-
-                    int colorIndex = AvatarDrawable.getColorIndex(id);
-                    int[] colors = new int[] {
-                        Theme.getColor(Theme.keys_avatar_background[colorIndex]),
-                        Theme.getColor(Theme.keys_avatar_background2[colorIndex])
-                    };
-                    LinearGradient shader = new LinearGradient(0, 0, 0, sz, colors, new float[] {0, 1}, Shader.TileMode.CLAMP);
-                    Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-                    paint.setShader(shader);
-                    canvas.drawCircle(sz / 2f, sz / 2f, sz / 2f, paint);
-
-                    StringBuilder stringBuilder = new StringBuilder();
-                    AvatarDrawable.getAvatarSymbols(firstName, lastName, null, stringBuilder);
-                    String text = stringBuilder.toString();
-
-                    if (!text.isEmpty()) {
-                        TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-                        textPaint.setTypeface(AndroidUtilities.bold());
-                        textPaint.setTextSize(sz * 0.4f);
-                        textPaint.setColor(0xFFFFFFFF);
-                        Rect rect = new Rect();
-                        textPaint.getTextBounds(text, 0, text.length(), rect);
-                        canvas.drawText(text, sz / 2f - rect.width() / 2f - rect.left, sz / 2f - rect.height() / 2f - rect.top, textPaint);
-                    }
-                }
-                if (bitmap != null) {
-                    IconCompat icon = IconCompat.createWithBitmap(bitmap);
-                    personBuilder.setIcon(icon);
-                }
+                });
+                IconCompat icon = IconCompat.createWithBitmap(bitmap);
+                personBuilder.setIcon(icon);
             } catch (Throwable ignore) {
 
             }
@@ -6416,20 +6291,6 @@ public class NotificationsController extends BaseController implements Notificat
 
     public NotificationsSettingsFacade getNotificationsSettingsFacade() {
         return dialogsNotificationsFacade;
-    }
-
-    public static int getNotificationIconResId() {
-        int notificationIconConfigValue = NaConfig.INSTANCE.getNotificationIcon().Int();
-        switch (notificationIconConfigValue) {
-            case 0:
-                return R.drawable.notification;
-            case 1:
-                return R.drawable.nagram_notification;
-            case 2:
-                return R.drawable.notification_neko;
-        }
-
-        return R.drawable.notification;
     }
 
     public void loadTopicsNotificationsExceptions(long dialogId, Consumer<HashSet<Integer>> consumer) {

@@ -87,8 +87,6 @@ import org.telegram.ui.Stories.StoriesUtilities;
 
 import java.util.ArrayList;
 
-import tw.nekomimi.nekogram.NekoConfig;
-
 public class MessageStatisticActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
 
     private TLRPC.ChatFull chat;
@@ -349,7 +347,6 @@ public class MessageStatisticActivity extends BaseFragment implements Notificati
         listView.setOnItemLongClickListener((view, position) -> {
             if (position >= startRow && position < endRow) {
                 try {
-                    if (!NekoConfig.disableVibration.Bool())
                     view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                 } catch (Exception ignore) {}
                 MessageObject message = messages.get(position - startRow);
@@ -1003,11 +1000,11 @@ public class MessageStatisticActivity extends BaseFragment implements Notificati
                     HeaderCell headerCell = (HeaderCell) holder.itemView;
                     if (position == overviewHeaderRow) {
                         headerCell.setTopMargin(9);
-                        headerCell.setPadding(AndroidUtilities.dp(16), 0, AndroidUtilities.dp(16), AndroidUtilities.dp(8));
+                        headerCell.setPadding(0, 0, 0, AndroidUtilities.dp(8));
                         headerCell.setText(LocaleController.formatString("StatisticOverview", R.string.StatisticOverview));
                     } else {
                         headerCell.setTopMargin(11);
-                        headerCell.setPadding(AndroidUtilities.dp(16), 0, AndroidUtilities.dp(16), 0);
+                        headerCell.setPadding(0, 0, 0, 0);
                         headerCell.setText(LocaleController.formatString("PublicShares", R.string.PublicShares));
                     }
                     break;

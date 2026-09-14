@@ -109,8 +109,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
-import xyz.nextalone.nagram.NaConfig;
-
 @SuppressLint("NewApi")
 public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsListener, NotificationCenter.NotificationCenterDelegate {
 
@@ -232,18 +230,6 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
         this.looper = looper;
     }
 
-    private int getPlayerExtensionRendererMode() {
-        switch (NaConfig.INSTANCE.getPlayerDecoder().Int()) {
-            case 1:
-                return DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF;
-            case 2:
-                return DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON;
-            case 0:
-            default:
-                return DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER;
-        }
-    }
-
     private void ensurePlayerCreated() {
         DefaultLoadControl loadControl;
         if (isStory) {
@@ -276,7 +262,7 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
             } else {
                 factory = new DefaultRenderersFactory(ApplicationLoader.applicationContext);
             }
-            factory.setExtensionRendererMode(getPlayerExtensionRendererMode());
+            factory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER);
             ExoPlayer.Builder builder = new ExoPlayer.Builder(ApplicationLoader.applicationContext).setRenderersFactory(factory)
                     .setTrackSelector(trackSelector)
                     .setLoadControl(loadControl);
@@ -301,7 +287,6 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
         if (mixedAudio) {
             if (audioPlayer == null) {
                 audioPlayer = new ExoPlayer.Builder(ApplicationLoader.applicationContext)
-                        .setRenderersFactory(new DefaultRenderersFactory(ApplicationLoader.applicationContext).setExtensionRendererMode(getPlayerExtensionRendererMode()))
                         .setTrackSelector(trackSelector)
                         .setLoadControl(loadControl).buildSimpleExoPlayer();
                 audioPlayer.addListener(new Player.Listener() {
@@ -445,46 +430,9 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
         }
     }
 
-    public static Quality getDefaultSavedQualityInt(ArrayList<Quality> qualities, int pL, int p) {
-        for (Quality q : qualities) {
-            if (!q.original && q.p() <= pL && q.p() >= p) return q;
-        }
-        return null;
-    }
-
-    public static Quality getDefaultSavedQuality(ArrayList<Quality> qualities) {
-        int v = NaConfig.INSTANCE.getDefaultHlsVideoQuality().Int();
-        Quality q1;
-        switch (v) {
-            case 0:
-                return null;
-            case 1:
-                for (Quality q : qualities) {
-                    if (q.original) return q;
-                }
-            case 2:
-                q1 = getDefaultSavedQualityInt(qualities, Integer.MAX_VALUE, 1440);
-                if (q1 != null) return q1;
-            case 3:
-                q1 = getDefaultSavedQualityInt(qualities, 1440, 1000);
-                if (q1 != null) return q1;
-            case 4:
-                q1 = getDefaultSavedQualityInt(qualities, 1000, 700);
-                if (q1 != null) return q1;
-            case 5:
-                q1 = getDefaultSavedQualityInt(qualities, 700, 0);
-                if (q1 != null) return q1;
-        }
-        return null;
-    }
-
     public static Quality getSavedQuality(ArrayList<Quality> qualities, MessageObject messageObject) {
-        if (messageObject == null) return getDefaultSavedQuality(qualities);
-        var q = getSavedQuality(qualities, messageObject.getDialogId(), messageObject.getId());
-        if (q == null) {
-            return getDefaultSavedQuality(qualities);
-        }
-        return q;
+        if (messageObject == null) return null;
+        return getSavedQuality(qualities, messageObject.getDialogId(), messageObject.getId());
     }
 
     public static Quality getSavedQuality(ArrayList<Quality> qualities, long did, int mid) {
@@ -998,9 +946,6 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     }
 
     public static VideoUri getQualityForPlayer(ArrayList<Quality> qualities) {
-        final Quality preferred = getDefaultSavedQuality(qualities);
-        if (preferred != null) return preferred.getDownloadUri();
-
         for (final Quality q : qualities) {
             for (final VideoUri v : q.uris) {
                 if (v.original && v.isCached())

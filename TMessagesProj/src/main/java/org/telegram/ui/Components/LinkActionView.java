@@ -259,7 +259,7 @@ public class LinkActionView extends LinearLayout {
                 layout.addView(subItem, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48));
             }
 
-            ViewGroup container;
+            FrameLayout container;
             if (bottomSheet == null) {
                 container = (FrameLayout) fragment.getParentLayout().getOverlayContainerView();
             } else {
@@ -273,7 +273,7 @@ public class LinkActionView extends LinearLayout {
                 getPointOnScreen(frameLayout, container, point);
                 y = point[1];
 
-                final ViewGroup finalContainer = container;
+                final FrameLayout finalContainer = container;
                 View dimView = new View(context) {
 
                     @Override
@@ -360,7 +360,7 @@ public class LinkActionView extends LinearLayout {
         b.show(true);
     }
 
-    private void getPointOnScreen(FrameLayout frameLayout, ViewGroup finalContainer, float[] point) {
+    private void getPointOnScreen(FrameLayout frameLayout, FrameLayout finalContainer, float[] point) {
         float x = 0;
         float y = 0;
         View v = frameLayout;

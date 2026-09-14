@@ -52,10 +52,6 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 
-import tw.nekomimi.nekogram.transtale.popupwrapper.LanguageDetector;
-import xyz.nextalone.nagram.NaConfig;
-import xyz.nextalone.nagram.SummarizeTextButtonStatus;
-
 public class TranslateController extends BaseController {
 
     public static final String UNKNOWN_LANGUAGE = "und";
@@ -141,15 +137,10 @@ public class TranslateController extends BaseController {
     }
 
     public static boolean isSummarizable(MessageObject messageObject) {
-        int buttonStatus = NaConfig.INSTANCE.getSummarizeTextButton().Int();
-        if (buttonStatus == SummarizeTextButtonStatus.DISABLE.getValue()) {
-            return false;
-        }
-        boolean alwaysShow = buttonStatus == SummarizeTextButtonStatus.ALWAYS.getValue();
         return (
             messageObject != null &&
             messageObject.messageOwner != null &&
-            (alwaysShow || messageObject.messageOwner.summary_from_language != null) &&
+            messageObject.messageOwner.summary_from_language != null &&
             !messageObject.isOutOwner() &&
             !messageObject.isRestrictedMessage &&
             !messageObject.isSponsored() &&
@@ -2227,15 +2218,11 @@ public class TranslateController extends BaseController {
         public static PollText fromPoll(TLRPC.TL_messageMediaPoll mediaPoll) {
             final TLRPC.Poll poll = mediaPoll.poll;
             final PollText pollText = new PollText();
-            pollText.question = new TLRPC.TL_textWithEntities();
-            pollText.question.text = poll.question.text;
-            pollText.question.entities = poll.question.entities;
+            pollText.question = poll.question;
             for (int i = 0; i < poll.answers.size(); ++i) {
                 TLRPC.PollAnswer answer = poll.answers.get(i);
                 TLRPC.TL_pollAnswer answerText = new TLRPC.TL_pollAnswer();
-                answerText.text = new TLRPC.TL_textWithEntities();
-                answerText.text.text = answer.text.text;
-                answerText.text.entities = answer.text.entities;
+                answerText.text = answer.text;
                 answerText.option = answer.option;
                 pollText.answers.add(answerText);
             }

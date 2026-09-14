@@ -82,7 +82,6 @@ public class QRCodeBottomSheet extends BottomSheet {
         FrameLayout frameLayout = new FrameLayout(context) {
 
             float lastX;
-
             @Override
             protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
                 super.onMeasure(widthMeasureSpec, heightMeasureSpec);
@@ -96,7 +95,7 @@ public class QRCodeBottomSheet extends BottomSheet {
         };
         frameLayout.addView(imageView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
         frameLayout.addView(iconImage, LayoutHelper.createFrame(60, 60, Gravity.CENTER));
-        linearLayout.addView(frameLayout, LayoutHelper.createLinear(220, 220, Gravity.CENTER_HORIZONTAL, 30, 0, 30, 0));
+        linearLayout.addView(frameLayout, LayoutHelper.createLinear(220, 220, Gravity.CENTER_HORIZONTAL, 30, 0,30 ,0));
 
         help = new TextView(context);
         help.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);

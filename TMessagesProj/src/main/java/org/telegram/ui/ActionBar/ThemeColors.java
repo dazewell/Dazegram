@@ -26,7 +26,6 @@ public class ThemeColors {
         defaultColors[key_dialogTextBlack] = DEFAULT_BLACK_TEXT;
         defaultColors[key_dialogTextLink] = 0xff2678b6;
         defaultColors[key_dialogLinkSelection] = 0x3362a9e3;
-        defaultColors[key_dialogTextRed] = 0xffcd5a5a;
         defaultColors[key_dialogTextBlue] = 0xff2f8cc9;
         defaultColors[key_dialogTextBlue2] = 0xff3a95d5;
         defaultColors[key_dialogTextBlue4] = 0xff19a7e8;
@@ -36,7 +35,6 @@ public class ThemeColors {
         defaultColors[key_dialogTextGray4] = 0xffb3b3b3;
         defaultColors[key_dialogTextHint] = 0xff979797;
         defaultColors[key_dialogIcon] = DEFAULT_BLACK_TEXT;
-        defaultColors[key_dialogRedIcon] = 0xffe14d4d;
         defaultColors[key_dialogGrayLine] = 0xffd2d2d2;
         defaultColors[key_dialogTopBackground] = TELEGRAM_COLOR_TEXT;
         defaultColors[key_dialogInputField] = 0xffdbdbdb;
@@ -95,8 +93,6 @@ public class ThemeColors {
         defaultColors[key_windowBackgroundWhiteBlueIcon] = 0xff379de5;
         defaultColors[key_windowBackgroundWhiteGreenText] = 0xff26972c;
         defaultColors[key_windowBackgroundWhiteGreenText2] = 0xff37a818;
-        defaultColors[key_windowBackgroundWhiteRedText3] = 0xffd24949;
-        defaultColors[key_windowBackgroundWhiteRedText4] = 0xffcf3030;
         defaultColors[key_text_RedRegular] = 0xffcc2929;
         defaultColors[key_text_RedBold] = 0xffcc4747;
         defaultColors[key_fill_RedNormal] = 0xffeb5e5e;
@@ -897,7 +893,6 @@ public class ThemeColors {
         colorKeysMap.put(key_dialogTextBlack, "dialogTextBlack");
         colorKeysMap.put(key_dialogTextLink, "dialogTextLink");
         colorKeysMap.put(key_dialogLinkSelection, "dialogLinkSelection");
-        colorKeysMap.put(key_dialogTextRed, "dialogTextRed");
         colorKeysMap.put(key_dialogTextBlue, "dialogTextBlue");
         colorKeysMap.put(key_dialogTextBlue2, "dialogTextBlue2");
         colorKeysMap.put(key_dialogTextBlue4, "dialogTextBlue4");
@@ -922,7 +917,6 @@ public class ThemeColors {
         colorKeysMap.put(key_dialogButton, "dialogButton");
         colorKeysMap.put(key_dialogButtonSelector, "dialogButtonSelector");
         colorKeysMap.put(key_dialogIcon, "dialogIcon");
-        colorKeysMap.put(key_dialogRedIcon, "dialogRedIcon");
         colorKeysMap.put(key_dialogGrayLine, "dialogGrayLine");
         colorKeysMap.put(key_dialogTopBackground, "dialogTopBackground");
         colorKeysMap.put(key_dialog_inlineProgressBackground, "dialog_inlineProgressBackground");
@@ -963,8 +957,6 @@ public class ThemeColors {
         colorKeysMap.put(key_windowBackgroundWhiteBlueIcon, "windowBackgroundWhiteBlueIcon");
         colorKeysMap.put(key_windowBackgroundWhiteGreenText, "windowBackgroundWhiteGreenText");
         colorKeysMap.put(key_windowBackgroundWhiteGreenText2, "windowBackgroundWhiteGreenText2");
-        colorKeysMap.put(key_windowBackgroundWhiteRedText3, "windowBackgroundWhiteRedText3");
-        colorKeysMap.put(key_windowBackgroundWhiteRedText4, "windowBackgroundWhiteRedText4");
         colorKeysMap.put(key_windowBackgroundWhiteGrayText, "windowBackgroundWhiteGrayText");
         colorKeysMap.put(key_windowBackgroundWhiteGrayText2, "windowBackgroundWhiteGrayText2");
         colorKeysMap.put(key_windowBackgroundWhiteGrayText3, "windowBackgroundWhiteGrayText3");

@@ -22,17 +22,17 @@ public class LanguageDetector {
                 com.google.mlkit.common.sdkinternal.MlKitContext.zza(ApplicationLoader.applicationContext);
             }
             com.google.mlkit.nl.languageid.LanguageIdentification.getClient()
-                    .identifyLanguage(text)
-                    .addOnSuccessListener(str -> {
-                        if (onSuccess != null) {
-                            onSuccess.run(str);
-                        }
-                    })
-                    .addOnFailureListener(e -> {
-                        if (onFail != null) {
-                            onFail.run(e);
-                        }
-                    });
+                .identifyLanguage(text)
+                .addOnSuccessListener(str -> {
+                    if (onSuccess != null) {
+                        onSuccess.run(str);
+                    }
+                })
+                .addOnFailureListener(e -> {
+                    if (onFail != null) {
+                        onFail.run(e);
+                    }
+                });
         } catch (IllegalStateException e) {
             if (!initializeFirst) {
                 detectLanguage(text, onSuccess, onFail, true);

@@ -24,8 +24,6 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.ChatAttachAlertPhotoLayout;
 import org.telegram.ui.Components.LayoutHelper;
 
-import tw.nekomimi.nekogram.NekoXConfig;
-
 public class PhotoAttachPermissionCell extends FrameLayout {
 
     private final Theme.ResourcesProvider resourcesProvider;
@@ -40,12 +38,12 @@ public class PhotoAttachPermissionCell extends FrameLayout {
 
         imageView = new ImageView(context);
         imageView.setScaleType(ImageView.ScaleType.CENTER);
-        imageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chat_attachPermissionImage), PorterDuff.Mode.SRC_IN));
+        imageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chat_attachPermissionImage), PorterDuff.Mode.MULTIPLY));
         addView(imageView, LayoutHelper.createFrame(44, 44, Gravity.CENTER, 5, 0, 0, 27));
 
         imageView2 = new ImageView(context);
         imageView2.setScaleType(ImageView.ScaleType.CENTER);
-        imageView2.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chat_attachPermissionMark), PorterDuff.Mode.SRC_IN));
+        imageView2.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chat_attachPermissionMark), PorterDuff.Mode.MULTIPLY));
         addView(imageView2, LayoutHelper.createFrame(44, 44, Gravity.CENTER, 5, 0, 0, 27));
 
         textView = new TextView(context);
@@ -69,19 +67,13 @@ public class PhotoAttachPermissionCell extends FrameLayout {
 
             imageView.setLayoutParams(LayoutHelper.createFrame(44, 44, Gravity.CENTER, 5, 0, 0, 27));
             imageView2.setLayoutParams(LayoutHelper.createFrame(44, 44, Gravity.CENTER, 5, 0, 0, 27));
-        } else if (type == 1) {
+        } else {
             imageView.setImageResource(R.drawable.permissions_gallery1);
             imageView2.setImageResource(R.drawable.permissions_gallery2);
             textView.setText(LocaleController.getString(R.string.GalleryPermissionText));
 
             imageView.setLayoutParams(LayoutHelper.createFrame(44, 44, Gravity.CENTER, 0, 0, 2, 27));
             imageView2.setLayoutParams(LayoutHelper.createFrame(44, 44, Gravity.CENTER, 0, 0, 2, 27));
-        } else {
-            imageView.setImageResource(R.drawable.msg_openin);
-            imageView2.setVisibility(GONE);
-            textView.setText(LocaleController.getString("OpenInExternalApp", R.string.OpenInExternalApp));
-
-            imageView.setLayoutParams(LayoutHelper.createFrame(44, 44, Gravity.CENTER, 0, 0, 2, 27));
         }
     }
 

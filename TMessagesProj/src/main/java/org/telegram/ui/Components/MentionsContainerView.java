@@ -55,8 +55,6 @@ import org.telegram.ui.PhotoViewer;
 
 import java.util.ArrayList;
 
-import xyz.nextalone.nagram.NaConfig;
-
 public class MentionsContainerView extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {
 
     private final Theme.ResourcesProvider resourcesProvider;
@@ -637,16 +635,16 @@ public class MentionsContainerView extends FrameLayout implements NotificationCe
                 TLRPC.Chat chat = (TLRPC.Chat) object;
                 String username = ChatObject.getPublicUsername(chat);
                 if (username != null) {
-                    delegate.replaceText(start, len, "@" + username + (NaConfig.INSTANCE.getAddCommaAfterMention().Bool() ? ", " : " "), false);
+                    delegate.replaceText(start, len, "@" + username + " " , false);
                 }
             } else if (object instanceof TLRPC.User) {
                 TLRPC.User user = (TLRPC.User) object;
 
                 if (UserObject.getPublicUsername(user) != null) {
-                    delegate.replaceText(start, len, "@" + UserObject.getPublicUsername(user) + (NaConfig.INSTANCE.getAddCommaAfterMention().Bool() ? ", " : " "), false);
+                    delegate.replaceText(start, len, "@" + UserObject.getPublicUsername(user) + " ", false);
                 } else {
                     String name = UserObject.getFirstName(user, false);
-                    Spannable spannable = new SpannableString(name + (NaConfig.INSTANCE.getAddCommaAfterMention().Bool() ? ", " : " "));
+                    Spannable spannable = new SpannableString(name + " ");
                     spannable.setSpan(new URLSpanUserMention("" + user.id, 3), 0, spannable.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                     delegate.replaceText(start, len, spannable, false);
                 }
@@ -684,11 +682,9 @@ public class MentionsContainerView extends FrameLayout implements NotificationCe
                 updateVisibility(false);
             } if (object instanceof TLRPC.BotInlineResult) {
                 TLRPC.BotInlineResult result = (TLRPC.BotInlineResult) object;
-                boolean isMediaInlineResult = result.type.equals("photo") && (result.photo != null || result.content != null) ||
+                if ((result.type.equals("photo") && (result.photo != null || result.content != null) ||
                         result.type.equals("gif") && (result.document != null || result.content != null) ||
-                        result.type.equals("video") && (result.document != null/* || result.content_url != null*/);
-                boolean skipMediaPreview = NaConfig.INSTANCE.getFixUrlAutoInlineBotSkipMediaPreview().Bool() && getAdapter() != null && getAdapter().isAutoSearchingContextBot();
-                if (isMediaInlineResult && !skipMediaPreview) {
+                        result.type.equals("video") && (result.document != null/* || result.content_url != null*/))) {
                     ArrayList<Object> arrayList = botContextResults = new ArrayList<>(getAdapter().getSearchResultBotContext());
                     PhotoViewer.getInstance().setParentActivity(baseFragment, resourcesProvider);
                     PhotoViewer.getInstance().openPhotoForSelect(arrayList, getAdapter().getItemPosition(position), 3, false, botContextProvider, null);

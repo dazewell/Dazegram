@@ -28,14 +28,10 @@ import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
-import android.graphics.RectF;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.VectorDrawable;
-import android.os.Build;
-import android.text.Layout;
 import android.text.SpannableString;
-import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.text.TextUtils;
 import android.transition.ChangeBounds;
@@ -53,7 +49,6 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 
 import androidx.annotation.NonNull;
-import androidx.appcompat.widget.AppCompatImageView;
 import androidx.core.graphics.ColorUtils;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -84,9 +79,6 @@ import me.vkryl.android.animator.BoolAnimator;
 import me.vkryl.android.animator.FactorAnimator;
 import me.vkryl.android.animator.ReplaceAnimator;
 
-import tw.nekomimi.nekogram.NekoConfig;
-import xyz.nextalone.nagram.NaConfig;
-
 public class ActionBar extends FrameLayout implements FactorAnimator.Target, Theme.Colorable {
 
     public static class ActionBarMenuOnItemClick {
@@ -103,7 +95,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     private BlurredBackgroundDrawable glassDrawableBack;
     private BlurredBackgroundDrawable glassDrawableMenu;
     private INavigationLayout.BackButtonState backButtonState = INavigationLayout.BackButtonState.BACK;
-    public UnreadImageView backButtonImageView;
+    public ImageView backButtonImageView;
     private BackupImageView avatarSearchImageView;
     private Drawable backButtonDrawable;
     private final SimpleTextView[] titleTextView = new SimpleTextView[2];
@@ -271,7 +263,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         if (backButtonImageView != null) {
             return;
         }
-        backButtonImageView = new UnreadImageView(getContext());
+        backButtonImageView = new ImageView(getContext());
         backButtonImageView.setScaleType(ImageView.ScaleType.CENTER);
         backButtonImageView.setBackgroundDrawable(Theme.createSelectorDrawable(itemsBackgroundColor));
         backButtonImageView.setPadding(dp(1), 0, 0, 0);
@@ -416,50 +408,32 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 if (titleView != null && titleView.getVisibility() == View.VISIBLE && titleView.getText() instanceof String) {
                     TextPaint textPaint = titleView.getTextPaint();
                     textPaint.getFontMetricsInt(fontMetricsInt);
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        textPaint.getTextBounds(titleView.getText(), 0, 1, rect);
-                    } else {
-                        textPaint.getTextBounds(titleView.getText().toString(), 0, 1, rect);
-                    }
+                    textPaint.getTextBounds((String) titleView.getText(), 0, 1, rect);
                     int x = titleView.getTextStartX() + Theme.getCurrentHolidayDrawableXOffset() + (rect.width() - (drawable.getIntrinsicWidth() + Theme.getCurrentHolidayDrawableXOffset())) / 2;
                     int y = titleView.getTextStartY() + Theme.getCurrentHolidayDrawableYOffset() + (int) Math.ceil((titleView.getTextHeight() - rect.height()) / 2.0f) + (int) (dp(8) * (1f - titlesContainer.getScaleY()));
                     drawable.setBounds(x, y - drawable.getIntrinsicHeight(), x + drawable.getIntrinsicWidth(), y);
                     drawable.setAlpha((int) (255 * titlesContainer.getAlpha() * titleView.getAlpha()));
-                    drawable.setColorFilter(textPaint.getColor(), PorterDuff.Mode.MULTIPLY);
                     drawable.draw(canvas);
                     if (overlayTitleAnimationInProgress) {
                         child.invalidate();
                         invalidate();
                     }
                 }
-            }
-            if (NekoConfig.actionBarDecoration.Int() == 3) {
+
+                if (Theme.canStartHolidayAnimation()) {
+                    if (snowflakesEffect == null) {
+                        snowflakesEffect = new SnowflakesEffect(0);
+                    }
+                } else if (!manualStart) {
+                    if (snowflakesEffect != null) {
+                        snowflakesEffect = null;
+                    }
+                }
                 if (snowflakesEffect != null) {
-                    snowflakesEffect = null;
+                    snowflakesEffect.onDraw(this, canvas);
+                } else if (fireworksEffect != null) {
+                    fireworksEffect.onDraw(this, canvas);
                 }
-                if (fireworksEffect != null) {
-                    fireworksEffect = null;
-                }
-            } else if (NekoConfig.actionBarDecoration.Int() == 2) {
-                if (fireworksEffect == null) {
-                    fireworksEffect = new FireworksEffect();
-                }
-            } else if (NekoConfig.actionBarDecoration.Int() == 1 || Theme.canStartHolidayAnimation()) {
-                if (snowflakesEffect == null) {
-                    snowflakesEffect = new SnowflakesEffect(0);
-                }
-            } else if (!manualStart) {
-                if (snowflakesEffect != null) {
-                    snowflakesEffect = null;
-                }
-                if (fireworksEffect != null) {
-                    fireworksEffect = null;
-                }
-            }
-            if (snowflakesEffect != null) {
-                snowflakesEffect.onDraw(this, canvas);
-            } else if (fireworksEffect != null) {
-                fireworksEffect.onDraw(this, canvas);
             }
         }
         if (clip) {
@@ -497,7 +471,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             return;
         }
         subtitleTextView = new SimpleTextView(getContext());
-        subtitleTextView.setGravity(isCenterTitle ? Gravity.CENTER : Gravity.LEFT);
+        subtitleTextView.setGravity(Gravity.LEFT);
         subtitleTextView.setVisibility(GONE);
         subtitleTextView.setTextColor(getThemedColor(Theme.key_actionBarDefaultSubtitle));
         addView(subtitleTextView, 0, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.TOP));
@@ -508,7 +482,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             return;
         }
         additionalSubtitleTextView = new SimpleTextView(getContext());
-        additionalSubtitleTextView.setGravity(isCenterTitle ? Gravity.CENTER : Gravity.LEFT);
+        additionalSubtitleTextView.setGravity(Gravity.LEFT);
         additionalSubtitleTextView.setVisibility(GONE);
         additionalSubtitleTextView.setTextColor(getThemedColor(Theme.key_actionBarDefaultSubtitle));
         addView(additionalSubtitleTextView, 0, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.TOP));
@@ -568,14 +542,14 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         }
     }
 
-    private boolean isCenterTitle = NaConfig.INSTANCE.getCenterActionBarTitle().Bool();
+    private boolean isCenterTitle;
 
-    public void centerTitle(boolean isCenterTitle) {
-        this.isCenterTitle = isCenterTitle;
+    public void centerTitle() {
+        isCenterTitle = true;
         if (titleTextView != null) {
             for (int a = 0; a < titleTextView.length; a++) {
                 if (titleTextView[a] != null) {
-                    titleTextView[a].setGravity(isCenterTitle ? Gravity.CENTER : Gravity.LEFT | Gravity.CENTER_VERTICAL);
+                    titleTextView[a].setGravity(Gravity.CENTER);
                 }
             }
         }
@@ -861,8 +835,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         showActionMode(animated, null, null, null, null, null, 0);
     }
 
-    public void showActionMode(boolean animated, View extraView, View showingView, View[] hidingViews,
-                               boolean[] hideView, View translationView, int translation) {
+    public void showActionMode(boolean animated, View extraView, View showingView, View[] hidingViews, boolean[] hideView, View translationView, int translation) {
         if (actionMode == null || actionModeVisible) {
             return;
         }
@@ -1465,9 +1438,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             if (titleTextView[0] != null && titleTextView[0].getVisibility() != GONE || subtitleTextView != null && subtitleTextView.getVisibility() != GONE) {
                 int availableWidth = width - (menu != null ? menu.getMeasuredWidth() : 0) - dp(16) - textLeft - titleRightMargin;
                 availableWidth = Math.max(availableWidth, 0);
-                if (isCenterTitle) {
-                    availableWidth = width - dp(120);
-                }
 
                 if (((fromBottom && i == 0) || (!fromBottom && i == 1)) && overlayTitleAnimation && titleAnimationRunning) {
                     titleTextView[i].setTextSize(glassMode ? 17 : !AndroidUtilities.isTablet() && getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE ? 18 : 20);
@@ -1573,11 +1543,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                         textTop = (getCurrentActionBarHeight() - titleTextView[i].getTextHeight()) / 2;
                     }
                 }
-                if (isCenterTitle) {
-                    titleTextView[i].layout(getMeasuredWidth() / 2 - titleTextView[i].getMeasuredWidth() / 2, additionalTop + textTop - titleTextView[i].getPaddingTop(), getMeasuredWidth() / 2 + titleTextView[i].getMeasuredWidth() / 2, additionalTop + textTop + titleTextView[i].getTextHeight() - titleTextView[i].getPaddingTop() + titleTextView[i].getPaddingBottom());
-                } else {
-                    titleTextView[i].layout(textLeft, additionalTop + textTop - titleTextView[i].getPaddingTop(), textLeft + titleTextView[i].getMeasuredWidth(), additionalTop + textTop + titleTextView[i].getTextHeight() - titleTextView[i].getPaddingTop() + titleTextView[i].getPaddingBottom());
-                }
+                titleTextView[i].layout(textLeft, additionalTop + textTop - titleTextView[i].getPaddingTop(), textLeft + titleTextView[i].getMeasuredWidth(), additionalTop + textTop + titleTextView[i].getTextHeight() - titleTextView[i].getPaddingTop() + titleTextView[i].getPaddingBottom());
             }
         }
         if (additionalSubTitleOverlayContainer != null) {
@@ -1586,20 +1552,12 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         }
         if (subtitleTextView != null && subtitleTextView.getVisibility() != GONE) {
             int textTop = getCurrentActionBarHeight() / 2 + (getCurrentActionBarHeight() / 2 - subtitleTextView.getTextHeight()) / 2 - dp(2);
-            if (isCenterTitle) {
-                subtitleTextView.layout(getMeasuredWidth() / 2 - subtitleTextView.getMeasuredWidth() / 2, additionalTop + textTop, getMeasuredWidth() / 2 + subtitleTextView.getMeasuredWidth() / 2, additionalTop + textTop + subtitleTextView.getTextHeight());
-            } else {
-                subtitleTextView.layout(textLeft, additionalTop + textTop, textLeft + subtitleTextView.getMeasuredWidth(), additionalTop + textTop + subtitleTextView.getTextHeight());
-            }
+            subtitleTextView.layout(textLeft, additionalTop + textTop, textLeft + subtitleTextView.getMeasuredWidth(), additionalTop + textTop + subtitleTextView.getTextHeight());
         }
 
         if (additionalSubtitleTextView != null && additionalSubtitleTextView.getVisibility() != GONE) {
             int textTop = getCurrentActionBarHeight() / 2 + (getCurrentActionBarHeight() / 2 - additionalSubtitleTextView.getTextHeight()) / 2 - dp(!AndroidUtilities.isTablet() && getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE ? 1 : 1);
-            if (isCenterTitle) {
-                additionalSubtitleTextView.layout(getMeasuredWidth() / 2 - additionalSubtitleTextView.getMeasuredWidth() / 2, additionalTop + textTop, getMeasuredWidth() / 2 + additionalSubtitleTextView.getMeasuredWidth() / 2, additionalTop + textTop + additionalSubtitleTextView.getTextHeight());
-            } else {
-                additionalSubtitleTextView.layout(textLeft, additionalTop + textTop, textLeft + additionalSubtitleTextView.getMeasuredWidth(), additionalTop + textTop + additionalSubtitleTextView.getTextHeight());
-            }
+            additionalSubtitleTextView.layout(textLeft, additionalTop + textTop, textLeft + additionalSubtitleTextView.getMeasuredWidth(), additionalTop + textTop + additionalSubtitleTextView.getTextHeight());
         }
 
         if (avatarSearchImageView != null) {
@@ -2110,7 +2068,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 public void captureEndValues(TransitionValues transitionValues) {
                     super.captureEndValues(transitionValues);
                     if (transitionValues.view instanceof SimpleTextView) {
-                        float textSize = ((SimpleTextView) transitionValues.view).getTextPaint().getTextSize();
+                        float textSize= ((SimpleTextView) transitionValues.view).getTextPaint().getTextSize();
                         transitionValues.values.put("text_size", textSize);
                     }
                 }
@@ -2337,56 +2295,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         this.drawBackButton = b;
         if (backButtonImageView != null) {
             backButtonImageView.invalidate();
-        }
-    }
-
-    // NekoX Changes
-
-    private StaticLayout countLayout;
-
-    public class UnreadImageView extends AppCompatImageView {
-        public UnreadImageView(Context context) {
-            super(context);
-        }
-
-        private int unreadCount = 0;
-        private RectF rect = new RectF();
-
-        @Override
-        public void onDraw(Canvas canvas) {
-            super.onDraw(canvas);
-            if (countLayout == null || unreadCount == 0)
-                return;
-
-            Paint paint = Theme.dialogs_countPaint;
-            String unreadCountString = unreadCount > 99 ? "99+" : Integer.toString(unreadCount);
-            int countWidth = Math.max(AndroidUtilities.dp(12), (int) Math.ceil(Theme.dialogs_countTextPaint.measureText(unreadCountString)));
-            int countLeft = getMeasuredWidth() - countWidth - AndroidUtilities.dp(20);
-            int countTop = 0;
-
-            int x = countLeft - AndroidUtilities.dp(5.5f);
-            rect.set(x, countTop, x + countWidth + AndroidUtilities.dp(11), countTop + AndroidUtilities.dp(23));
-            canvas.drawRoundRect(rect, 11.5f * AndroidUtilities.density, 11.5f * AndroidUtilities.density, paint);
-            canvas.save();
-            canvas.translate(countLeft, countTop + AndroidUtilities.dp(4));
-            countLayout.draw(canvas);
-            canvas.restore();
-        }
-
-        public void setUnread(int count) {
-            if (count != unreadCount) {
-                unreadCount = count;
-                String countString = count > 99 ? "99+" : Integer.toString(count);
-                int countWidth = count == 0 ? 0 : Math.max(AndroidUtilities.dp(12), (int) Math.ceil(Theme.dialogs_countTextPaint.measureText(countString)));
-                countLayout = new StaticLayout(countString, Theme.dialogs_countTextPaint, countWidth, Layout.Alignment.ALIGN_CENTER, 1.0f, 0.0f, false);
-                invalidate();
-            }
-        }
-    }
-
-    public void unreadBadgeSetCount(int count) {
-        if (backButtonImageView != null && NekoConfig.unreadBadgeOnBackButton.Bool()) {
-            backButtonImageView.setUnread(count);
         }
     }
 

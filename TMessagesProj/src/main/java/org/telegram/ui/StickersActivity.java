@@ -16,12 +16,10 @@ import static org.telegram.messenger.MediaDataController.TYPE_IMAGE;
 import static org.telegram.messenger.MediaDataController.TYPE_MASK;
 
 import android.annotation.SuppressLint;
-import android.app.Activity;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.graphics.Canvas;
-import android.graphics.drawable.Drawable;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextUtils;
@@ -43,11 +41,6 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.ListUpdateCallback;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
-import com.google.gson.internal.Streams;
-import com.google.gson.stream.JsonWriter;
-
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.DocumentObject;
@@ -59,7 +52,6 @@ import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
-import org.telegram.messenger.SendMessagesHelper;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.SvgHelper;
 import org.telegram.messenger.UserConfig;
@@ -104,31 +96,11 @@ import org.telegram.ui.Components.URLSpanNoUnderline;
 import org.telegram.ui.Components.UniversalAdapter;
 import org.telegram.ui.Components.UniversalRecyclerView;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
-import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
-
-import kotlin.Unit;
-import tw.nekomimi.nekogram.ui.BottomBuilder;
-import tw.nekomimi.nekogram.NekoConfig;
-import tw.nekomimi.nekogram.ui.PinnedStickerHelper;
-import tw.nekomimi.nekogram.utils.AlertUtil;
-import tw.nekomimi.nekogram.utils.EnvUtil;
-import tw.nekomimi.nekogram.utils.FileUtil;
-import tw.nekomimi.nekogram.utils.ShareUtil;
-import tw.nekomimi.nekogram.utils.StickersUtil;
-import tw.nekomimi.nekogram.utils.UIUtil;
-import xyz.nextalone.nagram.NaConfig;
-import xyz.nextalone.nagram.helper.ExternalStickerCacheHelper;
 
 public class StickersActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
 
@@ -137,9 +109,6 @@ public class StickersActivity extends BaseFragment implements NotificationCenter
     private static final int MENU_SHARE = 2;
     private static final int MENU_COPY = 3;
     private static final int MENU_REORDER = 4;
-    private static final int MENU_EXPORT = 100;
-    private static final int MENU_TOGGLE_PIN = 101;
-
 
     private UniversalRecyclerView listView;
     @SuppressWarnings("FieldCanBeLocal")
@@ -151,7 +120,6 @@ public class StickersActivity extends BaseFragment implements NotificationCenter
     private ArrayList<TLRPC.StickerSetCovered> featured;
     private final List<Long> loadingFeaturedStickerSets = new ArrayList<>();
 
-    private ActionBarMenuItem exportMenuItem;
     private ActionBarMenuItem archiveMenuItem;
     private ActionBarMenuItem deleteMenuItem;
     private ActionBarMenuItem shareMenuItem;
@@ -207,13 +175,6 @@ public class StickersActivity extends BaseFragment implements NotificationCenter
         this.frozenEmojiPacks = frozenEmojiPacks;
     }
 
-    private File stickersFile;
-
-    public StickersActivity(File stickersFile) {
-        this(MediaDataController.TYPE_IMAGE, null);
-        this.stickersFile = stickersFile;
-    }
-
     @Override
     public boolean onFragmentCreate() {
         super.onFragmentCreate();
@@ -245,10 +206,6 @@ public class StickersActivity extends BaseFragment implements NotificationCenter
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.currentUserPremiumStatusChanged);
     }
 
-    private int menu_other = 2;
-    private int menu_export = 3;
-    private int menu_import = 4;
-
     @SuppressLint("ClickableViewAccessibility")
     @Override
     public View createView(Context context) {
@@ -274,12 +231,6 @@ public class StickersActivity extends BaseFragment implements NotificationCenter
             }
         });
 
-        ActionBarMenu menu = actionBar.createMenu();
-
-        ActionBarMenuItem otherItem = menu.addItem(menu_other, R.drawable.ic_ab_other);
-
-        otherItem.addSubItem(menu_export, R.drawable.msg_download, LocaleController.getString("ExportStickers", R.string.ExportStickers));
-        otherItem.addSubItem(menu_import, R.drawable.baseline_playlist_add_24, LocaleController.getString("ImportStickersX", R.string.ImportStickersX));
 
         ActionBarMenu actionMode = actionBar.createActionMode();
         selectedCountTextView = new NumberTextView(actionMode.getContext());
@@ -290,7 +241,6 @@ public class StickersActivity extends BaseFragment implements NotificationCenter
         selectedCountTextView.setOnTouchListener((v, event) -> true);
 
         shareMenuItem = actionMode.addItemWithWidth(MENU_SHARE, R.drawable.msg_share, dp(54));
-        exportMenuItem = actionMode.addItemWithWidth(MENU_EXPORT, R.drawable.msg_download, dp(54));
         archiveMenuItem = actionMode.addItemWithWidth(MENU_ARCHIVE, R.drawable.msg_archive, dp(54));
         deleteMenuItem = actionMode.addItemWithWidth(MENU_DELETE, R.drawable.msg_delete, dp(54));
 
@@ -649,135 +599,6 @@ public class StickersActivity extends BaseFragment implements NotificationCenter
         AndroidUtilities.runOnUIThread(sendReorderRunnable, 1000);
     }
 
-    public void processStickersFile(File file, boolean exitOnFail) {
-
-        if (!file.isFile() || !file.getName().endsWith("nekox-stickers.json")) {
-
-            showError("not a stickers file", exitOnFail);
-
-            return;
-
-        } else if (file.length() > 3 * 1024 * 1024L) {
-
-            showError("file too large", exitOnFail);
-
-            return;
-
-        }
-
-        AlertDialog pro = new AlertDialog(getParentActivity(), AlertDialog.ALERT_TYPE_MESSAGE);
-        pro.setMessage(LocaleController.getString("Loading", R.string.Loading));
-        pro.setCanceledOnTouchOutside(true);
-        pro.setCancelable(true);
-        pro.show();
-
-        UIUtil.runOnIoDispatcher(() -> {
-
-            JsonObject stickerObj = new Gson().fromJson(FileUtil.readUtf8String(file), JsonObject.class);
-
-            StickersUtil.importStickers(stickerObj, this, pro);
-
-            UIUtil.runOnUIThread(() -> {
-
-                pro.dismiss();
-
-                MediaDataController.getInstance(currentAccount).checkStickers(currentType);
-
-            });
-
-        });
-
-
-    }
-
-    private void showError(String msg, boolean exitOnFail) {
-
-        AlertUtil.showSimpleAlert(getParentActivity(), LocaleController.getString("InvalidStickersFile", R.string.InvalidStickersFile) + msg, (__) -> {
-
-            if (exitOnFail) finishFragment();
-
-            return Unit.INSTANCE;
-
-        });
-
-    }
-
-    public void exportStickers() {
-
-        BottomBuilder builder = new BottomBuilder(getParentActivity());
-
-        builder.addTitle(LocaleController.getString("ExportStickers", R.string.ExportStickers), true);
-
-        AtomicBoolean exportSets = new AtomicBoolean(true);
-        AtomicBoolean exportArchived = new AtomicBoolean(true);
-
-        final AtomicReference<TextView> exportButton = new AtomicReference<>();
-
-        builder.addCheckItems(new String[]{
-                LocaleController.getString("StickerSets", R.string.StickerSets),
-                LocaleController.getString("ArchivedStickers", R.string.ArchivedStickers)
-        }, (__) -> true, false, (index, text, cell, isChecked) -> {
-
-            if (index == 0) {
-                exportSets.set(isChecked);
-            } else {
-                exportArchived.set(isChecked);
-            }
-
-            exportButton.get().setEnabled(exportSets.get() || exportArchived.get());
-
-            return Unit.INSTANCE;
-
-        });
-
-        builder.addCancelButton();
-
-        exportButton.set(builder.addButton(LocaleController.getString("Export", R.string.ExportStickers), (it) -> {
-
-            exportStickersFinal(exportSets.get(), exportArchived.get());
-
-            return Unit.INSTANCE;
-
-        }));
-
-        builder.show();
-
-    }
-
-    public void exportStickersFinal(boolean exportSets, boolean exportArchived) {
-
-        AlertDialog pro = new AlertDialog(getParentActivity(), 3);
-
-        pro.setCanCancel(false);
-
-        pro.show();
-
-        UIUtil.runOnIoDispatcher(() -> {
-
-            Activity ctx = getParentActivity();
-
-            JsonObject exportObj = StickersUtil.exportStickers(currentAccount, exportSets, exportArchived);
-
-            File cacheFile = new File(EnvUtil.getShareCachePath(), new Date().toLocaleString() + ".nekox-stickers.json");
-
-            StringWriter stringWriter = new StringWriter();
-            JsonWriter jsonWriter = new JsonWriter(stringWriter);
-            jsonWriter.setLenient(true);
-            jsonWriter.setIndent("    ");
-            try {
-                Streams.write(exportObj, jsonWriter);
-            } catch (IOException e) {
-            }
-
-            FileUtil.writeUtf8String(stringWriter.toString(), cacheFile);
-
-            UIUtil.runOnUIThread(() -> {
-                pro.dismiss();
-                ShareUtil.shareFile(ctx, cacheFile);
-            });
-        });
-    }
-
     private Runnable sendReorderRunnable = () -> sendReorder();
     private void sendReorder() {
         if (!needReorder) return;
@@ -836,17 +657,6 @@ public class StickersActivity extends BaseFragment implements NotificationCenter
             })
             .addIf(!set.set.official, R.drawable.msg_delete, LocaleController.getString(R.string.StickersRemove), true, () -> {
                 MediaDataController.getInstance(currentAccount).toggleStickerSet(getParentActivity(), set, 0, StickersActivity.this, true, true);
-            })
-            .addIf(!set.set.official & NekoConfig.enableStickerPin.Bool() && currentType == MediaDataController.TYPE_IMAGE, R.drawable.msg_pin, PinnedStickerHelper.getInstance(currentAccount).isPinned(set.set.id) ?
-                    LocaleController.getString(R.string.UnpinSticker) :
-                    LocaleController.getString(R.string.PinSticker), () -> {
-                processSelectionOption(MENU_TOGGLE_PIN, set);
-            })
-            .addIf(!set.set.official & !NaConfig.INSTANCE.getExternalStickerCache().String().isBlank(), R.drawable.menu_views_reposts, LocaleController.getString(R.string.ExternalStickerCacheRefresh), () -> {
-                ExternalStickerCacheHelper.refreshCacheFiles(set);
-            })
-            .addIf(!set.set.official & !NaConfig.INSTANCE.getExternalStickerCache().String().isBlank(), R.drawable.msg_delete, LocaleController.getString(R.string.ExternalStickerCacheDelete), () -> {
-                ExternalStickerCacheHelper.deleteCacheFiles(set);
             })
             .setMinWidth(190)
             .show();
@@ -1117,7 +927,7 @@ public class StickersActivity extends BaseFragment implements NotificationCenter
                 }
             });
             shareAlert.show();
-        } else if (which == MENU_EXPORT || which == MENU_ARCHIVE || which == MENU_DELETE) {
+        } else if (which == MENU_ARCHIVE || which == MENU_DELETE) {
             ArrayList<TLRPC.StickerSet> stickerSetList = new ArrayList<>(selectedSets.size());
             for (int i = 0, size = sets.size(); i < size; i++) {
                 final TLRPC.TL_messages_stickerSet stickerSet = sets.get(i);
@@ -1129,35 +939,6 @@ public class StickersActivity extends BaseFragment implements NotificationCenter
             final int count = stickerSetList.size();
 
             switch (count) {
-                case MENU_EXPORT:
-                    AlertDialog pro = new AlertDialog(getParentActivity(), 3);
-                    pro.setCanCancel(false);
-                    pro.show();
-
-                    UIUtil.runOnIoDispatcher(() -> {
-
-                        JsonObject exportObj = StickersUtil.exportStickers(stickerSetList);
-
-                        File cacheFile = new File(EnvUtil.getShareCachePath(), new Date().toLocaleString() + ".nekox-stickers.json");
-
-                        StringWriter stringWriter = new StringWriter();
-                        JsonWriter jsonWriter = new JsonWriter(stringWriter);
-                        jsonWriter.setLenient(true);
-                        jsonWriter.setIndent("    ");
-                        try {
-                            Streams.write(exportObj, jsonWriter);
-                        } catch (IOException e) {
-                        }
-
-                        FileUtil.writeUtf8String(stringWriter.toString(), cacheFile);
-
-                        UIUtil.runOnUIThread(() -> {
-                            pro.dismiss();
-                            ShareUtil.shareFile(getParentActivity(), cacheFile);
-                        });
-
-                    });
-                    break;
                 case MENU_ARCHIVE:
                     break;
                 case MENU_DELETE:
@@ -1200,29 +981,6 @@ public class StickersActivity extends BaseFragment implements NotificationCenter
                     break;
             }
         }
-        if (which == menu_export) {
-            exportStickers();
-        } else if (which == menu_import) {
-            DocumentSelectActivity fragment = new DocumentSelectActivity(false);
-            fragment.setMaxSelectedFiles(1);
-            fragment.setAllowPhoto(false);
-            fragment.setDelegate(new DocumentSelectActivity.DocumentSelectActivityDelegate() {
-                @Override
-                public void didSelectFiles(DocumentSelectActivity activity, ArrayList<String> files, String caption, boolean notify, int scheduleDate) {
-                    activity.finishFragment();
-                    processStickersFile(new File(files.get(0)), false);
-                }
-
-                @Override
-                public void didSelectPhotos(ArrayList<SendMessagesHelper.SendingMediaInfo> photos, boolean notify, int scheduleDate) {
-                }
-
-                @Override
-                public void startDocumentSelectActivity() {
-                }
-            });
-            presentFragment(fragment);
-        }
     }
 
     private void processSelectionOption(int which, TLRPC.TL_messages_stickerSet stickerSet) {
@@ -1250,28 +1008,6 @@ public class StickersActivity extends BaseFragment implements NotificationCenter
             }
         } else if (which == MENU_REORDER) {
             toggleSelected(stickerSet);
-        } else if (which == menu_export) {
-            exportStickers();
-        } else if (which == menu_import) {
-            DocumentSelectActivity fragment = new DocumentSelectActivity(false);
-            fragment.setMaxSelectedFiles(1);
-            fragment.setAllowPhoto(false);
-            fragment.setDelegate(new DocumentSelectActivity.DocumentSelectActivityDelegate() {
-                @Override
-                public void didSelectFiles(DocumentSelectActivity activity, ArrayList<String> files, String caption, boolean notify, int scheduleDate) {
-                    activity.finishFragment();
-                    processStickersFile(new File(files.get(0)), false);
-                }
-
-                @Override
-                public void didSelectPhotos(ArrayList<SendMessagesHelper.SendingMediaInfo> photos, boolean notify, int scheduleDate) {
-                }
-
-                @Override
-                public void startDocumentSelectActivity() {
-                }
-            });
-            presentFragment(fragment);
         }
     }
 

@@ -93,8 +93,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 
-import tw.nekomimi.nekogram.NekoConfig;
-
 public class ReactionsContainerLayout extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {
 
     public boolean forceAttachToParent = false;
@@ -298,11 +296,9 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
                     boolean b1 = oldProgress > 1f;
                     boolean b2 = newProgress > 1f;
                     if (b1 != b2) {
-                        if (!NekoConfig.disableVibration.Bool()) {
-                            try {
-                                recyclerListView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
-                            } catch (Exception ignore) {}
-                        }
+                        try {
+                            recyclerListView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                        } catch (Exception ignore) {}
                     }
                     if (pullingLeftOffset < 0) {
                         dx = (int) pullingLeftOffset;
@@ -333,11 +329,9 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
                     boolean b1 = oldProgress > 1f;
                     boolean b2 = newProgress > 1f;
                     if (b1 != b2) {
-                        if (!NekoConfig.disableVibration.Bool()) {
-                            try {
-                                recyclerListView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
-                            } catch (Exception ignore) {}
-                        }
+                        try {
+                            recyclerListView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                        } catch (Exception ignore) {}
                     }
                     if (customReactionsContainer != null) {
                         customReactionsContainer.invalidate();
@@ -2242,11 +2236,9 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
         Runnable longPressRunnable = new Runnable() {
             @Override
             public void run() {
-                if (!NekoConfig.disableVibration.Bool()) {
-                    try {
-                        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-                    } catch (Exception ignored) {}
-                }
+                try {
+                    performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                } catch (Exception ignored) {}
                 pressedReactionPosition = visibleReactionsList.indexOf(currentReaction);
                 pressedReaction = currentReaction;
                 ReactionsContainerLayout.this.invalidate();

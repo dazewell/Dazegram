@@ -71,8 +71,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import me.vkryl.android.animator.BoolAnimator;
 import me.vkryl.android.animator.FactorAnimator;
 
-import xyz.nextalone.nagram.helper.MessageHelper;
-
 public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.Target, NotificationCenter.NotificationCenterDelegate {
 
     private static final int ANIMATOR_ID_TIME_ITEM_VISIBLE = 0;
@@ -583,11 +581,11 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             }
         }
 
-//        if (parentFragment.isComments) {
-//            if (chat == null) return;
-//            parentFragment.presentFragment(ProfileActivity.of(-chat.id), removeLast);
-//            return;
-//        }
+        if (parentFragment.isComments) {
+            if (chat == null) return;
+            parentFragment.presentFragment(ProfileActivity.of(-chat.id), removeLast);
+            return;
+        }
 
         if (user != null) {
             if (user.id == UserObject.VERIFY) {
@@ -645,8 +643,6 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             final ProfileActivity fragment = new ProfileActivity(args, sharedMediaPreloader);
             if (!monoforum) {
                 fragment.setChatInfo(parentFragment.getCurrentChatInfo());
-                // na: Group Profile Show Linked Channel Info
-                fragment.setChatInfoChannelMsg(parentFragment.profileChannelMessageFetcher);
             }
             if (fromChatAnimation) {
                 fragment.setPlayProfileAnimation(byAvatar ? 2 : 1);
@@ -667,11 +663,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        int width = MeasureSpec.getSize(widthMeasureSpec);
-        if (parentFragment != null && parentFragment.isThreadChat() && parentFragment.getThreadId() != 0) {
-            width -= dp(48);
-            // leave some width for viewInChatItem
-        }
+        final int width = MeasureSpec.getSize(widthMeasureSpec);
         final int availableWidth = width - dp((avatarImageView.getVisibility() == VISIBLE ? 54 : 0) + 16);
         avatarImageView.measure(MeasureSpec.makeMeasureSpec(dp(avatarSizeInDp) - 2, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(dp(avatarSizeInDp) - 2, MeasureSpec.EXACTLY));
         titleTextView.measure(MeasureSpec.makeMeasureSpec(availableWidth, MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(dp(24 + 8), MeasureSpec.AT_MOST));
@@ -946,7 +938,6 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
 
     public void setTitle(CharSequence value, boolean scam, boolean fake, boolean verified, boolean premium, TLRPC.EmojiStatus emojiStatus, boolean animated) {
         if (value != null) {
-            value = MessageHelper.INSTANCE.zalgoFilter(value);
             value = Emoji.replaceEmoji(value, titleTextView.getPaint().getFontMetricsInt(), false);
         }
         titleTextView.setText(value);

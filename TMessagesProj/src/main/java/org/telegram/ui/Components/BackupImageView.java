@@ -45,7 +45,6 @@ public class BackupImageView extends View {
     public ColorFilter animatedEmojiDrawableColorFilter;
     private AvatarDrawable avatarDrawable;
     boolean attached;
-    public boolean shouldInvalidate = true;
 
     protected boolean hasBlur;
     protected boolean blurAllowed;
@@ -240,7 +239,7 @@ public class BackupImageView extends View {
     public void setImageResource(int resId, int color) {
         Drawable drawable = getResources().getDrawable(resId);
         if (drawable != null) {
-            drawable.setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN));
+            drawable.setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.MULTIPLY));
         }
         imageReceiver.setImageBitmap(drawable);
         invalidate();
@@ -250,10 +249,6 @@ public class BackupImageView extends View {
     public void setImageDrawable(Drawable drawable) {
         imageReceiver.setImageBitmap(drawable);
         onNewImageSet();
-    }
-
-    public void setImageDrawable(Drawable drawable, boolean notify) {
-        imageReceiver.setImageBitmap(drawable, notify);
     }
 
     public void setLayerNum(int value) {
@@ -390,7 +385,7 @@ public class BackupImageView extends View {
     }
 
     ValueAnimator roundRadiusAnimator;
-
+    
     public void animateToRoundRadius(int animateToRad) {
         if (getRoundRadius()[0] != animateToRad) {
             if (roundRadiusAnimator != null) {
@@ -406,16 +401,6 @@ public class BackupImageView extends View {
             roundRadiusAnimator.setDuration(200);
             roundRadiusAnimator.start();
         }
-    }
-
-    @Override
-    public void invalidate() {
-        if (shouldInvalidate) super.invalidate();
-    }
-
-    @Override
-    public void invalidate(int l, int t, int r, int b) {
-        if (shouldInvalidate) super.invalidate(l, t, r, b);
     }
 
     public Text blurText;

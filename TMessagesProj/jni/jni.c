@@ -10,7 +10,6 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <time.h>
-#include "integrity.h"
 
 int registerNativeTgNetFunctions(JavaVM *vm, JNIEnv *env);
 int videoOnJNILoad(JavaVM *vm, JNIEnv *env);
@@ -23,10 +22,6 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 	if ((*vm)->GetEnv(vm, (void **) &env, JNI_VERSION_1_6) != JNI_OK) {
 		return -1;
 	}
-
-    if (verifySign(env) != JNI_OK) {
-        return JNI_ERR;
-    }
 
     if (videoOnJNILoad(vm, env) != JNI_TRUE) {
         return -1;

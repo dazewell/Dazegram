@@ -19,7 +19,6 @@ import android.view.MotionEvent;
 import android.widget.EditText;
 
 import org.telegram.messenger.AndroidUtilities;
-import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.Theme;
@@ -172,9 +171,6 @@ public class EditTextEffects extends EditText {
                 Layout layout = getLayout();
                 if (text instanceof Spannable && layout != null) {
                     int line = layout.getLineForOffset(start);
-                    // NekoX: Fix official bug: Mention crash
-                    if (start > layout.getText().length())
-                        return;
                     int x = (int) layout.getPrimaryHorizontal(start);
                     int y = (int) ((layout.getLineTop(line) + layout.getLineBottom(line)) / 2f);
 
@@ -295,8 +291,7 @@ public class EditTextEffects extends EditText {
                 Build.MANUFACTURER == null ||
                 !Build.MANUFACTURER.toLowerCase().contains("honor") &&
                 !Build.MANUFACTURER.toLowerCase().contains("huawei") &&
-                !Build.MANUFACTURER.toLowerCase().contains("alps") &&
-                !Build.MANUFACTURER.toLowerCase().contains("vivo")
+                !Build.MANUFACTURER.toLowerCase().contains("alps")
             ) && (
                 Build.MODEL == null ||
                 !Build.MODEL.toLowerCase().contains("mediapad")

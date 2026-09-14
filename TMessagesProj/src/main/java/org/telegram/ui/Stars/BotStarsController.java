@@ -2,7 +2,6 @@ package org.telegram.ui.Stars;
 
 import static org.telegram.messenger.LocaleController.getString;
 
-import android.util.SparseArray;
 import android.content.Context;
 import android.text.TextUtils;
 
@@ -25,25 +24,27 @@ import org.telegram.tgnet.tl.TL_update;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ChannelMonetizationLayout;
-import org.telegram.ui.Components.BulletinFactory;
-import org.telegram.ui.LaunchActivity;
-import org.telegram.ui.bots.BotWebViewSheet;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 
 public class BotStarsController {
 
-    private static volatile SparseArray<BotStarsController> Instance = new SparseArray<>();
-    private static final Object lockObject = new Object();
+    private static volatile BotStarsController[] Instance = new BotStarsController[UserConfig.MAX_ACCOUNT_COUNT];
+    private static final Object[] lockObjects = new Object[UserConfig.MAX_ACCOUNT_COUNT];
+    static {
+        for (int i = 0; i < UserConfig.MAX_ACCOUNT_COUNT; i++) {
+            lockObjects[i] = new Object();
+        }
+    }
 
     public static BotStarsController getInstance(int num) {
-        BotStarsController localInstance = Instance.get(num);
+        BotStarsController localInstance = Instance[num];
         if (localInstance == null) {
-            synchronized (lockObject) {
-                localInstance = Instance.get(num);
+            synchronized (lockObjects[num]) {
+                localInstance = Instance[num];
                 if (localInstance == null) {
-                    Instance.put(num, localInstance = new BotStarsController(num));
+                    Instance[num] = localInstance = new BotStarsController(num);
                 }
             }
         }

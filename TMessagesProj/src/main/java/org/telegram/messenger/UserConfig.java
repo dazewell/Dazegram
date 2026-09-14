@@ -12,7 +12,6 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.SystemClock;
 import android.util.Base64;
-import android.util.SparseArray;
 import android.util.LongSparseArray;
 
 import org.telegram.tgnet.ConnectionsManager;
@@ -22,15 +21,11 @@ import org.telegram.tgnet.tl.TL_account;
 
 import java.util.Arrays;
 
-import tw.nekomimi.nekogram.NekoConfig;
-import tw.nekomimi.nekogram.helpers.remote.ExtendedHelper;
-
 public class UserConfig extends BaseController {
 
     public static int selectedAccount;
-    public final static int MAX_ACCOUNT_DEFAULT_COUNT = 8;
-    public final static int MAX_ACCOUNT_PREMIUM_COUNT = 10;
-    public final static int MAX_ACCOUNT_COUNT = 128;
+    public final static int MAX_ACCOUNT_DEFAULT_COUNT = 3;
+    public final static int MAX_ACCOUNT_COUNT = 4;
 
     private final Object sync = new Object();
     private volatile boolean configLoaded;
@@ -89,15 +84,14 @@ public class UserConfig extends BaseController {
     LongSparseArray<SaveToGallerySettingsHelper.DialogException> groupsSaveGalleryExceptions;
 
 
-    private static SparseArray<UserConfig> Instance = new SparseArray<>();
-
+    private static volatile UserConfig[] Instance = new UserConfig[UserConfig.MAX_ACCOUNT_COUNT];
     public static UserConfig getInstance(int num) {
-        UserConfig localInstance = Instance.get(num);
+        UserConfig localInstance = Instance[num];
         if (localInstance == null) {
             synchronized (UserConfig.class) {
-                localInstance = Instance.get(num);
+                localInstance = Instance[num];
                 if (localInstance == null) {
-                    Instance.put(num, localInstance = new UserConfig(num));
+                    Instance[num] = localInstance = new UserConfig(num);
                 }
             }
         }
@@ -106,8 +100,8 @@ public class UserConfig extends BaseController {
 
     public static int getActivatedAccountsCount() {
         int count = 0;
-        for (int a : SharedConfig.activeAccounts) {
-            if (getInstance(a).isClientActivated()) {
+        for (int a = 0; a < MAX_ACCOUNT_COUNT; a++) {
+            if (AccountInstance.getInstance(a).getUserConfig().isClientActivated()) {
                 count++;
             }
         }
@@ -119,7 +113,7 @@ public class UserConfig extends BaseController {
     }
 
     public static boolean hasPremiumOnAccounts() {
-        for (int a : SharedConfig.activeAccounts)  {
+        for (int a = 0; a < MAX_ACCOUNT_COUNT; a++) {
             if (AccountInstance.getInstance(a).getUserConfig().isClientActivated() && AccountInstance.getInstance(a).getUserConfig().getUserConfig().isPremium()) {
                 return true;
             }
@@ -128,28 +122,7 @@ public class UserConfig extends BaseController {
     }
 
     public static int getMaxAccountCount() {
-        return hasPremiumOnAccounts() ? MAX_ACCOUNT_PREMIUM_COUNT : MAX_ACCOUNT_DEFAULT_COUNT;
-    }
-
-    public static int requestAccountSlot() {
-        int availableAccount = -1;
-        for (int a = 0; a < MAX_ACCOUNT_COUNT; a++) {
-            if (!getInstance(a).isClientActivated()) {
-                availableAccount = a;
-                break;
-            }
-        }
-        if (availableAccount < 0) {
-            return -1;
-        }
-
-        if (getActivatedAccountsCount() < getMaxAccountCount()) {
-            return availableAccount;
-        }
-        if (ExtendedHelper.getInstance().hasExtended()) {
-            return availableAccount;
-        }
-        return -1;
+        return hasPremiumOnAccounts() ? 5 : 3;
     }
 
     public int getNewMessageId() {
@@ -196,7 +169,6 @@ public class UserConfig extends BaseController {
                     editor.putBoolean("hasValidDialogLoadIds", hasValidDialogLoadIds);
                     editor.putInt("sharingMyLocationUntil", sharingMyLocationUntil);
                     editor.putInt("lastMyLocationShareTime", lastMyLocationShareTime);
-
                     editor.putBoolean("filtersLoaded", filtersLoaded);
                     editor.putString("premiumGiftsStickerPack", premiumGiftsStickerPack);
                     editor.putLong("lastUpdatedPremiumGiftsStickerPack", lastUpdatedPremiumGiftsStickerPack);
@@ -259,7 +231,7 @@ public class UserConfig extends BaseController {
     }
 
     public static boolean isValidAccount(int num) {
-        return num >= 0 && SharedConfig.activeAccounts.contains(num) && getInstance(num).isClientActivated();
+         return num >= 0 && num < UserConfig.MAX_ACCOUNT_COUNT && getInstance(num).isClientActivated();
     }
 
     public boolean isClientActivated() {
@@ -347,7 +319,6 @@ public class UserConfig extends BaseController {
             notificationsSignUpSettingsLoaded = preferences.getBoolean("notificationsSignUpSettingsLoaded", false);
             autoDownloadConfigLoadTime = preferences.getLong("autoDownloadConfigLoadTime", 0);
             hasValidDialogLoadIds = preferences.contains("2dialogsLoadOffsetId") || preferences.getBoolean("hasValidDialogLoadIds", false);
-
             sharingMyLocationUntil = preferences.getInt("sharingMyLocationUntil", 0);
             lastMyLocationShareTime = preferences.getInt("lastMyLocationShareTime", 0);
             filtersLoaded = preferences.getBoolean("filtersLoaded", false);
@@ -525,7 +496,7 @@ public class UserConfig extends BaseController {
         lastHintsSyncTime = (int) (System.currentTimeMillis() / 1000) - 25 * 60 * 60;
         resetSavedPassword();
         boolean hasActivated = false;
-        for (int a : SharedConfig.activeAccounts) {
+        for (int a = 0; a < MAX_ACCOUNT_COUNT; a++) {
             if (AccountInstance.getInstance(a).getUserConfig().isClientActivated()) {
                 hasActivated = true;
                 break;
@@ -605,7 +576,7 @@ public class UserConfig extends BaseController {
         if (user == null) {
             return false;
         }
-        return user.premium || NekoConfig.localPremium.Bool();
+        return user.premium;
     }
 
     public Long getEmojiStatus() {

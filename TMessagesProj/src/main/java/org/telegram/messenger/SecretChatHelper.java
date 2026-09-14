@@ -35,8 +35,6 @@ import java.util.Collections;
 import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 
-import tw.nekomimi.nekogram.utils.AlertUtil;
-
 public class SecretChatHelper extends BaseController {
 
     public static class TL_decryptedMessageHolder extends TLObject {
@@ -82,15 +80,15 @@ public class SecretChatHelper extends BaseController {
     private ArrayList<Long> pendingEncMessagesToDelete = new ArrayList<>();
     private boolean startingSecretChat = false;
 
-    private static SparseArray<SecretChatHelper> Instance = new SparseArray<>();
+    private static volatile SecretChatHelper[] Instance = new SecretChatHelper[UserConfig.MAX_ACCOUNT_COUNT];
 
     public static SecretChatHelper getInstance(int num) {
-        SecretChatHelper localInstance = Instance.get(num);
+        SecretChatHelper localInstance = Instance[num];
         if (localInstance == null) {
             synchronized (SecretChatHelper.class) {
-                localInstance = Instance.get(num);
+                localInstance = Instance[num];
                 if (localInstance == null) {
-                    Instance.put(num, localInstance = new SecretChatHelper(num));
+                    Instance[num] = localInstance = new SecretChatHelper(num);
                 }
             }
         }
@@ -190,7 +188,6 @@ public class SecretChatHelper extends BaseController {
         TLRPC.EncryptedChat existingChat = getMessagesController().getEncryptedChatDB(newChat.id, false);
 
         if (newChat instanceof TLRPC.TL_encryptedChatRequested && existingChat == null) {
-
             long userId = newChat.participant_id;
             if (userId == getUserConfig().getClientUserId()) {
                 userId = newChat.admin_id;
@@ -2014,7 +2011,6 @@ public class SecretChatHelper extends BaseController {
                         });
                     } else {
                         delayedEncryptedChatUpdates.clear();
-                        AlertUtil.showToast(error1);
                         AndroidUtilities.runOnUIThread(() -> {
                             if (!((Activity) context).isFinishing()) {
                                 startingSecretChat = false;
@@ -2034,7 +2030,6 @@ public class SecretChatHelper extends BaseController {
                 }, ConnectionsManager.RequestFlagFailOnServerErrors);
             } else {
                 delayedEncryptedChatUpdates.clear();
-                AlertUtil.showToast(error);
                 AndroidUtilities.runOnUIThread(() -> {
                     startingSecretChat = false;
                     if (!((Activity) context).isFinishing()) {

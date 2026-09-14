@@ -2,7 +2,6 @@ package org.telegram.messenger;
 
 import android.text.TextUtils;
 import android.util.LongSparseArray;
-import android.util.SparseArray;
 
 import androidx.annotation.Nullable;
 
@@ -12,16 +11,16 @@ import org.telegram.tgnet.tl.TL_update;
 
 public class MemberRequestsController extends BaseController {
 
-    private static final SparseArray<MemberRequestsController> instances = new SparseArray<>();
+    private static final MemberRequestsController[] instances = new MemberRequestsController[UserConfig.MAX_ACCOUNT_COUNT];
 
     public static MemberRequestsController getInstance(int accountNum) {
-        MemberRequestsController local = instances.get(accountNum);
+        MemberRequestsController local = instances[accountNum];
         if (local == null) {
             synchronized (MemberRequestsController.class) {
-                local = instances.get(accountNum);
+                local = instances[accountNum];
                 if (local == null) {
                     local = new MemberRequestsController(accountNum);
-                    instances.put(accountNum, local);
+                    instances[accountNum] = local;
                 }
             }
         }

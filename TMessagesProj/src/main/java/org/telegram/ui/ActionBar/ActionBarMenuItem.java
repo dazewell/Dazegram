@@ -171,7 +171,6 @@ public class ActionBarMenuItem extends FrameLayout {
 
     public interface ActionBarSubMenuItemDelegate {
         void onShowSubMenu();
-
         void onHideSubMenu();
     }
 
@@ -292,10 +291,6 @@ public class ActionBarMenuItem extends FrameLayout {
         invalidate();
     }
 
-    public void setVisibility(boolean visibility) {
-        this.setVisibility(visibility ? VISIBLE : GONE);
-    }
-
     @Override
     public void draw(Canvas canvas) {
         if (fixBackground) {
@@ -338,7 +333,7 @@ public class ActionBarMenuItem extends FrameLayout {
                     View child = popupLayout.getItemAt(a);
                     child.getHitRect(rect);
                     Object tag = child.getTag();
-                    if (tag instanceof Integer) {
+                    if (tag instanceof Integer && (Integer) tag < 100) {
                         if (!rect.contains((int) x, (int) y)) {
                             child.setPressed(false);
                             child.setSelected(false);
@@ -691,7 +686,7 @@ public class ActionBarMenuItem extends FrameLayout {
     }
 
     public void redrawPopup(int color) {
-        if (popupLayout != null) {
+        if (popupLayout != null && popupLayout.getBackgroundColor() != color) {
             popupLayout.setBackgroundColor(color);
             if (popupWindow != null && popupWindow.isShowing()) {
                 popupLayout.invalidate();
@@ -751,26 +746,6 @@ public class ActionBarMenuItem extends FrameLayout {
     public void setMenuYOffset(int offset) {
         yOffset = offset;
     }
-
-    private View anchor;
-
-    public View getAnchor() {
-        return anchor;
-    }
-
-    public void setAnchor(View anchor) {
-        this.anchor = anchor;
-    }
-
-    public boolean isShowOnTop() {
-        return showOnTop;
-    }
-
-    public void setShowOnTop(boolean showOnTop) {
-        this.showOnTop = showOnTop;
-    }
-
-    private boolean showOnTop;
 
     public void setMenuXOffset(int offset) {
         xOffset = offset;
@@ -1013,7 +988,7 @@ public class ActionBarMenuItem extends FrameLayout {
             if (!currentSearchFilters.isEmpty()) {
                 if (listener != null) {
                     for (int i = 0; i < currentSearchFilters.size(); i++) {
-                        if (currentSearchFilters.get(i).removable) {
+                        if ( currentSearchFilters.get(i).removable) {
                             listener.onSearchFilterCleared(currentSearchFilters.get(i));
                         }
                     }
@@ -1078,7 +1053,6 @@ public class ActionBarMenuItem extends FrameLayout {
         onFiltersChanged();
         searchField.hideActionMode();
     }
-
     public void addSearchFilter(FiltersView.MediaFilterData filter) {
         currentSearchFilters.add(filter);
         if (searchContainer.getTag() != null) {
@@ -1106,36 +1080,35 @@ public class ActionBarMenuItem extends FrameLayout {
             ChangeBounds changeBounds = new ChangeBounds();
             changeBounds.setDuration(150);
             transition.addTransition(new Visibility() {
-                @Override
-                public Animator onAppear(ViewGroup sceneRoot, View view, TransitionValues startValues, TransitionValues endValues) {
-                    if (view instanceof SearchFilterView) {
-                        AnimatorSet set = new AnimatorSet();
-                        set.playTogether(
-                                ObjectAnimator.ofFloat(view, View.ALPHA, 0, 1f),
-                                ObjectAnimator.ofFloat(view, View.SCALE_X, 0.5f, 1f),
-                                ObjectAnimator.ofFloat(view, View.SCALE_Y, 0.5f, 1f)
-                        );
-                        set.setInterpolator(CubicBezierInterpolator.DEFAULT);
-                        return set;
-                    }
-                    return ObjectAnimator.ofFloat(view, View.ALPHA, 0, 1f);
-                }
-
-                @Override
-                public Animator onDisappear(ViewGroup sceneRoot, View view, TransitionValues startValues, TransitionValues endValues) {
-                    if (view instanceof SearchFilterView) {
-                        AnimatorSet set = new AnimatorSet();
-                        set.playTogether(
-                                ObjectAnimator.ofFloat(view, View.ALPHA, view.getAlpha(), 0f),
-                                ObjectAnimator.ofFloat(view, View.SCALE_X, view.getScaleX(), 0.5f),
-                                ObjectAnimator.ofFloat(view, View.SCALE_Y, view.getScaleX(), 0.5f)
-                        );
-                        set.setInterpolator(CubicBezierInterpolator.DEFAULT);
-                        return set;
-                    }
-                    return ObjectAnimator.ofFloat(view, View.ALPHA, 1f, 0);
-                }
-            }.setDuration(150)).addTransition(changeBounds);
+                        @Override
+                        public Animator onAppear(ViewGroup sceneRoot, View view, TransitionValues startValues, TransitionValues endValues) {
+                            if (view instanceof SearchFilterView) {
+                                AnimatorSet set = new AnimatorSet();
+                                set.playTogether(
+                                        ObjectAnimator.ofFloat(view, View.ALPHA, 0, 1f),
+                                        ObjectAnimator.ofFloat(view, View.SCALE_X, 0.5f, 1f),
+                                        ObjectAnimator.ofFloat(view, View.SCALE_Y, 0.5f, 1f)
+                                );
+                                set.setInterpolator(CubicBezierInterpolator.DEFAULT);
+                                return set;
+                            }
+                            return ObjectAnimator.ofFloat(view, View.ALPHA, 0, 1f);
+                        }
+                        @Override
+                        public Animator onDisappear(ViewGroup sceneRoot, View view, TransitionValues startValues, TransitionValues endValues) {
+                            if (view instanceof SearchFilterView) {
+                                AnimatorSet set = new AnimatorSet();
+                                set.playTogether(
+                                        ObjectAnimator.ofFloat(view, View.ALPHA, view.getAlpha(), 0f),
+                                        ObjectAnimator.ofFloat(view, View.SCALE_X,  view.getScaleX(), 0.5f),
+                                        ObjectAnimator.ofFloat(view, View.SCALE_Y,  view.getScaleX(), 0.5f)
+                                );
+                                set.setInterpolator(CubicBezierInterpolator.DEFAULT);
+                                return set;
+                            }
+                            return ObjectAnimator.ofFloat(view, View.ALPHA, 1f, 0);
+                        }
+                    }.setDuration(150)).addTransition(changeBounds);
             transition.setOrdering(TransitionSet.ORDERING_TOGETHER);
             transition.setInterpolator(CubicBezierInterpolator.EASE_OUT);
             transition.addListener(new Transition.TransitionListener() {
@@ -1236,7 +1209,7 @@ public class ActionBarMenuItem extends FrameLayout {
         checkClearButton();
     }
 
-    public static boolean checkRtl(String string) {
+    public static boolean checkRtl (String string) {
         if (TextUtils.isEmpty(string)) {
             return false;
         }
@@ -1915,25 +1888,7 @@ public class ActionBarMenuItem extends FrameLayout {
     private void updateOrShowPopup(boolean show, boolean update) {
         int offsetY;
 
-        if (anchor != null) {
-            float scaleY = anchor.getScaleY();
-            offsetY = -(int) (anchor.getMeasuredHeight() * scaleY - anchor.getTranslationY() / scaleY) + additionalYOffset;
-            int height = AndroidUtilities.displayMetrics.heightPixels;
-            int[] location = new int[2];
-            anchor.getLocationOnScreen(location);
-            int y = location[1];
-            if (showOnTop) {
-                offsetY -= popupLayout.getMeasuredHeight();
-            } else if (height - y < popupLayout.getMeasuredHeight() + offsetY) {
-                if (height - (height - y) >= popupLayout.getMeasuredHeight()) {
-                    offsetY -= popupLayout.getMeasuredHeight();
-                } else if (popupLayout.getMeasuredHeight() > height) {
-                    offsetY -= scaleY;
-                } else {
-                    offsetY -= popupLayout.getMeasuredHeight() / 2;
-                }
-            }
-        } else if (parentMenu != null) {
+        if (parentMenu != null) {
             offsetY = -parentMenu.parentActionBar.getMeasuredHeight() + parentMenu.getTop() + parentMenu.getPaddingTop()/* - (int) parentMenu.parentActionBar.getTranslationY()*/;
         } else {
             float scaleY = getScaleY();
@@ -1944,35 +1899,8 @@ public class ActionBarMenuItem extends FrameLayout {
         if (show) {
             popupLayout.scrollToTop();
         }
-
-        if (anchor != null) {
-            if (subMenuOpenSide == 0) {
-                //if (anchor.getParent() != null) {
-                //View parent = (View) anchor.getParent();
-                if (show) {
-                    popupWindow.showAsDropDown(anchor, anchor.getLeft() + anchor.getMeasuredWidth() - popupLayout.getMeasuredWidth() + additionalXOffset, offsetY);
-                }
-                if (update) {
-                    popupWindow.update(anchor, anchor.getLeft() + anchor.getMeasuredWidth() - popupLayout.getMeasuredWidth() + additionalXOffset, offsetY, -1, -1);
-                }
-                //}
-            } else if (subMenuOpenSide == 1) {
-                if (show) {
-                    popupWindow.showAsDropDown(anchor, -AndroidUtilities.dp(8) + additionalXOffset, offsetY);
-                }
-                if (update) {
-                    popupWindow.update(anchor, -AndroidUtilities.dp(8) + additionalXOffset, offsetY, -1, -1);
-                }
-            } else {
-                if (show) {
-                    popupWindow.showAsDropDown(anchor, anchor.getMeasuredWidth() - popupLayout.getMeasuredWidth() + additionalXOffset, offsetY);
-                }
-                if (update) {
-                    popupWindow.update(anchor, anchor.getMeasuredWidth() - popupLayout.getMeasuredWidth() + additionalXOffset, offsetY, -1, -1);
-                }
-            }
-        } else if (parentMenu != null) {
-            View fromView = showSubMenuFrom == null ? this : showSubMenuFrom;
+        View fromView = showSubMenuFrom == null ? this : showSubMenuFrom;
+        if (parentMenu != null) {
             View parent = parentMenu.parentActionBar;
             if (subMenuOpenSide == 0) {
                 if (show) {
@@ -2084,22 +2012,13 @@ public class ActionBarMenuItem extends FrameLayout {
         return view != null && view.getVisibility() == VISIBLE;
     }
 
-    public void setSubItemVisibility(int id, boolean show) {
-        if (show) showSubItem(id);
-        else hideSubItem(id);
-    }
-
-    public ActionBarMenuSubItem getSubItem(int id) {
-        if (popupLayout == null) {
-            return null;
-        }
-        return popupLayout.findViewWithTag(id);
-    }
-
     public void showSubItem(int id) {
         showSubItem(id, false);
     }
 
+    public View getSubItem(int id) {
+        return popupLayout.findViewWithTag(id);
+    }
     public void showSubItem(int id, boolean animated) {
         Item lazyItem = findLazyItem(id);
         if (lazyItem != null) {
@@ -2630,14 +2549,6 @@ public class ActionBarMenuItem extends FrameLayout {
         }
 
         public void setVisibility(int visibility) {
-            this.visibility = visibility;
-            if (view != null) {
-                view.setVisibility(visibility);
-            }
-        }
-
-        public void setVisibility(boolean bvisibility) {
-            int visibility = bvisibility ? View.VISIBLE : View.GONE;
             this.visibility = visibility;
             if (view != null) {
                 view.setVisibility(visibility);

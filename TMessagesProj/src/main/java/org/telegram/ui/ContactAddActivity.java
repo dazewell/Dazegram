@@ -75,8 +75,6 @@ import org.telegram.ui.LNavigation.NavigationExt;
 import java.io.File;
 import java.util.ArrayList;
 
-import xyz.nextalone.nagram.NaConfig;
-
 public class ContactAddActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate, ImageUpdater.ImageUpdaterDelegate {
 
     private View doneButton;
@@ -353,7 +351,7 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
                 photoSelectedType = TYPE_SUGGEST;
                 imageUpdater.setUser(user);
                 TLRPC.FileLocation avatar = (user == null || user.photo == null) ? null : user.photo.photo_small;
-                imageUpdater.openMenu(false, () -> {
+                imageUpdater.openMenu(avatar != null, () -> {
 
                 }, dialogInterface -> {
                     if (!imageUpdater.isUploadingImage()) {
@@ -380,7 +378,7 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
                 photoSelectedType = TYPE_SET;
                 imageUpdater.setUser(user);
                 TLRPC.FileLocation avatar = (user == null || user.photo == null) ? null : user.photo.photo_small;
-                imageUpdater.openMenu(false, () -> {
+                imageUpdater.openMenu(avatar != null, () -> {
 
                 }, dialogInterface -> {
                     if (!imageUpdater.isUploadingImage()) {
@@ -543,7 +541,6 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
         }
 
         if (addContact && needAddException) {
-            checkShare = !NaConfig.INSTANCE.getDoNotShareMyPhoneNumber().Bool();
             items.add(UItem.asCheck(2, getString(R.string.AddContactShareNumber)).setChecked(checkShare));
             items.add(UItem.asShadow(formatString(R.string.AddContactShareNumberInfo, UserObject.getFirstName(user))));
         }

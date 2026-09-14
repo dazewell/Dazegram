@@ -8,23 +8,12 @@
 
 package org.telegram.messenger;
 
-import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
 import android.app.Service;
-import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.os.Build;
 import android.os.IBinder;
-import android.util.Log;
-
-import androidx.core.app.NotificationCompat;
 
 public class NotificationsService extends Service {
-    public static final String ACTION_START_BACKGROUND = "org.telegram.NotificationsService.START_BACKGROUND";
-    public static final String ACTION_START_FOREGROUND = "org.telegram.NotificationsService.START_FOREGROUND";
-    public static final String CHANNEL_ID = "push_service_channel";
 
     @Override
     public void onCreate() {
@@ -32,45 +21,8 @@ public class NotificationsService extends Service {
         ApplicationLoader.postInitApplication();
     }
 
-    private void doForegroundThings() {
-        createNotificationChannel();
-        //            Intent explainIntent = new Intent("android.intent.action.VIEW");
-        //            explainIntent.setData(Uri.parse("https://github.com/Telegram-FOSS-Team/Telegram-FOSS/blob/master/Notifications.md"));
-        //            PendingIntent explainPendingIntent = PendingIntent.getActivity(this, 0, explainIntent, 0);
-        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-                //                    .setContentIntent(explainPendingIntent)
-                .setShowWhen(false)
-                .setOngoing(true)
-                .setSmallIcon(NotificationsController.getNotificationIconResId())
-                .setContentText(LocaleController.getString("NekoXPushService", R.string.NekoXPushService))
-                .build();
-        try {
-            startForeground(9999, notification);
-        } catch (Throwable e) {
-            Log.e("TFOSS", "Failed to start push service");
-        }
-    }
-
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, LocaleController.getString("NekoXPushService", R.string.NekoXPushService), NotificationManager.IMPORTANCE_DEFAULT);
-            notificationManager.createNotificationChannel(channel);
-        }
-    }
-
-    @Override
-    public void onTimeout(int startId, int fgsType) {
-        super.onTimeout(startId, fgsType);
-        stopSelf();
-    }
-
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        String type = intent != null ? intent.getAction() : null;
-        if (ACTION_START_FOREGROUND.equals(type)) {
-            doForegroundThings();
-        }
         return START_STICKY;
     }
 
@@ -81,20 +33,11 @@ public class NotificationsService extends Service {
 
     public void onDestroy() {
         super.onDestroy();
-        try {
-            stopForeground(true);
-        } catch (Throwable ignore) {
-        }
         SharedPreferences preferences = MessagesController.getGlobalNotificationsSettings();
         if (preferences.getBoolean("pushService", true)) {
             Intent intent = new Intent("org.telegram.start");
             intent.setPackage(getPackageName());
-            try {
-                sendBroadcast(intent);
-            } catch (Exception ex) {
-                // 辣鷄miui 就你事最多.jpg
-            }
+            sendBroadcast(intent);
         }
     }
-
 }

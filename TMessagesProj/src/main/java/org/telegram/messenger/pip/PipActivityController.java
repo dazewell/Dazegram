@@ -31,7 +31,7 @@ public class PipActivityController {
         this.activity = activity;
         this.handler = new PipActivityHandler(activity);
 
-        if (BuildConfig.DEBUG) {
+        if (BuildConfig.DEBUG_PRIVATE_VERSION) {
             handler.addPipListener(new IPipActivityListener() {
                 @Override
                 public void onStartEnterToPip() {

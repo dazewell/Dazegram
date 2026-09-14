@@ -38,9 +38,6 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.util.ArrayList;
 
-import kotlin.Unit;
-import tw.nekomimi.nekogram.ui.BottomBuilder;
-
 public class WallpaperUpdater {
 
     private String currentPicturePath;
@@ -62,8 +59,8 @@ public class WallpaperUpdater {
     }
 
     public void showAlert(final boolean fromTheme) {
-        BottomBuilder builder = new BottomBuilder(parentActivity);
-        builder.addTitle(LocaleController.getString(R.string.ChoosePhoto), true);
+        BottomSheet.Builder builder = new BottomSheet.Builder(parentActivity);
+        builder.setTitle(LocaleController.getString(R.string.ChoosePhoto), true);
 
         CharSequence[] items;
         int[] icons;
@@ -72,10 +69,10 @@ public class WallpaperUpdater {
             icons = null;
         } else {
             items = new CharSequence[]{LocaleController.getString(R.string.ChooseTakePhoto), LocaleController.getString(R.string.SelectFromGallery)};
-            icons = new int[]{R.drawable.menu_camera, R.drawable.profile_photos};
+            icons = new int[]{R.drawable.msg_camera, R.drawable.msg_photos};
         }
 
-        builder.addItems(items, icons, (i, t, c) -> {
+        builder.setItems(items, icons, (dialogInterface, i) -> {
             try {
                 if (i == 0) {
                     try {
@@ -107,7 +104,6 @@ public class WallpaperUpdater {
             } catch (Exception e) {
                 FileLog.e(e);
             }
-            return Unit.INSTANCE;
         });
         builder.show();
     }

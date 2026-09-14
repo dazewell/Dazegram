@@ -20,8 +20,6 @@ import org.telegram.ui.Charts.view_data.LineViewData;
 import org.telegram.ui.Charts.view_data.PieLegendView;
 import org.telegram.ui.Charts.view_data.TransitionParams;
 
-import tw.nekomimi.nekogram.NekoConfig;
-
 
 public class PieChartView extends StackLinearChartView<PieChartViewData> {
 

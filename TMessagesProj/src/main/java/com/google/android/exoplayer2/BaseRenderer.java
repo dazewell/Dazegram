@@ -17,8 +17,8 @@ package com.google.android.exoplayer2;
 
 import static com.google.android.exoplayer2.util.Assertions.checkNotNull;
 import static java.lang.Math.max;
-import androidx.annotation.Nullable;
 
+import androidx.annotation.Nullable;
 import com.google.android.exoplayer2.analytics.PlayerId;
 import com.google.android.exoplayer2.decoder.DecoderInputBuffer;
 import com.google.android.exoplayer2.decoder.DecoderInputBuffer.InsufficientCapacityException;
@@ -27,8 +27,6 @@ import com.google.android.exoplayer2.source.SampleStream.ReadDataResult;
 import com.google.android.exoplayer2.source.SampleStream.ReadFlags;
 import com.google.android.exoplayer2.util.Assertions;
 import com.google.android.exoplayer2.util.MediaClock;
-import com.google.android.exoplayer2.util.Util;
-
 import java.io.IOException;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 
@@ -202,7 +200,7 @@ public abstract class BaseRenderer implements Renderer, RendererCapabilities {
     return ADAPTIVE_NOT_SUPPORTED;
   }
 
-  // PlayerMessage.CCTarget implementation.
+  // PlayerMessage.Target implementation.
 
   @Override
   public void handleMessage(@MessageType int messageType, @Nullable Object message)

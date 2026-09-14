@@ -34,8 +34,6 @@ import android.os.Build;
 import android.os.Bundle;
 import android.text.TextPaint;
 import android.text.TextUtils;
-import android.util.SparseArray;
-import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -123,9 +121,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicReference;
-
-import tw.nekomimi.nekogram.NekoConfig;
-import xyz.nextalone.nagram.helper.Dialogs;
 
 public class ThemeActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
 
@@ -893,10 +888,7 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
             }
         } else if (id == NotificationCenter.themeAccentListUpdated) {
             if (listAdapter != null && themeAccentListRow != -1) {
-                try {
-                    listView.stopScroll();
-                    listAdapter.notifyItemChanged(themeAccentListRow, new Object());
-                } catch (Exception ignored) {}
+                listAdapter.notifyItemChanged(themeAccentListRow, new Object());
             }
         } else if (id == NotificationCenter.themeListUpdated) {
             updateRows(true);
@@ -913,7 +905,7 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
         } else if (id == NotificationCenter.themeUploadError) {
             Theme.ThemeInfo themeInfo = (Theme.ThemeInfo) args[0];
             Theme.ThemeAccent accent = (Theme.ThemeAccent) args[1];
-            if (themeInfo == sharingTheme && accent == sharingAccent && sharingProgressDialog != null) {
+            if (themeInfo == sharingTheme && accent == sharingAccent && sharingProgressDialog == null) {
                 sharingProgressDialog.dismiss();
             }
         } else if (id == NotificationCenter.needShareTheme) {
@@ -1029,8 +1021,6 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
                         if (themesHorizontalListCell != null) {
                             Theme.ThemeInfo themeInfo = Theme.getTheme("Blue");
                             Theme.ThemeInfo currentTheme = Theme.getCurrentTheme();
-                            if (themeInfo.themeAccentsMap == null)
-                                themeInfo.themeAccentsMap = new SparseArray<>();
                             Theme.ThemeAccent accent = themeInfo.themeAccentsMap.get(Theme.DEFALT_THEME_ACCENT_ID);
                             if (accent != null) {
                                 Theme.OverrideWallpaperInfo info = new Theme.OverrideWallpaperInfo();
@@ -1382,13 +1372,9 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
                 builder.setNegativeButton(getString("Cancel", R.string.Cancel), null);
                 showDialog(builder.create());
             } else if (position == chatBlurRow) {
-                if (NekoConfig.forceBlurInChat.Bool()) {
-                    Dialogs.createNeedChangeNekoSettingsAlert(getContext());
-                } else {
-                    SharedConfig.toggleChatBlur();
-                    if (view instanceof TextCheckCell) {
-                        ((TextCheckCell) view).setChecked(SharedConfig.chatBlurEnabled());
-                    }
+                SharedConfig.toggleChatBlur();
+                if (view instanceof TextCheckCell) {
+                    ((TextCheckCell) view).setChecked(SharedConfig.chatBlurEnabled());
                 }
             } else if (position == nightThemeRow) {
                 if (LocaleController.isRTL && x <= dp(76) || !LocaleController.isRTL && x >= view.getMeasuredWidth() - dp(76)) {
@@ -2720,9 +2706,9 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
                 case TYPE_SAVE_TO_GALLERY: {
                     RadioButtonCell radioCell = (RadioButtonCell) holder.itemView;
                     if (position == saveToGalleryOption1Row) {
-                        radioCell.setTextAndValueAndCheck("save media only from peer chats", "",true, false);
+                        radioCell.setTextAndValue("save media only from peer chats", "",true, false);
                     } else {
-                        radioCell.setTextAndValueAndCheck("save media from all chats", "",true, false);
+                        radioCell.setTextAndValue("save media from all chats", "",true, false);
                     }
 
                     break;

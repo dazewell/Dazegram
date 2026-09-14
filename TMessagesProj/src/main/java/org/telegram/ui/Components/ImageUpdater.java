@@ -40,8 +40,6 @@ import org.telegram.messenger.MediaController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
-import org.telegram.messenger.MessagesController;
-import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SendMessagesHelper;
 import org.telegram.messenger.SharedConfig;
@@ -60,23 +58,17 @@ import org.telegram.ui.PhotoAlbumPickerActivity;
 import org.telegram.ui.PhotoCropActivity;
 import org.telegram.ui.PhotoPickerActivity;
 import org.telegram.ui.PhotoViewer;
-import org.telegram.ui.ProfileActivity;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
-
-import kotlin.Unit;
-import tw.nekomimi.nekogram.ui.BottomBuilder;
 
 public class ImageUpdater implements NotificationCenter.NotificationCenterDelegate, PhotoCropActivity.PhotoEditActivityDelegate {
     private final static int ID_TAKE_PHOTO = 0,
             ID_UPLOAD_FROM_GALLERY = 1,
             ID_SEARCH_WEB = 2,
             ID_REMOVE_PHOTO = 3,
-            ID_RECORD_VIDEO = 4,
-            ID_OPEN_AVATAR = 5,
-            ID_OPEN_ATTACH = 6;
+            ID_RECORD_VIDEO = 4;
 
     public final static int FOR_TYPE_USER = 0;
     public final static int FOR_TYPE_CHANNEL = 1;
@@ -101,7 +93,7 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
     private File picturePath = null;
     private String finalPath;
     private boolean clearAfterUpdate;
-    private boolean useAttachMenu;
+    private boolean useAttachMenu = true;
     private boolean openWithFrontfaceCamera;
     private boolean supportEmojiMarkup;
 
@@ -262,14 +254,13 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
         if (parentFragment == null || parentFragment.getParentActivity() == null) {
             return;
         }
-
         canceled = false;
         this.type = type;
         if (useAttachMenu) {
             openAttachMenu(onDismiss);
             return;
         }
-        BottomSheet.NekoXBuilder builder = new BottomSheet.NekoXBuilder(parentFragment.getParentActivity());
+        BottomSheet.Builder builder = new BottomSheet.Builder(parentFragment.getParentActivity());
 
         if (type == TYPE_SET_PHOTO_FOR_USER) {
             builder.setTitle(LocaleController.formatString("SetPhotoFor", R.string.SetPhotoFor, user.first_name), true);
@@ -283,29 +274,19 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
         ArrayList<Integer> icons = new ArrayList<>();
         ArrayList<Integer> ids = new ArrayList<>();
 
-        if (hasAvatar && parentFragment instanceof ProfileActivity) {
-            items.add(LocaleController.getString(R.string.Open));
-            icons.add(R.drawable.msg_view_file);
-            ids.add(ID_OPEN_AVATAR);
-        }
-
-        items.add(LocaleController.getString(R.string.ChooseFromGallery));
-        icons.add(R.drawable.msg_photos);
-        ids.add(ID_UPLOAD_FROM_GALLERY);
-
-        items.add(LocaleController.getString(R.string.ChooseFromGallery));
-        icons.add(R.drawable.msg_photos);
-        ids.add(ID_OPEN_ATTACH);
-
         items.add(LocaleController.getString(R.string.ChooseTakePhoto));
         icons.add(R.drawable.msg_camera);
         ids.add(ID_TAKE_PHOTO);
 
         if (canSelectVideo) {
             items.add(LocaleController.getString(R.string.ChooseRecordVideo));
-            icons.add(R.drawable.msg_videocall);
+            icons.add(R.drawable.msg_video);
             ids.add(ID_RECORD_VIDEO);
         }
+
+        items.add(LocaleController.getString(R.string.ChooseFromGallery));
+        icons.add(R.drawable.msg_photos);
+        ids.add(ID_UPLOAD_FROM_GALLERY);
 
         if (searchAvailable) {
             items.add(LocaleController.getString(R.string.ChooseFromSearch));
@@ -326,19 +307,6 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
         builder.setItems(items.toArray(new CharSequence[0]), iconsRes, (dialogInterface, i) -> {
             int id = ids.get(i);
             switch (id) {
-                case ID_OPEN_ATTACH:
-                    openAttachMenu(onDismiss);
-                    break;
-                case ID_OPEN_AVATAR:
-                    TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(UserConfig.getInstance(currentAccount).getClientUserId());
-                    if (user != null && user.photo != null && user.photo.photo_big != null) {
-                        PhotoViewer.getInstance().setParentActivity(parentFragment.getParentActivity());
-                        if (user.photo.dc_id != 0) {
-                            user.photo.photo_big.dc_id = user.photo.dc_id;
-                        }
-                        PhotoViewer.getInstance().openPhoto(user.photo.photo_big, ((ProfileActivity) parentFragment).provider);
-                    }
-                    break;
                 case ID_TAKE_PHOTO:
                     openCamera();
                     break;

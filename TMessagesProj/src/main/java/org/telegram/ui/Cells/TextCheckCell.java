@@ -18,7 +18,6 @@ import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.Typeface;
-import android.graphics.drawable.Drawable;
 import android.graphics.drawable.ColorDrawable;
 import android.text.TextUtils;
 import android.util.Property;
@@ -32,17 +31,14 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import org.telegram.messenger.AndroidUtilities;
-import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.AvatarSpan;
 import org.telegram.ui.Components.AnimationProperties;
-import org.telegram.ui.Components.CheckBoxSquare;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RLottieImageView;
 import org.telegram.ui.Components.Switch;
-import org.telegram.ui.Components.ViewHelper;
 
 import java.util.ArrayList;
 import java.util.Locale;
@@ -54,8 +50,7 @@ public class TextCheckCell extends FrameLayout {
 
     private TextView textView;
     private TextView valueTextView;
-    public Switch checkBox;
-    public CheckBoxSquare checkBoxSquare;
+    private Switch checkBox;
     private boolean needDivider;
     private boolean isMultiline;
     private int height = 50;
@@ -108,7 +103,11 @@ public class TextCheckCell extends FrameLayout {
         textView = new TextView(context);
         textView.setTextColor(Theme.getColor(dialog ? Theme.key_dialogTextBlack : Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
         textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
+        textView.setLines(1);
+        textView.setMaxLines(1);
+        textView.setSingleLine(true);
         textView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL);
+        textView.setEllipsize(TextUtils.TruncateAt.END);
         addView(textView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, LocaleController.isRTL ? 70 : padding, 0, LocaleController.isRTL ? padding : 70, 0));
 
         valueTextView = new TextView(context);
@@ -127,6 +126,7 @@ public class TextCheckCell extends FrameLayout {
         addView(checkBox, LayoutHelper.createFrame(37, 20, (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.CENTER_VERTICAL, 22, 0, 22, 0));
 
         setClipChildren(false);
+
         isRTL = LocaleController.isRTL;
     }
 
@@ -149,7 +149,7 @@ public class TextCheckCell extends FrameLayout {
         if (isMultiline) {
             super.onMeasure(MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
         } else {
-            super.onMeasure(MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(valueTextView.getVisibility() == VISIBLE ? 64 : height) + (needDivider ? 3 : 0), MeasureSpec.EXACTLY));
+            super.onMeasure(MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(valueTextView.getVisibility() == VISIBLE ? 64 : height) + (needDivider ? 1 : 0), MeasureSpec.EXACTLY));
         }
     }
 
@@ -168,13 +168,8 @@ public class TextCheckCell extends FrameLayout {
         AvatarSpan.checkSpansParent(text, this);
         textView.setText(text);
         isMultiline = false;
-        if (checkBox != null) {
-            checkBox.setVisibility(View.VISIBLE);
-            checkBox.setChecked(checked, attached);
-        } else {
-            checkBoxSquare.setVisibility(View.VISIBLE);
-            checkBoxSquare.setChecked(checked,false);
-        }
+        checkBox.setVisibility(View.VISIBLE);
+        checkBox.setChecked(checked, attached);
         needDivider = divider;
         valueTextView.setVisibility(GONE);
         LayoutParams layoutParams = (LayoutParams) textView.getLayoutParams();
@@ -222,7 +217,7 @@ public class TextCheckCell extends FrameLayout {
 
     @Override
     public void setPressed(boolean pressed) {
-        if (drawCheckRipple && checkBox != null) {
+        if (drawCheckRipple) {
             checkBox.setDrawRipple(pressed);
         }
         super.setPressed(pressed);
@@ -232,13 +227,8 @@ public class TextCheckCell extends FrameLayout {
         AvatarSpan.checkSpansParent(text, this);
         textView.setText(text);
         valueTextView.setText(value);
-        if (checkBox != null) {
-            checkBox.setVisibility(View.VISIBLE);
-            checkBox.setChecked(checked, false);
-        } else {
-            checkBoxSquare.setVisibility(View.VISIBLE);
-            checkBoxSquare.setChecked(checked,false);
-        }
+        checkBox.setVisibility(View.VISIBLE);
+        checkBox.setChecked(checked, false);
         needDivider = divider;
         valueTextView.setVisibility(VISIBLE);
         isMultiline = multiline;
@@ -294,17 +284,13 @@ public class TextCheckCell extends FrameLayout {
         super.setEnabled(value);
         if (animators != null) {
             animators.add(ObjectAnimator.ofFloat(textView, View.ALPHA, value ? 1.0f : 0.5f));
-            if (checkBox != null) {
-                animators.add(ObjectAnimator.ofFloat(checkBox, View.ALPHA, value ? 1.0f : 0.5f));
-            } else {
-                animators.add(ObjectAnimator.ofFloat(checkBoxSquare, "alpha", value ? 1.0f : 0.5f));
-            }
+            animators.add(ObjectAnimator.ofFloat(checkBox, View.ALPHA, value ? 1.0f : 0.5f));
             if (valueTextView.getVisibility() == VISIBLE) {
                 animators.add(ObjectAnimator.ofFloat(valueTextView, View.ALPHA, value ? 1.0f : 0.5f));
             }
         } else {
             textView.setAlpha(value ? 1.0f : 0.5f);
-            (checkBox != null ? checkBox : checkBoxSquare).setAlpha(value ? 1.0f : 0.5f);
+            checkBox.setAlpha(value ? 1.0f : 0.5f);
             if (valueTextView.getVisibility() == VISIBLE) {
                 valueTextView.setAlpha(value ? 1.0f : 0.5f);
             }
@@ -312,15 +298,11 @@ public class TextCheckCell extends FrameLayout {
     }
 
     public void setChecked(boolean checked) {
-        if (checkBox != null) {
-            checkBox.setChecked(checked, true);
-        } else {
-            checkBoxSquare.setChecked(checked,true);
-        }
+        checkBox.setChecked(checked, true);
     }
 
     public boolean isChecked() {
-        return checkBox != null ? checkBox.isChecked() : checkBoxSquare.isChecked();
+        return checkBox.isChecked();
     }
 
     @Override
@@ -343,9 +325,7 @@ public class TextCheckCell extends FrameLayout {
         if (animationPaint == null) {
             animationPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         }
-        if (checkBox != null) {
-            checkBox.setOverrideColor(checked ? 1 : 2);
-        }
+        checkBox.setOverrideColor(checked ? 1 : 2);
         animatedColorBackground = color;
         animationPaint.setColor(animatedColorBackground);
         animationProgress = 0.0f;
@@ -433,7 +413,7 @@ public class TextCheckCell extends FrameLayout {
         super.onInitializeAccessibilityNodeInfo(info);
         info.setClassName("android.widget.Switch");
         info.setCheckable(true);
-        info.setChecked(isChecked());
+        info.setChecked(checkBox.isChecked());
         StringBuilder sb = new StringBuilder();
         sb.append(textView.getText());
         if (!TextUtils.isEmpty(valueTextView.getText())) {

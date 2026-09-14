@@ -37,7 +37,7 @@
 #ifdef ANDROID
 #include <jni.h>
 JavaVM *javaVm = nullptr;
-JNIEnv *jniEnv[MAX_ACCOUNT_COUNT] = {};
+JNIEnv *jniEnv[MAX_ACCOUNT_COUNT];
 jclass jclass_ByteBuffer = nullptr;
 jmethodID jclass_ByteBuffer_allocateDirect = nullptr;
 #endif
@@ -135,25 +135,25 @@ ConnectionsManager::~ConnectionsManager() {
     pthread_mutex_destroy(&mutex);
 }
 
-std::vector<ConnectionsManager*> ConnectionsManager::_instances = std::vector<ConnectionsManager*>(10);
-
 ConnectionsManager& ConnectionsManager::getInstance(int32_t instanceNum) {
-    static std::mutex _new_mutex;
-
-    std::lock_guard<std::mutex> lock(_new_mutex);
-
-    if (instanceNum < 0) {
-        instanceNum = 0;
+    switch (instanceNum) {
+        case 0:
+            static ConnectionsManager instance0(0);
+            return instance0;
+        case 1:
+            static ConnectionsManager instance1(1);
+            return instance1;
+        case 2:
+            static ConnectionsManager instance2(2);
+            return instance2;
+        case 3:
+            static ConnectionsManager instance3(3);
+            return instance3;
+        case 4:
+        default:
+            static ConnectionsManager instance4(4);
+            return instance4;
     }
-
-    if (instanceNum >= static_cast<int32_t>(_instances.size())) {
-        _instances.resize(instanceNum + 10, nullptr);
-    }
-
-    if (_instances[instanceNum] == nullptr) {
-        _instances[instanceNum] = new ConnectionsManager(instanceNum);
-    }
-    return *_instances[instanceNum];
 }
 
 int ConnectionsManager::callEvents(int64_t now) {
@@ -696,7 +696,7 @@ void ConnectionsManager::onConnectionClosed(Connection *connection, int reason) 
     if (connection->getConnectionType() == ConnectionTypeGeneric) {
         if (datacenter->getDatacenterId() == currentDatacenterId) {
             sendingPing = false;
-            if (networkAvailable && !networkPaused && !connection->isSuspended() && (proxyAddress.empty() || connection->hasTlsHashMismatch())) {
+            if (!connection->isSuspended() && (proxyAddress.empty() || connection->hasTlsHashMismatch())) {
                 if (reason == 2) {
                     disconnectTimeoutAmount += connection->getTimeout();
                 } else {
@@ -790,10 +790,6 @@ void ConnectionsManager::onConnectionClosed(Connection *connection, int reason) 
 void ConnectionsManager::onConnectionConnected(Connection *connection) {
     Datacenter *datacenter = connection->getDatacenter();
     ConnectionType connectionType = connection->getConnectionType();
-    if (disconnectTimeoutAmount > 0 && connection->getConnectionType() == ConnectionTypeGeneric && datacenter->getDatacenterId() == currentDatacenterId) {
-        if (LOGS_ENABLED) DEBUG_D("reset disconnect timeout");
-        disconnectTimeoutAmount = 0;
-    }
     if ((connectionType == ConnectionTypeGeneric || connectionType == ConnectionTypeGenericMedia) && datacenter->isHandshakingAny()) {
         datacenter->onHandshakeConnectionConnected(connection);
         return;
@@ -3915,12 +3911,12 @@ void ConnectionsManager::checkProxyInternal(ProxyCheckInfo *proxyCheckInfo) {
         Datacenter *datacenter = getDatacenterWithId(DEFAULT_DATACENTER_ID);
         Connection *connection = datacenter->getProxyConnection((uint8_t) freeConnectionNum, true, false);
         if (connection != nullptr) {
-            if (proxyCheckInfo->address != "ping.neko") connection->setOverrideProxy(proxyCheckInfo->address, proxyCheckInfo->port, proxyCheckInfo->username, proxyCheckInfo->password, proxyCheckInfo->secret);
+            connection->setOverrideProxy(proxyCheckInfo->address, proxyCheckInfo->port, proxyCheckInfo->username, proxyCheckInfo->password, proxyCheckInfo->secret);
             connection->suspendConnection();
             proxyCheckInfo->connectionNum = freeConnectionNum;
             auto request = new TL_ping();
             request->ping_id = proxyCheckInfo->pingId;
-            proxyCheckInfo->requestToken = sendRequest(request, nullptr, nullptr, nullptr, RequestFlagEnableUnauthorized | RequestFlagWithoutLogin, proxyCheckInfo->address != "ping.neko" ? DEFAULT_DATACENTER_ID : proxyCheckInfo->port, connectionType, true, 0);
+            proxyCheckInfo->requestToken = sendRequest(request, nullptr, nullptr, nullptr, RequestFlagEnableUnauthorized | RequestFlagWithoutLogin, DEFAULT_DATACENTER_ID, connectionType, true, 0);
             proxyActiveChecks.push_back(std::unique_ptr<ProxyCheckInfo>(proxyCheckInfo));
         } else if (PFS_ENABLED) {
             if (datacenter->isHandshaking(false)) {

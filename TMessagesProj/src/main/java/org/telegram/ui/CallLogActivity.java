@@ -38,9 +38,6 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
-
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.DialogObject;
@@ -287,14 +284,14 @@ public class CallLogActivity extends BaseFragment implements NotificationCenter.
 			if (!firstLoaded) {
 				return;
 			}
-            boolean scheduled = (Boolean) args[2];
-            if (scheduled) {
-                return;
-            }
-            ArrayList<MessageObject> arr = (ArrayList<MessageObject>) args[1];
-            for (MessageObject msg : arr) {
-                if (msg.messageOwner.action instanceof TLRPC.TL_messageActionPhoneCall) {
-                    long fromId = msg.getFromChatId();
+			boolean scheduled = (Boolean) args[2];
+			if (scheduled) {
+				return;
+			}
+			ArrayList<MessageObject> arr = (ArrayList<MessageObject>) args[1];
+			for (MessageObject msg : arr) {
+				if (msg.messageOwner.action instanceof TLRPC.TL_messageActionPhoneCall) {
+					long fromId = msg.getFromChatId();
 					long userID = fromId == getUserConfig().getClientUserId() ? msg.messageOwner.peer_id.user_id : fromId;
 					int callType = fromId == getUserConfig().getClientUserId() ? TYPE_OUT : TYPE_IN;
 					TLRPC.PhoneCallDiscardReason reason = msg.messageOwner.action.reason;
@@ -441,7 +438,7 @@ public class CallLogActivity extends BaseFragment implements NotificationCenter.
 				VoIPHelper.startCall(lastCallChat, null, null, false, getParentActivity(), CallLogActivity.this, getAccountInstance());
 				waitingForCallChatId = null;
 			}
-    }
+		}
 	}
 
 	private static boolean eq(long userId, ArrayList<TLRPC.User> users) {
@@ -692,10 +689,10 @@ public class CallLogActivity extends BaseFragment implements NotificationCenter.
 		}
 	}
 
-    @Override
-    public boolean onFragmentCreate() {
-        super.onFragmentCreate();
-        getCalls(0, 50);
+	@Override
+	public boolean onFragmentCreate() {
+		super.onFragmentCreate();
+		getCalls(0, 50);
 		activeGroupCalls = getMessagesController().getActiveGroupCalls();
 
 		getNotificationCenter().addObserver(this, NotificationCenter.didReceiveNewMessages);
@@ -715,15 +712,15 @@ public class CallLogActivity extends BaseFragment implements NotificationCenter.
 		return true;
 	}
 
-    @Override
-    public void onFragmentDestroy() {
-        super.onFragmentDestroy();
+	@Override
+	public void onFragmentDestroy() {
+		super.onFragmentDestroy();
 		getNotificationCenter().removeObserver(this, NotificationCenter.didReceiveNewMessages);
 		getNotificationCenter().removeObserver(this, NotificationCenter.messagesDeleted);
 		getNotificationCenter().removeObserver(this, NotificationCenter.activeGroupCallsUpdated);
 		getNotificationCenter().removeObserver(this, NotificationCenter.chatInfoDidLoad);
 		getNotificationCenter().removeObserver(this, NotificationCenter.groupCallUpdated);
-    }
+	}
 
 	@SuppressLint("UseCompatLoadingForDrawables")
     @Override
@@ -745,8 +742,8 @@ public class CallLogActivity extends BaseFragment implements NotificationCenter.
 				} else if (id == delete) {
 					showDeleteAlert(false);
 				}
-            }
-        });
+			}
+		});
 
 		ActionBarMenu menu = actionBar.createMenu();
 		otherItem = menu.addItem(10, R.drawable.ic_ab_other);
@@ -1236,8 +1233,8 @@ public class CallLogActivity extends BaseFragment implements NotificationCenter.
 	private void createActionMode() {
 		if (actionBar.actionModeIsExist(null)) {
 			return;
-        }
-        final ActionBarMenu actionMode = actionBar.createActionMode();
+		}
+		final ActionBarMenu actionMode = actionBar.createActionMode();
 
 		if (hasMainTabs) {
 			actionModeCloseView = new ImageView(getContext());
@@ -1444,7 +1441,7 @@ public class CallLogActivity extends BaseFragment implements NotificationCenter.
 			if (!firstLoaded) {
 				resumeDelayedFragmentAnimation();
 			}
-            firstLoaded = true;
+			firstLoaded = true;
 			otherItem.setVisibility(calls.isEmpty() ? View.GONE : View.VISIBLE);
 			if (emptyView != null) {
 				emptyView.showTextView();
@@ -1454,7 +1451,7 @@ public class CallLogActivity extends BaseFragment implements NotificationCenter.
 			}
 		}), ConnectionsManager.RequestFlagFailOnServerErrors);
 		getConnectionsManager().bindRequestToGuid(reqId, classGuid);
-    }
+	}
 
 	@Override
 	public void onResume() {
@@ -1464,8 +1461,8 @@ public class CallLogActivity extends BaseFragment implements NotificationCenter.
 		}
 	}
 
-    @Override
-    public void onRequestPermissionsResultFragment(int requestCode, String[] permissions, int[] grantResults) {
+	@Override
+	public void onRequestPermissionsResultFragment(int requestCode, String[] permissions, int[] grantResults) {
 		if (requestCode == 101 || requestCode == 102 || requestCode == 103) {
 			boolean allGranted = true;
 			for (int grantResult : grantResults) {
@@ -1481,11 +1478,11 @@ public class CallLogActivity extends BaseFragment implements NotificationCenter.
 					TLRPC.UserFull userFull = lastCallUser != null ? getMessagesController().getUserFull(lastCallUser.id) : null;
 					VoIPHelper.startCall(lastCallUser, requestCode == 102, requestCode == 102 || userFull != null && userFull.video_calls_available, getParentActivity(), null, getAccountInstance());
 				}
-            } else {
-                VoIPHelper.permissionDenied(getParentActivity(), null, requestCode);
-            }
-        }
-    }
+			} else {
+				VoIPHelper.permissionDenied(getParentActivity(), null, requestCode);
+			}
+		}
+	}
 
 	private static class CallLogRow {
 		public long call_id;

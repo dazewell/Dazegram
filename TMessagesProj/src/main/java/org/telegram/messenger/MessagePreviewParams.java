@@ -196,11 +196,10 @@ public class MessagePreviewParams {
     public TLRPC.WebPage webpage;
     public CharacterStyle currentLink;
 
-    public MessagePreviewParams(boolean secret, boolean noforwards, boolean monoforum, boolean hideForwardSendersName) {
+    public MessagePreviewParams(boolean secret, boolean noforwards, boolean monoforum) {
         this.isSecret = secret;
         this.noforwards = secret || noforwards;
         this.monoforum = monoforum;
-        this.hideForwardSendersName = hideForwardSendersName;
     }
 
     public void updateReply(MessageObject replyMessageObject, MessageObject.GroupedMessages group, long dialogId, ChatActivity.ReplyQuote replyQuote) {
@@ -553,10 +552,6 @@ public class MessagePreviewParams {
     private MessagePreviewView previewView;
     public void attach(MessagePreviewView previewView) {
         this.previewView = previewView;
-    }
-
-    public void setHideForwardSendersName(boolean hideForwardSendersName) {
-        this.hideForwardSendersName = hideForwardSendersName;
     }
 
     public void checkEdits(ArrayList<MessageObject> replaceMessageObjects) {

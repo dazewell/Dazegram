@@ -85,10 +85,6 @@ import org.telegram.ui.Components.spoilers.SpoilersTextView;
 
 import java.util.ArrayList;
 
-import tw.nekomimi.nekogram.NekoConfig;
-import tw.nekomimi.nekogram.ui.EditTextAutoFill;
-import tw.nekomimi.nekogram.utils.VibrateUtil;
-
 public class TwoStepVerificationSetupActivity extends BaseFragment {
 
     private RLottieImageView imageView;
@@ -711,7 +707,7 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
                 outlineTextFirstRow = new OutlineTextContainerView(context);
                 outlineTextFirstRow.animateSelection(1f, false);
 
-                editTextFirstRow = new EditTextAutoFill(context);
+                editTextFirstRow = new EditTextBoldCursor(context);
                 editTextFirstRow.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 18);
                 int padding = AndroidUtilities.dp(16);
                 editTextFirstRow.setPadding(padding, padding, padding, padding);
@@ -756,12 +752,13 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
                 showPasswordButton.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector)));
                 showPasswordButton.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_messagePanelIcons), PorterDuff.Mode.MULTIPLY));
                 AndroidUtilities.updateViewVisibilityAnimated(showPasswordButton, false, 0.1f, false);
+
                 showPasswordButton.setOnClickListener(v -> {
                     ignoreTextChange = true;
                     if (editTextFirstRow.getTransformationMethod() == null) {
                         isPasswordVisible = false;
                         editTextFirstRow.setTransformationMethod(PasswordTransformationMethod.getInstance());
-                        showPasswordButton.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_messagePanelIcons), PorterDuff.Mode.SRC_IN));
+                        showPasswordButton.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_messagePanelIcons), PorterDuff.Mode.MULTIPLY));
                         if (currentType == TYPE_CREATE_PASSWORD_STEP_1) {
                             if (editTextFirstRow.length() > 0 && editTextFirstRow.hasFocus()) {
                                 if (monkeyEndCallback == null) {
@@ -777,7 +774,7 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
                     } else {
                         isPasswordVisible = true;
                         editTextFirstRow.setTransformationMethod(null);
-                        showPasswordButton.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_messagePanelSend), PorterDuff.Mode.SRC_IN));
+                        showPasswordButton.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_messagePanelSend), PorterDuff.Mode.MULTIPLY));
 
                         if (currentType == TYPE_CREATE_PASSWORD_STEP_1) {
                             if (editTextFirstRow.length() > 0 && editTextFirstRow.hasFocus()) {
@@ -1434,7 +1431,6 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
                 if (!editTextFirstRow.getText().toString().equals(firstPassword) && currentType == TYPE_CREATE_PASSWORD_STEP_2) {
                     AndroidUtilities.shakeViewSpring(outlineTextFirstRow, 5);
                     try {
-                        if (!NekoConfig.disableVibration.Bool())
                         outlineTextFirstRow.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                     } catch (Exception ignored) {}
                     try {
@@ -2077,7 +2073,9 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
         if (getParentActivity() == null) {
             return;
         }
-        VibrateUtil.vibrate();
+        try {
+            field.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+        } catch (Exception ignored) {}
         if (clear) {
             field.setText("");
         }

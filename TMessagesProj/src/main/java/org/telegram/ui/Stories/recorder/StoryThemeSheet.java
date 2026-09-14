@@ -100,18 +100,17 @@ public class StoryThemeSheet extends FrameLayout {
         if (entry != null) {
             TLRPC.WallPaper wallpaper = null;
             if (entry.backgroundWallpaperPeerId != Long.MIN_VALUE) {
-//                if (entry.backgroundWallpaperPeerId < 0) {
-//                    TLRPC.ChatFull chatFull = MessagesController.getInstance(entry.currentAccount).getChatFull(-entry.backgroundWallpaperPeerId);
-//                    if (chatFull != null) {
-//                        wallpaper = chatFull.wallpaper;
-//                    }
-//                } else {
-//                    TLRPC.UserFull userFull = MessagesController.getInstance(entry.currentAccount).getUserFull(entry.backgroundWallpaperPeerId);
-//                    if (userFull != null) {
-//                        wallpaper = userFull.wallpaper;
-//                    }
-//                }
-                wallpaper = ChatThemeController.getInstance(entry.currentAccount).getDialogWallpaper(entry.backgroundWallpaperPeerId);
+                if (entry.backgroundWallpaperPeerId < 0) {
+                    TLRPC.ChatFull chatFull = MessagesController.getInstance(entry.currentAccount).getChatFull(-entry.backgroundWallpaperPeerId);
+                    if (chatFull != null) {
+                        wallpaper = chatFull.wallpaper;
+                    }
+                } else {
+                    TLRPC.UserFull userFull = MessagesController.getInstance(entry.currentAccount).getUserFull(entry.backgroundWallpaperPeerId);
+                    if (userFull != null) {
+                        wallpaper = userFull.wallpaper;
+                    }
+                }
             }
             themeView.setGalleryWallpaper(wallpaper);
             if (entry.backgroundWallpaperEmoticon != null) {

@@ -125,10 +125,6 @@ public class GalleryEmptyView extends LinearLayout {
         galleryAccessButton.setOnClickListener(v -> listener.run());
     }
 
-    public void setGalleryAccessButtonText(CharSequence text) {
-        galleryAccessButton.setText(text, false);
-    }
-
     public void doOnCameraAccess(Runnable listener) {
         cameraAccessButton.setOnClickListener(v -> listener.run());
     }

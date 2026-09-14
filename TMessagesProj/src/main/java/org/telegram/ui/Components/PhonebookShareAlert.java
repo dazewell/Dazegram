@@ -170,7 +170,7 @@ public class PhonebookShareAlert extends BottomSheet {
 
             imageView = new ImageView(context);
             imageView.setScaleType(ImageView.ScaleType.CENTER);
-            imageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_windowBackgroundWhiteGrayIcon), PorterDuff.Mode.SRC_IN));
+            imageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_windowBackgroundWhiteGrayIcon), PorterDuff.Mode.MULTIPLY));
             addView(imageView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, LocaleController.isRTL ? 0 : 20, 20, LocaleController.isRTL ? 20 : 0, 0));
 
             if (!isImport) {
@@ -1076,19 +1076,19 @@ public class PhonebookShareAlert extends BottomSheet {
                 int icon;
                 if (position >= phoneStartRow && position < phoneEndRow) {
                     item = phones.get(position - phoneStartRow);
-                    icon = R.drawable.menu_calls;
+                    icon = R.drawable.msg_calls;
                 } else {
                     item = other.get(position - vcardStartRow);
                     if (item.type == 1) {
-                        icon = R.drawable.menu_mail;
+                        icon = R.drawable.msg_mention;
                     } else if (item.type == 2) {
-                        icon = R.drawable.menu_location;
+                        icon = R.drawable.msg_location;
                     } else if (item.type == 3) {
                         icon = R.drawable.msg_link;
                     } else if (item.type == 4) {
                         icon = R.drawable.msg_info;
                     } else if (item.type == 5) {
-                        icon = R.drawable.menu_date;
+                        icon = R.drawable.msg_calendar2;
                     } else if (item.type == 6) {
                         if ("ORG".equalsIgnoreCase(item.getRawType(true))) {
                             icon = R.drawable.msg_work;

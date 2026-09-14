@@ -4,7 +4,6 @@ import static org.telegram.ui.Stars.StarsController.findAttribute;
 
 import android.text.TextUtils;
 import android.util.LongSparseArray;
-import android.util.SparseArray;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -763,15 +762,15 @@ public class GiftAuctionController extends BaseController {
         super(num);
     }
 
-    private static volatile SparseArray<GiftAuctionController> Instance = new SparseArray<>();
+    private static volatile GiftAuctionController[] Instance = new GiftAuctionController[UserConfig.MAX_ACCOUNT_COUNT];
 
     public static GiftAuctionController getInstance(int num) {
-        GiftAuctionController localInstance = Instance.get(num);
+        GiftAuctionController localInstance = Instance[num];
         if (localInstance == null) {
             synchronized (GiftAuctionController.class) {
-                localInstance = Instance.get(num);
+                localInstance = Instance[num];
                 if (localInstance == null) {
-                    Instance.set(num, localInstance = new GiftAuctionController(num));
+                    Instance[num] = localInstance = new GiftAuctionController(num);
                 }
             }
         }

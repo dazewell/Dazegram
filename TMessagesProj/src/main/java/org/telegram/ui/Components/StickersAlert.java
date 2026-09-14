@@ -22,9 +22,6 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.BitmapFactory;
-import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
@@ -61,26 +58,18 @@ import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AndroidUtilities;
-import org.telegram.messenger.ApplicationLoader;
-import org.telegram.messenger.DocumentObject;
-import org.telegram.messenger.MediaController;
-import org.telegram.messenger.MediaDataController;
-import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.FileRefController;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.LocaleController;
-import org.telegram.messenger.MediaDataController;
-import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MediaController;
 import org.telegram.messenger.MediaDataController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
-import org.telegram.messenger.SvgHelper;
 import org.telegram.messenger.SendMessagesHelper;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
@@ -120,12 +109,6 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import tw.nekomimi.nekogram.NekoConfig;
-import tw.nekomimi.nekogram.utils.ProxyUtil;
-import xyz.nextalone.nagram.NaConfig;
-import xyz.nextalone.nagram.helper.ExternalStickerCacheHelper;
-import xyz.nextalone.nagram.helper.StickerSetHelper;
-
 public class StickersAlert extends BottomSheet implements NotificationCenter.NotificationCenterDelegate {
 
     public final static boolean DISABLE_STICKER_EDITOR = false;
@@ -134,13 +117,11 @@ public class StickersAlert extends BottomSheet implements NotificationCenter.Not
     public interface StickersAlertDelegate {
         void onStickerSelected(TLRPC.Document sticker, String query, Object parent, MessageObject.SendAnimationData sendAnimationData, boolean clearsInputField, boolean notify, int scheduleDate, int scheduleRepeatPeriod);
         boolean canSchedule();
-
         boolean isInScheduleMode();
     }
 
     public interface StickersAlertInstallDelegate {
         void onStickerSetInstalled();
-
         void onStickerSetUninstalled();
     }
 
@@ -181,13 +162,6 @@ public class StickersAlert extends BottomSheet implements NotificationCenter.Not
     private int itemSize, itemHeight;
     public boolean probablyEmojis;
     private boolean isEditModeEnabled;
-
-    private final int menu_archive = 102;
-    private final int menuRefreshExternalCache = 100;
-    private final int menuDeleteExternalCache = 101;
-    private final int menu_copy_sticker_set = 103;
-    private final int menu_qrcode = 104;
-    private final int menu_user_profile = 105;
 
     public TLRPC.TL_messages_stickerSet stickerSet;
     private TLRPC.Document selectedSticker;
@@ -1147,14 +1121,6 @@ public class StickersAlert extends BottomSheet implements NotificationCenter.Not
         containerView.addView(optionsButton, LayoutHelper.createFrame(40, 40, Gravity.TOP | Gravity.RIGHT, 0, 5, 5, 0));
         optionsButton.addSubItem(1, R.drawable.msg_share, LocaleController.getString(R.string.StickersShare));
         optionsButton.addSubItem(2, R.drawable.msg_link, LocaleController.getString(R.string.CopyLink));
-        optionsButton.addSubItem(menu_qrcode, R.drawable.msg_qrcode, LocaleController.getString(R.string.ShareQRCode));
-        optionsButton.addSubItem(menu_archive, R.drawable.msg_archive, LocaleController.getString(R.string.Archive));
-        if (!NaConfig.INSTANCE.getExternalStickerCache().String().isBlank()) {
-            optionsButton.addSubItem(menuRefreshExternalCache, R.drawable.menu_views_reposts, LocaleController.getString(R.string.ExternalStickerCacheRefresh));
-            optionsButton.addSubItem(menuDeleteExternalCache, R.drawable.msg_delete, LocaleController.getString(R.string.ExternalStickerCacheDelete));
-        }
-        optionsButton.addSubItem(menu_copy_sticker_set, R.drawable.msg_copy, LocaleController.getString(R.string.StickersCopyStickerSet));
-        optionsButton.addSubItem(menu_user_profile, R.drawable.msg_openprofile, LocaleController.getString(R.string.ChannelAdmin));
 
         optionsButton.setOnClickListener(v -> {
             checkOptions();
@@ -1201,7 +1167,7 @@ public class StickersAlert extends BottomSheet implements NotificationCenter.Not
         stickerImageView.setLayerNum(7);
         stickerPreviewLayout.addView(stickerImageView);
 
-        stickerEmojiTextView = new EmojiTextView(context);
+        stickerEmojiTextView = new TextView(context);
         stickerEmojiTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 30);
         stickerEmojiTextView.setGravity(Gravity.BOTTOM | Gravity.RIGHT);
         stickerPreviewLayout.addView(stickerEmojiTextView);
@@ -1456,60 +1422,6 @@ public class StickersAlert extends BottomSheet implements NotificationCenter.Not
                 dismiss();
                 MediaDataController.getInstance(currentAccount).toggleStickerSet(getContext(), stickerSet, 1, parentFragment, false, false);
             });
-        } else if (id == menu_qrcode) {
-            for (int i = 0, size = gridView.getChildCount(); i < size; i++) {
-                final View child = gridView.getChildAt(i);
-                if (child instanceof StickerEmojiCell) {
-                    Bitmap bitmap = ((StickerEmojiCell) child).getImageView().getBitmap();
-                    if (bitmap == null) continue;
-                    ProxyUtil.showQrDialog(getContext(), stickersUrl, imageSize -> Bitmap.createScaledBitmap(bitmap,imageSize,imageSize, true));
-                    return;
-                }
-            }
-            ProxyUtil.showQrDialog(getContext(), stickersUrl);
-        } else if (id == menu_archive) {
-            dismiss();
-            MediaDataController.getInstance(currentAccount).toggleStickerSet(parentActivity, stickerSet, 1, parentFragment, false, true);
-        } else if (id == menuRefreshExternalCache) {
-            // Na: [ExternalStickerCache] force refresh cache files
-            ExternalStickerCacheHelper.refreshCacheFiles(stickerSet);
-        } else if (id == menuDeleteExternalCache) {
-            // Na: [ExternalStickerCache] delete cache files
-            ExternalStickerCacheHelper.deleteCacheFiles(stickerSet);
-            enableEditMode();
-        } else if (id == menu_copy_sticker_set) {
-            // Na: copy sticker set
-            dismiss();
-            StickersDialogs.showShortNameEditorDialog(resourcesProvider, containerView.getContext(), short_name -> {
-                StickersDialogs.showNameEditorDialog(null, resourcesProvider, containerView.getContext(), (pack_name, whenDone) -> {
-                    StickerSetHelper.INSTANCE.copyStickerSet(short_name, pack_name, stickerSet, UserConfig.selectedAccount);
-                    if (whenDone != null) {
-                        whenDone.run(true);
-                    }
-                });
-            });
-        } else if (id == menu_user_profile) {
-            // Na: open sticker's admin user profile or copy admin userId
-            long userId = stickerSet.set.id >> 32;
-            if ((stickerSet.set.id >> 16 & 0xff) == 0x3f) {
-                userId |= 0x80000000L;
-            }
-            if ((stickerSet.set.id >> 24 & 0xff) != 0) {
-                userId += 0x100000000L;
-            }
-            if (parentFragment != null) {
-                TLRPC.User user = parentFragment.getMessagesController().getUser(userId);
-                if (user != null) {
-                    MessagesController.getInstance(currentAccount).openChatOrProfileWith(user, null, parentFragment, 0, false);
-                    return;
-                }
-            }
-            try {
-                AndroidUtilities.addToClipboard("" + userId);
-                BulletinFactory.of((FrameLayout) containerView, resourcesProvider).createCopyLinkBulletin().show();
-            } catch (Exception e) {
-                FileLog.e(e);
-            }
         }
     }
 
@@ -1517,7 +1429,7 @@ public class StickersAlert extends BottomSheet implements NotificationCenter.Not
         if (titleTextView == null) {
             return;
         }
-        if (stickerSet != null && stickerSet.set != null && stickerSet.documents != null && !stickerSet.documents.isEmpty()) {
+        if (stickerSet != null && stickerSet.documents != null && !stickerSet.documents.isEmpty()) {
             SpannableStringBuilder stringBuilder = null;
             CharSequence title = stickerSet.set.title;
             title = Emoji.replaceEmoji(title, titleTextView.getPaint().getFontMetricsInt(), false);
@@ -1631,7 +1543,6 @@ public class StickersAlert extends BottomSheet implements NotificationCenter.Not
                 }
             }
             if (notInstalled) {
-                optionsButton.hideSubItem(menu_archive);
                 String text;
                 if (stickerSet != null && stickerSet.set != null && stickerSet.set.masks) {
                     text = LocaleController.formatPluralString("AddManyMasksCount", stickerSet.documents == null ? 0 : stickerSet.documents.size());
@@ -1675,7 +1586,6 @@ public class StickersAlert extends BottomSheet implements NotificationCenter.Not
                     }));
                 }, text, Theme.key_featuredStickers_buttonText, Theme.key_featuredStickers_addButton, Theme.key_featuredStickers_addButtonPressed);
             } else {
-                optionsButton.showSubItem(menu_archive);
                 String text;
                 boolean isEditModeAvailable = stickerSet.set.creator && !DISABLE_STICKER_EDITOR;
                 if (isEditModeAvailable) {

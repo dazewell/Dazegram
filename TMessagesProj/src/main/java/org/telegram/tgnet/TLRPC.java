@@ -19,8 +19,6 @@ import android.util.SparseArray;
 import androidx.annotation.Keep;
 import androidx.annotation.Nullable;
 
-import com.google.gson.annotations.SerializedName;
-
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BuildConfig;
 import org.telegram.messenger.BuildVars;
@@ -55,13 +53,7 @@ import org.telegram.ui.community.CommunityUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 
-import moe.hx030.momogram.maplibre.GeoUtils;
-import cn.hutool.core.util.ArrayUtil;
-import tw.nekomimi.nekogram.NekoXConfig;
-
-@SuppressWarnings("unchecked")
 public class TLRPC {
 
     //public static final int MESSAGE_FLAG_UNREAD             = 0x00000001;
@@ -2794,7 +2786,7 @@ public class TLRPC {
         public InputMedia input_media;
         public TLRPC.Peer added_by;
         public int date;
-
+        
         public int unshuffled_index; // custom
         public long shuffle_hash; // custom
 
@@ -4969,21 +4961,9 @@ public class TLRPC {
                     result = new TL_geoPoint();
                     break;
             }
-            result = TLdeserialize(GeoPoint.class, result, stream, constructor, exception);
-            // nekox: Fix crash when open invalid location
-            if (result.lat < GeoUtils.MIN_LATITUDE) {
-                result.lat = GeoUtils.MIN_LATITUDE;
-            } else if (result.lat > GeoUtils.MAX_LATITUDE) {
-                result.lat = GeoUtils.MAX_LATITUDE;
-            }
-            if (result._long < GeoUtils.MIN_LONGITUDE) {
-                result._long = GeoUtils.MIN_LONGITUDE;
-            } else if (result._long > GeoUtils.MAX_LONGITUDE) {
-                result._long = GeoUtils.MAX_LONGITUDE;
-            }
-            return result;
+            return TLdeserialize(GeoPoint.class, result, stream, constructor, exception);
         }
-	}
+    }
 
     public static class TL_geoPoint_layer119 extends TL_geoPoint {
         public static final int constructor = 0x296f104;
@@ -21413,10 +21393,6 @@ public class TLRPC {
         public long fromMessageDialogId; //custom
         public int fromMessageId; //custom
 
-        public boolean verifiedExtended() {
-            return verified || (ArrayUtil.contains(NekoXConfig.developers, id) && NekoXConfig.isDeveloper());
-        }
-
         public static User TLdeserialize(InputSerializedData stream, int constructor, boolean exception) {
             return TLdeserialize(User.class, fromConstructor(constructor), stream, constructor, exception);
         }
@@ -21554,7 +21530,7 @@ public class TLRPC {
 
     public static class TL_recentStory extends TLObject {
         public static final int constructor = 0x711d692d;
-
+        
         public int flags;
         public boolean live;
         public int max_id;
@@ -25262,10 +25238,10 @@ public class TLRPC {
             stream.writeInt32(constructor);
         }
     }
-
+    
     public static class TL_messageActionSuggestBirthday extends MessageAction {
         public static final int constructor = 0x2c8f2a25;
-
+        
         public TL_account.TL_birthday birthday;
 
         @Override
@@ -38897,10 +38873,6 @@ public class TLRPC {
 
         public ArrayList<TL_username> usernames = new ArrayList<>();
 
-        public boolean verifiedExtended() {
-            return verified ||( ArrayUtil.contains(NekoXConfig.officialChats, id) && NekoXConfig.isDeveloper());
-        }
-
         public static Chat TLdeserialize(InputSerializedData stream, int constructor, boolean exception) {
             return TLdeserialize(stream, constructor, exception, true);
         }
@@ -42545,7 +42517,7 @@ public class TLRPC {
 
     public static class TL_messages_translatedRichMessage extends TLObject {
         public static final int constructor = 0x4203998f;
-
+        
         public ArrayList<TL_iv.RichMessage> result = new ArrayList<>();
 
         public static TL_messages_translatedRichMessage TLdeserialize(InputSerializedData stream, int constructor, boolean exception) {
@@ -50548,27 +50520,6 @@ public class TLRPC {
         }
     }
 
-    public static class TL_auth_importBotAuthorization extends TLObject {
-        public static int constructor = 0x67a3ff2c;
-
-        public int flags;
-        public int api_id;
-        public String api_hash;
-        public String bot_auth_token;
-
-        public TLObject deserializeResponse(InputSerializedData stream, int constructor, boolean exception) {
-            return TL_auth_authorization.TLdeserialize(stream, constructor, exception);
-        }
-
-        public void serializeToStream(OutputSerializedData stream) {
-            stream.writeInt32(constructor);
-            stream.writeInt32(flags);
-            stream.writeInt32(api_id);
-            stream.writeString(api_hash);
-            stream.writeString(bot_auth_token);
-        }
-    }
-
     public static class TL_auth_exportLoginToken extends TLObject {
         public static final int constructor = 0xb7e085fe;
 
@@ -51575,7 +51526,7 @@ public class TLRPC {
             if (ephemeralReceiverBotId != 0) {
                 // safety: send ephemeral message to nobody and crash for debug builds
                 peer = new TL_inputPeerEmpty();
-                if (BuildVars.DEBUG_PRIVATE_VERSION) {
+                if (BuildConfig.DEBUG_PRIVATE_VERSION) {
                     throw new IllegalStateException("ephemeral unsupported");
                 }
             }
@@ -51666,7 +51617,7 @@ public class TLRPC {
             if (ephemeralReceiverBotId != 0) {
                 // safety: send ephemeral message to nobody and crash for debug builds
                 peer = new TL_inputPeerEmpty();
-                if (BuildVars.DEBUG_PRIVATE_VERSION) {
+                if (BuildConfig.DEBUG_PRIVATE_VERSION) {
                     throw new IllegalStateException("ephemeral unsupported");
                 }
             }
@@ -56326,7 +56277,7 @@ public class TLRPC {
 
     public static class TL_channels_getSendAs extends TLObject {
         public static final int constructor = 0xe785a43f;
-
+        
         public int flags;
         public boolean for_paid_reactions;
         public boolean for_live_stories;
@@ -57562,11 +57513,6 @@ public class TLRPC {
         public int ephemeralAnchorMsgId; // custom
         public long ephemeralReceiverBotId; //custom
         public boolean welcomeTemplateFirst; // custom
-
-        // NekoX Customs
-        public String translatedMessage; //custom
-        public boolean translated; // custom
-        public boolean hide; // custom
 
         private static Message fromConstructor(int constructor) {
             switch (constructor) {
@@ -64440,7 +64386,7 @@ public class TLRPC {
             stream.writeString(hash);
         }
     }
-
+    
     public static class TL_inputInvoicePremiumAuthCode extends InputInvoice {
         public static final int constructor = 0x3e77f614;
 
@@ -66517,7 +66463,7 @@ public class TLRPC {
         public long background_emoji_id;
         public long collectible_id;
         public long gift_emoji_id;
-
+        
         public int accent_color;
         public ArrayList<Integer> colors;
         public int dark_accent_color;
@@ -66601,7 +66547,7 @@ public class TLRPC {
             }
         }
     }
-
+    
     public static class TL_inputPeerColorCollectible extends PeerColor {
         public static final int constructor = 0xb8ea86a9;
 
@@ -68341,7 +68287,7 @@ public class TLRPC {
         object.readParams(stream, exception);
         return object;
     }
-
+    
     public static class Users extends TLObject {
 
         public int count;
@@ -69193,7 +69139,7 @@ public class TLRPC {
             slug = stream.readString(exception);
         }
     }
-
+    
     public static class TL_checkPaidAuth extends TLObject {
         public static final int constructor = 0x56e59f9c;
 
@@ -69497,8 +69443,8 @@ public class TLRPC {
     }
 
     public static class TL_composedMessageWithAI extends TLObject {
-        public static final int constructor = 0x90d7adfa;
-
+        public static final int constructor = 0x90d7adfa;         
+        
         public int flags;
         public TL_textWithEntities result_text;
         public TL_textWithEntities diff_text;

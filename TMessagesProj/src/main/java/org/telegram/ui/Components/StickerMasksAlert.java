@@ -59,7 +59,6 @@ import org.telegram.ui.Cells.EmptyCell;
 import org.telegram.ui.Cells.StickerEmojiCell;
 import org.telegram.ui.Cells.StickerSetNameCell;
 import org.telegram.ui.ContentPreviewViewer;
-import xyz.nextalone.nagram.helper.ExternalStickerCacheHelper;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -197,7 +196,7 @@ public class StickerMasksAlert extends BottomSheet implements NotificationCenter
             ImageView searchIconImageView = new ImageView(context);
             searchIconImageView.setScaleType(ImageView.ScaleType.CENTER);
             searchIconImageView.setImageResource(R.drawable.smiles_inputsearch);
-            searchIconImageView.setColorFilter(new PorterDuffColorFilter(0xff777777, PorterDuff.Mode.SRC_IN));
+            searchIconImageView.setColorFilter(new PorterDuffColorFilter(0xff777777, PorterDuff.Mode.MULTIPLY));
             addView(searchIconImageView, LayoutHelper.createFrame(36, 36, Gravity.LEFT | Gravity.TOP, 16, 14, 0, 0));
 
             clearSearchImageView = new ImageView(context);
@@ -324,7 +323,7 @@ public class StickerMasksAlert extends BottomSheet implements NotificationCenter
         MediaDataController.getInstance(currentAccount).loadRecents(MediaDataController.TYPE_FAVE, false, true, false);
 
         shadowDrawable = context.getResources().getDrawable(R.drawable.sheet_shadow_round).mutate();
-        shadowDrawable.setColorFilter(new PorterDuffColorFilter(0xff252525, PorterDuff.Mode.SRC_IN));
+        shadowDrawable.setColorFilter(new PorterDuffColorFilter(0xff252525, PorterDuff.Mode.MULTIPLY));
 
         containerView = new SizeNotifierFrameLayout(context) {
 
@@ -1946,7 +1945,7 @@ public class StickerMasksAlert extends BottomSheet implements NotificationCenter
                     ImageView imageView = new ImageView(context);
                     imageView.setScaleType(ImageView.ScaleType.CENTER);
                     imageView.setImageResource(R.drawable.stickers_empty);
-                    imageView.setColorFilter(new PorterDuffColorFilter(0xff949ba1, PorterDuff.Mode.SRC_IN));
+                    imageView.setColorFilter(new PorterDuffColorFilter(0xff949ba1, PorterDuff.Mode.MULTIPLY));
                     frameLayout.addView(imageView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER, 0, 0, 0, 50));
 
                     TextView textView = new TextView(context);

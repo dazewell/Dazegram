@@ -62,8 +62,6 @@ import org.telegram.ui.LaunchActivity;
 import org.telegram.ui.PhotoViewer;
 import org.telegram.ui.PremiumPreviewFragment;
 
-import tw.nekomimi.nekogram.utils.VibrateUtil;
-
 public class PhotoViewerCaptionEnterView extends FrameLayout implements NotificationCenter.NotificationCenterDelegate, SizeNotifierFrameLayout.SizeNotifierFrameLayoutDelegate {
 
     private final ImageView doneButton;
@@ -228,16 +226,8 @@ public class PhotoViewerCaptionEnterView extends FrameLayout implements Notifica
         });
         messageEditText.setSelectAllOnFocus(false);
 
-        messageEditText.setDelegate(new EditTextCaption.EditTextCaptionDelegate() {
-            @Override
-            public void onSpansChanged() {
-                messageEditText.invalidateEffects();
-            }
-
-            @Override
-            public long getCurrentChat() {
-                return 0;
-            }
+        messageEditText.setDelegate(() -> {
+            messageEditText.invalidateEffects();
         });
         messageEditText.setWindowView(windowView);
         messageEditText.setHint(LocaleController.getString(R.string.AddCaption));
@@ -932,10 +922,10 @@ public class PhotoViewerCaptionEnterView extends FrameLayout implements Notifica
         if (height > AndroidUtilities.dp(50) && keyboardVisible && !AndroidUtilities.isInMultiwindow && !forceFloatingEmoji) {
             if (isWidthGreater) {
                 keyboardHeightLand = height;
-                MessagesController.getGlobalEmojiSettings().edit().putInt("kbd_height_land3", keyboardHeightLand).apply();
+                MessagesController.getGlobalEmojiSettings().edit().putInt("kbd_height_land3", keyboardHeightLand).commit();
             } else {
                 keyboardHeight = height;
-                MessagesController.getGlobalEmojiSettings().edit().putInt("kbd_height", keyboardHeight).apply();
+                MessagesController.getGlobalEmojiSettings().edit().putInt("kbd_height", keyboardHeight).commit();
             }
         }
 

@@ -9,7 +9,6 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.ActivityNotFoundException;
-import android.content.ClipData;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -118,8 +117,6 @@ import org.telegram.ui.Components.ThemeSmallPreviewView;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-
-import tw.nekomimi.nekogram.NekoConfig;
 
 public class QrActivity extends BaseFragment {
 
@@ -822,7 +819,6 @@ public class QrActivity extends BaseFragment {
                     .setType("image/*")
                     .putExtra(Intent.EXTRA_STREAM, uri);
             try {
-                intent.setClipData(ClipData.newRawUri(null, uri));
                 Intent chooserIntent = Intent.createChooser(intent, getString(R.string.InviteByQRCode));
                 getParentActivity().startActivityForResult(chooserIntent, 500);
             } catch (ActivityNotFoundException ex) {
@@ -1191,7 +1187,6 @@ public class QrActivity extends BaseFragment {
                                 }
                             } catch (Exception ignore) {
                                 try {
-                                    if (!NekoConfig.disableVibration.Bool())
                                     performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                                 } catch (Exception ignore2) {}
                             }

@@ -252,7 +252,7 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
 
             imageView = new ImageView(context);
             imageView.setScaleType(ImageView.ScaleType.CENTER);
-            imageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_dialogIcon), PorterDuff.Mode.SRC_IN));
+            imageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_dialogIcon), PorterDuff.Mode.MULTIPLY));
             addView(imageView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 40, Gravity.CENTER_VERTICAL | (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT)));
 
             textView = new TextView(context);
@@ -298,7 +298,7 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
     public AlertDialog(Context context, int progressStyle) {
         this(context, progressStyle, null);
     }
-
+    
     public AlertDialog(Context context, int progressStyle, Theme.ResourcesProvider resourcesProvider) {
         super(context, R.style.TransparentDialog);
         this.resourcesProvider = resourcesProvider;
@@ -858,8 +858,6 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
         }
         messageTextView.setGravity((topAnimationIsNew ? Gravity.CENTER_HORIZONTAL : LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP);
         if (progressViewStyle == ALERT_TYPE_LOADING) {
-            setCanceledOnTouchOutside(false);
-            setCancelable(false);
             containerView.addView(messageTextView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 24, title == null ? 19 : 0, 24, 20));
 
             lineProgressView = new LineProgressView(getContext());
@@ -1580,9 +1578,7 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
         }
         if (dismissed) return;
         dismissed = true;
-        try {
-            NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.emojiLoaded);
-        } catch (Throwable ignore) {}
+        NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.emojiLoaded);
         if (onDismissListener != null) {
             onDismissListener.onDismiss(this);
         }
@@ -1664,7 +1660,7 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
         }
         AlertDialogCell cell = itemViews.get(item);
         cell.textView.setTextColor(color);
-        cell.imageView.setColorFilter(new PorterDuffColorFilter(icon, PorterDuff.Mode.SRC_IN));
+        cell.imageView.setColorFilter(new PorterDuffColorFilter(icon, PorterDuff.Mode.MULTIPLY));
     }
 
     public int getItemsCount() {
@@ -1774,10 +1770,6 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
             this(context, null);
         }
 
-        public Builder(Context context, int progressViewStyle) {
-            alertDialog = new AlertDialog(context, progressViewStyle, null);
-        }
-
         public Builder(Context context, Theme.ResourcesProvider resourcesProvider) {
             this(context, 0, resourcesProvider);
         }
@@ -1820,7 +1812,6 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
         }
 
         public Builder setItems(CharSequence[] items, int[] icons, final OnClickListener onClickListener) {
-            // TODO: NEKOX: MIG ICONS
             alertDialog.items = items;
             alertDialog.itemIcons = icons;
             alertDialog.onClickListener = onClickListener;
@@ -1908,7 +1899,7 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
         }
 
         public Builder setMessage(CharSequence message) {
-            alertDialog.message = message instanceof  String ? AndroidUtilities.replaceTags((String) message) : message;
+            alertDialog.message = message;
             return this;
         }
 

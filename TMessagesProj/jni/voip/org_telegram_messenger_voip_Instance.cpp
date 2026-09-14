@@ -402,7 +402,7 @@ void initWebRTC(JNIEnv *env) {
 }
 
 extern "C"
-JNIEXPORT jlong JNICALL Java_org_telegram_messenger_voip_NativeInstance_makeGroupNativeInstance(JNIEnv *env, jclass clazz, jobject instanceObj, jstring logFilePath, jboolean highQuality, jlong videoCapturer, jboolean screencast, jboolean noiseSupression, jboolean conference, jshort customBitrate) {
+JNIEXPORT jlong JNICALL Java_org_telegram_messenger_voip_NativeInstance_makeGroupNativeInstance(JNIEnv *env, jclass clazz, jobject instanceObj, jstring logFilePath, jboolean highQuality, jlong videoCapturer, jboolean screencast, jboolean noiseSupression, jboolean conference) {
     initWebRTC(env);
 
     std::shared_ptr<VideoCaptureInterface> videoCapture;
@@ -489,7 +489,6 @@ JNIEXPORT jlong JNICALL Java_org_telegram_messenger_voip_NativeInstance_makeGrou
             .e2eEncryptDecrypt = e2eEncryptDecrypt,
             .isConference = (bool) conference,
             .platformContext = platformContext,
-            .outgoingAudioBitrateKbit = customBitrate,
     };
     if (!screencast) {
         descriptor.requestAudioBroadcastPart = [](std::shared_ptr<PlatformContext> platformContext, int64_t timestamp, int64_t duration, std::function<void(BroadcastPart &&)> callback) -> std::shared_ptr<BroadcastPartTask> {

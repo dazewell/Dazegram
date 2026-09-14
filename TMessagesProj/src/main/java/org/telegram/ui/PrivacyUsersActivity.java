@@ -25,8 +25,6 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
-import org.telegram.ui.ActionBar.ActionBarMenu;
-import org.telegram.ui.ActionBar.ActionBarMenuItem;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.AlertDialog;
@@ -77,9 +75,6 @@ public class PrivacyUsersActivity extends BaseFragment implements NotificationCe
     public static final int TYPE_PRIVACY = 0;
     public static final int TYPE_BLOCKED = 1;
     public static final int TYPE_FILTER = 2;
-
-    private static final int unblockAll = 100;
-    private static final int unblockDeleted =  101;
 
     public interface PrivacyActivityDelegate {
         void didUpdateUserList(ArrayList<Long> ids, boolean added);
@@ -156,48 +151,9 @@ public class PrivacyUsersActivity extends BaseFragment implements NotificationCe
             public void onItemClick(int id) {
                 if (id == -1) {
                     finishFragment();
-                } else if (id == unblockAll) {
-                    AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
-                    builder.setTitle(LocaleController.getString("UnblockAll", R.string.UnblockAll));
-                    if (getMessagesController().totalBlockedCount != 0) {
-                        builder.setMessage(LocaleController.getString("UnblockAllWarn", R.string.UnblockAllWarn));
-                        builder.setPositiveButton(LocaleController.getString("UnblockAll", R.string.UnblockAll), (dialog, which) -> {
-                            new Thread(() -> getMessagesController().unblockAllUsers(false, true)).start();
-                        });
-                        builder.setNegativeButton(LocaleController.getString("Cancel", R.string.Cancel), null);
-                    } else {
-                        builder.setMessage(LocaleController.getString("BlockedListEmpty",R.string.BlockedListEmpty));
-                        builder.setPositiveButton(LocaleController.getString("OK",R.string.OK),null);
-                    }
-                    showDialog(builder.create());
-                } else if (id == unblockDeleted) {
-                    AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
-                    builder.setTitle(LocaleController.getString("UnblockDeleted", R.string.UnblockDeleted));
-                    if (getMessagesController().totalBlockedCount != 0) {
-                        builder.setMessage(LocaleController.getString("UnblockDeletedWarn", R.string.UnblockDeletedWarn));
-                        builder.setPositiveButton(LocaleController.getString("UnblockDeleted", R.string.UnblockDeleted), (dialog, which) -> {
-                            new Thread(() -> getMessagesController().unblockAllUsers(true, true)).start();
-                        });
-                        builder.setNegativeButton(LocaleController.getString("Cancel", R.string.Cancel), null);
-                    } else {
-                        builder.setMessage(LocaleController.getString("BlockedListEmpty",R.string.BlockedListEmpty));
-                        builder.setPositiveButton(LocaleController.getString("OK",R.string.OK),null);
-                    }
-                    showDialog(builder.create());
                 }
             }
         });
-
-        if (blockedUsersActivity) {
-
-            ActionBarMenu menu = actionBar.createMenu();
-
-            ActionBarMenuItem otherItem = menu.addItem(0, R.drawable.ic_ab_other);
-            otherItem.setContentDescription(LocaleController.getString("AccDescrMoreOptions", R.string.AccDescrMoreOptions));
-            otherItem.addSubItem(unblockAll, LocaleController.getString("UnblockAll", R.string.UnblockAll));
-            otherItem.addSubItem(unblockDeleted, LocaleController.getString("UnblockDeleted", R.string.UnblockDeleted));
-
-        }
 
         fragmentView = new FrameLayout(context);
         FrameLayout frameLayout = (FrameLayout) fragmentView;

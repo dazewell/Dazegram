@@ -49,8 +49,6 @@ import android.view.animation.Interpolator;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
-import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -73,7 +71,6 @@ import org.telegram.messenger.Utilities;
 import org.telegram.messenger.camera.CameraView;
 import org.telegram.messenger.utils.LeakDetector;
 import org.telegram.messenger.utils.WindowVisibilityManager;
-import org.telegram.ui.Cells.HeaderCell;
 import org.telegram.ui.Components.AnimatedEmojiSpan;
 import org.telegram.ui.Components.AnimationProperties;
 import org.telegram.ui.Components.Bulletin;
@@ -84,9 +81,6 @@ import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.LaunchActivity;
 
 import java.util.ArrayList;
-
-import kotlin.Unit;
-import tw.nekomimi.nekogram.ui.BottomBuilder;
 
 public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
     private final static boolean AVOID_SYSTEM_CUTOUT_FULLSCREEN = false;
@@ -202,7 +196,7 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
     protected int behindKeyboardColorKey = Theme.key_dialogBackground;
     protected int behindKeyboardColor;
 
-    private boolean canDismissWithSwipe = false;
+    private boolean canDismissWithSwipe = true;
     private boolean canDismissWithTouchOutside = true;
 
     private boolean allowCustomAnimation = true;
@@ -232,8 +226,8 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
     protected int backgroundPaddingTop;
     protected int backgroundPaddingLeft;
 
-    private boolean applyTopPadding = false;
-    private boolean applyBottomPadding = false;
+    private boolean applyTopPadding = true;
+    private boolean applyBottomPadding = true;
 
     private ArrayList<BottomSheetCell> itemViews = new ArrayList<>();
 
@@ -1013,9 +1007,7 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
 
     public interface BottomSheetDelegateInterface {
         void onOpenAnimationStart();
-
         void onOpenAnimationEnd();
-
         boolean canDismiss();
     }
 
@@ -1192,7 +1184,7 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
     public BottomSheet(Context context, boolean needFocus) {
         this(context, needFocus, null);
     }
-
+    
     public BottomSheet(Context context, boolean needFocus, Theme.ResourcesProvider resourcesProvider) {
         this(context, needFocus, false, resourcesProvider);
     }
@@ -1200,7 +1192,7 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
     public BottomSheet(Context context, boolean needFocus, boolean edgeToEdge, Theme.ResourcesProvider resourcesProvider) {
         super(context, R.style.TransparentDialog);
         this.resourcesProvider = resourcesProvider;
-        if (BuildConfig.DEBUG) {
+        if (BuildConfig.DEBUG_PRIVATE_VERSION) {
             LeakDetector.getInstance().add(this);
         }
 
@@ -1352,7 +1344,7 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
 
         if (useLightStatusBar && Build.VERSION.SDK_INT >= 23) {
             int color = Theme.getColor(Theme.key_actionBarDefault, null, true);
-            if (AndroidUtilities.computePerceivedBrightness(color) >= 0.721f) {
+            if (color == 0xffffffff) {
                 int flags = container.getSystemUiVisibility();
                 flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
                 container.setSystemUiVisibility(flags);
@@ -1413,13 +1405,7 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
             };
             int height = 48;
             titleView.setText(title);
-            titleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
-            titleView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL);
-            titleView.setMinHeight(AndroidUtilities.dp(25));
-
             if (bigTitle) {
-                titleView.setSingleLine(true);
-                titleView.setEllipsize(TextUtils.TruncateAt.MIDDLE);
                 titleView.setTextColor(getThemedColor(Theme.key_dialogTextBlack));
                 titleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20);
                 titleView.setTypeface(AndroidUtilities.bold());
@@ -1515,7 +1501,7 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
         if (Build.VERSION.SDK_INT >= 23) {
             int color = Theme.getColor(Theme.key_actionBarDefault, null, true);
             int flags = container.getSystemUiVisibility();
-            if (useLightStatusBar && AndroidUtilities.computePerceivedBrightness(color) >= 0.721f) {
+            if (useLightStatusBar && color == 0xffffffff) {
                 flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
             } else {
                 flags &=~ View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
@@ -1653,7 +1639,6 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
     public void setTitle(CharSequence value, boolean big) {
         title = value;
         bigTitle = big;
-        setApplyTopPadding(true);
     }
 
     public void setApplyTopPadding(boolean value) {
@@ -1858,7 +1843,7 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
         }
         BottomSheetCell cell = itemViews.get(item);
         cell.textView.setTextColor(color);
-        cell.imageView.setColorFilter(new PorterDuffColorFilter(icon, PorterDuff.Mode.SRC_IN));
+        cell.imageView.setColorFilter(new PorterDuffColorFilter(icon, PorterDuff.Mode.MULTIPLY));
     }
 
     public ArrayList<BottomSheetCell> getItemViews() {
@@ -2334,131 +2319,6 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
             bottomSheet.setOnHideListener(onDismissListener);
             return this;
         }
-    }
-
-    public static class NekoXBuilder {
-        // do the same thing as BottomBuilder
-        private final BottomBuilder nekoxBuilder;
-
-        private HeaderCell title;
-
-        private final BottomSheet bottomSheet;
-        // in Telegram interface, BottomSheet only have one title
-
-        public NekoXBuilder(Context context) {
-            this(context, false);
-        }
-
-        public NekoXBuilder(Context context, int bgColor) {
-            this(context, false, bgColor);
-        }
-
-        public NekoXBuilder(Context context, boolean needFocus) {
-            this(context, needFocus, Theme.getColor(Theme.key_dialogBackground));
-        }
-        public NekoXBuilder(Context context, boolean needFocus, int bgColor) {
-            this.nekoxBuilder = new BottomBuilder(context, needFocus, bgColor);
-            this.bottomSheet = nekoxBuilder.getBuilder().bottomSheet;
-        }
-        public NekoXBuilder setItems(CharSequence[] items, final OnClickListener onClickListener) {
-            nekoxBuilder.addItems(items, null, (index, text, cell) -> {
-                onClickListener.onClick(null, index);
-                return Unit.INSTANCE;
-            });
-            return this;
-        }
-
-        public NekoXBuilder setItems(CharSequence[] items, int[] icons, final OnClickListener onClickListener) {
-            nekoxBuilder.addItems(items, icons, (index, text, cell) -> {
-                onClickListener.onClick(null, index);
-                return Unit.INSTANCE;
-            });
-            return this;
-        }
-
-        public NekoXBuilder setTitle(CharSequence title) {
-            return setTitle(title, false);
-        }
-
-        public NekoXBuilder setTitle(CharSequence title, boolean big) {
-            this.title = nekoxBuilder.addTitle(title, big);
-            return this;
-        }
-
-        public NekoXBuilder setTitleMultipleLines(boolean allowMultipleLines) {
-            if (this.title != null) {
-                var textView = this.title.getTextView();
-                if (allowMultipleLines) {
-                    textView.setSingleLine(false);
-                    textView.setMaxLines(5);
-                    textView.setEllipsize(TextUtils.TruncateAt.END);
-                } else {
-                    textView.setLines(1);
-                    textView.setSingleLine(true);
-                    textView.setEllipsize(TextUtils.TruncateAt.MIDDLE);
-                }
-            }
-            return this;
-        }
-
-        public BottomSheet create() {
-            return nekoxBuilder.create();
-        }
-
-        public BottomSheet setDimBehind(boolean value) {
-            bottomSheet.dimBehind = value;
-            return bottomSheet;
-        }
-
-        public BottomSheet show() {
-            bottomSheet.show();
-            return bottomSheet;
-        }
-
-        public NekoXBuilder setTag(int tag) {
-            bottomSheet.tag = tag;
-            return this;
-        }
-
-        public NekoXBuilder setUseHardwareLayer(boolean value) {
-            bottomSheet.useHardwareLayer = value;
-            return this;
-        }
-
-        public NekoXBuilder setDelegate(BottomSheetDelegate delegate) {
-            bottomSheet.setDelegate(delegate);
-            return this;
-        }
-
-        public NekoXBuilder setApplyTopPadding(boolean value) {
-            bottomSheet.applyTopPadding = value;
-            return this;
-        }
-
-        public NekoXBuilder setApplyBottomPadding(boolean value) {
-            bottomSheet.applyBottomPadding = value;
-            return this;
-        }
-
-        public Runnable getDismissRunnable() {
-            return bottomSheet.dismissRunnable;
-        }
-
-        public BottomSheet setUseFullWidth(boolean value) {
-            bottomSheet.fullWidth = value;
-            return bottomSheet;
-        }
-
-        public BottomSheet setUseFullscreen(boolean value) {
-            bottomSheet.isFullscreen = value;
-            return bottomSheet;
-        }
-
-        public NekoXBuilder setOnPreDismissListener(OnDismissListener onDismissListener) {
-            nekoxBuilder.getBuilder().bottomSheet.setOnHideListener(onDismissListener);
-            return this;
-        }
-
     }
 
     public int getLeftInset() {

@@ -19,8 +19,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
-import androidx.recyclerview.widget.RecyclerView;
-
 import androidx.annotation.NonNull;
 import androidx.collection.LongSparseArray;
 import androidx.recyclerview.widget.RecyclerView;
@@ -165,8 +163,7 @@ public class ContactsAdapter extends RecyclerListView.SectionsAdapter {
                 return 0;
             });
             notifyDataSetChanged();
-        } catch (
-                Exception e) {
+        } catch (Exception e) {
             FileLog.e(e);
         }
     }
@@ -450,7 +447,7 @@ public class ContactsAdapter extends RecyclerListView.SectionsAdapter {
                 break;
             }
             case USER_CELL: {
-                UserCell cell = new UserCell(mContext, 58, 1, false, false, null, true);
+                UserCell cell = new UserCell(mContext, 58, 1, false);
                 cell.setCallCellStyle(58);
                 view = cell;
                 break;

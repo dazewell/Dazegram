@@ -61,7 +61,6 @@ import android.text.TextUtils;
 import android.text.style.ImageSpan;
 import android.util.LongSparseArray;
 import android.util.Property;
-import android.util.SparseArray;
 import android.util.StateSet;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -110,6 +109,7 @@ import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.FileLog;
+import org.telegram.messenger.FilesMigrationService;
 import org.telegram.messenger.ImageLoader;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.ImageReceiver;
@@ -277,22 +277,10 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.Random;
-
-import tw.nekomimi.nekogram.BackButtonMenuRecent;
-import tw.nekomimi.nekogram.settings.NekoGhostModeActivity;
-import tw.nekomimi.nekogram.NekoConfig;
-import tw.nekomimi.nekogram.utils.PrivacyUtil;
-import tw.nekomimi.nekogram.utils.ProxyUtil;
-import tw.nekomimi.nekogram.utils.UpdateUtil;
-import xyz.nextalone.nagram.MainTabsStyle;
-import xyz.nextalone.nagram.NaConfig;
 
 import me.vkryl.android.animator.BoolAnimator;
 import me.vkryl.android.animator.FactorAnimator;
 import me.vkryl.android.util.ClickHelper;
-
-import xyz.nextalone.nagram.helper.DialogsRecentForwardHelper;
 
 public class DialogsActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate, FloatingDebugProvider, FactorAnimator.Target, MainTabsActivity.TabFragmentDelegate {
     private final int ADDITIONAL_LIST_HEIGHT_DP = Build.VERSION.SDK_INT >= 31 ? 48 : 0;
@@ -315,7 +303,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private static final int ANIMATOR_ID_FORWARD_BUTTON_VISIBLE = 7;
     private static final int ANIMATOR_ID_FILTER_TABS_VISIBLE = 8;
     private static final int ANIMATOR_ID_SEARCH_FILTER_TABS_VISIBLE = 9;
-    private static final int ANIMATOR_ID_SCANQR_BUTTON_VISIBLE = 100;
 
     private final BoolAnimator animatorSearchVisible = new BoolAnimator(ANIMATOR_ID_SEARCH_VISIBLE,
             this, CubicBezierInterpolator.EASE_OUT_QUINT, 350);
@@ -335,11 +322,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             this, CubicBezierInterpolator.EASE_OUT_QUINT, 350);
     private final BoolAnimator animatorSearchFilterTabsVisible = new BoolAnimator(ANIMATOR_ID_SEARCH_FILTER_TABS_VISIBLE,
             this, CubicBezierInterpolator.EASE_OUT_QUINT, 350);
-    private final BoolAnimator animatorScanQrButtonVisible = new BoolAnimator(ANIMATOR_ID_SCANQR_BUTTON_VISIBLE,
-            this, CubicBezierInterpolator.EASE_OUT_QUINT, 350);
 
-    private static final int FORWARD_RECENT_TAB_ID = -100;
-    private static final int FORWARD_RECENT_TAB_STABLE_ID = Integer.MAX_VALUE - 100;
 
     private final WindowInsetsStateHolder windowInsetsStateHolder = new WindowInsetsStateHolder(this::checkInsets);
 
@@ -522,7 +505,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     public ActionBarMenuItem searchItem;
     private ActionBarMenuItem optionsItem;
     private ActionBarMenuItem speedItem;
-    private ActionBarMenuItem scanItem;
     public static boolean switchingTheme;
     private ActionBarMenuItem doneItem;
     private ProxyDrawable proxyDrawable;
@@ -664,7 +646,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private String addToGroupAlertString;
     public boolean resetDelegate = true;
 
-    public static SparseArray<Boolean> dialogsLoaded = new SparseArray<>();
+    public static boolean[] dialogsLoaded = new boolean[UserConfig.MAX_ACCOUNT_COUNT];
     private boolean searching;
     private boolean searchWas;
     private boolean onlySelect;
@@ -696,7 +678,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     public boolean notify = true;
     public int scheduleDate;
     public int scheduleRepeatPeriod;
-    public boolean forceDocument;
 
     private int canReadCount;
     private int canPinCount;
@@ -820,7 +801,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         private boolean prepareForMoving(MotionEvent ev, boolean forward) {
             int id = filterTabsView.getNextPageId(forward);
-            if (!DialogsRecentForwardHelper.isSwipeTargetTabId(id)) {
+            if (id < 0) {
                 return false;
             }
             getParent().requestDisallowInterceptTouchEvent(true);
@@ -886,7 +867,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 h += storiesHeight * (1f - searchAnimationProgress) * (1f - rightSlidingProgress) * (1f - progressToActionMode);
             }
             h += storiesOverscroll;
-            h += searchFieldHeight() * (1f - progressToActionMode) * (1f - searchAnimationProgress) * (1f - rightSlidingProgress);
+            h += dp(SEARCH_FIELD_HEIGHT) * (1f - progressToActionMode) * (1f - searchAnimationProgress) * (1f - rightSlidingProgress);
 
             return (int) h;
         }
@@ -1064,8 +1045,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             tabsYOffset = 0;
             storiesYOffset = 0;
             tabsYOffset -= Math.min(
-                dp(hasStories ? DialogStoriesCell.HEIGHT_IN_DP : 0) + searchFieldHeight() + scrollYOffset,
-                progressToActionMode * (dp(hasStories ? DialogStoriesCell.HEIGHT_IN_DP : 0) + searchFieldHeight())
+                dp(hasStories ? DialogStoriesCell.HEIGHT_IN_DP : 0) + dp(SEARCH_FIELD_HEIGHT) + scrollYOffset,
+                progressToActionMode * (dp(hasStories ? DialogStoriesCell.HEIGHT_IN_DP : 0) + dp(SEARCH_FIELD_HEIGHT))
             );
             storiesYOffset = tabsYOffset;
             if ((rightSlidingDialogContainer != null && rightSlidingDialogContainer.hasFragment())) {
@@ -1091,7 +1072,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 if (hasStories) {
                     addH += dp(DialogStoriesCell.HEIGHT_IN_DP);
                 }
-                addH += searchFieldHeight();
+                addH += dp(SEARCH_FIELD_HEIGHT);
                 addH *= rightSlidingDialogContainer.openedProgress;
 
                 viewPages[0].setTranslationY(rightFragmentOffset - addH);
@@ -1190,7 +1171,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         if (hasStories) {
                             h += dp(DialogStoriesCell.HEIGHT_IN_DP);
                         }
-                        h += searchFieldHeight();
+                        h += dp(SEARCH_FIELD_HEIGHT);
                     }
                     h += actionModeAdditionalHeight;
                     if (actionBarColorAnimator == null) {
@@ -1304,7 +1285,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 if (child == fragmentSearchField || child == searchTabsAndFiltersLayout || child == dialogStoriesCell) {
                     childTop = actionBar.getMeasuredHeight();
                     if (child != fragmentSearchField && child != dialogStoriesCell && child != searchTabsAndFiltersLayout) {
-                        childTop += searchFieldHeight();
+                        childTop += dp(SEARCH_FIELD_HEIGHT);
                     }
                     //if (rightSlidingDialogContainer != null && rightSlidingDialogContainer.hasFragment() && (child == searchTabsView || child == filtersView)) {
                     //    childTop -= dp(SEARCH_FIELD_HEIGHT);
@@ -1329,7 +1310,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     childTop = 0;
                 } else if (child == topPanelLayout || child == topBubblesFadeView || child == filterTabsView) {
                     childTop += actionBar.getMeasuredHeight();
-                    childTop += searchFieldHeight();
+                    childTop += dp(SEARCH_FIELD_HEIGHT);
                 } else if (dialogStoriesCell != null && dialogStoriesCell.getPremiumHint() == child) {
                     continue;
                 }
@@ -2063,14 +2044,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         @Override
         protected void onMeasure(int widthSpec, int heightSpec) {
             int t = 0;
-            if (initialDialogsType == DIALOGS_TYPE_FORWARD || !onlySelect) {
-                if (filterTabsView != null && filterTabsView.getVisibility() == VISIBLE) {
-                    t = AndroidUtilities.dp(44);
-                } else {
-                    t = actionBar.getMeasuredHeight();
-                }
-            }
-
             int pos = parentPage.layoutManager.findFirstVisibleItemPosition();
             if (pos != RecyclerView.NO_POSITION && parentPage.itemTouchhelper.isIdle() && !parentPage.layoutManager.hasPendingScrollPosition() && parentPage.listView.getScrollState() != RecyclerView.SCROLL_STATE_DRAGGING) {
                 RecyclerView.ViewHolder holder = parentPage.listView.findViewHolderForAdapterPosition(pos);
@@ -2093,7 +2066,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 t += dp(DialogStoriesCell.HEIGHT_IN_DP);
             }
             if (!actionModeFullyShowed) {
-                t += searchFieldHeight();
+                t += dp(SEARCH_FIELD_HEIGHT);
             }
             additionalPadding = 0;
 
@@ -2289,11 +2262,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                                 }
                                 if (!canShowHiddenArchive) {
                                     canShowHiddenArchive = true;
-                                    if (!NekoConfig.disableVibration.Bool()) {
-                                        try {
-                                            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
-                                        } catch (Exception ignored) {}
-                                    }
+                                    try {
+                                        performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+                                    } catch (Exception ignored) {}
                                     if (parentPage.pullForegroundDrawable != null) {
                                         parentPage.pullForegroundDrawable.colorize(true);
                                     }
@@ -2302,19 +2273,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                                 parentPage.archivePullViewState = ARCHIVE_ITEM_STATE_SHOWED;
                                 if (AndroidUtilities.isAccessibilityScreenReaderEnabled()) {
                                     AndroidUtilities.makeAccessibilityAnnouncement(LocaleController.getString(R.string.AccDescrArchivedChatsShown));
-                                }
-
-                                if (NekoConfig.openArchiveOnPull.Bool()) {
-                                    AndroidUtilities.runOnUIThread(() -> {
-                                        // Open the folder.
-                                        // Delay was taken from PullForegroundDrawable::startOutAnimation().
-                                        Bundle args = new Bundle();
-                                        args.putInt("folderId", 1); // 1 is the ID of the archive folder.
-                                        args.putBoolean("onlySelect", onlySelect);
-                                        DialogsActivity dialogsActivity = new DialogsActivity(args);
-                                        dialogsActivity.setDelegate(delegate);
-                                        presentFragment(dialogsActivity, onlySelect);
-                                    }, 200);
                                 }
                             }
                         }
@@ -2419,7 +2377,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         offset += dp(DialogStoriesCell.HEIGHT_IN_DP);
                     }
                     if (backward) {
-                        offset += searchFieldHeight();
+                        offset += dp(SEARCH_FIELD_HEIGHT);
                         // offset += canShowFilterTabsView ? dp(50) : 0;
                     }
                     if (p >= 0) {
@@ -2633,7 +2591,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                             SharedPreferences preferences = MessagesController.getGlobalMainSettings();
                             boolean hintShowed = preferences.getBoolean("archivehint_l", false) || SharedConfig.archiveHidden;
                             if (!hintShowed) {
-                                preferences.edit().putBoolean("archivehint_l", true).apply();
+                                preferences.edit().putBoolean("archivehint_l", true).commit();
                             }
                             final UndoView undoView = getUndoView();
                             if (undoView != null) {
@@ -2875,9 +2833,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     public boolean onFragmentCreate() {
         super.onFragmentCreate();
 
-        getConnectionsManager().updateDcSettings();
-        getMessagesController().getBlockedPeers(true);
-
         if (arguments != null) {
             onlySelect = arguments.getBoolean("onlySelect", false);
             canSelectTopics = arguments.getBoolean("canSelectTopics", false);
@@ -2929,6 +2884,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         if (initialDialogsType == DIALOGS_TYPE_DEFAULT) {
             askAboutContacts = MessagesController.getGlobalNotificationsSettings().getBoolean("askAboutContacts", true);
+            SharedConfig.loadProxyList();
         }
 
         observersGroup = getNotificationCenter().createObserversGroup(this);
@@ -3031,7 +2987,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     public static void loadDialogs(AccountInstance accountInstance) {
         int currentAccount = accountInstance.getCurrentAccount();
-        if (!dialogsLoaded.get(currentAccount, false)) {
+        if (!dialogsLoaded[currentAccount]) {
             MessagesController messagesController = accountInstance.getMessagesController();
             messagesController.loadGlobalNotificationsSettings();
             messagesController.loadDialogs(0, 0, 100, true);
@@ -3043,10 +2999,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             for (String emoji : messagesController.diceEmojies) {
                 accountInstance.getMediaDataController().loadStickersByEmojiOrName(emoji, true, true);
             }
-            dialogsLoaded.put(currentAccount, true);
+            dialogsLoaded[currentAccount] = true;
         }
     }
-
 
     private Drawable premiumStar;
 
@@ -3235,8 +3190,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         return actionBar;
     }
 
-    private int accounts;
-
     @Override
     public void setTitleOverlayText(String title, int titleId, Runnable action) {
         super.setTitleOverlayText(title, titleId, action);
@@ -3347,32 +3300,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             speedItem.setOnClickListener(v -> showDialog(new PremiumFeatureBottomSheet(DialogsActivity.this, PremiumPreviewFragment.PREMIUM_FEATURE_DOWNLOAD_SPEED, true)));
 
             fragmentSearchField.addAdditionalIcon(speedItem);
-            fragmentSearchField.updateColors();
-
-            scanItem = menu.addItem(ANIMATOR_ID_SCANQR_BUTTON_VISIBLE, R.drawable.msg_qrcode);
-            AndroidUtilities.removeFromParent(scanItem);
-            scanItem.setOnClickListener(v -> {
-                if (Build.VERSION.SDK_INT >= 23) {
-                    if (getParentActivity().checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                        getParentActivity().requestPermissions(new String[]{Manifest.permission.CAMERA}, 22);
-                        return;
-                    }
-                }
-                CameraScanActivity.showAsSheet(DialogsActivity.this, true, CameraScanActivity.TYPE_QR, new CameraScanActivity.CameraScanActivityDelegate() {
-
-                    @Override
-                    public void didFindQr(String text) {
-                        ProxyUtil.showLinkAlert(getParentActivity(), text);
-                    }
-
-                    @Override
-                    public boolean processQr(String text, Runnable onLoadEnd) {
-                        onLoadEnd.run();
-                        return false;
-                    }
-                });
-            });
-            fragmentSearchField.addAdditionalIcon(scanItem);
             fragmentSearchField.updateColors();
         }
 
@@ -3529,23 +3456,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             });
         }
 
-        // na: Added ability to open Saved Messages on long click on search top button
-        searchItem.setOnLongClickListener(v -> {
-            if (MessagesController.getInstance(UserConfig.selectedAccount).savedViewAsChats) {
-                Bundle args = new Bundle();
-                args.putLong("dialog_id", UserConfig.getInstance(currentAccount).getClientUserId());
-                args.putInt("type", MediaActivity.TYPE_MEDIA);
-                args.putInt("start_from", SharedMediaLayout.TAB_SAVED_DIALOGS);
-                MediaActivity mediaActivity = new MediaActivity(args, null);
-                presentFragment(mediaActivity);
-            } else {
-                Bundle args = new Bundle();
-                args.putLong("user_id", UserConfig.getInstance(currentAccount).getClientUserId());
-                presentFragment(new ChatActivity(args));
-            }
-            return true;
-        });
-
         searchItem.setSearchFieldHint(getString(R.string.Search));
         searchItem.setContentDescription(getString(R.string.Search));
         if (onlySelect) {
@@ -3590,13 +3500,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 actionBar.setTitle(getString(R.string.SelectChat));
             }
             actionBar.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
-            actionBar.setOnLongClickListener(v -> {
-                if (NekoConfig.hideAllTab.Bool() && filterTabsView != null && filterTabsView.getDefaultTabId() != filterTabsView.getCurrentTabId()) {
-                    filterTabsView.toggleAllTabs(true);
-                    filterTabsView.selectDefaultTab();
-                }
-                return false;
-            });
         } else {
             if (searchString != null || folderId != 0 || communityId != 0) {
                 actionBar.setBackButtonDrawable(backDrawable = new BackDrawable(false));
@@ -3614,29 +3517,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             } else {
                 statusDrawable = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(null, dp(26));
                 statusDrawable.center = true;
-                String title = NaConfig.INSTANCE.getCustomTitle().String();
-                if (NaConfig.INSTANCE.getCustomTitleUserName().Bool()) {
-                    TLRPC.User self = UserConfig.getInstance(currentAccount).getCurrentUser();
-                    if (self != null && self.first_name != null) title = self.first_name;
-                }
-                actionBar.centerTitle(false);
-                if (title.equals(getString(R.string.NekoX)) && !NekoConfig.typeface.Bool()) {
-                    logoDrawable = context.getResources().getDrawable(R.drawable.nagram_logo_2).mutate();
-                    logoDrawable.setBounds(0, dp(2), logoDrawable.getIntrinsicWidth(), dp(2) + logoDrawable.getIntrinsicHeight());
-                    logoDrawable.setColorFilter(getThemedColor(Theme.key_telegram_color_dialogsLogo), PorterDuff.Mode.MULTIPLY);
-                    SpannableStringBuilder ssb = new SpannableStringBuilder(title);
-                    ssb.setSpan(new ImageSpan(logoDrawable), 0, ssb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                    actionBar.setTitle(ssb, statusDrawable);
-                } else {
-                    actionBar.setTitle(title, statusDrawable);
-                }
-                actionBar.setOnLongClickListener(v -> {
-                    if (NekoConfig.hideAllTab.Bool() && filterTabsView != null && filterTabsView.getCurrentTabId() != Integer.MAX_VALUE) {
-                        filterTabsView.toggleAllTabs(true);
-                        filterTabsView.selectDefaultTab();
-                    }
-                    return false;
-                });
+                logoDrawable = context.getResources().getDrawable(R.drawable.telegram_logo_2).mutate();
+                logoDrawable.setBounds(0, dp(2), logoDrawable.getIntrinsicWidth(), dp(2) + logoDrawable.getIntrinsicHeight());
+                logoDrawable.setColorFilter(getThemedColor(Theme.key_telegram_color_dialogsLogo), PorterDuff.Mode.MULTIPLY);
+                SpannableStringBuilder ssb = new SpannableStringBuilder(getString(R.string.AppName));
+                ssb.setSpan(new ImageSpan(logoDrawable), 0, ssb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                actionBar.setTitle(ssb, statusDrawable);
                 updateStatus(UserConfig.getInstance(currentAccount).getCurrentUser(), false);
             }
             if (folderId == 0) {
@@ -3675,8 +3561,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 protected void onDefaultTabMoved() {
                     if (!getMessagesController().premiumFeaturesBlocked()) {
                         try {
-                            if (!NekoConfig.disableVibration.Bool())
-                                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_PRESS, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
+                            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_PRESS, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
                         } catch (Exception ignore) {}
                         topBulletin = BulletinFactory.of(DialogsActivity.this).createSimpleBulletin(R.raw.filter_reorder, AndroidUtilities.replaceTags(LocaleController.formatString(R.string.LimitReachedReorderFolder, LocaleController.getString(R.string.FilterAllChats))), LocaleController.getString(R.string.PremiumMore), Bulletin.DURATION_PROLONG, () -> {
                             showDialog(new PremiumFeatureBottomSheet(DialogsActivity.this, PremiumPreviewFragment.PREMIUM_FEATURE_ADVANCED_CHAT_MANAGEMENT, true));
@@ -3743,7 +3628,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     }
 
                     ArrayList<MessagesController.DialogFilter> dialogFilters = getMessagesController().getDialogFilters();
-                    if (!isForwardRecentTab(tab.id) && !tab.isDefault && (tab.id < 0 || tab.id >= dialogFilters.size())) {
+                    if (!tab.isDefault && (tab.id < 0 || tab.id >= dialogFilters.size())) {
                         return;
                     }
                     viewPages[1].selectedType = tab.id;
@@ -3787,10 +3672,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
                 @Override
                 public int getTabCounter(int tabId) {
-                    if (NaConfig.INSTANCE.getIgnoreFolderCount().Bool()) {
-                        return 0;
-                    }
-
                     if (initialDialogsType == DIALOGS_TYPE_FORWARD) {
                         return 0;
                     }
@@ -3923,7 +3804,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                             .add(R.drawable.msg_edit, defaultTab ? LocaleController.getString(R.string.FilterEditAll) : LocaleController.getString(R.string.FilterEdit), () -> {
                                 presentFragment(defaultTab ? new FiltersSetupActivity() : new FilterCreateActivity(dialogFilter));
                             })
-                            .addIf(!NaConfig.INSTANCE.getHideFilterMuteAll().Bool() && dialogFilter != null && !dialogs.isEmpty(), muteAll ? R.drawable.msg_mute : R.drawable.msg_unmute, muteAll ? LocaleController.getString(R.string.FilterMuteAll) : LocaleController.getString(R.string.FilterUnmuteAll), () -> {
+                            .addIf(dialogFilter != null && !dialogs.isEmpty(), muteAll ? R.drawable.msg_mute : R.drawable.msg_unmute, muteAll ? LocaleController.getString(R.string.FilterMuteAll) : LocaleController.getString(R.string.FilterUnmuteAll), () -> {
                                 int count = 0;
                                 for (int i = 0; i < dialogs.size(); ++i) {
                                     TLRPC.Dialog dialog = dialogs.get(i);
@@ -4033,11 +3914,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 } else if (id == 3) {
                     showSearch(true, true, true);
                     fragmentSearchFieldWatcher.toggleSearch(true);
-                    //actionBar.openSearchField(true);
-                } else if (id == 5) {
-                    presentFragment(new ArchiveSettingsActivity());
-                } else if (id == 6) {
-                    showArchiveHelp();
                 } else if (id == 11) {
                     openAccountSelector(switchItem);
                 } else if (id == add_to_folder) {
@@ -4063,7 +3939,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                                     filter.neverShow.add(selectedDialogs.get(a));
                                     filter.alwaysShow.remove(selectedDialogs.get(a));
                                 }
-                                FilterCreateActivity.saveFilterToServer(filter, filter.flags, filter.emoticon, filter.name, filter.entities, filter.title_noanimate, filter.color, filter.alwaysShow, filter.neverShow, filter.pinnedDialogs, false, false, true, true, false, DialogsActivity.this, null);
+                                FilterCreateActivity.saveFilterToServer(filter, filter.flags, filter.name, filter.entities, filter.title_noanimate, filter.color, filter.alwaysShow, filter.neverShow, filter.pinnedDialogs, false, false, true, true, false, DialogsActivity.this, null);
                                 long did;
                                 if (selectedDialogs.size() == 1) {
                                     did = selectedDialogs.get(0);
@@ -4080,7 +3956,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                                         filter.neverShow.remove(alwaysShow.get(a));
                                     }
                                     filter.alwaysShow.addAll(alwaysShow);
-                                    FilterCreateActivity.saveFilterToServer(filter, filter.flags, filter.emoticon, filter.name, filter.entities, filter.title_noanimate, filter.color, filter.alwaysShow, filter.neverShow, filter.pinnedDialogs, false, false, true, true, false, DialogsActivity.this, null);
+                                    FilterCreateActivity.saveFilterToServer(filter, filter.flags, filter.name, filter.entities, filter.title_noanimate, filter.color, filter.alwaysShow, filter.neverShow, filter.pinnedDialogs, false, false, true, true, false, DialogsActivity.this, null);
                                 }
                                 long did;
                                 if (alwaysShow.size() == 1) {
@@ -4123,7 +3999,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         if (filter.isChatlist()) {
                             filter.neverShow.clear();
                         }
-                        FilterCreateActivity.saveFilterToServer(filter, filter.flags, filter.emoticon, filter.name, filter.entities, filter.title_noanimate, filter.color, filter.alwaysShow, filter.neverShow, filter.pinnedDialogs, false, false, true, false, false, DialogsActivity.this, null);
+                        FilterCreateActivity.saveFilterToServer(filter, filter.flags, filter.name, filter.entities, filter.title_noanimate, filter.color, filter.alwaysShow, filter.neverShow, filter.pinnedDialogs, false, false, true, false, false, DialogsActivity.this, null);
                     }
                     long did;
                     if (neverShow.size() == 1) {
@@ -4338,13 +4214,13 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                                 }
                                 int canScrollDy = -(view.getTop() - pTop) + viewsH;
                                 if (!rightSlidingDialogContainer.hasFragment() && !(actionBar != null && actionBar.isActionModeShowed())) {
-                                    canScrollDy -= searchFieldHeight();
+                                    canScrollDy -= dp(SEARCH_FIELD_HEIGHT);
                                 }
                                 if (hasStories && (viewPage.scroller.isRunning() || dialogStoriesCell.isExpanded()) && !rightSlidingDialogContainer.hasFragment() && !fixScrollYAfterArchiveOpened) {
                                     canScrollDy += dp(DialogStoriesCell.HEIGHT_IN_DP);
                                 }
                                 if ((viewPage.scroller.isRunning() || dialogStoriesCell.isExpanded()) && !rightSlidingDialogContainer.hasFragment() && !fixScrollYAfterArchiveOpened && !(actionBar != null && actionBar.isActionModeShowed())) {
-                                    canScrollDy += searchFieldHeight();
+                                    canScrollDy += dp(SEARCH_FIELD_HEIGHT);
                                 }
                                 int positiveDy = Math.abs(dy);
                                 if (canScrollDy < positiveDy) {
@@ -4421,11 +4297,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                             if (canShowHiddenArchive != canShowInternal) {
                                 canShowHiddenArchive = canShowInternal;
                                 if (viewPage.archivePullViewState == ARCHIVE_ITEM_STATE_HIDDEN) {
-                                    if (!NekoConfig.disableVibration.Bool()) {
-                                        try {
-                                            viewPage.listView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
-                                        } catch (Exception ignored) {}
-                                    }
+                                    try {
+                                        viewPage.listView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+                                    } catch (Exception ignored) {}
                                     if (viewPage.pullForegroundDrawable != null) {
                                         viewPage.pullForegroundDrawable.colorize(canShowInternal);
                                     }
@@ -4459,7 +4333,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         if (firstView != null) {
                             firstView.invalidate();
                         }
-                        if (viewPage.archivePullViewState == ARCHIVE_ITEM_STATE_SHOWED && usedDy == 0 && dy < 0 && isDragging && !rightSlidingDialogContainer.hasFragment() && hasStories) {
+                        if (viewPage.archivePullViewState == ARCHIVE_ITEM_STATE_SHOWED && usedDy == 0 && dy < 0 && isDragging && !rightSlidingDialogContainer.hasFragment() && hasStories && progressToActionMode == 0) {
                             float newOverScroll = storiesOverscroll - dy * AndroidUtilities.lerp( 0.2f, 0.5f, dialogStoriesCell.overscrollProgress());
                             setStoriesOvercroll(viewPage, newOverScroll);
                         }
@@ -4709,7 +4583,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         if (applyScrollY) {
                             int maxScrollYOffset = getMaxScrollYOffset();
                             if (!(filterTabsView != null && filterTabsView.getVisibility() == View.VISIBLE && animatorFilterTabsVisible.getValue())) {
-                                maxScrollYOffset = searchFieldHeight();
+                                maxScrollYOffset = dp(SEARCH_FIELD_HEIGHT);
                             }
                             if (newTranslation < -maxScrollYOffset) {
                                 newTranslation = -maxScrollYOffset;
@@ -4773,7 +4647,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         searchItem.setVisibility(isEmpty ? View.GONE : View.VISIBLE);
                     }
                 }
-@Override
+
+                @Override
                 public void onButtonClicked(DialogCell dialogCell) {
                     if (dialogCell.getMessage() != null) {
                         TLRPC.TL_forumTopic topic = getMessagesController().getTopicsController().findTopic(-dialogCell.getDialogId(), MessageObject.getTopicId(currentAccount, dialogCell.getMessage().messageOwner, true));
@@ -5306,11 +5181,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     BotWebViewVibrationEffect.APP_ERROR.vibrate();
                     return;
                 }
-                if (!NekoConfig.disableVibration.Bool()) {
-                    try {
-                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-                    } catch (Exception ignored) {}
-                }
+                try {
+                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                } catch (Exception ignored) {}
                 if (dialogId == UserConfig.getInstance(currentAccount).getClientUserId()) {
                     if (!storiesEnabled) {
                         if (dialogStoriesCell != null) {
@@ -5551,6 +5424,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         } else {
             showSearch(false, false, false);
         }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            FilesMigrationService.checkBottomSheet(this);
+        }
         actionBar.setDrawBlurBackground(contentView);
 
         rightSlidingDialogContainer = new RightSlidingDialogContainer(context) {
@@ -5653,7 +5530,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 transitionPage.listView.setAnimationSupportView(null, 0, hasFragment(), backward);
                 rightFragmentTransitionInProgress = false;
                 contentView.requestLayout();
-                if (!hasFragment() && hasStories) {
+                if (!hasFragment()) {
                     invalidateScrollY = true;
                     fixScrollYAfterArchiveOpened = true;
                     if (fragmentView != null) {
@@ -5754,13 +5631,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
 
 
-        if (new Random().nextInt(100) < 50)
-            PrivacyUtil.postCheckAll(getParentActivity(), currentAccount);
-        else if (new Random().nextInt(100) < 20) {
-            UpdateUtil.postCheckFollowChannel(getParentActivity(), currentAccount);
-            UpdateUtil.postCheckFollowTipsChannel(getParentActivity(), currentAccount);
-        }
-
         updateStoriesVisibility(false);
 
         updateFloatingButtonVisibility(false);
@@ -5847,7 +5717,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     return false;
                 }
 
-                if (actionBarHeightNoSearch < scrollY && scrollY < actionBarHeight && !NekoConfig.disablePullDownSearch.Bool()) {
+                if (actionBarHeightNoSearch < scrollY && scrollY < actionBarHeight) {
                     int h = dp(SEARCH_FIELD_HEIGHT);
                     int s = scrollY - actionBarHeightNoSearch;
                     if (s < h / 2) {
@@ -5876,10 +5746,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         return false;
     }
 
-    private int searchFieldHeight() {
-        return NekoConfig.disablePullDownSearch.Bool() ? 0 : dp(SEARCH_FIELD_HEIGHT);
-    }
-
     private int getMaxScrollYOffsetWithoutSearch() {
         if (hasStories) {
             return dp(DialogStoriesCell.HEIGHT_IN_DP);
@@ -5890,9 +5756,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     private int getMaxScrollYOffset() {
         if (hasStories) {
-            return dp(DialogStoriesCell.HEIGHT_IN_DP) + searchFieldHeight();
+            return dp(DialogStoriesCell.HEIGHT_IN_DP) + dp(SEARCH_FIELD_HEIGHT);
         } else {
-            return searchFieldHeight();
+            return dp(SEARCH_FIELD_HEIGHT);
         }
     }
 
@@ -6149,7 +6015,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 MessagesController.getInstance(currentAccount).removeSuggestion(0, "SETUP_PASSKEY");
                 updateDialogsHint();
             });
-        } else if (folderId == 0 && communityId == 0 && getMessagesController().pendingSuggestions.contains("PREMIUM_GRACE") && !NaConfig.INSTANCE.getDisablePremiumExpiring().Bool()) {
+        } else if (folderId == 0 && communityId == 0 && getMessagesController().pendingSuggestions.contains("PREMIUM_GRACE")) {
             dialogsHintCellVisible = true;
             dialogsHintCell.setOnClickListener(v -> {
                 Browser.openUrl(getContext(), getMessagesController().premiumManageSubscriptionUrl);
@@ -6181,7 +6047,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 MessagesController.getInstance(currentAccount).removeSuggestion(0, suggestion.suggestion);
                 updateDialogsHint();
             });
-        } else if (isStarsSubscriptionHintVisible() && !NaConfig.INSTANCE.getDisableStarsSubscription().Bool()) {
+        } else if (isStarsSubscriptionHintVisible()) {
             StarsController c = StarsController.getInstance(currentAccount);
             dialogsHintCellVisible = true;
             StringBuilder s = new StringBuilder();
@@ -6219,7 +6085,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 MessagesController.getInstance(currentAccount).removeSuggestion(0, "STARS_SUBSCRIPTION_LOW_BALANCE");
                 updateDialogsHint();
             });
-        } else if (folderId == 0 && communityId == 0 && !getMessagesController().premiumPurchaseBlocked() && BirthdayController.getInstance(currentAccount).contains() && !getMessagesController().dismissedSuggestions.contains("BIRTHDAY_CONTACTS_TODAY") && !NaConfig.INSTANCE.getDisableBirthdayContact().Bool()) {
+        } else if (folderId == 0 && communityId == 0 && !getMessagesController().premiumPurchaseBlocked() && BirthdayController.getInstance(currentAccount).contains() && !getMessagesController().dismissedSuggestions.contains("BIRTHDAY_CONTACTS_TODAY")) {
             BirthdayController.BirthdayState state = BirthdayController.getInstance(currentAccount).getState();
             ArrayList<TLRPC.User> users = state.today;
             dialogsHintCellVisible = true;
@@ -6326,7 +6192,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     .setDuration(Bulletin.DURATION_PROLONG)
                     .show();
             });
-        } else if (isPremiumChristmasHintVisible() && !NaConfig.INSTANCE.getDisablePremiumChristmas().Bool()) {
+        } else if (isPremiumChristmasHintVisible()) {
             dialogsHintCellVisible = true;
             dialogsHintCell.setOnClickListener(v -> UserSelectorBottomSheet.open());
             dialogsHintCell.setText(Emoji.replaceEmoji(AndroidUtilities.replaceSingleTag(
@@ -6343,7 +6209,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         .setDuration(Bulletin.DURATION_PROLONG)
                         .show();
             });
-        } else if (isPremiumRestoreHintVisible() && !NaConfig.INSTANCE.getDisablePremiumRestore().Bool()) {
+        } else if (isPremiumRestoreHintVisible()) {
             dialogsHintCellVisible = true;
             dialogsHintCell.setOnClickListener(v -> {
                 presentFragment(new PremiumPreviewFragment("dialogs_hint").setSelectAnnualByDefault());
@@ -6361,7 +6227,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     ),
                     LocaleController.getString(R.string.RestorePremiumHintMessage)
             );
-        } else if (isPremiumHintVisible() && !NaConfig.INSTANCE.getDisablePremiumUpgrade().Bool()) {
+        } else if (isPremiumHintVisible()) {
             dialogsHintCellVisible = true;
             dialogsHintCell.setOnClickListener(v -> {
                 presentFragment(new PremiumPreviewFragment("dialogs_hint").setSelectAnnualByDefault());
@@ -6756,7 +6622,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void updateFiltersView(boolean showMediaFilters, ArrayList<Object> users, ArrayList<FiltersView.DateData> dates, boolean archive, boolean animated) {
-        if (!searchIsShowed || onlySelect && initialDialogsType != DIALOGS_TYPE_FORWARD || searchViewPager == null) {
+        if (!searchIsShowed || onlySelect || searchViewPager == null) {
             return;
         }
         boolean hasMediaFilter = false;
@@ -6942,14 +6808,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             viewPages[a].listView.stopScroll();
         }
         int a = animated && viewPages.length > 1 ? 1 : 0;
-        if (isForwardRecentTab(viewPages[a].selectedType)) {
-            viewPages[a].dialogsType = DIALOGS_TYPE_FORWARD_RECENT;
-            viewPages[1].isLocked = false;
-            viewPages[a].dialogsAdapter.setDialogsType(viewPages[a].dialogsType);
-            viewPages[a].layoutManager.scrollToPositionWithOffset(0, (int) scrollYOffset);
-            checkListLoad(viewPages[a]);
-            return;
-        }
         if (viewPages[a].selectedType < 0 || viewPages[a].selectedType >= getMessagesController().getDialogFilters().size()) {
             return;
         }
@@ -6994,21 +6852,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
     }
 
-    private boolean isForwardRecentTab(int tabId) {
-        return shouldShowForwardRecentTab() && tabId == FORWARD_RECENT_TAB_ID;
-    }
-
-    private boolean shouldShowForwardRecentTab() {
-        return DialogsRecentForwardHelper.shouldShowRecentTab(initialDialogsType, onlySelect, NaConfig.INSTANCE.getShowRecentForwardTab().Bool());
-    }
-
-    private void addForwardRecentTab() {
-        if (!shouldShowForwardRecentTab() || filterTabsView == null || filterTabsView.hasTab(FORWARD_RECENT_TAB_ID)) {
-            return;
-        }
-        filterTabsView.addTab(FORWARD_RECENT_TAB_ID, FORWARD_RECENT_TAB_STABLE_ID, LocaleController.getString(R.string.RecentChats), "\u2B50", null, false, false, false);
-    }
-
     private void updateFilterTabs(boolean force, boolean animated) {
         if (filterTabsView == null || inPreviewMode || searchIsShowed || (rightSlidingDialogContainer != null && rightSlidingDialogContainer.hasFragment())) {
             return;
@@ -7018,48 +6861,32 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             filterOptions = null;
         }
         final ArrayList<MessagesController.DialogFilter> filters = getMessagesController().getDialogFilters();
-        final boolean showForwardRecentTab = shouldShowForwardRecentTab();
-        if (filters.size() > 1 || showForwardRecentTab && !filters.isEmpty()) {
+        if (filters.size() > 1) {
             if (force || filterTabsView.getVisibility() != View.VISIBLE) {
                 boolean animatedUpdateItems = animated;
                 if (filterTabsView.getVisibility() != View.VISIBLE) {
                     animatedUpdateItems = false;
                 }
                 canShowFilterTabsView = true;
-                boolean updateCurrentTab = filterTabsView.isEmpty() || NekoConfig.hideAllTab.Bool();
+                boolean updateCurrentTab = filterTabsView.isEmpty();
                 updateFilterTabsVisibility(animated);
                 int id = filterTabsView.getCurrentTabId();
                 int stableId = filterTabsView.getCurrentTabStableId();
                 boolean selectWithStableId = false;
-                if (id != filterTabsView.getDefaultTabId() && !isForwardRecentTab(id) && id >= filters.size()) {
+                if (id != filterTabsView.getDefaultTabId() && id >= filters.size()) {
                     filterTabsView.resetTabId();
                     selectWithStableId = true;
                 }
                 filterTabsView.removeTabs();
-                for (Integer tabId : DialogsRecentForwardHelper.buildTabOrder(filters.size(), FORWARD_RECENT_TAB_ID, showForwardRecentTab)) {
-                    if (tabId == FORWARD_RECENT_TAB_ID) {
-                        addForwardRecentTab();
-                        continue;
-                    }
-                    int a = tabId;
+                for (int a = 0, N = filters.size(); a < N; a++) {
                     if (filters.get(a).isDefault()) {
-                        if (filterTabsView.showAllChatsTab)
-                            filterTabsView.addTab(a, 0, LocaleController.getString(R.string.FilterAllChats), "\uD83D\uDCAC", null, false, true, filters.get(a).locked);
+                        filterTabsView.addTab(a, 0, LocaleController.getString(R.string.FilterAllChats), null, false, true, filters.get(a).locked);
                     } else {
                         final MessagesController.DialogFilter filter = filters.get(a);
-                        filterTabsView.addTab(a, filter.localId, filter.name, filter.emoticon == null ? "\uD83D\uDCAC" : filter.emoticon, filter.entities, filter.title_noanimate, false, filters.get(a).locked);
+                        filterTabsView.addTab(a, filter.localId, filter.name, filter.entities, filter.title_noanimate, false, filters.get(a).locked);
                     }
                 }
-                if (updateCurrentTab) {
-                    id = filterTabsView.getFirstTabId();
-                    viewPages[0].selectedType = id;
-                }
-                if (NekoConfig.hideAllTab.Bool() && stableId <= 0) {
-                    id = filterTabsView.getFirstTabId();
-                    updateCurrentTab = true;
-                    viewPages[0].selectedType = id;
-                    filterTabsView.selectTabWithStableId(filterTabsView.getStableId(0));
-                } else if (stableId >= 0) {
+                if (stableId >= 0) {
                     if (selectWithStableId) {
                         if (!filterTabsView.selectTabWithStableId(stableId)) {
                             while (id >= 0 && !filterTabsView.selectTabWithStableId(filterTabsView.getStableId(id))) {
@@ -7070,16 +6897,16 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                             }
                         }
                     }
-                    if (filterTabsView.getStableIdByTabId(viewPages[0].selectedType) != stableId) {
+                    if (filterTabsView.getStableId(viewPages[0].selectedType) != stableId) {
                         updateCurrentTab = true;
                         viewPages[0].selectedType = id;
                     }
                 }
-                for (ViewPage viewPage : viewPages) {
-                    if (!isForwardRecentTab(viewPage.selectedType) && viewPage.selectedType >= filters.size()) {
-                        viewPage.selectedType = filters.size() - 1;
+                for (int a = 0; a < viewPages.length; a++) {
+                    if (viewPages[a].selectedType >= filters.size()) {
+                        viewPages[a].selectedType = filters.size() - 1;
                     }
-                    viewPage.listView.setScrollingTouchSlop(RecyclerView.TOUCH_SLOP_PAGING);
+                    viewPages[a].listView.setScrollingTouchSlop(RecyclerView.TOUCH_SLOP_PAGING);
                 }
                 filterTabsView.finishAddingTabs(animatedUpdateItems);
                 if (updateCurrentTab) {
@@ -7360,7 +7187,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     (filterTabsView != null && filterTabsView.getVisibility() == View.VISIBLE ? filterTabsView.getMeasuredHeight() : 0) +
                     (topPanelLayout != null ? topPanelLayout.getHeight() : 0) +
                     (dialogStoriesCell != null && dialogStoriesCellVisible ? (int) ((1f - dialogStoriesCell.getCollapsedProgress()) * dp(DialogStoriesCell.HEIGHT_IN_DP)) : 0) +
-                    (searchFieldHeight())
+                    (dp(SEARCH_FIELD_HEIGHT))
                 );
             }
 
@@ -7378,10 +7205,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         updateVisibleRows(0, false);
         updateProxyButton(false, true);
         updateStoriesVisibility(false);
-        if (NaConfig.INSTANCE.getDisableDialogsFloatingButton().Bool()) {
-            floatingButtonHidden = false;
-            hideFloatingButton(true);
-        }
         checkSuggestClearDatabase();
         checkUi_mainTabsVisible();
         if (filterTabsView != null && viewPages[0] != null && viewPages[0].dialogsAdapter != null) {
@@ -7483,11 +7306,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 fragmentSearchField.editText.clearFocus();
             }
             return false;
-        } else if (filterTabsView != null && filterTabsView.getVisibility() == View.VISIBLE && !tabsAnimationInProgress && !filterTabsView.isAnimatingIndicator() && filterTabsView.getCurrentTabId() != filterTabsView.getFirstTabId() && !startedTracking && !filterTabsView.isFirstTabSelected()) {
-            if (!NekoConfig.hideAllTab.Bool()) {
-                if (invoked) filterTabsView.selectFirstTab();
-                return false;
-            }
+        } else if (filterTabsView != null && filterTabsView.getVisibility() == View.VISIBLE && !tabsAnimationInProgress && !filterTabsView.isAnimatingIndicator() && !startedTracking && !filterTabsView.isFirstTabSelected()) {
+            if (invoked) filterTabsView.selectFirstTab();
+            return false;
         } else if (commentView != null && commentView.isPopupShowing()) {
             if (invoked) commentView.hidePopup(true);
             return false;
@@ -7648,7 +7469,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private void showSearch(boolean show, boolean startFromDownloads, boolean animated, boolean forceNotOnlyDialogs) {
         animatorSearchVisible.setValue(show, animated);
 
-        animatorScanQrButtonVisible.setValue(show, animated);
         if (!show) {
             updateSpeedItem(false);
         } else {
@@ -8013,8 +7833,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 }
             }
         }
-        if (viewPage.dialogsType != DIALOGS_TYPE_FORWARD_RECENT && (visibleItemCount > 0 && lastVisibleItem >= getDialogsArray(currentAccount, viewPage.dialogsType, folderId, dialogsListFrozen).size() - 10 ||
-                visibleItemCount == 0 && (viewPage.dialogsType == 7 || viewPage.dialogsType == 8) && !getMessagesController().isDialogsEndReached(folderId))) {
+        if (visibleItemCount > 0 && lastVisibleItem >= getDialogsArray(currentAccount, viewPage.dialogsType, folderId, dialogsListFrozen).size() - 10 ||
+                visibleItemCount == 0 && (viewPage.dialogsType == 7 || viewPage.dialogsType == 8) && !getMessagesController().isDialogsEndReached(folderId)) {
             loadFromCache = !getMessagesController().isDialogsEndReached(folderId);
             if (loadFromCache || !getMessagesController().isServerDialogsEndReached(folderId)) {
                 load = true;
@@ -8073,10 +7893,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     TLRPC.TL_dialogFolder dialogFolder = (TLRPC.TL_dialogFolder) dialog;
                     Bundle args = new Bundle();
                     args.putInt("folderId", dialogFolder.folder.id);
-                    args.putBoolean("onlySelect", onlySelect);
-                    DialogsActivity dialogsActivity = new DialogsActivity(args);
-                    dialogsActivity.setDelegate(delegate);
-                    presentFragment(dialogsActivity, onlySelect);
+                    presentFragment(new DialogsActivity(args));
                     return;
                 }
                 dialogId = dialog.id;
@@ -8598,12 +8415,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void onArchiveLongPress(View view) {
-        if (!NekoConfig.disableVibration.Bool()) {
-            try {
-                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
-            } catch (Exception ignored) {}
-        }
-        BottomSheet.NekoXBuilder builder = new BottomSheet.NekoXBuilder(getParentActivity());
+        try {
+            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+        } catch (Exception ignored) {}
+        BottomSheet.Builder builder = new BottomSheet.Builder(getParentActivity());
         final boolean hasUnread = getMessagesStorage().getArchiveUnreadCount() != 0;
 
         int[] icons = new int[]{
@@ -8748,13 +8563,13 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                                 folder.neverShow.remove(alwaysShow.get(a));
                             }
                             folder.alwaysShow.addAll(alwaysShow);
-                            FilterCreateActivity.saveFilterToServer(folder, folder.flags, folder.emoticon, folder.name, folder.entities, folder.title_noanimate, folder.color, folder.alwaysShow, folder.neverShow, folder.pinnedDialogs, false, false, true, true, false, DialogsActivity.this, null);
+                            FilterCreateActivity.saveFilterToServer(folder, folder.flags, folder.name, folder.entities, folder.title_noanimate, folder.color, folder.alwaysShow, folder.neverShow, folder.pinnedDialogs, false, false, true, true, false, DialogsActivity.this, null);
                         }
                         getUndoView().showWithAction(dialogId, UndoView.ACTION_ADDED_TO_FOLDER, alwaysShow.size(), folder, null, null);
                     } else {
                         folder.alwaysShow.remove(dialogId);
                         folder.neverShow.add(dialogId);
-                        FilterCreateActivity.saveFilterToServer(folder, folder.flags, folder.emoticon, folder.name, folder.entities, folder.title_noanimate, folder.color, folder.alwaysShow, folder.neverShow, folder.pinnedDialogs, false, false, true, true, false, DialogsActivity.this, null);
+                        FilterCreateActivity.saveFilterToServer(folder, folder.flags, folder.name, folder.entities, folder.title_noanimate, folder.color, folder.alwaysShow, folder.neverShow, folder.pinnedDialogs, false, false, true, true, false, DialogsActivity.this, null);
                         getUndoView().showWithAction(dialogId, UndoView.ACTION_REMOVED_FROM_FOLDER, alwaysShow.size(), folder, null, null);
                     }
                     hideActionMode(true);
@@ -8942,7 +8757,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         undoView.showWithAction(0, UndoView.ACTION_UNPIN_DIALOGS, 1, 1600, null, null);
                     }
                     if (filter != null) {
-                        FilterCreateActivity.saveFilterToServer(filter, filter.flags, filter.emoticon, filter.name, filter.entities, filter.title_noanimate, filter.color, filter.alwaysShow, filter.neverShow, filter.pinnedDialogs, false, false, true, true, false, DialogsActivity.this, null);
+                        FilterCreateActivity.saveFilterToServer(filter, filter.flags, filter.name, filter.entities, filter.title_noanimate, filter.color, filter.alwaysShow, filter.neverShow, filter.pinnedDialogs, false, false, true, true, false, DialogsActivity.this, null);
                     }
                     getMessagesController().reorderPinnedDialogs(folderId, null, 0);
                     updateCounters(true);
@@ -9040,7 +8855,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             floatingButton3.setButtonVisible(isVisible, animated);
         }
         if (floatingButtonStories != null) {
-            floatingButtonStories.setButtonVisible(isVisible && !NaConfig.INSTANCE.getDisableStories().Bool(), animated);
+            floatingButtonStories.setButtonVisible(isVisible, animated);
         }
     }
 
@@ -9060,7 +8875,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
     }
 
-    public boolean storiesEnabled = !NaConfig.INSTANCE.getDisableStories().Bool();
+    public boolean storiesEnabled = true;
     private void updateStoriesPosting() {
         final boolean storiesEnabled = getMessagesController().storiesEnabled();
         if (this.storiesEnabled != storiesEnabled) {
@@ -9174,8 +8989,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
             if (isOpen && afterSignup) {
                 try {
-                    if (!NekoConfig.disableVibration.Bool())
-                        fragmentView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+                    fragmentView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                 } catch (Exception ignored) {}
                 if (getParentActivity() instanceof LaunchActivity) {
                     ((LaunchActivity) getParentActivity()).getFireworksOverlay().start();
@@ -9228,7 +9042,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 viewPages[i].listView.cancelClickRunnables(true);
             }
         }
-        translateListHeight = Math.max(0, dp(hasStories ? DialogStoriesCell.HEIGHT_IN_DP : 0) + searchFieldHeight() + scrollYOffset);
+        translateListHeight = Math.max(0, dp((hasStories ? DialogStoriesCell.HEIGHT_IN_DP : 0) + SEARCH_FIELD_HEIGHT) + scrollYOffset);
         float finalTranslateListHeight = translateListHeight;
         actionBarColorAnimator = ValueAnimator.ofFloat(progressToActionMode, 0);
         actionBarColorAnimator.addUpdateListener(valueAnimator -> {
@@ -9254,7 +9068,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 invalidateScrollY = true;
                 fixScrollYAfterArchiveOpened = true;
                 fragmentView.invalidate();
-                scrollAdditionalOffset = -(dp(hasStories ? DialogStoriesCell.HEIGHT_IN_DP : 0) + searchFieldHeight() - finalTranslateListHeight);
+                scrollAdditionalOffset = -(dp((hasStories ? DialogStoriesCell.HEIGHT_IN_DP : 0) + SEARCH_FIELD_HEIGHT) - finalTranslateListHeight);
                 viewPages[0].setTranslationY(0);
                 for (int i = 0; i < viewPages.length; i++) {
                     if (viewPages[i] != null) {
@@ -9275,7 +9089,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (!movingDialogFilters.isEmpty()) {
             for (int a = 0, N = movingDialogFilters.size(); a < N; a++) {
                 MessagesController.DialogFilter filter = movingDialogFilters.get(a);
-                FilterCreateActivity.saveFilterToServer(filter, filter.flags, filter.emoticon, filter.name, filter.entities, filter.title_noanimate, filter.color, filter.alwaysShow, filter.neverShow, filter.pinnedDialogs, false, false, true, true, false, DialogsActivity.this, null);
+                FilterCreateActivity.saveFilterToServer(filter, filter.flags, filter.name, filter.entities, filter.title_noanimate, filter.color, filter.alwaysShow, filter.neverShow, filter.pinnedDialogs, false, false, true, true, false, DialogsActivity.this, null);
             }
             movingDialogFilters.clear();
         }
@@ -9356,7 +9170,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 SharedPreferences preferences = MessagesController.getGlobalMainSettings();
                 boolean hintShowed = preferences.getBoolean("archivehint_l", false) || SharedConfig.archiveHidden;
                 if (!hintShowed) {
-                    preferences.edit().putBoolean("archivehint_l", true).apply();
+                    preferences.edit().putBoolean("archivehint_l", true).commit();
                 }
                 int undoAction;
                 if (hintShowed) {
@@ -9418,7 +9232,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             int maxPinnedCount;
             if (containsFilter) {
                 maxPinnedCount = 100 - filter.alwaysShow.size();
-            } else if (NekoConfig.unlimitedPinnedDialogs.Bool() || folderId != 0 || filter != null) {
+            } else if (folderId != 0 || filter != null) {
                 if (UserConfig.getInstance(currentAccount).isPremium()) {
                     maxPinnedCount = getMessagesController().maxFolderPinnedDialogsCountPremium;
                 } else {
@@ -9700,7 +9514,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
         if (action == pin || action == pin2) {
             if (filter != null) {
-                FilterCreateActivity.saveFilterToServer(filter, filter.flags, filter.emoticon, filter.name, filter.entities, filter.title_noanimate, filter.color, filter.alwaysShow, filter.neverShow, filter.pinnedDialogs, false, false, true, true, false, DialogsActivity.this, null);
+                FilterCreateActivity.saveFilterToServer(filter, filter.flags, filter.name, filter.entities, filter.title_noanimate, filter.color, filter.alwaysShow, filter.neverShow, filter.pinnedDialogs, false, false, true, true, false, DialogsActivity.this, null);
             } else {
                 getMessagesController().reorderPinnedDialogs(folderId, null, 0);
             }
@@ -10242,7 +10056,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     viewPages[i].listView.cancelClickRunnables(true);
                 }
             }
-            translateListHeight = Math.max(0, dp(hasStories ? DialogStoriesCell.HEIGHT_IN_DP : 0) + searchFieldHeight() + scrollYOffset);
+            translateListHeight = Math.max(0, dp((hasStories ? DialogStoriesCell.HEIGHT_IN_DP : 0) + SEARCH_FIELD_HEIGHT) + scrollYOffset);
             if (translateListHeight != 0) {
                 actionModeAdditionalHeight = (int) translateListHeight;
                 fragmentView.requestLayout();
@@ -10269,7 +10083,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     actionBarColorAnimator = null;
                     actionModeAdditionalHeight = 0;
                     actionModeFullyShowed = true;
-                    scrollAdditionalOffset = dp(hasStories ? DialogStoriesCell.HEIGHT_IN_DP : 0) + searchFieldHeight() - finalTranslateListHeight;
+                    scrollAdditionalOffset = dp((hasStories ? DialogStoriesCell.HEIGHT_IN_DP : 0) + SEARCH_FIELD_HEIGHT) - finalTranslateListHeight;
                     viewPages[0].setTranslationY(0);
                     for (int i = 0; i < viewPages.length; i++) {
                         if (viewPages[i] != null) {
@@ -10419,9 +10233,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 break;
             }
         }
-        if (NaConfig.INSTANCE.getAlwaysShowDownloadIcon().Bool()) {
-            showDownloads = true;
-        }
         if ((getDownloadController().hasUnviewedDownloads() || showDownloads || (downloadsItem.getVisibility() == View.VISIBLE && downloadsItem.getAlpha() == 1 && !force))) {
             downloadsItemVisible = true;
         } else {
@@ -10555,7 +10366,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             if (alert) {
                 AlertDialog.Builder builder = AlertsCreator.createContactsPermissionDialog(activity, param -> {
                     askAboutContacts = param != 0;
-                    MessagesController.getGlobalNotificationsSettings().edit().putBoolean("askAboutContacts", askAboutContacts).apply();
+                    MessagesController.getGlobalNotificationsSettings().edit().putBoolean("askAboutContacts", askAboutContacts).commit();
                     askForPermissons(false);
                 });
                 showDialog(permissionDialog = builder.create());
@@ -10572,9 +10383,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             if (activity.checkSelfPermission(Manifest.permission.READ_MEDIA_VIDEO) != PackageManager.PERMISSION_GRANTED) {
                 permissons.add(Manifest.permission.READ_MEDIA_VIDEO);
             }
-//            if (activity.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-//                permissons.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
-//            }
+            if (activity.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                permissons.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+            }
         } else if ((Build.VERSION.SDK_INT <= 28 || BuildVars.NO_SCOPED_STORAGE) && activity.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             permissons.add(Manifest.permission.READ_EXTERNAL_STORAGE);
             permissons.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
@@ -10629,7 +10440,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                             AndroidUtilities.runOnUIThread(() -> getNotificationCenter().postNotificationName(NotificationCenter.forceImportContactsStart));
                             getContactsController().forceImportContacts();
                         } else {
-                            MessagesController.getGlobalNotificationsSettings().edit().putBoolean("askAboutContacts", askAboutContacts = false).apply();
+                            MessagesController.getGlobalNotificationsSettings().edit().putBoolean("askAboutContacts", askAboutContacts = false).commit();
                         }
                         break;
                     case Manifest.permission.WRITE_EXTERNAL_STORAGE:
@@ -10651,9 +10462,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     break;
                 }
             }
-//            if (allGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && FilesMigrationService.filesMigrationBottomSheet != null) {
-//                FilesMigrationService.filesMigrationBottomSheet.migrateOldFolder();
-//            }
+            if (allGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && FilesMigrationService.filesMigrationBottomSheet != null) {
+                FilesMigrationService.filesMigrationBottomSheet.migrateOldFolder();
+            }
 
         }
     }
@@ -10669,7 +10480,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             layoutManager.scrollToPositionWithOffset(1, (int) scrollYOffset);
         }
 
-        // NekoX TODO: Remove satouriko's fix wrong tab dialogs after forward
         if (viewPage.dialogsAdapter.isDataSetChanged() || newMessage) {
             viewPage.dialogsAdapter.updateHasHints();
             int newItemCount = viewPage.dialogsAdapter.getItemCount();
@@ -10798,7 +10608,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
             updateStatus(UserConfig.getInstance(account).getCurrentUser(), true);
         } else if (id == NotificationCenter.appDidLogout) {
-            dialogsLoaded.put(currentAccount, false);
+            dialogsLoaded[currentAccount] = false;
         } else if (id == NotificationCenter.encryptedChatUpdated) {
             updateVisibleRows(0);
         } else if (id == NotificationCenter.contactsDidLoad) {
@@ -11011,7 +10821,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             updateStatus(UserConfig.getInstance(account).getCurrentUser(), true);
             updateStoriesPosting();
         } else if (id == NotificationCenter.onDatabaseReset) {
-            dialogsLoaded.set(currentAccount, false);
+            dialogsLoaded[currentAccount] = false;
             loadDialogs(getAccountInstance());
             getMessagesController().loadPinnedDialogs(folderId, 0, null);
         } else if (id == NotificationCenter.chatlistFolderUpdate) {
@@ -11178,11 +10988,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     public static final int DIALOGS_TYPE_START_ATTACH_BOT = 14;
     public static final int DIALOGS_TYPE_BOT_REQUEST_PEER = 15;
     public static final int DIALOGS_TYPE_BOT_SELECT_VERIFY = 16;
-    public static final int DIALOGS_TYPE_FORWARD_RECENT = 17;
-
-    public static boolean isForwardPickerDialogsType(int dialogsType) {
-        return dialogsType == DIALOGS_TYPE_FORWARD || dialogsType == DIALOGS_TYPE_FORWARD_RECENT;
-    }
 
     private ArrayList<TLRPC.Dialog> botShareDialogs;
 
@@ -11224,11 +11029,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             return dialogs;
         } else if (dialogsType == DIALOGS_TYPE_FORWARD) {
             return messagesController.dialogsForward;
-        } else if (dialogsType == DIALOGS_TYPE_FORWARD_RECENT) {
-            return DialogsRecentForwardHelper.buildRecentDialogs(
-                    BackButtonMenuRecent.getRecentDialogs(currentAccount),
-                    messagesController.dialogsForward,
-                    DialogsRecentForwardHelper.dialogIdSet(messagesController.dialogsForward));
         } else if (dialogsType == DIALOGS_TYPE_USERS_ONLY || dialogsType == DIALOGS_TYPE_IMPORT_HISTORY_USERS) {
             return messagesController.dialogsUsersOnly;
         } else if (dialogsType == DIALOGS_TYPE_CHANNELS_ONLY) {
@@ -11362,10 +11162,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     boolean floatingButtonHidden;
 
     private void hideFloatingButton(boolean hide) {
-        if (NaConfig.INSTANCE.getDisableDialogsFloatingButton().Bool()) {
-            hide = true;
-        }
-
         if (rightSlidingDialogContainer.hasFragment()) {
             hide = true;
         }
@@ -11764,11 +11560,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 if (shareTopView != null) {
                     shareTopView.setSharedMedia(currentAccount, sharedMediaEntries);
                 }
-                final boolean useExternalOptions = !notify || scheduleDate != 0 || forceDocument;
+                final boolean useExternalOptions = !notify || scheduleDate != 0;
                 if (useExternalOptions && delegate != null && !selectedDialogs.isEmpty()) {
                     DialogsActivity.this.notify = notify;
                     DialogsActivity.this.scheduleDate = scheduleDate;
-                    DialogsActivity.this.forceDocument = forceDocument;
                     final ArrayList<MessagesStorage.TopicKey> topicKeys = new ArrayList<>();
                     for (int i = 0; i < selectedDialogs.size(); i++) {
                         topicKeys.add(MessagesStorage.TopicKey.of(selectedDialogs.get(i), 0));
@@ -12151,12 +11946,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         final boolean onlyMyselfFinal = onlyMyself;
 
         ItemOptions.makeOptions(this, view)
-            .addChecked(!ChatActivity.noForwardQuote, LocaleController.getString(R.string.ShowSendersName), () -> {
-                ChatActivity.noForwardQuote = false;
-            })
-            .addChecked(ChatActivity.noForwardQuote, LocaleController.getString(R.string.HideSendersName), () -> {
-                ChatActivity.noForwardQuote = true;
-            })
             .add(R.drawable.input_notify_off, getString(R.string.SendWithoutSound), () -> {
                 this.notify = false;
                 if (delegate == null || selectedDialogs.isEmpty()) {
@@ -13719,7 +13508,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void openStoriesRecorder() {
-        if (!storiesEnabled && !NaConfig.INSTANCE.getDisableStories().Bool()) {
+        if (!storiesEnabled) {
             if (storyPremiumHint != null) {
                 if (storyPremiumHint.shown()) {
                     return;
@@ -13803,7 +13592,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
                 Bulletin.make(DialogsActivity.this, layout, duration).show();
                 try {
-                    if (!NekoConfig.disableVibration.Bool())
                     fragmentView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                 } catch (Exception ignored) {}
 
@@ -13900,7 +13688,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         } else {
             isCurrentThemeDark = Theme.isCurrentThemeDark();
         }
-        io.addIf(NaConfig.INSTANCE.getCustomDialogsMenuTheme().Bool(), isCurrentThemeDark ? R.drawable.menu_day_mode_24 : R.drawable.menu_night_mode_24,
+        io.add(isCurrentThemeDark ? R.drawable.menu_day_mode_24 : R.drawable.menu_night_mode_24,
                 getString(isCurrentThemeDark ? R.string.SwitchThemeToDay : R.string.SwitchThemeToNight), () -> {
             if (switchingTheme) {
                 return;
@@ -13935,23 +13723,15 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 presentFragment(new ThemeActivity(ThemeActivity.THEME_TYPE_NIGHT));
             });
         });
-        if (NaConfig.INSTANCE.getCustomDialogsMenuTheme().Bool())
         io.addGap();
-        io.addIf(NaConfig.INSTANCE.getShowRecentChatsInSidebar().Bool(), R.drawable.msg2_autodelete, LocaleController.getString(R.string.RecentChats), () -> {
-            presentFragment(new tw.nekomimi.nekogram.ChatHistoryActivity());
-        });
-        io.addIf(NaConfig.INSTANCE.getCustomDialogsMenuNewGroup().Bool(), R.drawable.outline_groups_24, getString(R.string.NewGroup), () -> {
+        io.add(R.drawable.outline_groups_24, getString(R.string.NewGroup), () -> {
             Bundle args = new Bundle();
             presentFragment(new GroupCreateActivity(args));
         });
-        io.addIf(NaConfig.INSTANCE.getCustomDialogsMenuNewMessage().Bool(), R.drawable.outline_groups_24, getString(R.string.NewMessageTitle), this::openWriteContacts);
-        io.addIf(NaConfig.INSTANCE.getCustomDialogsMenuSavedMessages().Bool(), R.drawable.outline_saved_24, getString(R.string.SavedMessages), () -> {
+        io.add(R.drawable.outline_saved_24, getString(R.string.SavedMessages), () -> {
             Bundle args = new Bundle();
             args.putLong("user_id", UserConfig.getInstance(currentAccount).getClientUserId());
             presentFragment(new ChatActivity(args));
-        });
-        io.addIf(NekoConfig.showGhostToggleInDrawer, R.drawable.icon_ghost, getString(R.string.GhostMode), () -> {
-            presentFragment(new NekoGhostModeActivity());
         });
         if (ApplicationLoader.applicationLoaderInstance != null) {
             ApplicationLoader.applicationLoaderInstance.addItemOptions(io);
@@ -13980,8 +13760,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 }
             }
         }
-        boolean noMainTabs = (NaConfig.INSTANCE.getMainTabsStyle().Int() == MainTabsStyle.DISABLE.getValue() || getUserConfig().showCallsTab) && !NaConfig.INSTANCE.getSidebarSettingsActivity().Bool();
-        if (NaConfig.INSTANCE.getCustomDialogsMenuSettings().Bool() || noMainTabs) {
+        if (getUserConfig().showCallsTab) {
             io.add(R.drawable.msg_settings_old, getString(R.string.Settings), () -> {
                 presentFragment(new SettingsActivity());
             });
@@ -14002,15 +13781,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             final boolean proxyVisible = proxyEnabled && !TextUtils.isEmpty(proxyAddress)
                     || getMessagesController().blockedCountry && !SharedConfig.proxyList.isEmpty();
 
-            if (proxyVisible && NaConfig.INSTANCE.getCustomDialogsMenuProxy().Bool()) {
+            if (proxyVisible) {
                 io.addGap();
                 io.add(proxyMenuSubItem);
             }
-        }
-
-        if (NaConfig.INSTANCE.getCustomDialogsMenuAccount().Bool()) {
-            io.addGap();
-            MainTabsActivity.makeAccountSelector(this, currentAccount, io);
         }
 
         io.show();
@@ -14102,8 +13876,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             checkUi_searchFiltersVisibility();
         } else if (id == ANIMATOR_ID_SEARCH_FILTER_TABS_VISIBLE) {
             checkUi_searchFiltersVisibility();
-        } else if (id == ANIMATOR_ID_SCANQR_BUTTON_VISIBLE) {
-            checkUi_itemScanVisibility();
         }
     }
 
@@ -14266,7 +14038,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
 
         final int maxScrollWithoutSearch = getMaxScrollYOffsetWithoutSearch();
-        final float alphaByScrollOffset = NekoConfig.disablePullDownSearch.Bool() ? 0 : 1f - MathUtils.clamp((-scrollYOffset - maxScrollWithoutSearch) / dp(SEARCH_FIELD_HEIGHT), 0, 1);
+        final float alphaByScrollOffset = 1f - MathUtils.clamp((-scrollYOffset - maxScrollWithoutSearch) / dp(SEARCH_FIELD_HEIGHT), 0, 1);
 
         final float actionModeVisible = Math.max(progressToActionMode, animatorActionModeVisible.getFloatValue());
         final float searchFieldVisible = animatorSearchVisible.getFloatValue();
@@ -14301,7 +14073,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         checkUi_itemSpeedVisibility();
         checkUi_itemPasscodeVisibility();
         checkUi_itemSearchVisibility();
-        checkUi_itemScanVisibility();
     }
 
     private void checkUi_itemBackButtonVisibility() {
@@ -14349,15 +14120,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         final float factor4 = animatorSpeedButtonVisible.getFloatValue();
         final float factor = factor1 * factor2 * factor3 * factor4;
         FragmentFloatingButton.setAnimatedVisibility(speedItem, factor);
-    }
-
-    private void checkUi_itemScanVisibility() {
-        final float factor1 = animatorSearchVisible.getFloatValue();
-        final float factor2 = 1f - getRightSlidingProgress();
-        final float factor3 = 1f - animatorDoneButtonVisible.getFloatValue();
-        final float factor4 = animatorScanQrButtonVisible.getFloatValue();
-        final float factor = factor1 * factor2 * factor3 * factor4;
-        FragmentFloatingButton.setAnimatedVisibility(scanItem, factor);
     }
 
     private void checkUi_itemSearchVisibility() {
@@ -14414,7 +14176,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         final int mainTabTop = mainTabBottom - dp(DialogsActivity.MAIN_TABS_HEIGHT);
 
         final int actionBarHeight = actionBar.getMeasuredHeight()
-            + searchFieldHeight()
+            + dp(DialogsActivity.SEARCH_FIELD_HEIGHT)
             + dp(hasStories ? DialogStoriesCell.HEIGHT_IN_DP : 0)
             + (filterTabsView != null && filterTabsView.getVisibility() == View.VISIBLE ? filterTabsView.getMeasuredHeight() : 0)
             + (topPanelLayout != null && topPanelLayout.getVisibility() == View.VISIBLE ? topPanelLayout.getSumHeightOfAllVisibleChild() : 0)

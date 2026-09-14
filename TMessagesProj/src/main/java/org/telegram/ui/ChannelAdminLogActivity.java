@@ -175,12 +175,6 @@ import java.util.List;
 import me.vkryl.core.BitwiseUtils;
 import me.vkryl.core.reference.ReferenceList;
 
-import kotlin.Unit;
-import tw.nekomimi.nekogram.ui.BottomBuilder;
-import tw.nekomimi.nekogram.NekoConfig;
-import tw.nekomimi.nekogram.utils.AlertUtil;
-import tw.nekomimi.nekogram.utils.ProxyUtil;
-
 public class ChannelAdminLogActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
 
     private final @NonNull BlurredBackgroundSourceWrapped navbarContentSourceWallpaper;
@@ -640,8 +634,6 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
 
                     if (chatAdapter != null) {
                         chatAdapter.notifyDataSetChanged();
-                        // na: fix admin log pagination after collapsed deletions- #73
-                        if (chatListView != null) chatListView.post(() -> checkScrollForLoad(true));
                     }
 
                     if (searchItem != null) {
@@ -1564,7 +1556,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
         /*searchUpButton = new ImageView(context);
         searchUpButton.setScaleType(ImageView.ScaleType.CENTER);
         searchUpButton.setImageResource(R.drawable.msg_go_up);
-        searchUpButton.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_searchPanelIcons), PorterDuff.Mode.SRC_IN));
+        searchUpButton.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_searchPanelIcons), PorterDuff.Mode.MULTIPLY));
         searchContainer.addView(searchUpButton, LayoutHelper.createFrame(48, 48));
         searchUpButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -1576,7 +1568,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
         searchDownButton = new ImageView(context);
         searchDownButton.setScaleType(ImageView.ScaleType.CENTER);
         searchDownButton.setImageResource(R.drawable.msg_go_down);
-        searchDownButton.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_searchPanelIcons), PorterDuff.Mode.SRC_IN));
+        searchDownButton.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_searchPanelIcons), PorterDuff.Mode.MULTIPLY));
         searchContainer.addView(searchDownButton, LayoutHelper.createFrame(48, 48, Gravity.LEFT | Gravity.TOP, 48, 0, 0, 0));
         searchDownButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -1588,7 +1580,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
         searchCalendarButton = new ImageView(context);
         searchCalendarButton.setScaleType(ImageView.ScaleType.CENTER);
         searchCalendarButton.setImageResource(R.drawable.msg_calendar);
-        searchCalendarButton.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_searchPanelIcons), PorterDuff.Mode.SRC_IN));
+        searchCalendarButton.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_searchPanelIcons), PorterDuff.Mode.MULTIPLY));
         searchContainer.addView(searchCalendarButton, LayoutHelper.createFrame(48, 48, Gravity.RIGHT | Gravity.TOP));
         searchCalendarButton.setOnClickListener(view -> {
             if (getParentActivity() == null) {
@@ -2827,7 +2819,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
     }
 
     public void showOpenUrlAlert(final String url, boolean ask) {
-        if (Browser.isInternalUrl(url, null) || !ask || NekoConfig.skipOpenLinkConfirm.Bool()) {
+        if (Browser.isInternalUrl(url, null) || !ask) {
             Browser.openUrl(getParentActivity(), url, true);
         } else {
             AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
@@ -2941,10 +2933,10 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                             if (LaunchActivity.instance != null) {
                                 LaunchActivity.instance.checkAppUpdate(true, null);
                             }
-//                        } else if (BuildVars.isHuaweiStoreApp()) {
-//                            Browser.openUrl(getContext(), BuildVars.HUAWEI_STORE_URL);
-//                        } else {
-//                            Browser.openUrl(getContext(), BuildVars.PLAYSTORE_APP_URL);
+                        } else if (BuildVars.isHuaweiStoreApp()) {
+                            Browser.openUrl(getContext(), BuildVars.HUAWEI_STORE_URL);
+                        } else {
+                            Browser.openUrl(getContext(), BuildVars.PLAYSTORE_APP_URL);
                         }
                     }
 
@@ -3109,29 +3101,21 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                         } else {
                             final String urlFinal = ((URLSpan) url).getURL();
                             if (longPress) {
-                                BottomBuilder builder = new BottomBuilder(getParentActivity());
-                                builder.addTitle(urlFinal);
-                                builder.addItems(
-                                        new String[]{LocaleController.getString(R.string.Open), LocaleController.getString(R.string.Copy), LocaleController.getString(R.string.ShareQRCode)},
-                                        new int[]{R.drawable.msg_openin, R.drawable.msg_copy, R.drawable.msg_qrcode}, (which, text, __) -> {
-                                            if (which == 0 || which == 2) {
-                                                if (which == 0) {
-                                                    Browser.openUrl(getParentActivity(), urlFinal);
-                                                } else {
-                                                    ProxyUtil.showQrDialog(getParentActivity(), urlFinal);
-                                                }
-                                            } else if (which == 1) {
-                                                String url1 = urlFinal;
-                                                if (url1.startsWith("mailto:")) {
-                                                    url1 = url1.substring(7);
-                                                } else if (url1.startsWith("tel:")) {
-                                                    url1 = url1.substring(4);
-                                                }
-                                                AndroidUtilities.addToClipboard(url1);
-                                                AlertUtil.showToast(LocaleController.getString(R.string.LinkCopied));
-                                            }
-                                            return Unit.INSTANCE;
-                                        });
+                                BottomSheet.Builder builder = new BottomSheet.Builder(getParentActivity());
+                                builder.setTitle(urlFinal);
+                                builder.setItems(new CharSequence[]{getString(R.string.Open), getString(R.string.Copy)}, (dialog, which) -> {
+                                    if (which == 0) {
+                                        Browser.openUrl(getParentActivity(), urlFinal, true);
+                                    } else if (which == 1) {
+                                        String url1 = urlFinal;
+                                        if (url1.startsWith("mailto:")) {
+                                            url1 = url1.substring(7);
+                                        } else if (url1.startsWith("tel:")) {
+                                            url1 = url1.substring(4);
+                                        }
+                                        AndroidUtilities.addToClipboard(url1);
+                                    }
+                                });
                                 showDialog(builder.create());
                             } else {
                                 if (url instanceof URLSpanReplacement) {
@@ -3440,10 +3424,10 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                             if (LaunchActivity.instance != null) {
                                 LaunchActivity.instance.checkAppUpdate(true, null);
                             }
-//                        } else if (BuildVars.isHuaweiStoreApp()) {
-//                            Browser.openUrl(getContext(), BuildVars.HUAWEI_STORE_URL);
-//                        } else {
-//                            Browser.openUrl(getContext(), BuildVars.PLAYSTORE_APP_URL);
+                        } else if (BuildVars.isHuaweiStoreApp()) {
+                            Browser.openUrl(getContext(), BuildVars.HUAWEI_STORE_URL);
+                        } else {
+                            Browser.openUrl(getContext(), BuildVars.PLAYSTORE_APP_URL);
                         }
                     }
                 });

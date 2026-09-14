@@ -54,8 +54,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import xyz.nextalone.nagram.NaConfig;
-
 public class ImageReceiver implements NotificationCenter.NotificationCenterDelegate, AnimatedEmojiSpan.InvalidateHolder {
 
     List<ImageReceiver> preloadReceivers;
@@ -451,7 +449,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
                         }
                     }
                 }
-                if (vectorImageMarkup == null && animationEnabled && MessagesController.getInstance(currentAccount).isPremiumUser(user) && user.photo.has_video && LiteMode.isEnabled(LiteMode.FLAG_AUTOPLAY_VIDEOS) && NaConfig.INSTANCE.getShowPremiumAvatarAnimation().Bool()) {
+                if (vectorImageMarkup == null && animationEnabled && MessagesController.getInstance(currentAccount).isPremiumUser(user) && user.photo.has_video && LiteMode.isEnabled(LiteMode.FLAG_AUTOPLAY_VIDEOS)) {
                     final TLRPC.UserFull userFull = MessagesController.getInstance(currentAccount).getUserFull(user.id);
                     if (userFull == null) {
                         MessagesController.getInstance(currentAccount).loadFullUser(user, currentGuid, false);
@@ -880,10 +878,6 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     }
 
     public void setImageBitmap(Drawable bitmap) {
-        setImageBitmap(bitmap, true);
-    }
-
-    public void setImageBitmap(Drawable bitmap, boolean notify) {
         ImageLoader.getInstance().cancelLoadingForImageReceiver(this, true);
 
         if (crossfadeWithOldImage) {
@@ -1000,7 +994,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
             setImageBackup.clear();
         }
 
-        if (notify && delegate != null) {
+        if (delegate != null) {
             delegate.didSetImage(this, currentThumbDrawable != null || staticThumbDrawable != null, true, false);
         }
         invalidate();
@@ -2541,10 +2535,6 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     }
 
     public void setRoundRadius(int[] value) {
-        if (NaConfig.INSTANCE.getShowSquareAvatar().Bool()) {
-            java.util.Arrays.fill(value, 0);
-        }
-
         boolean changed = false;
         int firstValue = value[0];
         isRoundRect = true;

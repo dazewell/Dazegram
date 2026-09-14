@@ -58,7 +58,7 @@ public class AcceptDeclineView extends View {
     private AcceptDeclineAccessibilityNodeProvider accessibilityNodeProvider;
 
     private int buttonWidth;
-    private int currentFocusedVirtualViewId = View.NO_ID;
+
     float smallRadius;
     float bigRadius;
     boolean expandSmallRadius = true;
@@ -422,17 +422,11 @@ public class AcceptDeclineView extends View {
     }
 
     @Override
-    public boolean dispatchHoverEvent(MotionEvent event) {
-        if (accessibilityNodeProvider != null && accessibilityNodeProvider.dispatchHoverEvent(event)) {
+    public boolean onHoverEvent(MotionEvent event) {
+        if (accessibilityNodeProvider != null && accessibilityNodeProvider.onHoverEvent(event)) {
             return true;
         }
-        return super.dispatchHoverEvent(event);
-    }
-
-    @Override
-    public boolean performAccessibilityAction(int action, Bundle arguments) {
-        if (action == AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS) currentFocusedVirtualViewId = NO_ID;
-        return super.performAccessibilityAction(action, arguments);
+        return super.onHoverEvent(event);
     }
 
     @Override
@@ -549,16 +543,16 @@ public class AcceptDeclineView extends View {
                 return hostView.performAccessibilityAction(action, arguments);
             } else {
                 if (action == AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS) {
-                    currentFocusedVirtualViewId = virtualViewId;
                     sendAccessibilityEventForVirtualView(virtualViewId, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED);
                 } else if (action == AccessibilityNodeInfo.ACTION_CLICK) {
                     onVirtualViewClick(virtualViewId);
+                    return true;
                 }
             }
-            return true;// For action accessibilityFocus should be return true too,because in other case screenreader will consider,what it's the last node on the screen,and we will hear sound fron it,which announce about it.
+            return false;
         }
 
-        public boolean dispatchHoverEvent(MotionEvent event) {
+        public boolean onHoverEvent(MotionEvent event) {
             final int x = (int) event.getX();
             final int y = (int) event.getY();
             if (event.getAction() == MotionEvent.ACTION_HOVER_ENTER || event.getAction() == MotionEvent.ACTION_HOVER_MOVE) {
@@ -573,8 +567,8 @@ public class AcceptDeclineView extends View {
                     }
                 }
             } else if (event.getAction() == MotionEvent.ACTION_HOVER_EXIT) {
-                if (currentFocusedVirtualViewId != -1) {
-                    currentFocusedVirtualViewId = -1;
+                if (currentFocusedVirtualViewId != View.NO_ID) {
+                    currentFocusedVirtualViewId = View.NO_ID;
                     return true;
                 }
             }

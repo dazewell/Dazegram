@@ -16,6 +16,8 @@
 
 package androidx.recyclerview.widget;
 
+import static androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX;
+
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.PointF;
@@ -32,8 +34,6 @@ import androidx.core.os.TraceCompat;
 import androidx.core.view.ViewCompat;
 
 import java.util.List;
-
-import static androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX;
 
 /**
  * A {@link RecyclerView.LayoutManager} implementation which provides

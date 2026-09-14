@@ -97,9 +97,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-import tw.nekomimi.nekogram.NekoConfig;
-import tw.nekomimi.nekogram.utils.VibrateUtil;
-
 /**
  * A flexible view for providing a limited window into a large data set.
  *
@@ -7085,9 +7082,6 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             try {
                 TraceCompat.beginSection(TRACE_CREATE_VIEW_TAG);
                 final VH holder = onCreateViewHolder(parent, viewType);
-                if (NekoConfig.disableVibration.Bool()) {
-                    VibrateUtil.disableHapticFeedback(holder.itemView);
-                }
                 if (holder.itemView.getParent() != null) {
                     throw new IllegalStateException("ViewHolder views must not be attached when"
                             + " created. Ensure that you are not passing 'true' to the attachToRoot"
@@ -11346,10 +11340,6 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                 // a full update has been called.
                 return FULLUPDATE_PAYLOADS;
             }
-        }
-
-        public Object getPayload() {
-            return getUnmodifiedPayloads().isEmpty() ? null : getUnmodifiedPayloads().get(0);
         }
 
         void resetInternal() {

@@ -1929,8 +1929,6 @@ GroupLevelValue mappedAudioLevel(GroupLevelValue const &value) {
 
 } // namespace
 
-int GroupInstanceCustomImpl::customAudioBitrate = 0;
-
 class GroupInstanceCustomInternal : public sigslot::has_slots<>, public std::enable_shared_from_this<GroupInstanceCustomInternal> {
 public:
     GroupInstanceCustomInternal(GroupInstanceDescriptor &&descriptor, std::shared_ptr<Threads> threads) :
@@ -1971,10 +1969,7 @@ public:
     _missingPacketBuffer(50),
     _onMutedSpeechActivityDetected(std::move(descriptor.onMutedSpeechActivityDetected)),
     _platformContext(descriptor.platformContext) {
-        RTC_LOG(LS_INFO) << "Init GroupInstanceCustomImpl with audio bitrate " << _outgoingAudioBitrateKbit << "kbps";
         assert(_threads->getMediaThread()->IsCurrent());
-
-        GroupInstanceCustomImpl::customAudioBitrate = _outgoingAudioBitrateKbit * 1000;
 
         _threads->getWorkerThread()->BlockingCall([this] {
             _workerThreadSafery = webrtc::PendingTaskSafetyFlag::Create();
@@ -2001,9 +1996,6 @@ public:
     }
 
     ~GroupInstanceCustomInternal() {
-        RTC_LOG(LS_WARNING) << "~GroupInstanceCustomInternal, reset customAudioBitrate to zero";
-        GroupInstanceCustomImpl::customAudioBitrate = 0;
-
         _incomingAudioChannels.clear();
         _incomingVideoChannels.clear();
         _serverBandwidthProbingVideoSsrc.reset();
@@ -2031,19 +2023,15 @@ public:
 
         const auto weak = std::weak_ptr<GroupInstanceCustomInternal>(shared_from_this());
 
-        std::stringstream stringStream;
-        stringStream << "WebRTC-DataChannel-Dcsctp/Enabled/"
-            "WebRTC-Audio-Allocation/min:" << _outgoingAudioBitrateKbit << "kbps,max:" << _outgoingAudioBitrateKbit << "kbps/"
-                     << "WebRTC-Audio-OpusMinPacketLossRate/Enabled-1/"
-                     << "WebRTC-TaskQueuePacer/Enabled/"
-                     << "WebRTC-VP8ConferenceTemporalLayers/1/"
-                     << "WebRTC-Audio-MinimizeResamplingOnMobile/Enabled/"
-                     << "WebRTC-BweLossExperiment/Enabled/";
-        //           << "WebRTC-MutedStateKillSwitch/Enabled/"
-        //           << "WebRTC-VP8IosMaxNumberOfThread/max_thread:1/"
-
-        auto webrtcInitStr = stringStream.str();
-        webrtc::field_trial::InitFieldTrialsFromString(webrtcInitStr.c_str());
+        webrtc::field_trial::InitFieldTrialsFromString(
+            "WebRTC-DataChannel-Dcsctp/Enabled/"
+            "WebRTC-Audio-Allocation/min:32kbps,max:32kbps/"
+            "WebRTC-Audio-OpusMinPacketLossRate/Enabled-1/"
+            "WebRTC-TaskQueuePacer/Enabled/"
+            "WebRTC-VP8ConferenceTemporalLayers/1/"
+            "WebRTC-Audio-MinimizeResamplingOnMobile/Enabled/"
+            "WebRTC-BweLossExperiment/Enabled/"
+        );
 
         bool takeAudioLevelFromNetwork = _e2eEncryptDecrypt == nullptr;
 
@@ -2554,7 +2542,6 @@ public:
 
         cricket::AudioOptions audioOptions;
         if (_disableOutgoingAudioProcessing || _videoContentType == VideoContentType::Screencast) {
-            RTC_LOG(LS_ERROR) << "outgoing audio processing disabled";
             audioOptions.echo_cancellation = false;
             audioOptions.noise_suppression = false;
             audioOptions.auto_gain_control = false;
@@ -2575,10 +2562,10 @@ public:
             _outgoingAudioChannel->SetRtpTransport(_rtpTransport);
         });
 
-        int opusMinBitrateKbps = _outgoingAudioBitrateKbit;
-        int opusMaxBitrateKbps = _outgoingAudioBitrateKbit;
-        int opusStartBitrateKbps = _outgoingAudioBitrateKbit;
-        const uint8_t opusPTimeMs = _outgoingAudioBitrateKbit == 32 ? 120 : 10;
+        const uint8_t opusMinBitrateKbps = _outgoingAudioBitrateKbit;
+        const uint8_t opusMaxBitrateKbps = _outgoingAudioBitrateKbit;
+        const uint8_t opusStartBitrateKbps = _outgoingAudioBitrateKbit;
+        const uint8_t opusPTimeMs = 120;
 
         cricket::AudioCodec opusCodec = cricket::CreateAudioCodec(111, "opus", 48000, 2);
         opusCodec.AddFeedbackParam(cricket::FeedbackParam(cricket::kRtcpFbParamTransportCc));
@@ -3052,11 +3039,11 @@ public:
                 preferences.max_bitrate_bps = std::max(preferences.min_bitrate_bps, (1020 + 32) * 1000);
             }
         } else {
-            preferences.min_bitrate_bps = _outgoingAudioBitrateKbit * 1024;
+            preferences.min_bitrate_bps = 32000;
             if (resetStartBitrate) {
-                preferences.start_bitrate_bps = _outgoingAudioBitrateKbit * 1024;
+                preferences.start_bitrate_bps = 32000;
             }
-            preferences.max_bitrate_bps = _outgoingAudioBitrateKbit * 1024;
+            preferences.max_bitrate_bps = 32000;
         }
 
         settings.min_bitrate_bps = preferences.min_bitrate_bps;

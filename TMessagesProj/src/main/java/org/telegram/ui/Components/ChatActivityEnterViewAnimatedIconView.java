@@ -48,18 +48,11 @@ public class ChatActivityEnterViewAnimatedIconView extends RLottieImageView {
         State fromState = currentState;
         currentState = state;
         if (!animate || fromState == null || getState(fromState, currentState) == null) {
-            if (currentState == State.MENU) {
-                // 停止当前动画
-                stopAnimation();
-                // 设置静态图标
-                setImageResource(R.drawable.ic_ab_other);
-            } else {
-                RLottieDrawable drawable = stateMap.get(getAnyState(currentState));
-                drawable.stop();
+            RLottieDrawable drawable = stateMap.get(getAnyState(currentState));
+            drawable.stop();
 
-                drawable.setProgress(state == State.VOICE ? 0.5f : 0, false);
-                setAnimation(drawable);
-            }
+            drawable.setProgress(state == State.VOICE ? 0.5f : 0, false);
+            setAnimation(drawable);
         } else {
             TransitState transitState = getState(fromState, currentState);
             if (transitState == animatingState) {
@@ -146,7 +139,6 @@ public class ChatActivityEnterViewAnimatedIconView extends RLottieImageView {
         STICKER,
         KEYBOARD,
         SMILE,
-        GIF,
-        MENU
+        GIF
     }
 }

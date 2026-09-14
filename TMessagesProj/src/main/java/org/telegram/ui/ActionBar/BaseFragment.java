@@ -69,13 +69,6 @@ import org.telegram.ui.bots.BotWebViewAttachedSheet;
 
 import java.util.ArrayList;
 
-import tw.nekomimi.nekogram.NekoConfig;
-import tw.nekomimi.nekogram.helpers.CloudStorageHelper;
-import tw.nekomimi.nekogram.helpers.UserHelper;
-import tw.nekomimi.nekogram.utils.VibrateUtil;
-import tw.nekomimi.nekogram.ui.MessageHelper;
-import xyz.nextalone.nagram.NaConfig;
-
 public abstract class BaseFragment {
 
     public boolean isFinished;
@@ -218,7 +211,7 @@ public abstract class BaseFragment {
     public BaseFragment(Bundle args) {
         arguments = args;
         classGuid = ConnectionsManager.generateClassGuid();
-        if (BuildConfig.DEBUG) {
+        if (BuildConfig.DEBUG_PRIVATE_VERSION) {
             LeakDetector.getInstance().add(this);
         }
 
@@ -262,7 +255,7 @@ public abstract class BaseFragment {
     }
 
     public View performCreateView(Context context) {
-        if (!BuildConfig.DEBUG) {
+        if (!BuildConfig.DEBUG_PRIVATE_VERSION) {
             return createView(context);
         }
 
@@ -376,9 +369,6 @@ public abstract class BaseFragment {
     public void setParentFragment(BaseFragment fragment) {
         setParentLayout(fragment.parentLayout);
         fragmentView = createView(parentLayout.getView().getContext());
-        if (NekoConfig.disableVibration.Bool()) {
-            VibrateUtil.disableHapticFeedback(fragmentView);
-        }
     }
 
     public void setParentLayout(INavigationLayout layout) {
@@ -965,18 +955,6 @@ public abstract class BaseFragment {
         }
     }
 
-    public MessageHelper getMessageHelper() {
-        return getAccountInstance().getMessageHelper();
-    }
-
-    public UserHelper getUserHelper() {
-        return getAccountInstance().getUserHelper();
-    }
-
-    public CloudStorageHelper getCloudStorageHelper() {
-        return getAccountInstance().getCloudStorageHelper();
-    }
-
     public void saveKeyboardPositionBeforeTransition() {
 
     }
@@ -1458,7 +1436,7 @@ public abstract class BaseFragment {
     @Deprecated
     public boolean isSupportEdgeToEdge() {
         // warn: overridden method must return a constant
-        return NaConfig.INSTANCE.getForceEdgeToEdge().Bool();
+        return false;
     }
 
     public boolean drawEdgeNavigationBar() {
@@ -1492,7 +1470,7 @@ public abstract class BaseFragment {
     }
 
 
-    public void dumpCanvas() {
+    protected void dumpCanvas() {
         AndroidUtilities.dumpCanvas(fragmentView);
     }
 }

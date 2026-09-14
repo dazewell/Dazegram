@@ -31,8 +31,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
-import tw.nekomimi.nekogram.NekoConfig;
-
 public class EntityView extends FrameLayout {
     private final static List<Integer> STICKY_ANGLES = Arrays.asList(
             -90, 0, 90, 180
@@ -126,7 +124,6 @@ public class EntityView extends FrameLayout {
 
         uuid = UUID.randomUUID();
         position = pos;
-
     }
 
     public UUID getUUID() {

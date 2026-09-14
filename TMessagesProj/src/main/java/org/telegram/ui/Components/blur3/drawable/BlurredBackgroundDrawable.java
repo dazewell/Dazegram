@@ -43,8 +43,6 @@ import org.telegram.ui.Components.blur3.utils.NinePatchBuilder;
 import java.lang.ref.WeakReference;
 import java.util.Arrays;
 
-import xyz.nextalone.nagram.NaConfig;
-
 public abstract class BlurredBackgroundDrawable extends Drawable {
     public BlurredBackgroundDrawable() {
         boundProps.strokeWidthTop = dpf2(1);
@@ -388,7 +386,6 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
         float[] radii, float strokeWidth, boolean isTop,
         Paint paint
     ) {
-        if (NaConfig.INSTANCE.getDisableGlareEffects().Bool()) return;
 
         final boolean radiiAreSame = isTop ?
             radii[0] == radii[1] && radii[1] == radii[2] && radii[2] == radii[3]:
@@ -490,7 +487,6 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
 
     public static void drawStroke(Canvas canvas, float left, float top, float right, float bottom,
                                      float radii, float strokeWidth, boolean isTop, Paint paint) {
-        if (NaConfig.INSTANCE.getDisableGlareEffects().Bool()) return;
         final float strokeHalf = strokeWidth / 2f;
         canvas.save();
         if (isTop) {
@@ -644,7 +640,7 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
             return;
         }
 
-        final NinePatchDrawable ninePatchDrawable = checkNinePatchDrawable(fillColor, !NaConfig.INSTANCE.getDisableGlareEffects().Bool());
+        final NinePatchDrawable ninePatchDrawable = checkNinePatchDrawable(fillColor, true);
         ninePatchDrawable.setBounds(
             boundProps.boundsWithPadding.left - ninePatchDrawablePadding.left,
             boundProps.boundsWithPadding.top - ninePatchDrawablePadding.top,
@@ -699,7 +695,6 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
     }
 
     private void drawStrokeInternalIfNeeded(Canvas canvas) {
-        if (NaConfig.INSTANCE.getDisableGlareEffects().Bool()) return;
         final int strokeColorTop = Theme.multAlpha(this.strokeColorTop, alpha / 255f);
         final int strokeColorBottom = Theme.multAlpha(this.strokeColorBottom, alpha / 255f);
 

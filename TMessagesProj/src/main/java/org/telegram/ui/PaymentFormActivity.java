@@ -167,8 +167,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Scanner;
 
-import tw.nekomimi.nekogram.NekoConfig;
-
 public class PaymentFormActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
     private final static List<String> WEBVIEW_PROTOCOLS = Arrays.asList(
             "http",
@@ -179,12 +177,12 @@ public class PaymentFormActivity extends BaseFragment implements NotificationCen
     );
 
     private final static int STEP_SHIPPING_INFORMATION = 0,
-            STEP_SHIPPING_METHODS = 1,
-            STEP_PAYMENT_INFO = 2,
-            STEP_CONFIRM_PASSWORD = 3,
-            STEP_CHECKOUT = 4,
-            STEP_RECEIPT = 5,
-            STEP_SET_PASSWORD_EMAIL = 6;
+        STEP_SHIPPING_METHODS = 1,
+        STEP_PAYMENT_INFO = 2,
+        STEP_CONFIRM_PASSWORD = 3,
+        STEP_CHECKOUT = 4,
+        STEP_RECEIPT = 5,
+        STEP_SET_PASSWORD_EMAIL = 6;
 
     private final static int FIELD_CARD = 0;
     private final static int FIELD_EXPIRE_DATE = 1;
@@ -501,7 +499,7 @@ public class PaymentFormActivity extends BaseFragment implements NotificationCen
     private void setDelegate(PaymentFormActivityDelegate paymentFormActivityDelegate) {
         delegate = paymentFormActivityDelegate;
     }
-
+    
     public void setResourcesProvider(Theme.ResourcesProvider provider) {
         resourcesProvider = provider;
     }
@@ -2387,7 +2385,6 @@ public class PaymentFormActivity extends BaseFragment implements NotificationCen
                         AndroidUtilities.shakeViewSpring(recurrentAcceptCell.getTextView(), shiftDp);
                         AndroidUtilities.shakeViewSpring(recurrentAcceptCell.getCheckBox(), shiftDp);
                         try {
-                            if (!NekoConfig.disableVibration.Bool())
                             recurrentAcceptCell.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                         } catch (Exception ignored) {}
                         return;
@@ -3633,7 +3630,6 @@ public class PaymentFormActivity extends BaseFragment implements NotificationCen
                 parentLayout.presentFragment(new PremiumPreviewFragment(null).setForcePremium(), !isFinishing());
                 if (parentActivity instanceof LaunchActivity) {
                     try {
-                        if (!NekoConfig.disableVibration.Bool())
                         fragmentView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                     } catch (Exception ignored) {
                     }
@@ -4576,7 +4572,6 @@ public class PaymentFormActivity extends BaseFragment implements NotificationCen
 
     private void shakeView(View view) {
         try {
-            if (!NekoConfig.disableVibration.Bool())
             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
         } catch (Exception ignored) {}
         AndroidUtilities.shakeViewSpring(view, 2.5f);
@@ -4611,7 +4606,6 @@ public class PaymentFormActivity extends BaseFragment implements NotificationCen
         }
         if (inputFields[FIELD_SAVEDPASSWORD].length() == 0) {
             try {
-                if (!NekoConfig.disableVibration.Bool())
                 inputFields[FIELD_SAVEDPASSWORD].performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
             } catch (Exception ignored) {}
             AndroidUtilities.shakeViewSpring(inputFields[FIELD_SAVEDPASSWORD], 2.5f);
@@ -4657,7 +4651,6 @@ public class PaymentFormActivity extends BaseFragment implements NotificationCen
                             } else {
                                 if (error1.text.equals("PASSWORD_HASH_INVALID")) {
                                     try {
-                                        if (!NekoConfig.disableVibration.Bool())
                                         inputFields[FIELD_SAVEDPASSWORD].performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                                     } catch (Exception ignored) {}
                                     AndroidUtilities.shakeViewSpring(inputFields[FIELD_SAVEDPASSWORD], 3.25f);

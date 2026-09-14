@@ -67,9 +67,6 @@ import org.telegram.ui.LaunchActivity;
 import java.io.File;
 import java.util.Collections;
 
-import tw.nekomimi.nekogram.NekoConfig;
-import xyz.nextalone.nagram.NaConfig;
-
 public class StoriesUtilities {
 
     private final static int ANIMATION_SEGMENT_COUNT = 16;
@@ -163,10 +160,6 @@ public class StoriesUtilities {
 
         if (params.forceState != 0) {
             unreadState = state = params.forceState;
-        }
-
-        if (NaConfig.INSTANCE.getDisableStories().Bool()) {
-            unreadState = state = STATE_EMPTY;
         }
 
         if (params.currentState != state) {
@@ -1337,7 +1330,6 @@ public class StoriesUtilities {
                         }
                         AndroidUtilities.runOnUIThread(longPressRunnable = () -> {
                             try {
-                                if (!NekoConfig.disableVibration.Bool())
                                 view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
                             } catch (Exception ignored) {}
                             if (buttonBounce != null) {

@@ -13,17 +13,16 @@ import android.app.ActivityManager;
 import android.app.Dialog;
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.net.Uri;
 import android.content.pm.PackageInfo;
 import android.media.MediaCodecInfo;
 import android.media.MediaCodecList;
 import android.os.Build;
+import android.os.Environment;
 import android.os.SystemClock;
 import android.text.TextUtils;
 import android.util.Base64;
 import android.webkit.WebView;
 
-import androidx.annotation.Nullable;
 import androidx.annotation.IntDef;
 import androidx.annotation.RequiresApi;
 import androidx.core.content.pm.ShortcutManagerCompat;
@@ -35,35 +34,19 @@ import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.Components.SwipeGestureSettingsView;
-import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.LaunchActivity;
 
 import java.io.File;
 import java.io.RandomAccessFile;
-import java.net.InetSocketAddress;
-import java.net.Proxy;
-import java.util.Arrays;
+import java.io.UnsupportedEncodingException;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
-import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.concurrent.CopyOnWriteArraySet;
-import java.util.stream.Collectors;
-
-import cn.hutool.core.util.StrUtil;
-import tw.nekomimi.nekogram.NekoConfig;
-import tw.nekomimi.nekogram.utils.AlertUtil;
-import tw.nekomimi.nekogram.utils.EnvUtil;
-import tw.nekomimi.nekogram.utils.FileUtil;
-import tw.nekomimi.nekogram.utils.UIUtil;
-import xyz.nextalone.nagram.NaConfig;
-
 import java.util.List;
 import java.util.Locale;
 
@@ -252,7 +235,6 @@ public class SharedConfig {
     public static boolean allowScreenCapture;
     public static int lastPauseTime;
     public static boolean isWaitingForPasscodeEnter;
-    public static String lastUpdateVersion;
     public static boolean useFingerprintLock = true;
     public static boolean useFaceLock = true;
     public static int suggestStickers;
@@ -328,10 +310,10 @@ public class SharedConfig {
     public static boolean allowBigEmoji;
     public static boolean useSystemEmoji;
     public static boolean useSystemBoldFont;
-    public static int fontSize = 12;
+    public static int fontSize = 16;
     public static boolean fontSizeIsDefault;
-    public static int bubbleRadius = 3;
-    public static int ivFontSize = 12;
+    public static int bubbleRadius = 17;
+    public static int ivFontSize = 16;
     public static boolean proxyRotationEnabled;
     public static int proxyRotationTimeout;
     public static int messageSeenHintCount;
@@ -345,7 +327,6 @@ public class SharedConfig {
 
     public static TLRPC.TL_help_appUpdate pendingAppUpdate;
     public static int pendingAppUpdateBuildVersion;
-    public static long pendingAppUpdateBuildTimestamp;
     public static long lastUpdateCheckTime;
 
     public static boolean hasEmailLogin;
@@ -367,9 +348,6 @@ public class SharedConfig {
     public static int fastScrollHintCount = 3;
     public static boolean dontAskManageStorage;
     public static boolean multipleReactionsPromoShowed;
-
-    public static CopyOnWriteArraySet<Integer> activeAccounts;
-    public static int loginingAccount = -1;
 
     public static boolean isFloatingDebugActive;
     public static LiteMode liteMode;
@@ -442,37 +420,9 @@ public class SharedConfig {
             } catch (UnsupportedEncodingException ignored) {}
             return url.toString();
         }
-
-        public static ProxyInfo fromUrl(String url) {
-            Uri lnk = Uri.parse(url);
-            if (lnk == null) throw new IllegalArgumentException(url);
-            return new ProxyInfo(
-                    lnk.getQueryParameter("server"),
-                    Utilities.parseInt(lnk.getQueryParameter("port")),
-                    lnk.getQueryParameter("user"),
-                    lnk.getQueryParameter("pass"),
-                    lnk.getQueryParameter("secret")
-            );
-        }
     }
 
-    public static LinkedList<ProxyInfo> proxyList = new LinkedList<>();
-
-    public static LinkedList<ProxyInfo> getProxyList() {
-
-        while (true) {
-
-            try {
-
-                return new LinkedList<>(proxyList);
-
-            } catch (Exception ignored) {
-            }
-
-        }
-
-    }
-
+    public static ArrayList<ProxyInfo> proxyList = new ArrayList<>();
     private static boolean proxyListLoaded;
     public static ProxyInfo currentProxy;
 
@@ -521,7 +471,6 @@ public class SharedConfig {
                         String str = Base64.encodeToString(data.toByteArray(), Base64.DEFAULT);
                         editor.putString("appUpdate", str);
                         editor.putInt("appUpdateBuild", pendingAppUpdateBuildVersion);
-                        editor.putLong("appUpdateBuildTimestamp", pendingAppUpdateBuildTimestamp);
                         data.cleanup();
                     } catch (Exception ignore) {
 
@@ -552,13 +501,6 @@ public class SharedConfig {
         return value;
     }
 
-    public static void saveAccounts() {
-        FileLog.e("Save accounts: " + activeAccounts, new Exception());
-        ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE).edit()
-                .putString("active_accounts", StrUtil.join(",", activeAccounts))
-                .apply();
-    }
-
     public static void loadConfig() {
         synchronized (sync) {
             if (configLoaded || ApplicationLoader.applicationContext == null) {
@@ -577,7 +519,6 @@ public class SharedConfig {
             badPasscodeTries = preferences.getInt("badPasscodeTries", 0);
             autoLockIn = preferences.getInt("autoLockIn", 60 * 60);
             lastPauseTime = preferences.getInt("lastPauseTime", 0);
-            lastUpdateVersion = preferences.getString("lastUpdateVersion2", "3.5");
             useFingerprintLock = preferences.getBoolean("useFingerprint", true);
             allowScreenCapture = preferences.getBoolean("allowScreenCapture", false);
             lastLocalId = preferences.getInt("lastLocalId", -210000);
@@ -609,7 +550,6 @@ public class SharedConfig {
                 String update = preferences.getString("appUpdate", null);
                 if (update != null) {
                     pendingAppUpdateBuildVersion = preferences.getInt("appUpdateBuild", buildVersion());
-                    pendingAppUpdateBuildTimestamp = preferences.getLong("appUpdateBuildTimestamp", BuildConfig.BUILD_TIMESTAMP);
                     byte[] arr = Base64.decode(update, Base64.DEFAULT);
                     if (arr != null) {
                         SerializedData data = new SerializedData(arr);
@@ -634,7 +574,7 @@ public class SharedConfig {
                     if (updateVersionString == null) {
                         updateVersionString = BuildVars.BUILD_VERSION_STRING;
                     }
-                    if (pendingAppUpdateBuildVersion != updateVersion || pendingAppUpdateBuildTimestamp != BuildConfig.BUILD_TIMESTAMP || pendingAppUpdate.version == null || updateVersionString.compareTo(pendingAppUpdate.version) >= 0 || BuildVars.DEBUG_PRIVATE_VERSION) {
+                    if (pendingAppUpdateBuildVersion != updateVersion || pendingAppUpdate.version == null || updateVersionString.compareTo(pendingAppUpdate.version) >= 0 || BuildVars.DEBUG_PRIVATE_VERSION) {
                         pendingAppUpdate = null;
                         AndroidUtilities.runOnUIThread(SharedConfig::saveConfig);
                     }
@@ -660,11 +600,12 @@ public class SharedConfig {
             hasCameraCache = preferences.contains("cameraCache");
             roundCamera16to9 = true;
             repeatMode = preferences.getInt("repeatMode", 0);
-            fontSize = preferences.getInt("fons_size", AndroidUtilities.isTablet() && !AndroidUtilities.isFold() ? 14 : 12);
+            fontSize = preferences.getInt("fons_size", AndroidUtilities.isTablet() && !AndroidUtilities.isFold() ? 18 : 16);
             fontSizeIsDefault = !preferences.contains("fons_size");
-            bubbleRadius = preferences.getInt("bubbleRadius", 3);
+            bubbleRadius = preferences.getInt("bubbleRadius", 17);
             ivFontSize = preferences.getInt("iv_font_size", fontSize);
             allowBigEmoji = preferences.getBoolean("allowBigEmoji", true);
+            useSystemEmoji = preferences.getBoolean("useSystemEmoji", false);
             useSystemBoldFont = preferences.getBoolean("useSystemBoldFont", false);
             forceForumTabs = preferences.getBoolean("forceForumTabs", false);
             fastWallpaperDisabled = preferences.getBoolean("fastWallpaperDisabled", false);
@@ -712,38 +653,6 @@ public class SharedConfig {
             messageSeenHintCount = preferences.getInt("messageSeenCount", 3);
             emojiInteractionsHintCount = preferences.getInt("emojiInteractionsHintCount", 3);
             dayNightThemeSwitchHintCount = preferences.getInt("dayNightThemeSwitchHintCount", 3);
-            activeAccounts = Arrays.stream(preferences.getString("active_accounts", "").split(",")).filter(StrUtil::isNotBlank).map(Integer::parseInt).collect(Collectors.toCollection(CopyOnWriteArraySet::new));
-
-            if (!preferences.contains("activeAccountsLoaded")) {
-                int maxAccounts;
-
-                File filesDir = ApplicationLoader.applicationContext.getFilesDir();
-                if (new File(filesDir, "account31").isDirectory()) {
-                    maxAccounts = 32;
-                } else if (new File(filesDir, "account15").isDirectory()) {
-                    maxAccounts = 16;
-                } else {
-                    maxAccounts = -1;
-                }
-
-                for (int i = 0; i < maxAccounts; i++) {
-                    SharedPreferences perf;
-                    if (i == 0) {
-                        perf = ApplicationLoader.applicationContext.getSharedPreferences("userconfing", Context.MODE_PRIVATE);
-                    } else {
-                        perf = ApplicationLoader.applicationContext.getSharedPreferences("userconfig" + i, Context.MODE_PRIVATE);
-                    }
-                    if (StrUtil.isNotBlank(perf.getString("user", null))) {
-                        activeAccounts.add(i);
-                    }
-                }
-
-                if (!SharedConfig.activeAccounts.isEmpty()) {
-                    preferences.edit().putString("active_accounts", StrUtil.join(",", activeAccounts)).apply();
-                }
-
-                preferences.edit().putBoolean("activeAccountsLoaded", true).apply();
-            }
             stealthModeSendMessageConfirm = preferences.getInt("stealthModeSendMessageConfirm", 2);
             mediaColumnsCount = preferences.getInt("mediaColumnsCount", 3);
             storiesColumnsCount = preferences.getInt("storiesColumnsCount", 3);
@@ -774,7 +683,6 @@ public class SharedConfig {
 
             configLoaded = true;
         }
-
     }
 
     public static int buildVersion() {
@@ -871,31 +779,30 @@ public class SharedConfig {
             FileLog.e(e);
             currentVersion = buildVersion();
         }
-        return pendingAppUpdateBuildVersion == currentVersion || pendingAppUpdateBuildTimestamp == BuildConfig.BUILD_TIMESTAMP;
+        return pendingAppUpdateBuildVersion == currentVersion;
     }
 
     public static boolean setNewAppVersionAvailable(TLRPC.TL_help_appUpdate update) {
-        //String updateVersionString = null;
+        String updateVersionString = null;
         int versionCode = 0;
         try {
             PackageInfo packageInfo = ApplicationLoader.applicationContext.getPackageManager().getPackageInfo(ApplicationLoader.applicationContext.getPackageName(), 0);
             versionCode = packageInfo.versionCode;
-            //updateVersionString = packageInfo.versionName;
+            updateVersionString = packageInfo.versionName;
         } catch (Exception e) {
             FileLog.e(e);
         }
         if (versionCode == 0) {
             versionCode = buildVersion();
         }
-        //if (updateVersionString == null) {
-        //    updateVersionString = BuildVars.BUILD_VERSION_STRING;
-        //}
-        //if (update.version == null || versionBiggerOrEqual(updateVersionString, update.version)) {
-        //    return false;
-        //}
+        if (updateVersionString == null) {
+            updateVersionString = BuildVars.BUILD_VERSION_STRING;
+        }
+        if (update.version == null || versionBiggerOrEqual(updateVersionString, update.version)) {
+            return false;
+        }
         pendingAppUpdate = update;
         pendingAppUpdateBuildVersion = versionCode;
-        pendingAppUpdateBuildTimestamp = BuildConfig.BUILD_TIMESTAMP;
         saveConfig();
         return true;
     }
@@ -1394,10 +1301,6 @@ public class SharedConfig {
         SharedPreferences.Editor editor = preferences.edit();
         editor.putBoolean("direct_share", directShare);
         editor.apply();
-        rebuildDirectShare();
-    }
-
-    public static void rebuildDirectShare() {
         ShortcutManagerCompat.removeAllDynamicShortcuts(ApplicationLoader.applicationContext);
         MediaDataController.getInstance(UserConfig.selectedAccount).buildShortcuts();
     }
@@ -1450,13 +1353,6 @@ public class SharedConfig {
         editor.apply();
     }
 
-    public static void setSmoothKeyboard(boolean smoothKeyboard) {
-        SharedPreferences preferences = MessagesController.getGlobalMainSettings();
-        SharedPreferences.Editor editor = preferences.edit();
-        editor.putBoolean("smoothKeyboard2", smoothKeyboard);
-        editor.commit();
-    }
-
     public static void togglePauseMusicOnRecord() {
         pauseMusicOnRecord = !pauseMusicOnRecord;
         SharedPreferences preferences = MessagesController.getGlobalMainSettings();
@@ -1493,13 +1389,6 @@ public class SharedConfig {
         editor.apply();
     }
 
-    public static void setInappCamera(boolean inappCamera) {
-       SharedPreferences preferences = MessagesController.getGlobalMainSettings();
-        SharedPreferences.Editor editor = preferences.edit();
-        editor.putBoolean("inappCamera", inappCamera);
-        editor.commit();
-    }
-
     public static void toggleRoundCamera16to9() {
         roundCamera16to9 = !roundCamera16to9;
         SharedPreferences preferences = MessagesController.getGlobalMainSettings();
@@ -1515,38 +1404,6 @@ public class SharedConfig {
         editor.putInt("distanceSystemType", distanceSystemType);
         editor.apply();
         LocaleController.resetImperialSystemType();
-    }
-
-    public static void setProxyEnable(boolean enable) {
-        if (enable && currentProxy == null) {
-            enable = false;
-        }
-
-        SharedPreferences preferences = MessagesController.getGlobalMainSettings();
-        preferences.edit().putBoolean("proxy_enabled", enable).apply();
-
-        ProxyInfo finalInfo = currentProxy;
-        boolean finalEnable = enable;
-        UIUtil.runOnIoDispatcher(() -> {
-            if (finalEnable) {
-                ConnectionsManager.setProxySettings(true, finalInfo.address, finalInfo.port, finalInfo.username, finalInfo.password, finalInfo.secret);
-            } else {
-                ConnectionsManager.setProxySettings(false, "", 0, "", "", "");
-            }
-            UIUtil.runOnUIThread(() -> NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.proxySettingsChanged));
-
-        });
-
-    }
-
-    public static void setCurrentProxy(@Nullable ProxyInfo info) {
-        currentProxy = info;
-        MessagesController.getGlobalMainSettings().edit()
-                .putInt("current_proxy", info == null ? 0 : info.hashCode())
-                .apply();
-
-        setProxyEnable(info != null);
-
     }
 
     public static void loadProxyList() {
@@ -1619,23 +1476,6 @@ public class SharedConfig {
         }
     }
 
-    public static class InvalidProxyException extends Exception {
-
-        public InvalidProxyException() {
-        }
-
-        public InvalidProxyException(String messsage) {
-            super(messsage);
-        }
-
-        public InvalidProxyException(Throwable cause) {
-
-            super(cause);
-
-        }
-
-    }
-
     public static void saveProxyList() {
         List<ProxyInfo> infoToSerialize = new ArrayList<>(proxyList);
         Collections.sort(infoToSerialize, (o1, o2) -> {
@@ -1685,7 +1525,6 @@ public class SharedConfig {
     }
 
     public static boolean isProxyEnabled() {
-        loadProxyList();
         return MessagesController.getGlobalMainSettings().getBoolean("proxy_enabled", false) && currentProxy != null;
     }
 
@@ -1711,28 +1550,14 @@ public class SharedConfig {
         saveProxyList();
     }
 
-    public static void deleteAllProxy() {
-
-        setCurrentProxy(null);
-
-        proxyListLoaded = false;
-
-        proxyList.clear();
-
-        saveProxyList();
-
-        loadProxyList();
-
-    }
-
     public static void checkSaveToGalleryFiles() {
         Utilities.globalQueue.postRunnable(() -> {
             try {
-                File telegramPath = EnvUtil.getTelegramPath();
-                File imagePath = new File(telegramPath, "images");
-                imagePath.mkdirs();
-                File videoPath = new File(telegramPath, "videos");
-                videoPath.mkdirs();
+                File telegramPath = new File(Environment.getExternalStorageDirectory(), "Telegram");
+                File imagePath = new File(telegramPath, "Telegram Images");
+                imagePath.mkdir();
+                File videoPath = new File(telegramPath, "Telegram Video");
+                videoPath.mkdir();
 
                 if (!BuildVars.NO_SCOPED_STORAGE) {
                     if (imagePath.isDirectory()) {
@@ -1825,10 +1650,6 @@ public class SharedConfig {
         int androidVersion = Build.VERSION.SDK_INT;
         int cpuCount = ConnectionsManager.CPU_COUNT;
         int memoryClass = ((ActivityManager) ApplicationLoader.applicationContext.getSystemService(Context.ACTIVITY_SERVICE)).getMemoryClass();
-
-        if (NaConfig.INSTANCE.getFakeHighPerformanceDevice().Bool()) {
-            return PERFORMANCE_CLASS_HIGH;
-        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && Build.SOC_MODEL != null) {
             int hash = Build.SOC_MODEL.toUpperCase().hashCode();
@@ -1925,11 +1746,11 @@ public class SharedConfig {
     }
 
     public static boolean canBlurChat() {
-        return getDevicePerformanceClass() >= (Build.VERSION.SDK_INT >= 31 ? PERFORMANCE_CLASS_AVERAGE : PERFORMANCE_CLASS_HIGH) || BuildVars.DEBUG_PRIVATE_VERSION || NekoConfig.forceBlurInChat.Bool();
+        return getDevicePerformanceClass() >= (Build.VERSION.SDK_INT >= 31 ? PERFORMANCE_CLASS_AVERAGE : PERFORMANCE_CLASS_HIGH) || BuildVars.DEBUG_PRIVATE_VERSION;
     }
 
     public static boolean chatBlurEnabled() {
-        return (canBlurChat() && LiteMode.isEnabled(LiteMode.FLAG_CHAT_BLUR)) || NekoConfig.forceBlurInChat.Bool();
+        return canBlurChat() && LiteMode.isEnabled(LiteMode.FLAG_CHAT_BLUR);
     }
 
     public static class BackgroundActivityPrefs {

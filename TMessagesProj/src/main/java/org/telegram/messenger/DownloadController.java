@@ -34,11 +34,6 @@ import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Locale;
-import java.util.concurrent.ConcurrentHashMap;
-
-import cn.hutool.core.util.StrUtil;
-import tw.nekomimi.nekogram.NekoConfig;
-import tw.nekomimi.nekogram.helpers.AyuFilter;
 
 public class DownloadController extends BaseController implements NotificationCenter.NotificationCenterDelegate {
 
@@ -75,7 +70,7 @@ public class DownloadController extends BaseController implements NotificationCe
 
     private HashMap<String, ArrayList<WeakReference<FileDownloadProgressListener>>> loadingFileObservers = new HashMap<>();
     private HashMap<String, ArrayList<MessageObject>> loadingFileMessagesObservers = new HashMap<>();
-    private ConcurrentHashMap<Integer, String> observersByTag = new ConcurrentHashMap<>();
+    private SparseArray<String> observersByTag = new SparseArray<>();
     private boolean listenerInProgress = false;
     private HashMap<String, FileDownloadProgressListener> addLaterArray = new HashMap<>();
     private ArrayList<FileDownloadProgressListener> deleteLaterArray = new ArrayList<>();
@@ -83,11 +78,11 @@ public class DownloadController extends BaseController implements NotificationCe
 
     private boolean loadingAutoDownloadConfig;
 
-    private ConcurrentHashMap<Long, Long> typingTimes = new ConcurrentHashMap<>();
+    private LongSparseArray<Long> typingTimes = new LongSparseArray<>();
 
     public final ArrayList<MessageObject> downloadingFiles = new ArrayList<>();
     public final ArrayList<MessageObject> recentDownloadingFiles = new ArrayList<>();
-    public final ConcurrentHashMap<Integer, MessageObject> unviewedDownloads = new ConcurrentHashMap<>();
+    public final SparseArray<MessageObject> unviewedDownloads = new SparseArray<>();
 
     public static class Preset {
         public int[] mask = new int[4];
@@ -244,16 +239,16 @@ public class DownloadController extends BaseController implements NotificationCe
     public int currentMobilePreset;
     public int currentWifiPreset;
     public int currentRoamingPreset;
-
-    private static SparseArray<DownloadController> Instance = new SparseArray<>();
+    
+    private static volatile DownloadController[] Instance = new DownloadController[UserConfig.MAX_ACCOUNT_COUNT];
 
     public static DownloadController getInstance(int num) {
-        DownloadController localInstance = Instance.get(num);
+        DownloadController localInstance = Instance[num];
         if (localInstance == null) {
             synchronized (DownloadController.class) {
-                localInstance = Instance.get(num);
+                localInstance = Instance[num];
                 if (localInstance == null) {
-                    Instance.put(num, localInstance = new DownloadController(num));
+                    Instance[num] = localInstance = new DownloadController(num);
                 }
             }
         }
@@ -612,17 +607,6 @@ public class DownloadController extends BaseController implements NotificationCe
     }
 
     public boolean canDownloadMedia(MessageObject messageObject) {
-        if (messageObject.getDocument() != null) {
-            String documentName = messageObject.getDocument().file_name;
-            if (StrUtil.isNotBlank(documentName)) {
-                if ((NekoConfig.disableAutoDownloadingWin32Executable.Bool() &&
-                        documentName.toLowerCase().matches(".*\\.(cmd|bat|com|exe|lnk|msi|ps1|reg|vb|vbe|vbs|vbscript)")
-                ) || (NekoConfig.disableAutoDownloadingArchive.Bool() &&
-                        documentName.toLowerCase().matches(".*\\.(apk|zip|7z|tar|gz|zst|iso|xz|lha|lzh)")
-                )
-                ) return false;
-            }
-        }
         if (messageObject.type == MessageObject.TYPE_STORY) {
             if (!SharedConfig.isAutoplayVideo()) return false;
             TLRPC.TL_messageMediaStory mediaStory = (TLRPC.TL_messageMediaStory) MessageObject.getMedia(messageObject);
@@ -878,16 +862,6 @@ public class DownloadController extends BaseController implements NotificationCe
         if (message == null || message.media instanceof TLRPC.TL_messageMediaStory) {
             return canPreloadStories() ? 2 : 0;
         }
-
-        // --- AyuGram hook
-
-        var isFiltered = AyuFilter.isFiltered(new MessageObject(currentAccount, message, false, false), null);
-        if (isFiltered) {
-            return 0;
-        }
-
-        // --- AyuGram hook
-
         int type;
         boolean isVideo;
         if ((isVideo = MessageObject.isVideoMessage(message)) || MessageObject.isGifMessage(message) || MessageObject.isRoundVideoMessage(message) || MessageObject.isGameMessage(message)) {

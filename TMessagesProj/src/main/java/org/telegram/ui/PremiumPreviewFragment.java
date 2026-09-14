@@ -147,8 +147,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 
-import tw.nekomimi.nekogram.NekoConfig;
-
 public class PremiumPreviewFragment extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
     public final static String TRANSACTION_PATTERN = "^(.*?)(?:\\.\\.\\d*|)$";
     private final static boolean IS_PREMIUM_TIERS_UNAVAILABLE = false;
@@ -534,16 +532,16 @@ public class PremiumPreviewFragment extends BaseFragment implements Notification
         strokePaint.setShader(strokeShader);
         strokePaint.setStyle(Paint.Style.STROKE);
         shader = new LinearGradient(
-                0, 0, 0, 100,
-                new int[]{
-                        Theme.getColor(Theme.key_premiumGradient4),
-                        Theme.getColor(Theme.key_premiumGradient3),
-                        Theme.getColor(Theme.key_premiumGradient2),
-                        Theme.getColor(Theme.key_premiumGradient1),
-                        Theme.getColor(Theme.key_premiumGradient0)
-                },
-                new float[]{0f, 0.32f, 0.5f, 0.7f, 1f},
-                Shader.TileMode.CLAMP
+            0, 0, 0, 100,
+            new int[]{
+                Theme.getColor(Theme.key_premiumGradient4),
+                Theme.getColor(Theme.key_premiumGradient3),
+                Theme.getColor(Theme.key_premiumGradient2),
+                Theme.getColor(Theme.key_premiumGradient1),
+                Theme.getColor(Theme.key_premiumGradient0)
+            },
+            new float[]{0f, 0.32f, 0.5f, 0.7f, 1f},
+            Shader.TileMode.CLAMP
         );
         shader.setLocalMatrix(matrix);
         gradientPaint.setShader(shader);
@@ -1223,7 +1221,6 @@ public class PremiumPreviewFragment extends BaseFragment implements Notification
                     }
                     if (fragment != null && fragment.getParentActivity() instanceof LaunchActivity) {
                         try {
-                            if (!NekoConfig.disableVibration.Bool())
                             fragment.getFragmentView().performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                         } catch (Exception ignored) {}
                         ((LaunchActivity) fragment.getParentActivity()).getFireworksOverlay().start();
@@ -1504,14 +1501,14 @@ public class PremiumPreviewFragment extends BaseFragment implements Notification
 
     private class Adapter extends RecyclerListView.SelectionAdapter {
         private final static int TYPE_PADDING = 0,
-                TYPE_FEATURE = 1,
-                TYPE_SHADOW_SECTION = 2,
-                TYPE_BUTTON = 3,
-                TYPE_HELP_US = 4,
-                TYPE_SHADOW = 5,
-                TYPE_BOTTOM_PADDING = 6,
-                TYPE_HEADER = 7,
-                TYPE_CHECK = 8;
+            TYPE_FEATURE = 1,
+            TYPE_SHADOW_SECTION = 2,
+            TYPE_BUTTON = 3,
+            TYPE_HELP_US = 4,
+            TYPE_SHADOW = 5,
+            TYPE_BOTTOM_PADDING = 6,
+            TYPE_HEADER = 7,
+            TYPE_CHECK = 8;
 
         @NonNull
         @Override
@@ -2001,7 +1998,7 @@ public class PremiumPreviewFragment extends BaseFragment implements Notification
             } else if (!BuildVars.useInvoiceBilling() && currentSubscriptionTier != null && !Objects.equals(BillingController.getInstance().getLastPremiumTransaction(),
                     currentSubscriptionTier.subscriptionOption != null ? currentSubscriptionTier.subscriptionOption.transaction != null ?
                             currentSubscriptionTier.subscriptionOption.transaction.replaceAll(TRANSACTION_PATTERN, "$1") : null : null) ||
-                    currentSubscriptionTier != null && currentSubscriptionTier.getMonths() == 12) {
+                                currentSubscriptionTier != null && currentSubscriptionTier.getMonths() == 12) {
                 subscriptionTiers.clear();
                 currentSubscriptionTier = null;
             }

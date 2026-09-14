@@ -436,9 +436,7 @@ public class TelegramMediaSession {
     }
 
     public void publishPlaybackState(PlaybackStateCompat state) {
-        session.setPlaybackState(new PlaybackStateCompat.Builder(state)
-                .setActions(state.getActions() | getAvailableActions())
-                .build());
+        session.setPlaybackState(state);
     }
 
     public long getAvailableActions() {

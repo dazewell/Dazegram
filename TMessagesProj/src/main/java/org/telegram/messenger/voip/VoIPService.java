@@ -166,11 +166,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import kotlin.Unit;
-import tw.nekomimi.nekogram.NekoConfig;
-import tw.nekomimi.nekogram.ui.BottomBuilder;
-import tw.nekomimi.nekogram.utils.VibrateUtil;
-
 @SuppressLint("NewApi")
 public class VoIPService extends Service implements SensorEventListener, AudioManager.OnAudioFocusChangeListener, VoIPController.ConnectionStateListener, NotificationCenter.NotificationCenterDelegate, VoIPServiceState {
 
@@ -387,8 +382,6 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 
 	private HashMap<String, Integer> currentStreamRequestTimestamp = new HashMap<>();
 	public boolean micSwitching;
-
-	private int currentStreamType;
 
 	private Runnable afterSoundRunnable = new Runnable() {
 		@Override
@@ -4026,8 +4019,6 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
 			builder.setShowWhen(false);
 		}
-		builder.setPriority(Notification.PRIORITY_MAX);
-		builder.setShowWhen(false);
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
 			builder.setColor(0xff282e31);
 			builder.setColorized(true);
@@ -4137,11 +4128,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 					} else if (vibrate == 3) {
 						duration *= 2;
 					}
-					AudioAttributes audioAttributes = new AudioAttributes.Builder()
-							.setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-							.setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-							.build();
-					vibrator.vibrate(new long[]{0, duration, 500}, 0, audioAttributes);
+					vibrator.vibrate(new long[]{0, duration, 500}, 0);
 				}
 			}
 		}
@@ -4772,18 +4759,11 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 	}
 
 	private void loadResources() {
-		if (NekoConfig.useMediaStreamInVoip.Bool()) {
-			currentStreamType = AudioManager.STREAM_MUSIC;
-			if (Build.VERSION.SDK_INT >= 21)
-				WebRtcAudioTrack.setAudioTrackUsageAttribute(AudioAttributes.USAGE_MEDIA);
-		} else {
-			currentStreamType = AudioManager.STREAM_VOICE_CALL;
-			if (Build.VERSION.SDK_INT >= 21)
-				WebRtcAudioTrack.setAudioTrackUsageAttribute(AudioAttributes.USAGE_VOICE_COMMUNICATION);
+		if (Build.VERSION.SDK_INT >= 21) {
+			WebRtcAudioTrack.setAudioTrackUsageAttribute(AudioAttributes.USAGE_VOICE_COMMUNICATION);
 		}
-		WebRtcAudioTrack.setAudioStreamType(currentStreamType);
 		Utilities.globalQueue.postRunnable(() -> {
-			soundPool = new SoundPool(1, currentStreamType, 0);
+			soundPool = new SoundPool(1, AudioManager.STREAM_VOICE_CALL, 0);
 			spConnectingId = soundPool.load(this, R.raw.voip_connecting, 1);
 			spRingbackID = soundPool.load(this, R.raw.voip_ringback, 1);
 			spFailedID = soundPool.load(this, R.raw.voip_failed, 1);
@@ -4854,9 +4834,8 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
 		if (!USE_CONNECTION_SERVICE) {
 			Utilities.globalQueue.postRunnable(() -> {
-				if(currentStreamType == AudioManager.STREAM_VOICE_CALL) {
-					try {
-						if (hasRtmpStream()) {
+				try {
+					if (hasRtmpStream()) {
 						am.setMode(AudioManager.MODE_NORMAL);
 						am.setBluetoothScoOn(false);
 						AndroidUtilities.runOnUIThread(() -> {
@@ -4865,10 +4844,11 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 							}
 						});
 						return;
-					}am.setMode(AudioManager.MODE_IN_COMMUNICATION);
-					} catch (Exception e) {
-						FileLog.e(e);
 					}
+
+					am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+				} catch (Exception e) {
+					FileLog.e(e);
 				}
 				AndroidUtilities.runOnUIThread(() -> {
 					int focusResult = am.requestAudioFocus(VoIPService.this, AudioManager.STREAM_VOICE_CALL, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT);
@@ -5274,7 +5254,9 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		}
 		PendingIntent answerPendingIntent = PendingIntent.getBroadcast(this, 0, answerIntent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_CANCEL_CURRENT);
 		builder.setPriority(Notification.PRIORITY_MAX);
-		builder.setShowWhen(false);
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+			builder.setShowWhen(false);
+		}
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
 			builder.setColor(0xff2ca5e0);
 			builder.setVibrate(new long[0]);

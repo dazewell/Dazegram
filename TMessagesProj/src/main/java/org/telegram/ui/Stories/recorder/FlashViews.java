@@ -31,7 +31,7 @@ import android.widget.ViewAnimator;
 import androidx.annotation.Nullable;
 import androidx.core.graphics.ColorUtils;
 
-//import com.google.android.gms.vision.Frame;
+import com.google.android.gms.vision.Frame;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.FileLog;

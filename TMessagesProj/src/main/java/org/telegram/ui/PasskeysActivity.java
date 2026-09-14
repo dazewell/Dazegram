@@ -8,7 +8,6 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
-import android.os.Build;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
@@ -99,15 +98,12 @@ public class PasskeysActivity extends BaseFragment {
             final TL_account.Passkey passkey = passkeys.get(i);
             items.add(PasskeyCell.Factory.of(passkey, this::openMenu));
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            if (passkeys.size() + 1 <= getMessagesController().config.passkeysAccountPasskeysMax.get()) {
-                addPasskeyRow = items.size();
-                items.add(UItem.asButton(-1, R.drawable.menu_passkey_add, getString(R.string.PasskeyAdd)).accent());
-            }
-            items.add(UItem.asButton(-2, R.drawable.menu_settings, getString(R.string.Settings)).accent());
+        if (passkeys.size() + 1 <= getMessagesController().config.passkeysAccountPasskeysMax.get()) {
+            addPasskeyRow = items.size();
+            items.add(UItem.asButton(-1, R.drawable.menu_passkey_add, getString(R.string.PasskeyAdd)).accent());
         }
         items.add(UItem.asShadow(AndroidUtilities.replaceArrows(AndroidUtilities.replaceSingleTag(getString(R.string.PasskeyInfo), () -> {
-            showLearnSheet(getContext(), currentAccount, resourceProvider, Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && passkeys.size() + 1 <= getMessagesController().config.passkeysAccountPasskeysMax.get());
+            showLearnSheet(getContext(), currentAccount, resourceProvider, passkeys.size() + 1 <= getMessagesController().config.passkeysAccountPasskeysMax.get());
         }), true)));
     }
 
@@ -175,8 +171,6 @@ public class PasskeysActivity extends BaseFragment {
                     added(passkey);
                 }
             });
-        } else if (item.id == -2) {
-            PasskeysController.openSettings(getParentActivity());
         } else if (item.object != null) {
             openMenu(view);
         }

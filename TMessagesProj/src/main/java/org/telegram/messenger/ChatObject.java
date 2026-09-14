@@ -41,9 +41,6 @@ import java.util.List;
 
 import me.vkryl.core.BitwiseUtils;
 
-import tw.nekomimi.nekogram.DialogConfig;
-import tw.nekomimi.nekogram.helpers.remote.PeerColorHelper;
-
 public class ChatObject {
 
     public static final int CHAT_TYPE_CHAT = 0;
@@ -2579,19 +2576,12 @@ public class ChatObject {
 
     public static int getColorId(TLRPC.Chat chat) {
         if (chat == null) return 0;
-
-        Integer replace = PeerColorHelper.getInstance().getColorId(chat);
-        if (replace != null) return replace;
-
         if (chat.color instanceof TLRPC.TL_peerColor && (chat.color.flags & 1) != 0)
             return chat.color.color;
         return (int) (chat.id % 7);
     }
 
     public static long getEmojiId(TLRPC.Chat chat) {
-        Long replace = PeerColorHelper.getInstance().getEmojiId(chat);
-        if (replace != null) return replace;
-
         if (chat != null && chat.color instanceof TLRPC.TL_peerColor && (chat.color.flags & 2) != 0)
             return chat.color.background_emoji_id;
         return 0;
@@ -2599,19 +2589,12 @@ public class ChatObject {
 
     public static int getProfileColorId(TLRPC.Chat chat) {
         if (chat == null) return 0;
-
-        Integer replace = PeerColorHelper.getInstance().getProfileColorId(chat);
-        if (replace != null) return replace;
-
         if (chat.profile_color instanceof TLRPC.TL_peerColor && (chat.profile_color.flags & 1) != 0)
             return chat.profile_color.color;
         return -1;
     }
 
     public static long getProfileEmojiId(TLRPC.Chat chat) {
-        Long replace = PeerColorHelper.getInstance().getProfileEmojiId(chat);
-        if (replace != null) return replace;
-
         if (chat != null && chat.emoji_status instanceof TLRPC.TL_emojiStatusCollectible) {
             return ((TLRPC.TL_emojiStatusCollectible) chat.emoji_status).pattern_document_id;
         }
@@ -2645,9 +2628,6 @@ public class ChatObject {
     }
 
     public static boolean areTabsEnabled(TLRPC.Chat chat) {
-        if (chat != null && DialogConfig.hasCustomForumTabsConfig(-chat.id)) {
-            return DialogConfig.isCustomForumTabsEnable(-chat.id);
-        }
         return SharedConfig.forceForumTabs || chat != null && chat.forum_tabs;
     }
 }

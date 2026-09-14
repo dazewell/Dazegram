@@ -11,7 +11,6 @@ import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
-import android.os.Bundle;
 import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.TextUtils;
@@ -52,9 +51,6 @@ import org.telegram.ui.PremiumPreviewFragment;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-
-import tw.nekomimi.nekogram.NekoConfig;
-import xyz.nextalone.nagram.NaConfig;
 
 public class SenderSelectPopup extends ActionBarPopupWindow {
     public final static float SPRING_STIFFNESS = 750f;
@@ -97,7 +93,6 @@ public class SenderSelectPopup extends ActionBarPopupWindow {
         ChatActivity parentFragment,
         MessagesController messagesController,
         boolean isChannel,
-        TLRPC.ChatFull chatFull,
         TLRPC.Peer defPeer,
         TLRPC.TL_channels_sendAsPeers sendAsPeers,
         OnSelectCallback selectCallback,
@@ -155,24 +150,6 @@ public class SenderSelectPopup extends ActionBarPopupWindow {
         FrameLayout recyclerFrameLayout = new FrameLayout(context);
 
         List<TLRPC.TL_sendAsPeer> peers = sendAsPeers.peers;
-
-        if (NaConfig.INSTANCE.getQuickToggleAnonymous().Bool() && chatFull != null) {
-            var chat = messagesController.getChat(chatFull.id);
-            if (chat != null && ChatObject.isMegagroup(chat) && chat.creator) {
-                if (peers.stream().noneMatch(peer -> peer.peer.channel_id == chat.id)) {
-                    peers.add(peers.size() >= 1 ? 1 : 0, new TLRPC.TL_sendAsPeer() {{
-                        peer = new TLRPC.TL_peerChannel() {{ channel_id = chat.id; }};
-                    }});
-                }
-
-                var selfId = UserConfig.getInstance(UserConfig.selectedAccount).getCurrentUser().id;
-                if (peers.stream().noneMatch(peer -> peer.peer.user_id == selfId)) {
-                    peers.add(peers.size() >= 1 ? 1 : 0, new TLRPC.TL_sendAsPeer() {{
-                        peer = new TLRPC.TL_peerUser() {{ user_id = selfId; }};
-                    }});
-                }
-            }
-        }
 
         recyclerView = new RecyclerListView(context);
         layoutManager = new LinearLayoutManager(context);
@@ -257,11 +234,9 @@ public class SenderSelectPopup extends ActionBarPopupWindow {
                 return;
             }
             if (peerObj.premium_required && !UserConfig.getInstance(UserConfig.selectedAccount).isPremium()) {
-                if (!NekoConfig.disableVibration.Bool()) {
-                    try {
-                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
-                    } catch (Exception ignored) {}
-                }
+                try {
+                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+                } catch (Exception ignored) {}
 
                 WindowManager windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
                 if (bulletinContainer == null) {
@@ -339,15 +314,6 @@ public class SenderSelectPopup extends ActionBarPopupWindow {
             clicked = true;
             selectCallback.onPeerSelected(recyclerView, (SenderView) view, peerObj.peer);
         });
-        recyclerView.setOnItemLongClickListener((view, position) -> {
-            TLRPC.TL_sendAsPeer peerObj = peers.get(position);
-            if (peerObj.peer.channel_id != 0) {
-                Bundle args = new Bundle();
-                args.putLong("chat_id", peerObj.peer.channel_id);
-                parentFragment.presentFragment(new ChatActivity(args));
-            }
-            return true;
-        });
         recyclerView.setOverScrollMode(View.OVER_SCROLL_NEVER);
 
         recyclerFrameLayout.addView(recyclerView);
@@ -376,6 +342,7 @@ public class SenderSelectPopup extends ActionBarPopupWindow {
                     try {
                         windowManager.removeViewImmediate(bulletinContainer);
                     } catch (Exception e) {
+
                     }
 
                     if (bulletinHideCallback != null) {

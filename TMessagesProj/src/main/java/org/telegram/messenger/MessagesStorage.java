@@ -27,7 +27,6 @@ import android.util.SparseArray;
 import android.util.SparseIntArray;
 
 import androidx.annotation.UiThread;
-
 import androidx.collection.LongSparseArray;
 
 import org.telegram.PhoneFormat.PhoneFormat;
@@ -77,11 +76,6 @@ import java.util.function.Consumer;
 
 import me.vkryl.core.BitwiseUtils;
 
-import cn.hutool.core.util.NumberUtil;
-import cn.hutool.core.util.StrUtil;
-import tw.nekomimi.nekogram.NekoConfig;
-import tw.nekomimi.nekogram.database.ObjectBoxKt;
-
 public class MessagesStorage extends BaseController {
 
     private DispatchQueue storageQueue;
@@ -116,8 +110,13 @@ public class MessagesStorage extends BaseController {
 
     private final CountDownLatch openSync = new CountDownLatch(1);
 
-    private static SparseArray<MessagesStorage> Instance = new SparseArray();
-    private static final Object lockObject = new Object();
+    private static volatile MessagesStorage[] Instance = new MessagesStorage[UserConfig.MAX_ACCOUNT_COUNT];
+    private static final Object[] lockObjects = new Object[UserConfig.MAX_ACCOUNT_COUNT];
+    static {
+        for (int i = 0; i < UserConfig.MAX_ACCOUNT_COUNT; i++) {
+            lockObjects[i] = new Object();
+        }
+    }
 
     public final static int LAST_DB_VERSION = 177;
     private boolean databaseMigrationInProgress;
@@ -132,12 +131,12 @@ public class MessagesStorage extends BaseController {
 
 
     public static MessagesStorage getInstance(int num) {
-        MessagesStorage localInstance = Instance.get(num);
+        MessagesStorage localInstance = Instance[num];
         if (localInstance == null) {
-            synchronized (lockObject) {
-                localInstance = Instance.get(num);
+            synchronized (lockObjects[num]) {
+                localInstance = Instance[num];
                 if (localInstance == null) {
-                    Instance.put(num, localInstance = new MessagesStorage(num));
+                    Instance[num] = localInstance = new MessagesStorage(num);
                 }
             }
         }
@@ -469,7 +468,7 @@ public class MessagesStorage extends BaseController {
             "user_contacts_v7",
             "user_phones_v7",
             "dialogs",
-            "dialog_filter_neko",
+            "dialog_filter",
             "dialog_filter_ep",
             "dialog_filter_pin_v2",
             "randoms_v2",
@@ -584,7 +583,7 @@ public class MessagesStorage extends BaseController {
         database.executeFast("CREATE INDEX IF NOT EXISTS folder_id_idx_4_dialogs ON dialogs(folder_id);").stepThis().dispose();
         database.executeFast("CREATE INDEX IF NOT EXISTS flags_idx_4_dialogs ON dialogs(flags);").stepThis().dispose();
 
-        database.executeFast("CREATE TABLE dialog_filter_neko(id INTEGER PRIMARY KEY, ord INTEGER, unread_count INTEGER, flags INTEGER, title TEXT, emoticon TEXT, color INTEGER DEFAULT -1, entities BLOB, noanimate INTEGER)").stepThis().dispose();
+        database.executeFast("CREATE TABLE dialog_filter(id INTEGER PRIMARY KEY, ord INTEGER, unread_count INTEGER, flags INTEGER, title TEXT, color INTEGER DEFAULT -1, entities BLOB, noanimate INTEGER)").stepThis().dispose();
         database.executeFast("CREATE TABLE dialog_filter_ep(id INTEGER, peer INTEGER, PRIMARY KEY (id, peer))").stepThis().dispose();
         database.executeFast("CREATE TABLE dialog_filter_pin_v2(id INTEGER, peer INTEGER, pin INTEGER, PRIMARY KEY (id, peer))").stepThis().dispose();
 
@@ -1419,9 +1418,6 @@ public class MessagesStorage extends BaseController {
             SQLitePreparedStatement state5 = null;
             SQLitePreparedStatement state6 = null;
             try {
-                // NekoX cleardatabase
-                ObjectBoxKt.clearAll();
-
                 ArrayList<Long> dialogsToCleanup = new ArrayList<>();
 
                 database.executeFast("DELETE FROM ephemeral_messages").stepThis().dispose();
@@ -2575,7 +2571,7 @@ public class MessagesStorage extends BaseController {
 
                 usersToLoad.add(getUserConfig().getClientUserId());
 
-                filtersCursor = database.queryFinalized("SELECT id, ord, unread_count, flags, title, emoticon, color, entities, noanimate FROM dialog_filter_neko WHERE 1");
+                filtersCursor = database.queryFinalized("SELECT id, ord, unread_count, flags, title, color, entities, noanimate FROM dialog_filter WHERE 1");
 
                 boolean updateCounters = false;
                 boolean hasDefaultFilter = false;
@@ -2586,15 +2582,14 @@ public class MessagesStorage extends BaseController {
                     filter.pendingUnreadCount = filter.unreadCount = -1;//filtersCursor.intValue(2);
                     filter.flags = filtersCursor.intValue(3);
                     filter.name = filtersCursor.stringValue(4);
-                    filter.emoticon = filtersCursor.stringValue(5);
-                    filter.color = filtersCursor.intValue(6);
+                    filter.color = filtersCursor.intValue(5);
                     filter.entities = new ArrayList<>();
-                    NativeByteBuffer buff = filtersCursor.byteBufferValue(7);
+                    NativeByteBuffer buff = filtersCursor.byteBufferValue(6);
                     if (buff != null) {
                         filter.entities = Vector.deserialize(buff, TLRPC.MessageEntity::TLdeserialize, false);
                         buff.reuse();
                     }
-                    filter.title_noanimate = filtersCursor.intValue(8) == 1;
+                    filter.title_noanimate = filtersCursor.intValue(7) == 1;
                     dialogFilters.add(filter);
                     dialogFiltersMap.put(filter.id, filter);
                     filtersById.put(filter.id, filter);
@@ -2664,19 +2659,18 @@ public class MessagesStorage extends BaseController {
                     dialogFiltersMap.put(filter.id, filter);
                     filtersById.put(filter.id, filter);
 
-                    state = database.executeFast("REPLACE INTO dialog_filter_neko VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    state = database.executeFast("REPLACE INTO dialog_filter VALUES(?, ?, ?, ?, ?, ?, ?, ?)");
                     state.bindInteger(1, filter.id);
                     state.bindInteger(2, filter.order);
                     state.bindInteger(3, filter.unreadCount);
                     state.bindInteger(4, filter.flags);
                     state.bindString(5, filter.name);
-                    state.bindNull(6);
-                    state.bindInteger(7, filter.color);
+                    state.bindInteger(6, filter.color);
                     final Vector<TLRPC.MessageEntity> entitiesVector = new Vector<>(TLRPC.MessageEntity::TLdeserialize);
                     final NativeByteBuffer entitiesBuffer = new NativeByteBuffer(entitiesVector.getObjectSize());
                     entitiesVector.serializeToStream(entitiesBuffer);
-                    state.bindByteBuffer(8, entitiesBuffer);
-                    state.bindInteger(9, filter.title_noanimate ? 1 : 0);
+                    state.bindByteBuffer(7, entitiesBuffer);
+                    state.bindInteger(8, filter.title_noanimate ? 1 : 0);
                     state.stepThis().dispose();
                     state = null;
                     entitiesBuffer.reuse();
@@ -2944,9 +2938,6 @@ public class MessagesStorage extends BaseController {
                         continue;
                     }
                     flags = filter.flags;
-                    if (NekoConfig.ignoreMutedCount.Bool() && (flags & MessagesController.DIALOG_FILTER_FLAG_EXCLUDE_MUTED) == 0) {
-                        flags |= MessagesController.DIALOG_FILTER_FLAG_EXCLUDE_MUTED;
-                    }
                 } else {
                     filter = null;
                     flags = MessagesController.DIALOG_FILTER_FLAG_ALL_CHATS;
@@ -3187,24 +3178,19 @@ public class MessagesStorage extends BaseController {
                 dialogFiltersMap.put(filter.id, filter);
             }
 
-            state = database.executeFast("REPLACE INTO dialog_filter_neko VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            state = database.executeFast("REPLACE INTO dialog_filter VALUES(?, ?, ?, ?, ?, ?, ?, ?)");
             state.bindInteger(1, filter.id);
             state.bindInteger(2, filter.order);
             state.bindInteger(3, filter.unreadCount);
             state.bindInteger(4, filter.flags);
             state.bindString(5, filter.id == 0 ? "ALL_CHATS" : filter.name);
-            if (filter.emoticon != null) {
-                state.bindString(6, filter.emoticon);
-            } else {
-                state.bindNull(6);
-            }
-            state.bindInteger(7, filter.color);
+            state.bindInteger(6, filter.color);
             final Vector<TLRPC.MessageEntity> entitiesVector = new Vector<>(TLRPC.MessageEntity::TLdeserialize);
             entitiesVector.objects.addAll(filter.entities);
             final NativeByteBuffer entitiesBuffer = new NativeByteBuffer(entitiesVector.getObjectSize());
             entitiesVector.serializeToStream(entitiesBuffer);
-            state.bindByteBuffer(8, entitiesBuffer);
-            state.bindInteger(9, filter.title_noanimate ? 1 : 0);
+            state.bindByteBuffer(7, entitiesBuffer);
+            state.bindInteger(8, filter.title_noanimate ? 1 : 0);
             state.step();
             state.dispose();
             entitiesBuffer.reuse();
@@ -3350,10 +3336,6 @@ public class MessagesStorage extends BaseController {
                             changed = true;
                             filter.title_noanimate= newFilter.title_noanimate;
                         }
-                        if (!TextUtils.equals(filter.emoticon, newFilter.emoticon)) {
-                            changed = true;
-                            filter.emoticon = newFilter.emoticon;
-                        }
                         final int color = (newFilter.flags & 134217728) != 0 ? newFilter.color : -1;
                         if (filter.color != color) {
                             filter.color = color;
@@ -3493,7 +3475,6 @@ public class MessagesStorage extends BaseController {
                         filter.id = newFilter.id;
                         filter.flags = newFlags;
                         filter.name = newFilter.title.text;
-                        filter.emoticon = newFilter.emoticon;
                         filter.entities = newFilter.title.entities;
                         filter.title_noanimate = newFilter.title_noanimate;
                         filter.color = (newFilter.flags & 134217728) != 0 ? newFilter.color : -1;
@@ -3649,7 +3630,7 @@ public class MessagesStorage extends BaseController {
         try {
             dialogFilters.remove(filter);
             dialogFiltersMap.remove(filter.id);
-            database.executeFast("DELETE FROM dialog_filter_neko WHERE id = " + filter.id).stepThis().dispose();
+            database.executeFast("DELETE FROM dialog_filter WHERE id = " + filter.id).stepThis().dispose();
             database.executeFast("DELETE FROM dialog_filter_ep WHERE id = " + filter.id).stepThis().dispose();
             database.executeFast("DELETE FROM dialog_filter_pin_v2 WHERE id = " + filter.id).stepThis().dispose();
         } catch (Exception e) {
@@ -3680,7 +3661,7 @@ public class MessagesStorage extends BaseController {
     public void saveDialogFiltersOrderInternal() {
         SQLitePreparedStatement state = null;
         try {
-            state = database.executeFast("UPDATE dialog_filter_neko SET ord = ?, flags = ? WHERE id = ?");
+            state = database.executeFast("UPDATE dialog_filter SET ord = ?, flags = ? WHERE id = ?");
             for (int a = 0, N = dialogFilters.size(); a < N; a++) {
                 MessagesController.DialogFilter filter = dialogFilters.get(a);
                 state.requery();
@@ -6284,9 +6265,6 @@ public class MessagesStorage extends BaseController {
                 }
                 unreadCount = filter.pendingUnreadCount;
                 flags = filter.flags;
-                if (NekoConfig.ignoreMutedCount.Bool() && (flags & MessagesController.DIALOG_FILTER_FLAG_EXCLUDE_MUTED) == 0) {
-                    flags |= MessagesController.DIALOG_FILTER_FLAG_EXCLUDE_MUTED;
-                }
             } else {
                 filter = null;
                 flags = MessagesController.DIALOG_FILTER_FLAG_ALL_CHATS;
@@ -8047,7 +8025,7 @@ public class MessagesStorage extends BaseController {
                                 user.status.expires = cursor.intValue(1);
                             }
                             loadedUsers.add(user);
-                            //participant.date = cursor.intValue(3);
+                            participant.date = cursor.intValue(3);
                             TLRPC.TL_chatChannelParticipant chatChannelParticipant = new TLRPC.TL_chatChannelParticipant();
                             chatChannelParticipant.user_id = MessageObject.getPeerId(participant.peer);
                             chatChannelParticipant.date = participant.date;
@@ -18310,7 +18288,7 @@ public class MessagesStorage extends BaseController {
             }
 
             if (!usersToLoad.isEmpty()) {
-                cursor = getDatabase().queryFinalized(String.format(Locale.US, "SELECT data, status, name, uid FROM users WHERE uid IN(%s)", TextUtils.join(",", usersToLoad)));
+                cursor = getDatabase().queryFinalized(String.format(Locale.US, "SELECT data, status, name FROM users WHERE uid IN(%s)", TextUtils.join(",", usersToLoad)));
                 while (cursor.next()) {
                     String name = cursor.stringValue(2);
                     String tName = LocaleController.getInstance().getTranslitString(name);
@@ -18323,14 +18301,11 @@ public class MessagesStorage extends BaseController {
                         username = name.substring(usernamePos + 3);
                     }
                     int found = 0;
-                    int uid = cursor.intValue(3);
                     for (String q : search) {
                         if (name.startsWith(q) || name.contains(" " + q) || tName != null && (tName.startsWith(q) || tName.contains(" " + q))) {
                             found = 1;
                         } else if (username != null && username.startsWith(q)) {
                             found = 2;
-                        } else if (NumberUtil.isInteger(q) && (NumberUtil.parseInt(q) == uid || q.length() > 3 && StrUtil.utf8Str(uid).contains(q))) {
-                            found = 3;
                         }
                         if (found != 0) {
                             NativeByteBuffer data = cursor.byteBufferValue(0);
@@ -18346,10 +18321,8 @@ public class MessagesStorage extends BaseController {
                                 }
                                 if (found == 1) {
                                     dialogSearchResult.name = AndroidUtilities.generateSearchName(user.first_name, user.last_name, q);
-                                } else if (found == 2) {
-                                    dialogSearchResult.name = AndroidUtilities.generateSearchName("@" + UserObject.getPublicUsername(user), null, "@" + q);
                                 } else {
-                                    dialogSearchResult.name = AndroidUtilities.generateSearchName("ID: " + uid, null, q);
+                                    dialogSearchResult.name = AndroidUtilities.generateSearchName("@" + UserObject.getPublicUsername(user), null, "@" + q);
                                 }
                                 dialogSearchResult.object = user;
                                 resultCount++;
@@ -18363,22 +18336,15 @@ public class MessagesStorage extends BaseController {
             }
 
             if (!chatsToLoad.isEmpty()) {
-                cursor = getDatabase().queryFinalized(String.format(Locale.US, "SELECT data, name, uid FROM chats WHERE uid IN(%s)", TextUtils.join(",", chatsToLoad)));
+                cursor = getDatabase().queryFinalized(String.format(Locale.US, "SELECT data, name FROM chats WHERE uid IN(%s)", TextUtils.join(",", chatsToLoad)));
                 while (cursor.next()) {
                     String name = cursor.stringValue(1);
                     String tName = LocaleController.getInstance().getTranslitString(name);
                     if (name.equals(tName)) {
                         tName = null;
                     }
-                    int chatId = cursor.intValue(2);
                     for (String q : search) {
-                        int found = 0;
                         if (name.startsWith(q) || name.contains(" " + q) || tName != null && (tName.startsWith(q) || tName.contains(" " + q))) {
-                            found = 1;
-                        } else if (NumberUtil.isInteger(q) && (NumberUtil.parseInt(q) == chatId || q.length() > 3 && StrUtil.utf8Str(chatId).contains(q))) {
-                            found = 2;
-                        }
-                        if (found > 0) {
                             NativeByteBuffer data = cursor.byteBufferValue(0);
                             if (data != null) {
                                 TLRPC.Chat chat = TLRPC.Chat.TLdeserialize(data, data.readInt32(false), false);
@@ -18413,11 +18379,7 @@ public class MessagesStorage extends BaseController {
                                 if (!(chat == null || chat.deactivated || ChatObject.isChannel(chat) && ChatObject.isNotInChat(chat))) {
                                     long dialog_id = -chat.id;
                                     DialogsSearchAdapter.DialogSearchResult dialogSearchResult = dialogsResult.get(dialog_id);
-                                    if (found == 1) {
-                                        dialogSearchResult.name = AndroidUtilities.generateSearchName(chat.monoforum ? ForumUtilities.getMonoForumTitle(currentAccount, chat):chat.title, null, q);
-                                    } else {
-                                        dialogSearchResult.name = AndroidUtilities.generateSearchName("ID: " + chatId, null, q);
-                                    }
+                                    dialogSearchResult.name = AndroidUtilities.generateSearchName(chat.monoforum ? ForumUtilities.getMonoForumTitle(currentAccount, chat):chat.title, null, q);
                                     dialogSearchResult.object = chat;
                                     resultCount++;
                                 }
@@ -18444,8 +18406,6 @@ public class MessagesStorage extends BaseController {
                     if (usernamePos != -1) {
                         username = name.substring(usernamePos + 2);
                     }
-
-                    long user_id = cursor.longValue(2);
                     int found = 0;
                     for (int a = 0; a < search.length; a++) {
                         String q = search[a];
@@ -18453,8 +18413,6 @@ public class MessagesStorage extends BaseController {
                             found = 1;
                         } else if (username != null && username.startsWith(q)) {
                             found = 2;
-                        } else if (NumberUtil.isInteger(q) && (NumberUtil.parseInt(q) == user_id || q.length() > 3 && StrUtil.utf8Str(user_id).contains(q))) {
-                            found = 3;
                         }
 
                         if (found != 0) {
@@ -18471,9 +18429,8 @@ public class MessagesStorage extends BaseController {
                                 data.reuse();
                             }
                             if (chat != null && user != null) {
-                                chat.user_id = user_id; // Merge From 8.0.1
                                 DialogsSearchAdapter.DialogSearchResult dialogSearchResult = dialogsResult.get(DialogObject.makeEncryptedDialogId(chat.id));
-//                                chat.user_id = cursor.longValue(2);
+                                chat.user_id = cursor.longValue(2);
                                 chat.a_or_b = cursor.byteArrayValue(3);
                                 chat.auth_key = cursor.byteArrayValue(4);
                                 chat.ttl = cursor.intValue(5);
@@ -18501,11 +18458,8 @@ public class MessagesStorage extends BaseController {
                                 if (found == 1) {
                                     dialogSearchResult.name = new SpannableStringBuilder(ContactsController.formatName(user.first_name, user.last_name));
                                     ((SpannableStringBuilder) dialogSearchResult.name).setSpan(new ForegroundColorSpan(Theme.getColor(Theme.key_chats_secretName)), 0, dialogSearchResult.name.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                                } else if (found == 2) {
-                                    dialogSearchResult.name = AndroidUtilities.generateSearchName("@" + user.username, null, "@" + q);
                                 } else {
-//                                    dialogSearchResult.name = AndroidUtilities.generateSearchName("@" + UserObject.getPublicUsername(user), null, "@" + q);
-                                    dialogSearchResult.name = AndroidUtilities.generateSearchName("ID: " + user_id, null, q);
+                                    dialogSearchResult.name = AndroidUtilities.generateSearchName("@" + UserObject.getPublicUsername(user), null, "@" + q);
                                 }
                                 dialogSearchResult.object = chat;
                                 encUsers.add(user);
@@ -18565,8 +18519,6 @@ public class MessagesStorage extends BaseController {
                             found = 1;
                         } else if (username != null && username.startsWith(q)) {
                             found = 2;
-                        } else if (NumberUtil.isInteger(q) && (NumberUtil.parseInt(q) == uid || q.length() > 3 && StrUtil.utf8Str(uid).contains(q))) {
-                            found = 3;
                         }
                         if (found != 0) {
                             NativeByteBuffer data = cursor.byteBufferValue(0);
@@ -18578,10 +18530,8 @@ public class MessagesStorage extends BaseController {
                                 }
                                 if (found == 1) {
                                     resultArrayNames.add(AndroidUtilities.generateSearchName(user.first_name, user.last_name, q));
-                                } else if (found == 2) {
-                                    resultArrayNames.add(AndroidUtilities.generateSearchName("@" + UserObject.getPublicUsername(user), null, "@" + q));
                                 } else {
-                                    resultArrayNames.add(AndroidUtilities.generateSearchName("ID: " + uid, null, q));
+                                    resultArrayNames.add(AndroidUtilities.generateSearchName("@" + UserObject.getPublicUsername(user), null, "@" + q));
                                 }
                                 resultArray.add(user);
                             }

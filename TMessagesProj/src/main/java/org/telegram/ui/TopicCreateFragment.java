@@ -192,7 +192,7 @@ public class TopicCreateFragment extends BaseFragment {
                                     forumTopic.title = topicName;
                                     forumTopic.top_message = message.id;
                                     forumTopic.topMessage = message;
-                                    forumTopic.from_id = message.from_id;
+                                    forumTopic.from_id = getMessagesController().getPeer(getUserConfig().clientUserId);
                                     forumTopic.notify_settings = new TLRPC.TL_peerNotifySettings();
                                     forumTopic.icon_color = iconColor;
 

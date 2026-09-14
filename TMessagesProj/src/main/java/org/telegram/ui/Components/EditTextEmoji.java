@@ -136,7 +136,7 @@ public class EditTextEmoji extends FrameLayout implements NotificationCenter.Not
     public EditTextEmoji(Context context, SizeNotifierFrameLayout parent, BaseFragment fragment, int style, boolean allowAnimatedEmoji) {
         this(context, parent, fragment, style, allowAnimatedEmoji, null);
     }
-
+    
     public EditTextEmoji(Context context, SizeNotifierFrameLayout parent, BaseFragment fragment, int style, boolean allowAnimatedEmoji, Theme.ResourcesProvider resourcesProvider) {
         super(context);
         this.allowAnimatedEmoji = allowAnimatedEmoji;
@@ -238,17 +238,6 @@ public class EditTextEmoji extends FrameLayout implements NotificationCenter.Not
                 return EditTextEmoji.this.emojiCacheType();
             }
         };
-        editText.setDelegate(new EditTextCaption.EditTextCaptionDelegate() {
-            @Override
-            public void onSpansChanged() {
-                editText.invalidateEffects();
-            }
-
-            @Override
-            public long getCurrentChat() {
-                return 0;
-            }
-        });
         editText.setImeOptions(EditorInfo.IME_FLAG_NO_EXTRACT_UI);
         editText.setInputType(editText.getInputType() | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         editText.setFocusable(editText.isEnabled());
@@ -534,7 +523,7 @@ public class EditTextEmoji extends FrameLayout implements NotificationCenter.Not
             editText.setHintTextColor(getThemedColor(Theme.key_dialogTextHint));
             editText.setTextColor(getThemedColor(Theme.key_dialogTextBlack));
         }
-        emojiIconDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chats_menuItemText), PorterDuff.Mode.SRC_IN));
+        emojiIconDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chat_messagePanelIcons), PorterDuff.Mode.MULTIPLY));
         if (emojiView != null) {
             emojiView.updateColors();
         }
@@ -953,7 +942,7 @@ public class EditTextEmoji extends FrameLayout implements NotificationCenter.Not
             @Override
             public void onClearEmojiRecent() {
                 AlertDialog.Builder builder = new AlertDialog.Builder(getContext(), resourcesProvider);
-                builder.setTitle(LocaleController.getString(R.string.NekoX));
+                builder.setTitle(LocaleController.getString(R.string.ClearRecentEmojiTitle));
                 builder.setMessage(LocaleController.getString(R.string.ClearRecentEmojiText));
                 builder.setPositiveButton(LocaleController.getString(R.string.ClearButton), (dialogInterface, i) -> emojiView.clearRecentEmoji());
                 builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
@@ -994,10 +983,10 @@ public class EditTextEmoji extends FrameLayout implements NotificationCenter.Not
         if (height > dp(50) && (keyboardVisible || currentStyle == STYLE_STORY || currentStyle == STYLE_PHOTOVIEWER) && !AndroidUtilities.isInMultiwindow && !AndroidUtilities.isTablet()) {
             if (isWidthGreater) {
                 keyboardHeightLand = height;
-                MessagesController.getGlobalEmojiSettings().edit().putInt("kbd_height_land3", keyboardHeightLand).apply();
+                MessagesController.getGlobalEmojiSettings().edit().putInt("kbd_height_land3", keyboardHeightLand).commit();
             } else {
                 keyboardHeight = height;
-                MessagesController.getGlobalEmojiSettings().edit().putInt("kbd_height", keyboardHeight).apply();
+                MessagesController.getGlobalEmojiSettings().edit().putInt("kbd_height", keyboardHeight).commit();
             }
         }
 

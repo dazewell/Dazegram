@@ -42,8 +42,6 @@ import org.telegram.ui.ActionBar.Theme;
 
 import java.util.ArrayList;
 
-import xyz.nextalone.nagram.NaConfig;
-
 public class AvatarDrawable extends Drawable {
 
     private TextPaint namePaint;
@@ -57,7 +55,6 @@ public class AvatarDrawable extends Drawable {
     private float textHeight;
     private float textLeft;
     private boolean isProfile;
-    private boolean smallSize;
     private boolean drawDeleted;
     private int avatarType;
     private float archivedAvatarProgress;
@@ -374,10 +371,6 @@ public class AvatarDrawable extends Drawable {
         needApplyColorAccent = false;
     }
 
-    public void setSmallSize(boolean value) {
-        smallSize = value;
-    }
-
     public void setTextSize(int size) {
         namePaint.setTextSize(size);
     }
@@ -598,8 +591,6 @@ public class AvatarDrawable extends Drawable {
             if (roundRadius > 0) {
                 AndroidUtilities.rectTmp.set(0, 0, size, size);
                 canvas.drawRoundRect(AndroidUtilities.rectTmp, roundRadius, roundRadius, backgroundPaint);
-            } else if (NaConfig.INSTANCE.getShowSquareAvatar().Bool()) {
-                canvas.drawRect(0f, 0f, size, size, backgroundPaint);
             } else {
                 canvas.drawCircle(size / 2.0f, size / 2.0f, size / 2.0f, backgroundPaint);
             }
@@ -691,12 +682,8 @@ public class AvatarDrawable extends Drawable {
                 drawable = Theme.avatarDrawables[9];
             }
             if (drawable != null) {
-                int w = (int) (drawable.getIntrinsicWidth() * scaleSize);
-                int h = (int) (drawable.getIntrinsicHeight() * scaleSize);
-                if (smallSize) {
-                    w *= 0.8f;
-                    h *= 0.8f;
-                }
+                final int w = (int) (drawable.getIntrinsicWidth() * scaleSize);
+                final int h = (int) (drawable.getIntrinsicHeight() * scaleSize);
                 final int x = (size - w) / 2 + iconTx;
                 final int y = (size - h) / 2 + iconTy;
                 drawable.setBounds(x, y, x + w, y + h);

@@ -188,8 +188,6 @@ public class NotificationCenter {
     public static final int recordResumed = totalEvents++;
     public static final int screenshotTook = totalEvents++;
     public static final int albumsDidLoad = totalEvents++;
-
-    public static final int beforeAudioDidSent = totalEvents++;
     public static final int audioDidSent = totalEvents++;
     public static final int audioRecordTooShort = totalEvents++;
     public static final int audioRouteChanged = totalEvents++;
@@ -380,12 +378,6 @@ public class NotificationCenter {
 
     public static boolean alreadyLogged;
 
-    // custom
-
-    public static final int updateUserStatus = totalEvents++;
-    public static final int updateLoginToken = totalEvents++;
-
-
     private final SparseArray<ArrayList<NotificationCenterDelegate>> observers = new SparseArray<>();
     private final SparseArray<ArrayList<NotificationCenterDelegate>> removeAfterBroadcast = new SparseArray<>();
     private final SparseArray<ArrayList<NotificationCenterDelegate>> addAfterBroadcast = new SparseArray<>();
@@ -423,18 +415,17 @@ public class NotificationCenter {
 
     private int currentAccount;
     private int currentHeavyOperationFlags;
+    private static volatile NotificationCenter[] Instance = new NotificationCenter[UserConfig.MAX_ACCOUNT_COUNT];
     private static volatile NotificationCenter globalInstance;
-    private static SparseArray<NotificationCenter> Instance = new SparseArray<>();
 
     @UiThread
     public static NotificationCenter getInstance(int num) {
-        NotificationCenter localInstance = Instance.get(num);
+        NotificationCenter localInstance = Instance[num];
         if (localInstance == null) {
             synchronized (NotificationCenter.class) {
-                localInstance = Instance.get(num);
+                localInstance = Instance[num];
                 if (localInstance == null) {
-                    Instance.put(num, localInstance = new NotificationCenter(num));
-
+                    Instance[num] = localInstance = new NotificationCenter(num);
                 }
             }
         }

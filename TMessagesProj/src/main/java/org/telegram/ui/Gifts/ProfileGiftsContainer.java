@@ -125,8 +125,6 @@ import java.util.Objects;
 
 import me.vkryl.android.animator.BoolAnimator;
 
-import xyz.nextalone.nagram.NaConfig;
-
 public class ProfileGiftsContainer extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {
 
     private final BaseFragment fragment;
@@ -1695,9 +1693,6 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
             if (list != null && list.totalCount > 0) return list.totalCount;
         } else {
             if (page.list != null && page.list.totalCount > 0) return page.list.totalCount;
-        }
-        if (NaConfig.INSTANCE.getDisableGifts().Bool()) {
-            return 0;
         }
         if (dialogId >= 0) {
             final TLRPC.UserFull userFull = MessagesController.getInstance(currentAccount).getUserFull(dialogId);

@@ -48,9 +48,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
-import tw.nekomimi.nekogram.NekoConfig;
-import xyz.nextalone.nagram.NaConfig;
-
 public class EmojiTabsStrip extends ScrollableHorizontalScrollView {
 
     private int recentDrawableId = R.drawable.msg_emoji_recent;
@@ -524,10 +521,6 @@ public class EmojiTabsStrip extends ScrollableHorizontalScrollView {
         if (emojiPacks == null) {
             return;
         }
-        final boolean isPremium = UserConfig.getInstance(UserConfig.selectedAccount).isPremium() || allowEmojisForNonPremium();
-        if (NaConfig.INSTANCE.getDisableFeatuerdEmojis().Bool() && !isPremium) {
-            return;
-        }
         int childCount = contentView.getChildCount() - packsIndexStart - (settingsTab != null ? 1 : 0);
         boolean first = childCount == 0 && emojiPacks.size() > 0 && appearCount != emojiPacks.size() && wasDrawn;
         boolean doAppearAnimation = false; // emojipackTabs.size() == 0 && emojiPacks.size() > 0 && appearCount != emojiPacks.size() && wasDrawn;
@@ -537,6 +530,7 @@ public class EmojiTabsStrip extends ScrollableHorizontalScrollView {
         }
         appearCount = emojiPacks.size();
         final boolean includeFeatured = doIncludeFeatured();
+        final boolean isPremium = UserConfig.getInstance(UserConfig.selectedAccount).isPremium() || allowEmojisForNonPremium();
 
         ArrayList<EmojiTabButton> attachedEmojiPacks = new ArrayList<>();
 

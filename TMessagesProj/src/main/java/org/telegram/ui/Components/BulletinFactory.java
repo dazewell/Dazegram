@@ -19,8 +19,6 @@ import android.text.style.ClickableSpan;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
-import android.view.ViewGroup;
-import android.os.Build;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
@@ -61,8 +59,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import tw.nekomimi.nekogram.NekoConfig;
-
 public final class BulletinFactory {
 
     public static BulletinFactory of(BaseFragment fragment) {
@@ -93,7 +89,7 @@ public final class BulletinFactory {
     }
 
     public Bulletin makeForError(TLRPC.TL_error error) {
-        if (!LaunchActivity.isActive()) return new Bulletin.EmptyBulletin();
+        if (!LaunchActivity.isActive) return new Bulletin.EmptyBulletin();
         if (error == null) {
             return createErrorBulletin(LocaleController.formatString(R.string.UnknownError));
         } else {
@@ -105,7 +101,7 @@ public final class BulletinFactory {
         showForError(error, false);
     }
     public void showForError(TLRPC.TL_error error, boolean top) {
-        if (!LaunchActivity.isActive()) return;
+        if (!LaunchActivity.isActive) return;
         if (error == null) {
             Bulletin b = createErrorBulletin(LocaleController.formatString(R.string.UnknownError));
             b.hideAfterBottomSheet = false;
@@ -120,7 +116,7 @@ public final class BulletinFactory {
         showForError(errorCode, false);
     }
     public void showForError(String errorCode, boolean top) {
-        if (!LaunchActivity.isActive()) return;
+        if (!LaunchActivity.isActive) return;
         if (TextUtils.isEmpty(errorCode)) {
             Bulletin b = createErrorBulletin(LocaleController.formatString(R.string.UnknownError));
             b.hideAfterBottomSheet = false;
@@ -133,7 +129,7 @@ public final class BulletinFactory {
     }
 
     public static void showError(TLRPC.TL_error error) {
-        if (!LaunchActivity.isActive()) return;
+        if (!LaunchActivity.isActive) return;
         if (error != null && error.code == 406) return;
         global().createErrorBulletin(LocaleController.formatString(R.string.UnknownErrorCode, error.text)).show();
     }
@@ -213,8 +209,8 @@ public final class BulletinFactory {
         }
     }
 
-    private BaseFragment fragment;
-    private FrameLayout containerLayout;
+    private final BaseFragment fragment;
+    private final FrameLayout containerLayout;
     private final Theme.ResourcesProvider resourcesProvider;
 
     private BulletinFactory(BaseFragment fragment) {
@@ -1305,9 +1301,7 @@ public final class BulletinFactory {
         layout.textView.setText(text);
         if (hapticDelay > 0) {
             layout.postDelayed(() -> {
-                if (!NekoConfig.disableVibration.Bool()) {
-                    layout.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
-                }
+                layout.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
             }, hapticDelay);
         }
         return Bulletin.make(containerLayout, layout, Bulletin.DURATION_SHORT);
@@ -1452,9 +1446,7 @@ public final class BulletinFactory {
 
         if (hapticDelay > 0) {
             layout.postDelayed(() -> {
-                if (!NekoConfig.disableVibration.Bool()) {
-                    layout.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
-                }
+                layout.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
             }, hapticDelay);
         }
 

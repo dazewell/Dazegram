@@ -16,9 +16,6 @@ import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.DialogInterface;
-import android.content.Intent;
-import android.content.SharedPreferences;
-import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.graphics.Canvas;
 import android.graphics.Paint;
@@ -29,15 +26,6 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.StatFs;
-import android.text.SpannableString;
-import android.text.SpannableStringBuilder;
-import android.text.Spanned;
-import android.os.SystemClock;
-import android.text.TextUtils;
-import android.text.style.RelativeSizeSpan;
-import android.util.LongSparseArray;
-import android.util.SparseArray;
-import android.util.TypedValue;
 import android.text.SpannableString;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
@@ -52,14 +40,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.FrameLayout;
-import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import androidx.core.widget.NestedScrollView;
-
-import androidx.annotation.NonNull;
-import androidx.core.graphics.ColorUtils;
-import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.core.graphics.ColorUtils;
@@ -74,17 +56,10 @@ import org.telegram.messenger.BotWebViewVibrationEffect;
 import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.CacheByChatsController;
 import org.telegram.messenger.Emoji;
-import org.telegram.messenger.ApplicationLoader;
-import org.telegram.messenger.DialogObject;
-import org.telegram.messenger.FileLoader;
-import org.telegram.messenger.FileLog;
-import org.telegram.messenger.BotWebViewVibrationEffect;
-import org.telegram.messenger.CacheByChatsController;
-import org.telegram.messenger.Emoji;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.FilePathDatabase;
-import org.telegram.messenger.FilePathDatabase;
+import org.telegram.messenger.FilesMigrationService;
 import org.telegram.messenger.ImageLoader;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MediaDataController;
@@ -95,9 +70,6 @@ import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.Utilities;
-import org.telegram.tgnet.ConnectionsManager;
-import org.telegram.tgnet.NativeByteBuffer;
-import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenu;
@@ -112,16 +84,10 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ActionBar.ThemeDescription;
 import org.telegram.ui.Cells.CheckBoxCell;
 import org.telegram.ui.Cells.HeaderCell;
-import org.telegram.ui.Cells.ShadowSectionCell;
 import org.telegram.ui.Cells.TextCell;
 import org.telegram.ui.Cells.TextCheckBoxCell;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.Cells.TextSettingsCell;
-import org.telegram.ui.Components.AlertsCreator;
-import org.telegram.ui.Components.AnimatedFloat;
-import org.telegram.ui.Components.BackupImageView;
-import org.telegram.ui.Components.CacheChart;
-import org.telegram.ui.Components.CheckBox2;
 import org.telegram.ui.Components.AlertsCreator;
 import org.telegram.ui.Components.AnimatedFloat;
 import org.telegram.ui.Components.AnimatedTextView;
@@ -152,13 +118,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Objects;
-
-import kotlin.Unit;
-import tw.nekomimi.nekogram.helpers.remote.EmojiHelper;
-import tw.nekomimi.nekogram.ui.BottomBuilder;
-import tw.nekomimi.nekogram.utils.EnvUtil;
-import tw.nekomimi.nekogram.utils.FileUtil;
-import tw.nekomimi.nekogram.utils.UIUtil;
 
 public class CacheControlActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
 
@@ -194,7 +153,7 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
 
     private boolean[] selected = new boolean[] { true, true, true, true, true, true, true, true, true, true, true };
     private long databaseSize = -1;
-    private long cacheSize = -1, cacheEmojiSize = -1, cacheTempSize = -1, cacheCustomEmojiSize = -1;
+    private long cacheSize = -1, cacheEmojiSize = -1, cacheTempSize = -1;
     private long documentsSize = -1;
     private long audioSize = -1;
     private long storiesSize = -1;
@@ -206,7 +165,6 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
     private long totalSize = -1;
     private long totalDeviceSize = -1;
     private long totalDeviceFreeSize = -1;
-
     private long migrateOldFolderRow = -1;
     private boolean calculating = true;
     private boolean collapsed = true;
@@ -246,14 +204,6 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
     private static final int reset_database_id = 4;
     private boolean loadingDialogs;
     private NestedSizeNotifierLayout nestedSizeNotifierLayout;
-
-    private long targetDialogId = -1L;
-
-    public CacheControlActivity() {}
-
-    public CacheControlActivity(Bundle args) {
-        targetDialogId = args.getLong("dialog_id", -1L);
-    }
 
     private ActionBarMenuSubItem clearDatabaseItem;
     private ActionBarMenuSubItem resetDatabaseItem;
@@ -366,9 +316,6 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
 
         Utilities.globalQueue.postRunnable(() -> {
             cacheSize = getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_CACHE), 5);
-
-            cacheSize += getDirectorySize(new File(ApplicationLoader.getDataDirFixed(), "cache"), 0);
-            cacheSize += getDirectorySize(ApplicationLoader.applicationContext.getExternalFilesDir("logs"), 0);
             if (canceled) {
                 return;
             }
@@ -414,11 +361,6 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                 return;
             }
             stickersCacheSize += cacheEmojiSize;
-            cacheCustomEmojiSize = EmojiHelper.getInstance().getEmojiSize();
-            if (canceled) {
-                return;
-            }
-            stickersCacheSize += cacheCustomEmojiSize;
             audioSize = getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_AUDIO), 0);
             storiesSize = getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_STORIES), 0);
             if (canceled) {
@@ -427,7 +369,18 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
             totalSize = lastTotalSizeCalculated = cacheSize + cacheTempSize + videoSize + logsSize + audioSize + photoSize + documentsSize + musicSize + storiesSize + stickersCacheSize;
             lastTotalSizeCalculatedTime = System.currentTimeMillis();
 
-            File path = EnvUtil.getTelegramPath();
+            File path;
+            ArrayList<File> storageDirs = AndroidUtilities.getRootDirs();
+            String dir = (path = storageDirs.get(0)).getAbsolutePath();
+            if (!TextUtils.isEmpty(SharedConfig.storageCacheDir)) {
+                for (int a = 0, N = storageDirs.size(); a < N; a++) {
+                    File file = storageDirs.get(a);
+                    if (file.getAbsolutePath().startsWith(SharedConfig.storageCacheDir)) {
+                        path = file;
+                        break;
+                    }
+                }
+            }
             try {
                 StatFs stat = new StatFs(path.getPath());
                 final long blockSize = stat.getBlockSizeLong();
@@ -506,14 +459,6 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
             fillDialogsEntitiesRecursive(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_STORIES), TYPE_OTHER, dilogsFilesEntities, cacheModel);
             fillDialogsEntitiesRecursive(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_DOCUMENT), TYPE_DOCUMENTS, dilogsFilesEntities, cacheModel);
             fillDialogsEntitiesRecursive(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_FILES), TYPE_DOCUMENTS, dilogsFilesEntities, cacheModel);
-
-            // ----- Nagram Hook start -----
-            if (targetDialogId != -1) {
-                DialogFileEntities entities = dilogsFilesEntities.get(targetDialogId, null);
-                if (entities != null) AndroidUtilities.runOnUIThread(() -> showClearCacheDialog(entities), 100);
-                targetDialogId = -1;
-            }
-            // ----- Nagram Hook end -----
 
             ArrayList<DialogFileEntities> entities = new ArrayList<>();
             ArrayList<Long> unknownUsers = new ArrayList<>();
@@ -1035,7 +980,7 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                 clearedSize += storiesSize;
             } else if (a == 6) {
                 type = 100;
-                clearedSize += stickersCacheSize + cacheEmojiSize + cacheCustomEmojiSize;
+                clearedSize += stickersCacheSize;
             } else if (a == 7) {
                 clearedSize += cacheSize;
                 documentsMusicType = 5;
@@ -1077,7 +1022,6 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                 if (file != null) {
                     cleanDirJava(file.getAbsolutePath(), 3, null, updateProgress);
                 }
-                EmojiHelper.getInstance().deleteAll();
                 clearDirI[0]++;
                 next.run();
             }
@@ -1111,16 +1055,6 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                 cacheSize = getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_CACHE), 5);
                 cacheTempSize = getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_CACHE), 4);
                 imagesCleared = true;
-
-                    try {
-                        FileUtil.delete(new File(ApplicationLoader.getDataDirFixed(), "cache"));
-                    } catch (Exception ignored) {
-                    }
-
-                    try {
-                        FileUtil.delete(new File(EnvUtil.getTelegramPath(), "logs"));
-                    } catch (Exception ignored) {
-                    }
             } else if (type == FileLoader.MEDIA_DIR_AUDIO) {
                 audioSize = getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_AUDIO), documentsMusicType);
             } else if (type == FileLoader.MEDIA_DIR_STORIES) {
@@ -1145,8 +1079,6 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                 stickersCacheSize = getDirectorySize(new File(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_CACHE), "acache"), documentsMusicType);
                 cacheEmojiSize = getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_CACHE), 3);
                 stickersCacheSize += cacheEmojiSize;
-                cacheCustomEmojiSize = EmojiHelper.getInstance().getEmojiSize();
-                stickersCacheSize += cacheCustomEmojiSize;
             }
         }
         final boolean imagesClearedFinal = imagesCleared;
@@ -1643,6 +1575,11 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
         return path.contains(FileLoader.checkDirectory(mediaDirType).getAbsolutePath());
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.R)
+    private void migrateOldFolder() {
+        FilesMigrationService.checkBottomSheet(this);
+    }
+
     private void clearDatabase(boolean fullReset) {
         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
         builder.setTitle(LocaleController.getString(R.string.LocalDatabaseClearTextTitle));
@@ -1673,7 +1610,6 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
             button.setTextColor(Theme.getColor(Theme.key_text_RedBold));
         }
     }
-
 
     @Override
     public void onResume() {
@@ -2410,16 +2346,16 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                     view = cacheChart = new CacheChart(mContext) {
                         @Override
                         protected void onSectionClick(int index) {
-                            //                            if (index == 8) {
-                            //                                index = -1;
-                            //                            }
-                            //                            for (int i = 0; i < itemInners.size(); ++i) {
-                            //                                ItemInner item = itemInners.get(i);
-                            //                                if (item != null && item.index == index) {
-                            //                                    toggleSection(item, null);
-                            //                                    return;
-                            //                                }
-                            //                            }
+//                            if (index == 8) {
+//                                index = -1;
+//                            }
+//                            for (int i = 0; i < itemInners.size(); ++i) {
+//                                ItemInner item = itemInners.get(i);
+//                                if (item != null && item.index == index) {
+//                                    toggleSection(item, null);
+//                                    return;
+//                                }
+//                            }
                         }
 
                         @Override
@@ -2541,9 +2477,9 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
 
                     float totalSizeInGb = (int) (totalDeviceSize / 1024L / 1024L) / 1000.0f;
                     ArrayList<Integer> options = new ArrayList<>();
-                    //                    if (BuildVars.DEBUG_PRIVATE_VERSION) {
-                    //                        options.add(1);
-                    //                    }
+//                    if (BuildVars.DEBUG_PRIVATE_VERSION) {
+//                        options.add(1);
+//                    }
                     if (totalSizeInGb <= 17) {
                         options.add(2);
                     }
@@ -2972,9 +2908,9 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                     break;
                 }
             }
-//            if (allGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && FilesMigrationService.filesMigrationBottomSheet != null) {
-//                FilesMigrationService.filesMigrationBottomSheet.migrateOldFolder();
-//            }
+            if (allGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && FilesMigrationService.filesMigrationBottomSheet != null) {
+                FilesMigrationService.filesMigrationBottomSheet.migrateOldFolder();
+            }
 
         }
     }

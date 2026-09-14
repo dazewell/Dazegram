@@ -29,6 +29,7 @@ import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
+import android.os.Environment;
 import android.os.SystemClock;
 import android.provider.MediaStore;
 import android.text.TextUtils;
@@ -88,10 +89,6 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
-
-import tw.nekomimi.nekogram.utils.EnvUtil;
-import tw.nekomimi.nekogram.utils.FileUtil;
-import xyz.nextalone.nagram.helper.LyricsHelper;
 
 /**
  * image filter types
@@ -453,7 +450,6 @@ public class ImageLoader {
                 if (array.length() > 0) {
                     JSONObject media = array.getJSONObject(0);
                     String artworkUrl100 = media.getString("artworkUrl100");
-                    LyricsHelper.saveLyrics(location, media);
                     if (small) {
                         return artworkUrl100;
                     } else {
@@ -1467,7 +1463,7 @@ public class ImageLoader {
                                 image = MediaStore.Images.Thumbnails.getThumbnail(ApplicationLoader.applicationContext.getContentResolver(), mediaId, MediaStore.Images.Thumbnails.MINI_KIND, opts);
                             }
                         }
-                        if (!mediaIsVideo && image == null) {
+                        if (image == null) {
                             if (image == null) {
                                 FileInputStream is;
                                 if (secureDocumentKey != null) {
@@ -2159,9 +2155,9 @@ public class ImageLoader {
         AndroidUtilities.createEmptyFile(new File(cachePath, ".nomedia"));
         mediaDirs.put(FileLoader.MEDIA_DIR_CACHE, cachePath);
 
-        FileLoader.delegateFactory = (a) -> {
+        for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
             final int currentAccount = a;
-            return new FileLoader.FileLoaderDelegate() {
+            FileLoader.getInstance(a).setDelegate(new FileLoader.FileLoaderDelegate() {
                 @Override
                 public void fileUploadProgressChanged(FileUploadOperation operation, final String location, long uploadedSize, long totalSize, final boolean isEncrypted) {
                     fileProgresses.put(location, new long[]{uploadedSize, totalSize});
@@ -2289,9 +2285,8 @@ public class ImageLoader {
                         AndroidUtilities.runOnUIThread(() -> NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.fileLoadProgressChanged, location, uploadedSize, totalSize));
                     }
                 }
-            };
-        };
-
+            });
+        }
         FileLoader.setMediaDirs(mediaDirs);
 
         BroadcastReceiver receiver = new BroadcastReceiver() {
@@ -2372,6 +2367,29 @@ public class ImageLoader {
         testWebFile.remove(url);
     }
 
+    @TargetApi(26)
+    private static void moveDirectory(File source, File target) {
+        if (!source.exists() || (!target.exists() && !target.mkdir())) {
+            return;
+        }
+        try (Stream<Path> files = Files.list(source.toPath())) {
+            files.forEach(path -> {
+                File dest = new File(target, path.getFileName().toString());
+                if (Files.isDirectory(path)) {
+                    moveDirectory(path.toFile(), dest);
+                } else {
+                    try {
+                        Files.move(path, dest.toPath());
+                    } catch (Exception e) {
+                        FileLog.e(e);
+                    }
+                }
+            });
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
     public SparseArray<File> createMediaPaths() {
         SparseArray<File> mediaDirs = new SparseArray<>();
         File cachePath = AndroidUtilities.getCacheDir();
@@ -2383,6 +2401,7 @@ public class ImageLoader {
             }
         }
         AndroidUtilities.createEmptyFile(new File(cachePath, ".nomedia"));
+
         mediaDirs.put(FileLoader.MEDIA_DIR_CACHE, cachePath);
         if (BuildVars.LOGS_ENABLED) {
             FileLog.d("cache path = " + cachePath);
@@ -2391,77 +2410,187 @@ public class ImageLoader {
         FileLog.d("selected SD card = " + SharedConfig.storageCacheDir);
 
         try {
-            telegramPath = EnvUtil.getTelegramPath();
-
-            if (telegramPath.isDirectory()) {
-                try {
-                    File imagePath = new File(telegramPath, "images");
-                    FileUtil.initDir(imagePath);
-                    if (imagePath.isDirectory() && canMoveFiles(cachePath, imagePath, FileLoader.MEDIA_DIR_IMAGE)) {
-                        AndroidUtilities.createEmptyFile(new File(imagePath, ".nomedia"));
-                        mediaDirs.put(FileLoader.MEDIA_DIR_IMAGE, imagePath);
-                        if (BuildVars.LOGS_ENABLED) {
-                            FileLog.d("image path = " + imagePath);
+            if (Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) {
+                File path = Environment.getExternalStorageDirectory();
+                if (!TextUtils.isEmpty(SharedConfig.storageCacheDir)) {
+                    ArrayList<File> dirs = AndroidUtilities.getRootDirs();
+                    if (dirs != null) {
+                        for (int a = 0, N = dirs.size(); a < N; a++) {
+                            File dir = dirs.get(a);
+                            FileLog.d("root dir " + a + " " + dir);
+                            if (dir.getAbsolutePath().startsWith(SharedConfig.storageCacheDir)) {
+                                path = dir;
+                                break;
+                            }
                         }
                     }
-                } catch (Exception e) {
-                    FileLog.e(e);
+                    if (!path.getAbsolutePath().startsWith(SharedConfig.storageCacheDir)) {
+                        File[] dirsDebug = ApplicationLoader.applicationContext.getExternalFilesDirs(null);
+                        if (dirsDebug != null) {
+                            for (int a = 0; a < dirsDebug.length; a++) {
+                                if (dirsDebug[a] == null) {
+                                    continue;
+                                }
+                                FileLog.d("dirsDebug " + a + " " + dirsDebug[a]);
+                            }
+                        }
+                    }
                 }
 
-                try {
-                    File videoPath = new File(telegramPath, "videos");
-                    FileUtil.initDir(videoPath);
-                    if (videoPath.isDirectory() && canMoveFiles(cachePath, videoPath, FileLoader.MEDIA_DIR_VIDEO)) {
-                        AndroidUtilities.createEmptyFile(new File(videoPath, ".nomedia"));
-                        mediaDirs.put(FileLoader.MEDIA_DIR_VIDEO, videoPath);
-                        if (BuildVars.LOGS_ENABLED) {
-                            FileLog.d("video path = " + videoPath);
+                FileLog.d("external storage = " + path);
+
+                File publicMediaDir = null;
+                if (Build.VERSION.SDK_INT >= 30) {
+                    File newPath;
+                    try {
+                        if (ApplicationLoader.applicationContext.getExternalMediaDirs().length > 0) {
+                            publicMediaDir = getPublicStorageDir();
+                            publicMediaDir = new File(publicMediaDir, "Telegram");
+                            publicMediaDir.mkdirs();
+                        }
+                    } catch (Exception e) {
+                        FileLog.e(e);
+                    }
+                    newPath = ApplicationLoader.applicationContext.getExternalFilesDir(null);
+                    telegramPath = new File(newPath, "Telegram");
+                } else {
+                    boolean isSdCard = !TextUtils.isEmpty(SharedConfig.storageCacheDir) && path.getAbsolutePath().startsWith(SharedConfig.storageCacheDir);
+                    if (!isSdCard) {
+                        if (!(path.exists() ? path.isDirectory() : path.mkdirs()) || !path.canWrite()) {
+                            FileLog.d("can't write to this directory = " + path + " use files dir");
+                            path = ApplicationLoader.applicationContext.getExternalFilesDir(null);
                         }
                     }
-                } catch (Exception e) {
-                    FileLog.e(e);
+                    telegramPath = new File(path, "Telegram");
+                }
+                telegramPath.mkdirs();
+
+                if (!telegramPath.isDirectory()) {
+                    ArrayList<File> dirs = AndroidUtilities.getDataDirs();
+                    for (int a = 0, N = dirs.size(); a < N; a++) {
+                        File dir = dirs.get(a);
+                        if (dir != null && !TextUtils.isEmpty(SharedConfig.storageCacheDir) && dir.getAbsolutePath().startsWith(SharedConfig.storageCacheDir)) {
+                            path = dir;
+                            telegramPath = new File(path, "Telegram");
+                            telegramPath.mkdirs();
+                            break;
+                        }
+                    }
                 }
 
-                try {
-                    File audioPath = new File(telegramPath, "audios");
-                    FileUtil.initDir(audioPath);
-                    if (audioPath.isDirectory() && canMoveFiles(cachePath, audioPath, FileLoader.MEDIA_DIR_AUDIO)) {
-                        AndroidUtilities.createEmptyFile(new File(audioPath, ".nomedia"));
-                        mediaDirs.put(FileLoader.MEDIA_DIR_AUDIO, audioPath);
-                        if (BuildVars.LOGS_ENABLED) {
-                            FileLog.d("audio path = " + audioPath);
+                if (telegramPath.isDirectory()) {
+                    try {
+                        File imagePath = new File(telegramPath, "Telegram Images");
+                        imagePath.mkdir();
+                        if (imagePath.isDirectory() && canMoveFiles(cachePath, imagePath, FileLoader.MEDIA_DIR_IMAGE)) {
+                            mediaDirs.put(FileLoader.MEDIA_DIR_IMAGE, imagePath);
+                            if (BuildVars.LOGS_ENABLED) {
+                                FileLog.d("image path = " + imagePath);
+                            }
                         }
+                    } catch (Exception e) {
+                        FileLog.e(e);
                     }
-                } catch (Exception e) {
-                    FileLog.e(e);
-                }
 
-                try {
-                    File documentPath = new File(telegramPath, "documents");
-                    FileUtil.initDir(documentPath);
-                    if (documentPath.isDirectory() && canMoveFiles(cachePath, documentPath, FileLoader.MEDIA_DIR_DOCUMENT)) {
-                        AndroidUtilities.createEmptyFile(new File(documentPath, ".nomedia"));
-                        mediaDirs.put(FileLoader.MEDIA_DIR_DOCUMENT, documentPath);
-                        if (BuildVars.LOGS_ENABLED) {
-                            FileLog.d("documents path = " + documentPath);
+                    try {
+                        File videoPath = new File(telegramPath, "Telegram Video");
+                        videoPath.mkdir();
+                        if (videoPath.isDirectory() && canMoveFiles(cachePath, videoPath, FileLoader.MEDIA_DIR_VIDEO)) {
+                            mediaDirs.put(FileLoader.MEDIA_DIR_VIDEO, videoPath);
+                            if (BuildVars.LOGS_ENABLED) {
+                                FileLog.d("video path = " + videoPath);
+                            }
                         }
+                    } catch (Exception e) {
+                        FileLog.e(e);
                     }
-                } catch (Exception e) {
-                    FileLog.e(e);
-                }
 
-                try {
-                    File storyPath = new File(telegramPath, "stories");
-                    FileUtil.initDir(storyPath);
-                    if (storyPath.isDirectory() && canMoveFiles(cachePath, storyPath, FileLoader.MEDIA_DIR_STORIES)) {
-                        AndroidUtilities.createEmptyFile(new File(storyPath, ".nomedia"));
-                        mediaDirs.put(FileLoader.MEDIA_DIR_STORIES, storyPath);
-                        if (BuildVars.LOGS_ENABLED) {
-                            FileLog.d("stories path = " + storyPath);
+                    try {
+                        File audioPath = new File(telegramPath, "Telegram Audio");
+                        audioPath.mkdir();
+                        if (audioPath.isDirectory() && canMoveFiles(cachePath, audioPath, FileLoader.MEDIA_DIR_AUDIO)) {
+                            AndroidUtilities.createEmptyFile(new File(audioPath, ".nomedia"));
+                            mediaDirs.put(FileLoader.MEDIA_DIR_AUDIO, audioPath);
+                            if (BuildVars.LOGS_ENABLED) {
+                                FileLog.d("audio path = " + audioPath);
+                            }
                         }
+                    } catch (Exception e) {
+                        FileLog.e(e);
                     }
-                } catch (Exception e) {
-                    FileLog.e(e);
+
+                    try {
+                        File documentPath = new File(telegramPath, "Telegram Documents");
+                        documentPath.mkdir();
+                        if (documentPath.isDirectory() && canMoveFiles(cachePath, documentPath, FileLoader.MEDIA_DIR_DOCUMENT)) {
+                            AndroidUtilities.createEmptyFile(new File(documentPath, ".nomedia"));
+                            mediaDirs.put(FileLoader.MEDIA_DIR_DOCUMENT, documentPath);
+                            if (BuildVars.LOGS_ENABLED) {
+                                FileLog.d("documents path = " + documentPath);
+                            }
+                        }
+                    } catch (Exception e) {
+                        FileLog.e(e);
+                    }
+
+                    try {
+                        File normalNamesPath = new File(telegramPath, "Telegram Files");
+                        normalNamesPath.mkdir();
+                        if (normalNamesPath.isDirectory() && canMoveFiles(cachePath, normalNamesPath, FileLoader.MEDIA_DIR_FILES)) {
+                            AndroidUtilities.createEmptyFile(new File(normalNamesPath, ".nomedia"));
+                            mediaDirs.put(FileLoader.MEDIA_DIR_FILES, normalNamesPath);
+                            if (BuildVars.LOGS_ENABLED) {
+                                FileLog.d("files path = " + normalNamesPath);
+                            }
+                        }
+                    } catch (Exception e) {
+                        FileLog.e(e);
+                    }
+
+                    try {
+                        File normalNamesPath = new File(telegramPath, "Telegram Stories");
+                        normalNamesPath.mkdir();
+                        if (normalNamesPath.isDirectory() && canMoveFiles(cachePath, normalNamesPath, FileLoader.MEDIA_DIR_STORIES)) {
+                            AndroidUtilities.createEmptyFile(new File(normalNamesPath, ".nomedia"));
+                            mediaDirs.put(FileLoader.MEDIA_DIR_STORIES, normalNamesPath);
+                            if (BuildVars.LOGS_ENABLED) {
+                                FileLog.d("stories path = " + normalNamesPath);
+                            }
+                        }
+                    } catch (Exception e) {
+                        FileLog.e(e);
+                    }
+                }
+                if (publicMediaDir != null && publicMediaDir.isDirectory()) {
+                    try {
+                        File imagePath = new File(publicMediaDir, "Telegram Images");
+                        imagePath.mkdir();
+                        if (imagePath.isDirectory() && canMoveFiles(cachePath, imagePath, FileLoader.MEDIA_DIR_IMAGE)) {
+                            mediaDirs.put(FileLoader.MEDIA_DIR_IMAGE_PUBLIC, imagePath);
+                            if (BuildVars.LOGS_ENABLED) {
+                                FileLog.d("image path = " + imagePath);
+                            }
+                        }
+                    } catch (Exception e) {
+                        FileLog.e(e);
+                    }
+
+                    try {
+                        File videoPath = new File(publicMediaDir, "Telegram Video");
+                        videoPath.mkdir();
+                        if (videoPath.isDirectory() && canMoveFiles(cachePath, videoPath, FileLoader.MEDIA_DIR_VIDEO)) {
+                            mediaDirs.put(FileLoader.MEDIA_DIR_VIDEO_PUBLIC, videoPath);
+                            if (BuildVars.LOGS_ENABLED) {
+                                FileLog.d("video path = " + videoPath);
+                            }
+                        }
+                    } catch (Exception e) {
+                        FileLog.e(e);
+                    }
+                }
+            } else {
+                if (BuildVars.LOGS_ENABLED) {
+                    FileLog.d("this Android can't rename files");
                 }
             }
             SharedConfig.checkSaveToGalleryFiles();
@@ -2685,13 +2814,11 @@ public class ImageLoader {
         }
         WebInstantView.cancelLoadPhoto(imageReceiver);
         ArrayList<Runnable> runnables = imageReceiver.getLoadingOperations();
-        synchronized (runnables) {
-            if (!runnables.isEmpty()) {
-                for (int i = 0; i < runnables.size(); i++) {
-                    imageLoadQueue.cancelRunnable(runnables.get(i));
-                }
-                runnables.clear();
+        if (!runnables.isEmpty()) {
+            for (int i = 0; i < runnables.size(); i++) {
+                imageLoadQueue.cancelRunnable(runnables.get(i));
             }
+            runnables.clear();
         }
         imageReceiver.addLoadingImageRunnable(null);
         imageLoadQueue.postRunnable(() -> {
@@ -3033,10 +3160,8 @@ public class ImageLoader {
                             TLRPC.Document document = imageLocation.document;
                             if (document instanceof TLRPC.TL_documentEncrypted) {
                                 cacheFile = new File(FileLoader.getDirectory(FileLoader.MEDIA_DIR_CACHE), url);
-                            } else if (MessageObject.isVideoDocument(document) || MessageObject.isGifDocument(document)) {
+                            } else if (MessageObject.isVideoDocument(document)) {
                                 cacheFile = new File(FileLoader.getDirectory(FileLoader.MEDIA_DIR_VIDEO), url);
-                            } else if (MessageObject.isStickerDocument(document)) {
-                                cacheFile = new File(FileLoader.getDirectory(FileLoader.MEDIA_DIR_CACHE), url);
                             } else {
                                 cacheFile = new File(FileLoader.getDirectory(FileLoader.MEDIA_DIR_DOCUMENT), url);
                             }

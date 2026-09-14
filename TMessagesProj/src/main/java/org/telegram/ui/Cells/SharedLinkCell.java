@@ -63,8 +63,6 @@ import java.util.Locale;
 import java.util.Stack;
 import java.util.concurrent.atomic.AtomicReference;
 
-import tw.nekomimi.nekogram.NekoConfig;
-
 public class SharedLinkCell extends FrameLayout {
     private final static int SPOILER_TYPE_LINK = 0,
             SPOILER_TYPE_DESCRIPTION = 1,
@@ -97,11 +95,9 @@ public class SharedLinkCell extends FrameLayout {
         public void run() {
             if (checkingForLongPress && getParent() != null && currentPressCount == pressCount) {
                 checkingForLongPress = false;
-                if (!NekoConfig.disableVibration.Bool()) {
-                    try {
-                        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-                    } catch (Exception ignored) {}
-                }
+                try {
+                    performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                } catch (Exception ignored) {}
                 if (pressedLinkIndex >= 0) {
                     delegate.onLinkPress(links.get(pressedLinkIndex).toString(), true);
                 }
@@ -408,7 +404,7 @@ public class SharedLinkCell extends FrameLayout {
                         int start = entity.offset, end = entity.offset + entity.length;
                         for (TLRPC.MessageEntity e : message.messageOwner.entities) {
                             int ss = e.offset, se = e.offset + e.length;
-                            if (NekoConfig.showSpoilersDirectly.Bool() && e instanceof TLRPC.TL_messageEntitySpoiler && start <= se && end >= ss) {
+                            if (e instanceof TLRPC.TL_messageEntitySpoiler && start <= se && end >= ss) {
                                 TextStyleSpan.TextStyleRun run = new TextStyleSpan.TextStyleRun();
                                 run.flags |= TextStyleSpan.FLAG_STYLE_SPOILER;
                                 sb.setSpan(new TextStyleSpan(run), Math.max(start, ss), Math.min(end, se) + offset, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);

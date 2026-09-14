@@ -14,8 +14,6 @@ import org.telegram.ui.Components.blur3.BlurredBackgroundWithFadeDrawable;
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceColor;
 
-import xyz.nextalone.nagram.NaConfig;
-
 public class ChatActivityFadeView extends View implements Theme.Colorable {
     private BlurredBackgroundWithFadeDrawable fadeDrawableTop;
     private BlurredBackgroundWithFadeDrawable fadeDrawableBottom;
@@ -49,7 +47,7 @@ public class ChatActivityFadeView extends View implements Theme.Colorable {
         fadeDrawableTop = new BlurredBackgroundWithFadeDrawable(factory.create(this).setColorProvider(colorProvider));
         fadeDrawableTop.setFadeHeight(-dp(30), true);
 
-        fadeDrawableBottom = new BlurredBackgroundWithFadeDrawable(factory.create(this).setColorProvider(colorProvider), NaConfig.INSTANCE.getChatActivityNavbarTransparent().Bool());
+        fadeDrawableBottom = new BlurredBackgroundWithFadeDrawable(factory.create(this).setColorProvider(colorProvider));
         fadeDrawableBottom.setFadeHeight(dp(30), true);
     }
 

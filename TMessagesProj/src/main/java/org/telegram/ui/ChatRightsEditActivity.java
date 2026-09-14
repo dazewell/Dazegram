@@ -23,6 +23,7 @@ import android.graphics.PorterDuffColorFilter;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Vibrator;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.TypedValue;
@@ -41,10 +42,6 @@ import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import androidx.recyclerview.widget.DefaultItemAnimator;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
-
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.BotWebViewVibrationEffect;
@@ -57,7 +54,6 @@ import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserObject;
 import org.telegram.tgnet.ConnectionsManager;
-import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_account;
 import org.telegram.ui.ActionBar.ActionBar;
@@ -94,8 +90,6 @@ import org.telegram.ui.Components.Text;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Locale;
-
-import tw.nekomimi.nekogram.utils.VibrateUtil;
 
 public class ChatRightsEditActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
 
@@ -179,11 +173,6 @@ public class ChatRightsEditActivity extends BaseFragment implements Notification
     private int sendVoiceRow;
     private int sendRoundRow;
     private int sendStickersRow;
-
-    private int sendGamesRow;
-    private int sendInlineRow;
-
-    private int sendGifsRow;
     private int sendPollsRow;
     private int embedLinksRow;
     private int startVoiceChatRow;
@@ -220,10 +209,6 @@ public class ChatRightsEditActivity extends BaseFragment implements Notification
     }
 
     private final static int done_button = 1;
-
-    public ChatRightsEditActivity(long userId, long channelId, TLRPC.TL_chatAdminRights rightsAdmin, TLRPC.TL_chatBannedRights rightsBannedDefault, TLRPC.TL_chatBannedRights rightsBanned, String rank, int type, boolean edit, boolean addingNew, String addingNewBotHash ,TLObject part) {
-        this(userId, channelId, rightsAdmin, rightsBannedDefault, rightsBanned, rank, type, edit, addingNew, addingNewBotHash);
-    }
 
     public ChatRightsEditActivity(long userId, long channelId, TLRPC.TL_chatAdminRights rightsAdmin, TLRPC.TL_chatBannedRights rightsBannedDefault, TLRPC.TL_chatBannedRights rightsBanned, String rank, int type, boolean edit, boolean addingNew, String addingNewBotHash) {
         super();
@@ -668,11 +653,6 @@ public class ChatRightsEditActivity extends BaseFragment implements Notification
         });
 
         listView.setOnItemClickListener((view, position) -> {
-            if (((currentType == TYPE_ADMIN && currentUser != null) || canEdit) && position == 0)  {
-                Bundle args = new Bundle();
-                args.putLong("user_id", currentUser.id);
-                presentFragment(new ProfileActivity(args));
-            }
             if (!canEdit && (!currentChat.creator || currentType != TYPE_ADMIN || position != anonymousRow)) {
                 return;
             }
@@ -684,9 +664,9 @@ public class ChatRightsEditActivity extends BaseFragment implements Notification
                 updateRows(false);
                 listViewAdapter.notifyItemChanged(sendMediaRow);
                 if (sendMediaExpanded) {
-                    listViewAdapter.notifyItemRangeInserted(sendMediaRow + 1, 13);
+                    listViewAdapter.notifyItemRangeInserted(sendMediaRow + 1, 10);
                 } else {
-                    listViewAdapter.notifyItemRangeRemoved(sendMediaRow + 1, 13);
+                    listViewAdapter.notifyItemRangeRemoved(sendMediaRow + 1, 10);
                 }
                 return;
             } else if (position == channelMessagesRow) {
@@ -716,12 +696,11 @@ public class ChatRightsEditActivity extends BaseFragment implements Notification
                 }
                 return;
             }
-//            if (position == 0) {
-//                Bundle args = new Bundle();
-//                args.putLong("user_id", currentUser.id);
-//                presentFragment(new ProfileActivity(args));
-//            } else
-            if (position == removeAdminRow) {
+            if (position == 0) {
+                Bundle args = new Bundle();
+                args.putLong("user_id", currentUser.id);
+                presentFragment(new ProfileActivity(args));
+            } else if (position == removeAdminRow) {
                 if (currentType == TYPE_ADMIN) {
                     MessagesController.getInstance(currentAccount).setUserAdminRole(chatId, currentUser, new TLRPC.TL_chatAdminRights(), currentRank, isChannel, getFragmentForAlert(0), isAddingNew, false, null, null);
                     if (delegate != null) {
@@ -942,13 +921,7 @@ public class ChatRightsEditActivity extends BaseFragment implements Notification
                     } else if (position == sendVoiceRow) {
                         value = bannedRights.send_voices = !bannedRights.send_voices;
                     } else if (position == sendStickersRow) {
-                        value = bannedRights.send_stickers = !bannedRights.send_stickers;
-                    } else if (position == sendGifsRow) {
-                        value = bannedRights.send_gifs = !bannedRights.send_gifs;
-                    } else if (position == sendGamesRow) {
-                        value = bannedRights.send_games = !bannedRights.send_games;
-                    } else if (position == sendInlineRow) {
-                        value = bannedRights.send_inline = !bannedRights.send_inline;
+                        value = bannedRights.send_stickers = bannedRights.send_games = bannedRights.send_gifs = bannedRights.send_inline = !bannedRights.send_stickers;
                     } else if (position == embedLinksRow) {
                         if (bannedRights.send_plain || defaultBannedRights.send_plain) {
                             View senMessagesView = linearLayoutManager.findViewByPosition(sendMessagesRow);
@@ -1218,7 +1191,7 @@ public class ChatRightsEditActivity extends BaseFragment implements Notification
                     ImageView dotImageView = new ImageView(getParentActivity());
                     dotImageView.setImageResource(R.drawable.list_circle);
                     dotImageView.setPadding(LocaleController.isRTL ? AndroidUtilities.dp(11) : 0, AndroidUtilities.dp(9), LocaleController.isRTL ? 0 : AndroidUtilities.dp(11), 0);
-                    dotImageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_dialogTextBlack), PorterDuff.Mode.SRC_IN));
+                    dotImageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_dialogTextBlack), PorterDuff.Mode.MULTIPLY));
 
                     messageTextView = new TextView(getParentActivity());
                     messageTextView.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
@@ -1240,7 +1213,7 @@ public class ChatRightsEditActivity extends BaseFragment implements Notification
                     dotImageView = new ImageView(getParentActivity());
                     dotImageView.setImageResource(R.drawable.list_circle);
                     dotImageView.setPadding(LocaleController.isRTL ? AndroidUtilities.dp(11) : 0, AndroidUtilities.dp(9), LocaleController.isRTL ? 0 : AndroidUtilities.dp(11), 0);
-                    dotImageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_dialogTextBlack), PorterDuff.Mode.SRC_IN));
+                    dotImageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_dialogTextBlack), PorterDuff.Mode.MULTIPLY));
 
                     messageTextView = new TextView(getParentActivity());
                     messageTextView.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
@@ -1396,9 +1369,6 @@ public class ChatRightsEditActivity extends BaseFragment implements Notification
         sendVoiceRow = -1;
         sendRoundRow = -1;
         sendStickersRow = -1;
-        sendGifsRow = -1;
-        sendGamesRow = -1;
-        sendInlineRow = -1;
         sendPollsRow = -1;
         embedLinksRow = -1;
         startVoiceChatRow = -1;
@@ -1485,9 +1455,6 @@ public class ChatRightsEditActivity extends BaseFragment implements Notification
                 sendVoiceRow = rowCount++;
                 sendRoundRow = rowCount++;
                 sendStickersRow = rowCount++;
-                sendGifsRow = rowCount++;
-                sendGamesRow = rowCount++;
-                sendInlineRow = rowCount++;
                 sendPollsRow = rowCount++;
                 embedLinksRow = rowCount++;
                 sendReactionsRow = rowCount++;
@@ -1589,7 +1556,10 @@ public class ChatRightsEditActivity extends BaseFragment implements Notification
 
         if (rankRow != -1 && currentRank != null && currentRank.codePointCount(0, currentRank.length()) > MAX_RANK_LENGTH) {
             listView.smoothScrollToPosition(rankRow);
-            VibrateUtil.vibrate();
+            Vibrator v = (Vibrator) getParentActivity().getSystemService(Context.VIBRATOR_SERVICE);
+            if (v != null) {
+                v.vibrate(200);
+            }
             RecyclerView.ViewHolder holder = listView.findViewHolderForAdapterPosition(rankRow);
             if (holder != null) {
                 AndroidUtilities.shakeView(holder.itemView);
@@ -2058,18 +2028,8 @@ public class ChatRightsEditActivity extends BaseFragment implements Notification
                     boolean animated = checkBoxCell.getTag() != null && (Integer) checkBoxCell.getTag() == position;
                     checkBoxCell.setTag(position);
                     if (position == sendStickersRow) {
-                        checkBoxCell.setText(LocaleController.getString(R.string.UserRestrictionsSendStickers2), "", !bannedRights.send_stickers && !defaultBannedRights.send_stickers, true, animated);
-//                        checkBoxCell.setText(LocaleController.getString(R.string.SendMediaPermissionStickersGifs), "", !bannedRights.send_stickers && !defaultBannedRights.send_stickers, true, animated);
+                        checkBoxCell.setText(LocaleController.getString(R.string.SendMediaPermissionStickersGifs), "", !bannedRights.send_stickers && !defaultBannedRights.send_stickers, true, animated);
                         checkBoxCell.setIcon(defaultBannedRights.send_stickers ? R.drawable.permission_locked : 0);
-                    } else if (position == sendGifsRow) {
-                        checkBoxCell.setText(LocaleController.getString(R.string.UserRestrictionsSendGifs), "", !bannedRights.send_gifs && !defaultBannedRights.send_gifs, true, animated);
-                        checkBoxCell.setIcon(defaultBannedRights.send_gifs ? R.drawable.permission_locked : 0);
-                    } else if (position == sendGamesRow) {
-                        checkBoxCell.setText(LocaleController.getString(R.string.UserRestrictionsSendGames), "", !bannedRights.send_games && !defaultBannedRights.send_games, true, animated);
-                        checkBoxCell.setIcon(defaultBannedRights.send_games ? R.drawable.permission_locked : 0);
-                    } else if (position == sendInlineRow) {
-                        checkBoxCell.setText(LocaleController.getString(R.string.UserRestrictionsSendInline), "", !bannedRights.send_inline && !defaultBannedRights.send_inline, true, animated);
-                        checkBoxCell.setIcon(defaultBannedRights.send_inline ? R.drawable.permission_locked : 0);
                     } else if (position == embedLinksRow) {
                         checkBoxCell.setText(LocaleController.getString(R.string.UserRestrictionsEmbedLinks), "", !bannedRights.embed_links && !defaultBannedRights.embed_links && !bannedRights.send_plain && !defaultBannedRights.send_plain, true, animated);
                         checkBoxCell.setIcon(defaultBannedRights.embed_links ? R.drawable.permission_locked : 0);
@@ -2181,7 +2141,7 @@ public class ChatRightsEditActivity extends BaseFragment implements Notification
                     if (position == sendMediaRow) {
                         int sentMediaCount = getSendMediaSelectedCount();
                         checkCell.setTextAndCheck(LocaleController.getString(R.string.UserRestrictionsSendMedia), sentMediaCount > 0, true, true);
-                        checkCell.setCollapseArrow(String.format(Locale.US, "%d/13", sentMediaCount), !sendMediaExpanded, () -> {
+                        checkCell.setCollapseArrow(String.format(Locale.US, "%d/10", sentMediaCount), !sendMediaExpanded, () -> {
                             if (!checkCell.isEnabled()) return;
                             if (allDefaultMediaBanned()) {
                                 new AlertDialog.Builder(getParentActivity())
@@ -2502,15 +2462,6 @@ public class ChatRightsEditActivity extends BaseFragment implements Notification
         if (!bannedRights.send_reactions && !defaultBannedRights.send_reactions) {
             i++;
         }
-        if (!bannedRights.send_gifs && !defaultBannedRights.send_gifs) {
-            i++;
-        }
-        if (!bannedRights.send_games && !defaultBannedRights.send_games) {
-            i++;
-        }
-        if (!bannedRights.send_inline && !defaultBannedRights.send_inline) {
-            i++;
-        }
         return i;
     }
 
@@ -2564,7 +2515,7 @@ public class ChatRightsEditActivity extends BaseFragment implements Notification
     }
 
     private boolean isExpandableSendMediaRow(int position) {
-        if (position == sendStickersRow || position == sendGifsRow || position == sendGamesRow || position == sendInlineRow || position == embedLinksRow || position == sendPollsRow ||
+        if (position == sendStickersRow || position == embedLinksRow || position == sendPollsRow ||
             position == sendPhotosRow || position == sendVideosRow || position == sendFilesRow ||
             position == sendMusicRow || position == sendRoundRow || position == sendVoiceRow || position == sendReactionsRow ||
             position == channelPostMessagesRow || position == channelEditMessagesRow || position == channelDeleteMessagesRow ||

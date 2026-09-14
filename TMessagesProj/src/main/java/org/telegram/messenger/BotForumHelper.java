@@ -11,7 +11,6 @@ import android.text.Spanned;
 import android.text.TextUtils;
 import android.text.style.DynamicDrawableSpan;
 import android.util.LongSparseArray;
-import android.util.SparseArray;
 import android.util.SparseIntArray;
 
 import androidx.annotation.Nullable;
@@ -633,14 +632,14 @@ public class BotForumHelper extends BaseController {
         preferences = ApplicationLoader.applicationContext.getSharedPreferences("bot_drafts" + currentAccount, Activity.MODE_PRIVATE);
     }
 
-    private static volatile SparseArray<BotForumHelper> Instance = new SparseArray<>();
+    private static volatile BotForumHelper[] Instance = new BotForumHelper[UserConfig.MAX_ACCOUNT_COUNT];
     public static BotForumHelper getInstance(final int num) {
-        BotForumHelper localInstance = Instance.get(num);
+        BotForumHelper localInstance = Instance[num];
         if (localInstance == null) {
             synchronized (BotForumHelper.class) {
-                localInstance = Instance.get(num);
+                localInstance = Instance[num];
                 if (localInstance == null) {
-                    Instance.set(num, localInstance = new BotForumHelper(num));
+                    Instance[num] = localInstance = new BotForumHelper(num);
                 }
             }
         }

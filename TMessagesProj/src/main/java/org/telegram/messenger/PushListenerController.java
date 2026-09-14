@@ -31,20 +31,14 @@ import java.util.Arrays;
 import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 
-import xyz.nextalone.nagram.NaConfig;
-
 @Keep
 public class PushListenerController {
     public static final int PUSH_TYPE_FIREBASE = 2,
-        PUSH_TYPE_SIMPLE = 4,
-        PUSH_TYPE_WEB = 10,
         PUSH_TYPE_HUAWEI = 13;
 
     @Retention(RetentionPolicy.SOURCE)
     @IntDef({
             PUSH_TYPE_FIREBASE,
-            PUSH_TYPE_SIMPLE,
-            PUSH_TYPE_WEB,
             PUSH_TYPE_HUAWEI
     })
     public @interface PushType {}
@@ -65,14 +59,14 @@ public class PushListenerController {
             }
             SharedConfig.pushString = token;
             SharedConfig.pushType = pushType;
-            for (int a : SharedConfig.activeAccounts) {
+            for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
                 UserConfig userConfig = UserConfig.getInstance(a);
                 userConfig.registeredForPush = false;
                 userConfig.saveConfig(false);
                 if (userConfig.getClientUserId() != 0) {
                     final int currentAccount = a;
                     if (sendStat) {
-                        String tag = pushType == PUSH_TYPE_FIREBASE ? "fcm" : (pushType == PUSH_TYPE_HUAWEI ? "hcm" : "up");
+                        String tag = pushType == PUSH_TYPE_FIREBASE ? "fcm" : "hcm";
                         TLRPC.TL_help_saveAppLog req = new TLRPC.TL_help_saveAppLog();
                         TLRPC.TL_inputAppEvent event = new TLRPC.TL_inputAppEvent();
                         event.time = SharedConfig.pushStringGetTimeStart;
@@ -99,54 +93,8 @@ public class PushListenerController {
         });
     }
 
-    /**
-     * Registers a Simple Push (token_type=4) endpoint URL with Telegram for all active accounts.
-     * Simple Push is a plain PUT wake-up with no encrypted payload, used by Telegram to notify
-     * about events where no content can be included (e.g., encrypted chats).
-     *
-     * Unlike sendRegistrationToServer(), this does NOT overwrite SharedConfig.pushString/pushType
-     * (which remain set to the primary Web Push type=10 registration).
-     */
-    public static void sendSimplePushRegistration(String token) {
-        if (TextUtils.isEmpty(token)) {
-            return;
-        }
-        NaConfig.INSTANCE.getPushServiceTypeUnifiedSimple().setConfigString(token);
-        Utilities.stageQueue.postRunnable(() -> {
-            for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
-                UserConfig userConfig = UserConfig.getInstance(a);
-                if (userConfig.getClientUserId() != 0) {
-                    final int currentAccount = a;
-                    AndroidUtilities.runOnUIThread(() ->
-                            MessagesController.getInstance(currentAccount).registerSimplePush(token));
-                }
-            }
-        });
-    }
-
-    public static void unregisterSimplePush() {
-        // Capture the token BEFORE clearing: the runnable is async on stageQueue, so reading
-        // SharedConfig.pushStringSimple there would see the already-cleared empty value and
-        // the unregisterDevice request would never be sent.
-        String token = NaConfig.INSTANCE.getPushServiceTypeUnifiedSimple().String();
-        NaConfig.INSTANCE.getPushServiceTypeUnifiedSimple().setConfigString("");
-        if (TextUtils.isEmpty(token)) {
-            return;
-        }
-        Utilities.stageQueue.postRunnable(() -> {
-            for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
-                UserConfig userConfig = UserConfig.getInstance(a);
-                if (userConfig.getClientUserId() != 0) {
-                    final int currentAccount = a;
-                    AndroidUtilities.runOnUIThread(() ->
-                            MessagesController.getInstance(currentAccount).unregisterSimplePush(token));
-                }
-            }
-        });
-    }
-
     public static void processRemoteMessage(@PushType int pushType, String data, long time) {
-        String tag = pushType == PUSH_TYPE_FIREBASE ? "FCM" : (pushType == PUSH_TYPE_HUAWEI ? "HCM" : "UP");
+        String tag = pushType == PUSH_TYPE_FIREBASE ? "FCM" : "HCM";
         if (BuildVars.LOGS_ENABLED) {
             FileLog.d(tag + " PRE START PROCESSING");
         }
@@ -251,7 +199,7 @@ public class PushListenerController {
                     }
                     int account = UserConfig.selectedAccount;
                     boolean foundAccount = false;
-                    for (int a : SharedConfig.activeAccounts) {
+                    for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
                         if (UserConfig.getInstance(a).getClientUserId() == accountUserId) {
                             account = a;
                             foundAccount = true;
@@ -1696,7 +1644,7 @@ public class PushListenerController {
     }
 
     private static void onDecryptError() {
-        for (int a: SharedConfig.activeAccounts) {
+        for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
             if (UserConfig.getInstance(a).isClientActivated()) {
                 ConnectionsManager.onInternalPushReceived(a);
                 ConnectionsManager.getInstance(a).resumeNetworkMaybe();
@@ -1714,49 +1662,73 @@ public class PushListenerController {
         int getPushType();
     }
 
-    private static IPushListenerServiceProvider instance = null;
+    public final static class GooglePushListenerServiceProvider implements IPushListenerServiceProvider {
+        public final static GooglePushListenerServiceProvider INSTANCE = new GooglePushListenerServiceProvider();
 
-    private static class DummyPushProvider implements IPushListenerServiceProvider {
-        @Override
-        public boolean hasServices() {
-            return false;
-        }
+        private Boolean hasServices;
+
+        private GooglePushListenerServiceProvider() {}
 
         @Override
         public String getLogTitle() {
-            return "Dummy";
-        }
-
-        @Override
-        public void onRequestPushToken() {
-
+            return "Google Play Services";
         }
 
         @Override
         public int getPushType() {
             return PUSH_TYPE_FIREBASE;
         }
-    }
 
-    public static IPushListenerServiceProvider getProvider() {
-        if (instance != null)
-            return instance;
-        switch (NaConfig.INSTANCE.getPushServiceType().Int()) {
-            case 1:
-            case 3: {
-                instance = new GooglePushListenerServiceProvider();
-                break;
+        @Override
+        public void onRequestPushToken() {
+            String currentPushString = SharedConfig.pushString;
+            if (!TextUtils.isEmpty(currentPushString)) {
+                if (BuildVars.DEBUG_PRIVATE_VERSION && BuildVars.LOGS_ENABLED) {
+                    FileLog.d("FCM regId = " + currentPushString);
+                }
+            } else {
+                if (BuildVars.LOGS_ENABLED) {
+                    FileLog.d("FCM Registration not found.");
+                }
             }
-            case 2: {
-                instance = new UnifiedPushListenerServiceProvider();
-                break;
-            }
-            default: {
-                instance = new DummyPushProvider();
-                break;
-            }
+            Utilities.globalQueue.postRunnable(() -> {
+                try {
+                    SharedConfig.pushStringGetTimeStart = SystemClock.elapsedRealtime();
+                    FirebaseApp.initializeApp(ApplicationLoader.applicationContext);
+                    FirebaseMessaging.getInstance().getToken()
+                            .addOnCompleteListener(task -> {
+                                SharedConfig.pushStringGetTimeEnd = SystemClock.elapsedRealtime();
+                                if (!task.isSuccessful()) {
+                                    if (BuildVars.LOGS_ENABLED) {
+                                        FileLog.d("Failed to get regid");
+                                    }
+                                    SharedConfig.pushStringStatus = "__FIREBASE_FAILED__";
+                                    PushListenerController.sendRegistrationToServer(getPushType(), null);
+                                    return;
+                                }
+                                String token = task.getResult();
+                                if (!TextUtils.isEmpty(token)) {
+                                    PushListenerController.sendRegistrationToServer(getPushType(), token);
+                                }
+                            });
+                } catch (Throwable e) {
+                    FileLog.e(e);
+                }
+            });
         }
-        return instance;
-    }
 
+        @Override
+        public boolean hasServices() {
+            if (hasServices == null) {
+                try {
+                    int resultCode = GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(ApplicationLoader.applicationContext);
+                    hasServices = resultCode == ConnectionResult.SUCCESS;
+                } catch (Exception e) {
+                    FileLog.e(e);
+                    hasServices = false;
+                }
+            }
+            return hasServices;
+        }
+    }
 }

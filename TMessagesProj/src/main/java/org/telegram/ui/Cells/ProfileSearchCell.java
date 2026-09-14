@@ -72,9 +72,6 @@ import org.telegram.ui.community.CommunityUtils;
 
 import java.util.Locale;
 
-import xyz.nextalone.nagram.NaConfig;
-import xyz.nextalone.nagram.helper.MessageHelper;
-
 public class ProfileSearchCell extends BaseCell implements NotificationCenter.NotificationCenterDelegate, Theme.Colorable {
 
     public boolean dontDrawAvatar;
@@ -178,7 +175,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
     private boolean allowBotOpenButton;
     private Utilities.Callback<TLRPC.User> onOpenButtonClick;
     public ProfileSearchCell allowBotOpenButton(boolean allow, Utilities.Callback<TLRPC.User> onOpenClick) {
-        allowBotOpenButton = allow && !NaConfig.INSTANCE.getDisableBotOpenButton().Bool();
+        allowBotOpenButton = allow;
         onOpenButtonClick = onOpenClick;
         return this;
     }
@@ -444,7 +441,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             updateStatus(false, null, null, false);
         } else if (chat != null) {
             dialog_id = -chat.id;
-            drawCheck = chat.verifiedExtended();
+            drawCheck = chat.verified;
             if (chat.monoforum) {
                 TLRPC.Chat mfChat = MessagesController.getInstance(currentAccount).getChat(chat.linked_monoforum_id);
                 if (mfChat != null) {
@@ -465,7 +462,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
                 nameLeft = dp(11);
             }
             nameLockTop = dp(21);
-            drawCheck = user.verifiedExtended();
+            drawCheck = user.verified;
             drawPremium = !savedMessages && MessagesController.getInstance(currentAccount).isPremiumUser(user);
             updateStatus(drawCheck, user, null, false);
         } else if (contact != null) {
@@ -896,7 +893,6 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
                 } else {
                     newName = chat.title;
                 }
-                newName = MessageHelper.INSTANCE.zalgoFilter(newName);
                 if (!newName.equals(lastName)) {
                     continueUpdate = true;
                 }
@@ -926,7 +922,6 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
                 chat.title;
         }
 
-        lastName = MessageHelper.INSTANCE.zalgoFilter(lastName);
         lastAvatar = photo;
 
         if (getMeasuredWidth() != 0 || getMeasuredHeight() != 0) {
@@ -1148,12 +1143,11 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             builder.append(statusLayout.getText());
         }
         info.setText(builder.toString());
-        if (checkBox != null) info.setSelected(checkBox.isChecked());
-//        if (checkBox.isChecked()) {
-//            info.setCheckable(true);
-//            info.setChecked(checkBox.isChecked());
-//            info.setClassName("android.widget.CheckBox");
-//        }
+        if (checkBox.isChecked()) {
+            info.setCheckable(true);
+            info.setChecked(checkBox.isChecked());
+            info.setClassName("android.widget.CheckBox");
+        }
     }
 
     public long getDialogId() {

@@ -59,9 +59,6 @@ public class RadioColorCell extends FrameLayout {
         text2View.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL);
         text2View.setVisibility(View.GONE);
         addView(text2View, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, (LocaleController.isRTL ? 21 : 51), 13 + 16 + 8, (LocaleController.isRTL ? 51 : 21), 0));
-
-        setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_actionBarActionModeDefaultSelector), 3));
-
     }
 
     @Override

@@ -232,7 +232,7 @@ public class EditWidgetActivity extends BaseFragment {
 
             shadowDrawable = Theme.getThemedDrawableByKey(context, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow);
         }
-
+        
         public void updateDialogs() {
             if (widgetType == TYPE_CHATS) {
                 for (int a = 0; a < 2; a++) {

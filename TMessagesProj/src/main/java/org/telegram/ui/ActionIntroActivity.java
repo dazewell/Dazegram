@@ -696,7 +696,6 @@ public class ActionIntroActivity extends BaseFragment implements LocationControl
                 processOpenQrReader();
             } else {
                 new AlertDialog.Builder(getParentActivity())
-                        .setTitle(LocaleController.getString(R.string.NekoX))
                         .setMessage(AndroidUtilities.replaceTags(LocaleController.getString(R.string.QRCodePermissionNoCameraWithHint)))
                         .setPositiveButton(LocaleController.getString(R.string.PermissionOpenSettings), (dialogInterface, i) -> {
                             try {

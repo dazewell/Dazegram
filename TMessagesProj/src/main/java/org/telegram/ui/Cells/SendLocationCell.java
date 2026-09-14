@@ -68,7 +68,6 @@ public class SendLocationCell extends FrameLayout {
         this.liveDisable = liveDisable;
 
         imageView = new ImageView(context);
-
         addView(imageView, LayoutHelper.createFrame(46, 46, Gravity.CENTER_VERTICAL | (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT), LocaleController.isRTL ? 0 : 13, 0, LocaleController.isRTL ? 13 : 0, 0));
 
         titleTextView = new SimpleTextView(context);

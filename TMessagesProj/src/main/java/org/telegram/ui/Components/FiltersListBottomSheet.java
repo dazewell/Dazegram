@@ -40,8 +40,6 @@ import org.telegram.ui.DialogsActivity;
 
 import java.util.ArrayList;
 
-import tw.nekomimi.nekogram.folder.FolderIconHelper;
-
 public class FiltersListBottomSheet extends BottomSheet implements NotificationCenter.NotificationCenterDelegate {
 
     private RecyclerListView listView;
@@ -62,9 +60,9 @@ public class FiltersListBottomSheet extends BottomSheet implements NotificationC
     }
 
     private final ArrayList<Long> selectedDialogs;
-    private final BaseFragment fragment;
+    private final DialogsActivity fragment;
 
-    public FiltersListBottomSheet(BaseFragment baseFragment, ArrayList<Long> selectedDialogs) {
+    public FiltersListBottomSheet(DialogsActivity baseFragment, ArrayList<Long> selectedDialogs) {
         super(baseFragment.getParentActivity(), false);
         fixNavigationBar();
         this.selectedDialogs = selectedDialogs;
@@ -328,12 +326,6 @@ public class FiltersListBottomSheet extends BottomSheet implements NotificationC
         delegate = filtersListBottomSheetDelegate;
     }
 
-    public static ArrayList<MessagesController.DialogFilter> getCanAddDialogFilters(BaseFragment fragment, Long dialogId) {
-        var arrays = new ArrayList<Long>(1);
-        arrays.add(dialogId);
-        return getCanAddDialogFilters(fragment, arrays);
-    }
-
     public static ArrayList<MessagesController.DialogFilter> getCanAddDialogFilters(BaseFragment fragment, ArrayList<Long> selectedDialogs) {
         ArrayList<MessagesController.DialogFilter> result = new ArrayList<>();
         ArrayList<MessagesController.DialogFilter> filters = fragment.getMessagesController().dialogFilters;
@@ -418,13 +410,29 @@ public class FiltersListBottomSheet extends BottomSheet implements NotificationC
         public void onBindViewHolder(RecyclerView.ViewHolder holder, int position) {
             BottomSheet.BottomSheetCell cell = (BottomSheet.BottomSheetCell) holder.itemView;
             if (position < dialogFilters.size()) {
-                cell.getImageView().setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_dialogIcon), PorterDuff.Mode.SRC_IN));
+                cell.getImageView().setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_dialogIcon), PorterDuff.Mode.MULTIPLY));
                 MessagesController.DialogFilter filter = dialogFilters.get(position);
                 cell.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+                int icon;
+                if ((filter.flags & MessagesController.DIALOG_FILTER_FLAG_ALL_CHATS) == (MessagesController.DIALOG_FILTER_FLAG_CONTACTS | MessagesController.DIALOG_FILTER_FLAG_NON_CONTACTS)) {
+                    icon = R.drawable.msg_openprofile;
+                } else if ((filter.flags & MessagesController.DIALOG_FILTER_FLAG_EXCLUDE_READ) != 0 && (filter.flags & MessagesController.DIALOG_FILTER_FLAG_ALL_CHATS) == MessagesController.DIALOG_FILTER_FLAG_ALL_CHATS) {
+                    icon = R.drawable.msg_markunread;
+                } else if ((filter.flags & MessagesController.DIALOG_FILTER_FLAG_ALL_CHATS) == MessagesController.DIALOG_FILTER_FLAG_CHANNELS) {
+                    icon = R.drawable.msg_channel;
+                } else if ((filter.flags & MessagesController.DIALOG_FILTER_FLAG_ALL_CHATS) == MessagesController.DIALOG_FILTER_FLAG_GROUPS) {
+                    icon = R.drawable.msg_groups;
+                } else if ((filter.flags & MessagesController.DIALOG_FILTER_FLAG_ALL_CHATS) == MessagesController.DIALOG_FILTER_FLAG_CONTACTS) {
+                    icon = R.drawable.msg_contacts;
+                } else if ((filter.flags & MessagesController.DIALOG_FILTER_FLAG_ALL_CHATS) == MessagesController.DIALOG_FILTER_FLAG_BOTS) {
+                    icon = R.drawable.msg_bots;
+                } else {
+                    icon = R.drawable.msg_folders;
+                }
                 CharSequence title = filter.name;
                 title = Emoji.replaceEmoji(title, cell.getTextView().getPaint().getFontMetricsInt(), false);
                 title = MessageObject.replaceAnimatedEmoji(title, filter.entities, cell.getTextView().getPaint().getFontMetricsInt());
-                cell.setTextAndIcon(title, 0, new FolderDrawable(getContext(), FolderIconHelper.getTabIcon(filter.emoticon), filter.color), false);
+                cell.setTextAndIcon(title, 0, new FolderDrawable(getContext(), icon, filter.color), false);
                 cell.getTextView().setEmojiColor(Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider));
                 boolean isChecked = true;
                 for (int i = 0; i < selectedDialogs.size(); ++i) {
@@ -438,8 +446,8 @@ public class FiltersListBottomSheet extends BottomSheet implements NotificationC
                 cell.getImageView().setColorFilter(null);
                 Drawable drawable1 = context.getResources().getDrawable(R.drawable.poll_add_circle);
                 Drawable drawable2 = context.getResources().getDrawable(R.drawable.poll_add_plus);
-                drawable1.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_switchTrackChecked), PorterDuff.Mode.SRC_IN));
-                drawable2.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_checkboxCheck), PorterDuff.Mode.SRC_IN));
+                drawable1.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_switchTrackChecked), PorterDuff.Mode.MULTIPLY));
+                drawable2.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_checkboxCheck), PorterDuff.Mode.MULTIPLY));
                 CombinedDrawable combinedDrawable = new CombinedDrawable(drawable1, drawable2);
                 cell.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText4));
                 cell.setTextAndIcon(LocaleController.getString(R.string.CreateNewFilter), combinedDrawable);

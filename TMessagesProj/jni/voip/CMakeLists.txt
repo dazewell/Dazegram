@@ -1721,7 +1721,7 @@ target_include_directories(tgcalls PUBLIC
         third_party/usrsctplib
         third_party
         voip/libtgvoip
-        ffmpeg/build/include
+        ffmpeg/include
         voip/webrtc/third_party/crc32c/src/include
         voip/webrtc/third_party/jni_zero)
 

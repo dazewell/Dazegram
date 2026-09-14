@@ -3,22 +3,18 @@ buildscript {
     repositories {
         mavenCentral()
         google()
-        maven { url "https://plugins.gradle.org/m2/" }
+        maven { url 'https://developer.huawei.com/repo/' }
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:8.10.1'
         classpath 'com.google.gms:google-services:4.3.15'
-//        classpath 'com.huawei.agconnect:agcp:1.9.1.301'
+        classpath 'com.huawei.agconnect:agcp:1.9.1.301'
         classpath 'com.google.firebase:firebase-crashlytics-gradle:2.9.0'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0"
-
-        //noinspection GradleDependency
-        classpath "io.sentry:sentry-android-gradle-plugin:6.19.0"
-        // db
-        classpath "io.objectbox:objectbox-gradle-plugin:5.4.2"
-        // json
-        classpath "org.jetbrains.kotlin:kotlin-serialization:2.1.0"
     }
+}
+repositories {
+    google()
 }
 
 // Strip JLatexMath fonts we don't ship (transitive AAR assets from
@@ -36,17 +32,5 @@ subprojects {
                 ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~:!optional:!licences:!*stmary*:!*eufb*'
             }
         }
-    }
-}
-
-ext {
-    ndkVersion = "27.2.12479018"
-}
-
-allprojects {
-    repositories {
-        // The order in which you list these repositories matter.
-        mavenCentral()
-        google()
     }
 }

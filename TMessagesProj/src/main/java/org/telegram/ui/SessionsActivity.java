@@ -34,13 +34,12 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
-
 import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.DefaultItemAnimator;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
@@ -177,8 +176,6 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.newSessionReceived);
     }
 
-    TLRPC.TL_authorization newAuthorizationToOpen;
-
     @Override
     public void onTransitionAnimationEnd(boolean isOpen, boolean backward) {
         super.onTransitionAnimationEnd(isOpen, backward);
@@ -198,6 +195,7 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
     public View createView(Context context) {
         globalFlickerLoadingView = new FlickerLoadingView(context);
         globalFlickerLoadingView.setIsSingleCell(true);
+
         actionBar.setBackButtonImage(R.drawable.ic_ab_back);
         actionBar.setAllowOverlayTitle(true);
         if (currentType == 0) {
@@ -406,7 +404,7 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
                                 }
                             });
 
-                            for (int a : SharedConfig.activeAccounts) {
+                            for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
                                 UserConfig userConfig = UserConfig.getInstance(a);
                                 if (!userConfig.isClientActivated()) {
                                     continue;
@@ -600,10 +598,6 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
             frameLayout.addView(undoView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM | Gravity.LEFT, 8, 0, 8, 8));
         }
 
-        if (newAuthorizationToOpen != null && undoView != null) {
-            AndroidUtilities.runOnUIThread(() -> undoView.showWithAction(0, UndoView.ACTION_QR_SESSION_ACCEPTED, newAuthorizationToOpen), 3000L);
-        }
-
         updateRows();
         return fragmentView;
     }
@@ -766,7 +760,7 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
         ttlRow = -1;
         ttlDivideRow = -1;
 
-        if (currentType == 0) {
+        if (currentType == 0 && getMessagesController().qrLoginCamera) {
             qrCodeRow = rowCount++;
             qrCodeDividerRow = rowCount++;
         }
@@ -781,6 +775,8 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
             currentSessionSectionRow = rowCount++;
             currentSessionRow = rowCount++;
         }
+
+
         if (!passwordSessions.isEmpty() || !sessions.isEmpty()) {
             terminateAllSessionsRow = rowCount++;
             terminateAllSessionsDetailRow = rowCount++;
@@ -1047,7 +1043,6 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
             }
             return VIEW_TYPE_TEXT;
         }
-
     }
 
     private class ScanQRCodeView extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {

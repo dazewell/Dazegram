@@ -47,8 +47,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Random;
 
-import tw.nekomimi.nekogram.NekoConfig;
-
 public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCenterDelegate {
 
     private final int ANIMATION_JSON_VERSION = 1;
@@ -197,8 +195,6 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
                 checkStickerPack();
             }
         } else if (id == NotificationCenter.onEmojiInteractionsReceived) {
-            if (NekoConfig.disableRemoteEmojiInteractions.Bool())
-                return;
             if (chatActivity == null) {
                 return;
             }
@@ -264,11 +260,9 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
         if (bestView != null && chatActivity != null) {
             chatActivity.restartSticker(bestView);
             if (!EmojiData.hasEmojiSupportVibration(bestView.getMessageObject().getStickerEmoji()) && !bestView.getMessageObject().isPremiumSticker() && !bestView.getMessageObject().isAnimatedAnimatedEmoji()) {
-                if (!NekoConfig.disableVibration.Bool()) {
-                    try {
-                        bestView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
-                    } catch (Exception ignored) {}
-                }
+                try {
+                    bestView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                } catch (Exception ignored) {}
             }
             showAnimationForCell(bestView, animation, false, true);
         }
@@ -430,9 +424,6 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
     }
 
     public boolean onTapItem(ChatMessageCell view, ChatActivity chatActivity, boolean userTapped) {
-        if (NekoConfig.disablePremiumStickerAnimation.Bool()) {
-            return false;
-        }
         if (chatActivity.isSecretChat() || view.getMessageObject() == null || view.getMessageObject().getId() < 0) {
             return false;
         }
@@ -442,11 +433,9 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
         boolean show = showAnimationForCell(view, -1, userTapped, false);
 
         if (userTapped && show && !EmojiData.hasEmojiSupportVibration(view.getMessageObject().getStickerEmoji()) && !view.getMessageObject().isPremiumSticker() && !view.getMessageObject().isAnimatedAnimatedEmoji()) {
-            if (!NekoConfig.disableVibration.Bool()) {
-                try {
-                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
-                } catch (Exception ignored) {}
-            }
+            try {
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            } catch (Exception ignored) {}
         }
         if (view.getMessageObject().isPremiumSticker() || view.getEffect() != null || (!userTapped && view.getMessageObject().isAnimatedEmojiStickerSingle())) {
             view.getMessageObject().forcePlayEffect = false;
@@ -765,7 +754,6 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
                         public void onAnimationReady(ImageReceiver imageReceiver) {
                             if (sendTap && messageObject != null && messageObject.isAnimatedAnimatedEmoji() && imageReceiver.getLottieAnimation() != null && !imageReceiver.getLottieAnimation().hasVibrationPattern()) {
                                 try {
-                                    if (!NekoConfig.disableVibration.Bool())
                                     contentLayout.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
                                 } catch (Exception ignored) {}
                             }

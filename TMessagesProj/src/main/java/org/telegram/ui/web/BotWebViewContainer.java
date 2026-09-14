@@ -173,9 +173,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.regex.Pattern;
-
-import xyz.nextalone.nagram.NaConfig;
 
 public abstract class BotWebViewContainer extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {
     private final static String DURGER_KING_USERNAME = "DurgerKingBot";
@@ -452,7 +449,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
             settings.setUseWideViewPort(true);
             settings.setLoadWithOverviewMode(true);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                settings.setSafeBrowsingEnabled(false);
+                settings.setSafeBrowsingEnabled(true);
             }
         }
         if (isVerifyingAge()) {
@@ -4074,20 +4071,6 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                 @Override
                 public boolean shouldOverrideUrlLoading(WebView view, String url) {
                     if (url == null) return false;
-                    Uri uriNew = Uri.parse(url);
-
-                    // ----- Nagram Hook start -----
-                    String urlPatternStr = NaConfig.INSTANCE.getOpenUrlOutBotWebViewRegex().String();
-                    if (botWebViewContainer != null && !urlPatternStr.isEmpty()) {
-                        Pattern urlPattern = Pattern.compile(urlPatternStr, Pattern.MULTILINE | Pattern.CASE_INSENSITIVE);
-                        if (urlPattern.matcher(url).find()) {
-                            botWebViewContainer.onOpenUri(uriNew);
-                            d("shouldOverrideUrlLoading("+url+") = true");
-                            return true;
-                        }
-                    }
-                    // ----- Nagram Hook end -----
-
                     if (url.trim().startsWith("sms:")) {
                         return false;
                     }
@@ -4103,6 +4086,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                         Browser.openUrl(context, url);
                         return true;
                     }
+                    Uri uriNew = Uri.parse(url);
                     if (!bot) {
                         if (Browser.openInExternalApp(context, url, true)) {
                             d("shouldOverrideUrlLoading("+url+") = true (openInExternalBrowser)");

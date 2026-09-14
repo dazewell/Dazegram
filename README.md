@@ -1,244 +1,46 @@
-# Nagram
+## Telegram messenger for Android
 
-Nagram is a third-party Telegram client based on [NekoX](https://github.com/NekoX-Dev/NekoX) with some modifications.
+[Telegram](https://telegram.org) is a messaging app with a focus on speed and security. It’s superfast, simple and free.
+This repo contains the official source code for [Telegram App for Android](https://play.google.com/store/apps/details?id=org.telegram.messenger).
 
-- Official Site: <https://nextalone.xyz>
-- Telegram Update Channel: <https://t.me/nagram_channel>
-- Releases: <https://github.com/NextAlone/Nagram/releases>
-- Issues here: <https://github.com/NextAlone/Nagram/issues>
+## Creating your Telegram Application
 
-## Branding
+We welcome all developers to use our API and source code to create applications on our platform.
+There are several things we require from **all developers** for the moment.
 
-Nagram's source code is licensed under GPLv3. The Nagram name and project
-identity belong to [@NextAlone](https://github.com/NextAlone); the Nagram
-application icon artwork is copyright © MaitungTM. These are separate brand
-assets. Modified, forked, and third-party distributions must use distinct
-branding and replace the Nagram brand assets. See [BRANDING.md](BRANDING.md)
-for the complete policy.
+1. [**Obtain your own api_id**](https://core.telegram.org/api/obtaining_api_id) for your application.
+2. Please **do not** use the name Telegram for your app — or make sure your users understand that it is unofficial.
+3. Kindly **do not** use our standard logo (white paper plane in a blue circle) as your app's logo.
+3. Please study our [**security guidelines**](https://core.telegram.org/mtproto/security_guidelines) and take good care of your users' data and privacy.
+4. Please remember to publish **your** code too in order to comply with the licences.
 
-## Additional feature over Nagram
+### API, Protocol documentation
 
-1. Nice icon (copyright © MaitungTM)
-2. Combine message
-3. Editable text style 
-4. Forced copy
-5. Invert reply
-6. Quick reply in longClick menu (thanks to @blxueya)
-7. Undo and Redo
-8. Scrollable chat preview (thanks to TeleTux)
-9. Noise suppress and voice enhance (thanks to )
+Telegram API manuals: https://core.telegram.org/api
 
-----
+MTproto protocol manuals: https://core.telegram.org/mtproto
 
-## NekoX Changes
+### Compilation Guide
 
-- Most of Nekogram's features
-- Unlimited login accounts
-- **Proxy**
-    - Built-in VMess, Shadowsocks, SSR, Trojan-GFW proxies support (No longer maintained)
-    - Built-in public proxy (WebSocket relay via Cloudflare CDN), [documentation and for PC](https://github.com/arm64v8a/NekoXProxy)
-    - Proxy subscription support
-    - Ipv6 MTProxy support
-    - Able to parse all proxy subscription format: SIP008, ssr, v2rayN, vmess1, shit ios app formats, clash config and more
-    - Proxies import and export, remarks, speed measurement, sorting, delete unusable nodes, etc
-    - Scan the QR code (any link, can add a proxy)
-    - The ( vmess / vmess1 / ss / ssr / trojan ) proxy link in the message can be clicked
-    - Allow auto-disabling proxy when VPN is enabled
-    - Proxy automatic switcher
-    - Don't alert "Proxy unavailable" for non-current account
-- **Stickers**
-    - Custom [Emoji packs](https://github.com/NekoX-Dev/NekoX/wiki/emoji)
-    - Add stickers without sticker pack
-    - Sticker set list backup / restore / share
-- **Internationalization**
-    - OpenCC Chinese Convert
-    - Full InstantView translation support
-    - Translation support for selected text on input and in messages
-    - Google Cloud Translate / Yandex.Translate support
-    - Force English emoji keywords to be loaded
-    - Persian calendar support
-- **Additional Options**
-    - Option to disable vibration
-    - Dialog sorting is optional "Unread and can be prioritized for reminding" etc
-    - Option to skip "regret within five seconds"
-    - Option to not send comment first when forwarding
-    - Option to use nekox chat input menu: replace record button with a menu which contains an switch to control link preview (enabled by default)
-    - Option to disable link preview by default: to prevent the server from knowing that the link is shared through Telegram.
-    - Option to ignore Android-only content restrictions (except for the Play Store version).
-    - Custom cache directory (supports external storage)
-    - Custom server (official, test DC)
-    - Option to block others from starting a secret chat with you
-    - Option to disable trending
-- **Additional Actions**
-    - Allow clicking on links in self profile
-    - Delete all messages in group
-    - Unblock all users support
-    - Login via QR code
-    - Scan and confirm the login QR code directly
-    - Allow clearing app data
-    - Proxies, groups, channels, sticker packs are able to be shared as QR codes
-    - Add "@Name" when long-pressing @user option
-    - Allow creating a group without inviting anyone
-    - Allow upgrading a group to a supergroup
-    - Mark dialogs as read using tab menu
-    - Enabled set auto delete timer option for private chats and private groups
-    - Support saving multiple selected messages to Saved Messages
-    - Support unpinning multiple selected messages
-    - View stats option for messages
-- **Optimization**
-    - Keep the original file name when downloading files
-    - View the data center you belong to when you don't have an avatar
-    - Enhanced notification service, optional version without Google Services
-    - Improved session dialog
-    - Improved link long click menu
-    - Improved hide messages from blocked users feature
-    - Don't process cleanup draft events after opening chat
-- **Others**
-    - OpenKeychain client (sign / verify / decrypt / import)
-    - Text replacer
-- **UI**
-    - Telegram X style menu for unpinning messages
-    - Built-in Material Design themes / Telegram X style icons
-- And more :)
+**Note**: In order to support [reproducible builds](https://core.telegram.org/reproducible-builds), this repo contains dummy release.keystore,  google-services.json and filled variables inside BuildVars.java. Before publishing your own APKs please make sure to replace all these files with your own.
 
-## API and Protocol documentation
+You will require Android Studio 2025.1.4, Android NDK 27.2.12479018 and Android SDK 36.
 
-Telegram API manuals: <https://core.telegram.org/api>
-
-MTProto protocol manuals: <https://core.telegram.org/mtproto>
-
-## Compilation Guide
-
-**NOTE: For Windows users, please consider using a Linux VM (such as WSL2) or dual booting.**
-
-Environment:
-
-- Linux distribution based on Debian or Arch Linux, or macOS
-
-- Native tools: `gcc` `go` `make` `cmake` `ninja` `yasm`
-  
-  ```shell
-  # for Debian based distribution
-  sudo apt install gcc golang make cmake ninja-build yasm
-  # for Arch Linux based distribution
-  sudo pacman -S base-devel go ninja cmake yasm
-  # for macOS
-  xcode-select --install # install developer tools (will open confirm dialog)
-  brew install go cmake ninja yasm # install other tools by homebrew
-  ```
-- Android SDK: `build-tools;33.0.0` `platforms;android-33` `ndk;27.2.12479018` `cmake;3.18.1` `cmake;3.22.1` (the default location is **$HOME/Android/SDK**, otherwise you need to specify **$ANDROID_HOME** for it)
-
-  It is recommended to use [Android Studio](https://developer.android.com/studio) to install, but you can also use `sdkmanager` command on distributions based on Debian:
-
-  ```shell
-  sudo apt install sdkmanager
-  sdkmanager --sdk_root $HOME/Android/SDK --install "build-tools;33.0.0" "platforms;android-33" "ndk;27.2.12479018" "cmake;3.18.1" "cmake;3.22.1"
-  ```
-
-Build: 
-
-1. Checkout submodules
-
-   ```shell
-   git submodule update --init --recursive
+1. Clone the Telegram source code with its submodules:
+   ```bash
+   git clone --recursive --shallow-submodules https://github.com/DrKLO/Telegram.git Telegram
    ```
-
-2. Disable signature check by removing the following lines in **TMessagesProj/jni/jni.c**:
-   ```c
-    if (verifySign(env) != JNI_OK) {
-        return JNI_ERR;
-    }
+   In case you forgot the `--recursive` flag, change to the `Telegram` directory and run:
+   ```bash
+   git submodule init && git submodule update --init --recursive --depth=1
    ```
+2. Copy your release.keystore into TMessagesProj/config
+3. Fill out RELEASE_KEY_PASSWORD, RELEASE_KEY_ALIAS, RELEASE_STORE_PASSWORD in gradle.properties to access your  release.keystore
+4.  Go to https://console.firebase.google.com/, create two android apps with application IDs org.telegram.messenger and org.telegram.messenger.beta, turn on firebase messaging and download google-services.json, which should be copied to the same folder as TMessagesProj.
+5. Open the project in the Studio (note that it should be opened, NOT imported).
+6. Fill out values in TMessagesProj/src/main/java/org/telegram/messenger/BuildVars.java – there’s a link for each of the variables showing where and which data to obtain.
+7. You are ready to compile Telegram.
 
-3. Build native dependencies:
-   ```shell
-   ./run init libs
-   ```
+### Localization
 
-4. Build external libraries and native code: 
-   ```shell
-   ./run libs native
-   ```
-
-5. Fill out `TELEGRAM_APP_ID` and `TELEGRAM_APP_HASH` in **local.properties** (from [Telegram Developer](https://my.telegram.org/auth))
-
-6. Replace **TMessagesProj/google-services.json** if you want FCM to work.
-
-7. Replace **release.keystore** with yours and fill out `ALIAS_NAME`, `KEYSTORE_PASS` and `ALIAS_PASS` in **local.properties**.
-
-8. Build with Gradle:
-
-   ```shell
-   ./gradlew assemble<Release/Debug>
-   ```
-
-----
-
-## Compilation with GitHub Action
-
-1. Create your own `release.keystore` to replace `TMessagesProj/release.keystore`.
-
-2. Prepare LOCAL_PROPERTIES
-
-- KEYSTORE_PASS: from your keystore
-- ALIAS_NAME: from your keystore
-- ALIAS_PASS: from your keystore
-- TELEGRAM_APP_ID: from [Telegram Developer](https://my.telegram.org/auth)
-- TELEGRAM_APP_HASH: from [Telegram Developer](https://my.telegram.org/auth)
-
-```env
-KEYSTORE_PASS=123456
-ALIAS_NAME=key0
-ALIAS_PASS=123456
-TELEGRAM_APP_ID=123456
-TELEGRAM_APP_HASH=abcdefg
-```
-
-Then, use base64 to encode the above.
-
-3. Add Repo Action Secrets
-
-- LOCAL_PROPERTIES: from step 2
-- HELPER_BOT_TOKEN: from telegram [@Botfather](https://t.me/Botfather), such as `1111:abcd`
-- HELPER_BOT_TARGET: from telegram chat id, such as `777000`
-
-4. Run Release Build
-
-5. Generate `TMessagesProj/jni/integrity/genuine.h` - https://github.com/brevent/genuine
-
-## FAQ
-
-#### What is the differences between Nagram, NekoX and Nekogram?
-
-Developed by different developers, read the feature list above to understand the differences.
-
-#### What is the noGcm version?
-
-Google Cloud Messaging, also known as gcm / fcm, message push service by google used by original Telegram android app, it requires your device to have Google Service Framework (non-free) installed.
-
-#### I've encountered a bug!
-
-First, make sure you have the latest version installed (check the channel).
-
-Then, if the issue appears in the official Telegram client too, please submit it to the officials, (be careful not to show NekoX in the description and screenshots, the official developers doesn't like us!).
-
-Then, submit it to our [group](https://t.me/nagram_group) with #bug.
-
-If you experience a *crash*, you also need to click on the version number at the bottom of the settings and select "Enable Log" and send it to us.
-
-## Localization
-
-Nagram is forked from Telegram, thus most locales follows the translations of Telegram for Android, checkout <https://translations.telegram.org/en/android/>.
-
-Is Nagram not in your language, or the translation is incorrect or incomplete? Get involved in the translations on our [Weblate](https://xtaolabs.crowdin.com/nagram).
-
-[![Crowdin](https://badges.crowdin.net/e/156df3a631d257cc6b57301566d545fb/localized.svg)](https://xtaolabs.crowdin.com/nagram)
-
-## Thanks
-
-- [NekoX](https://github.com/NekoX-Dev/NekoX)
-- [Nekogram](https://gitlab.com/Nekogram/Nekogram)
-- [Pigeongram](https://gitlab.com/JasonKhew96/Nekogram)
-- [Nullgram](https://github.com/qwq233/Nullgram)
-- [TeleTux](https://github.com/TeleTux/TeleTux)
-- [OwlGram](https://github.com/OwlGramDev/OwlGram)
+We moved all translations to https://translations.telegram.org/en/android/. Please use it.

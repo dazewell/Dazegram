@@ -43,8 +43,6 @@ import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.R;
-import org.telegram.messenger.R;
-import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
@@ -70,7 +68,6 @@ import org.telegram.ui.Components.RLottieDrawable;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.DialogsActivity;
 import org.telegram.ui.FilteredSearchView;
-import tw.nekomimi.nekogram.NekoConfig;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -1116,7 +1113,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
                 ConnectionsManager.getInstance(currentAccount).cancelRequest(sponsoredReqId, true);
                 sponsoredReqId = 0;
             }
-            if (NekoConfig.hideSponsoredMessage.Bool() || query == null || query.length() < 4 || UserConfig.getInstance(currentAccount).isPremium() && MessagesController.getInstance(currentAccount).isSponsoredDisabled()) {
+            if (query == null || query.length() < 4 || UserConfig.getInstance(currentAccount).isPremium() && MessagesController.getInstance(currentAccount).isSponsoredDisabled()) {
                 sponsoredQuery = null;
             } else {
                 final TLRPC.TL_contacts_getSponsoredPeers req = new TLRPC.TL_contacts_getSponsoredPeers();
@@ -1808,13 +1805,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
                 if (position >= 0 && position < searchResult.size() && user == null) {
                     name = searchResultNames.get(position);
                     String username1 = UserObject.getPublicUsername(user);
-                    if (name != null && name.toString().startsWith("ID: ")) {
-                        username = name;
-                        name = null;
-                        if (username instanceof SpannableStringBuilder) {
-                            username = new SpannableStringBuilder(username);
-                        }
-                    } else if (name != null && user != null && username1 != null) {
+                    if (name != null && user != null && username1 != null) {
                         if (name.toString().startsWith("@" + username1)) {
                             username = name;
                             name = null;

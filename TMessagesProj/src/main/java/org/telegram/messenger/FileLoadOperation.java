@@ -31,8 +31,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipException;
 
-import tw.nekomimi.nekogram.NekoConfig;
-
 public class FileLoadOperation {
 
     private final boolean FULL_LOGS = false;
@@ -49,7 +47,6 @@ public class FileLoadOperation {
     private boolean forceSmallChunk;
     private Runnable fileWriteRunnable;
     public boolean isStory;
-    public boolean isVideo;
 
     public volatile boolean caughtPremiumFloodWait;
     public void setStream(FileLoadOperationStream stream, boolean streamPriority, long streamOffset) {
@@ -289,7 +286,7 @@ public class FileLoadOperation {
     }
 
     private void updateParams() {
-        if ((preloadPrefixSize > 0 || MessagesController.getInstance(currentAccount).getfileExperimentalParams || NekoConfig.enhancedFileLoader.Bool()) && !forceSmallChunk) {
+        if ((preloadPrefixSize > 0 || MessagesController.getInstance(currentAccount).getfileExperimentalParams) && !forceSmallChunk) {
             downloadChunkSizeBig = 1024 * 512;
             maxDownloadRequests = 8;
             maxDownloadRequestsBig = 8;
@@ -441,7 +438,6 @@ public class FileLoadOperation {
                     }
                 }
             }
-            isVideo = (MessageObject.isVideoDocument(documentLocation));
             ungzip = "application/x-tgsticker".equals(documentLocation.mime_type) || "application/x-tgwallpattern".equals(documentLocation.mime_type);
             totalBytesCount = documentLocation.size;
             if (key != null) {
@@ -784,7 +780,7 @@ public class FileLoadOperation {
             }
             FileLog.e("FileLoadOperation " + getFileName() + " removing stream listener " + operation);
             streamListeners.remove(operation);
-//            if (!isStory && !isVideo && streamListeners.isEmpty()) {
+//            if (!isStory && streamListeners.isEmpty()) {
 //                Utilities.stageQueue.cancelRunnable(cancelAfterNoStreamListeners);
 //                Utilities.stageQueue.postRunnable(cancelAfterNoStreamListeners, 1200);
 //            } else if (!streamListeners.isEmpty()) {

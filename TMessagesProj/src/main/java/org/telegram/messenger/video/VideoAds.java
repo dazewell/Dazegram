@@ -75,8 +75,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Objects;
 
-import tw.nekomimi.nekogram.NekoConfig;
-
 public class VideoAds {
 
     private final int currentAccount;
@@ -309,7 +307,7 @@ public class VideoAds {
         closeDrawable.setColor(Theme.getColor(Theme.key_featuredStickers_addButton, bulletinFactory.getResourcesProvider()));
         layout.buttonView.setImageDrawable(closeDrawable);
         layout.buttonView.setOnClickListener(v -> {
-            if (NekoConfig.hideSponsoredMessage.Bool() || closeDrawable.isCrossAvailable()) {
+            if (closeDrawable.isCrossAvailable()) {
                 if (bulletin != null) {
                     bulletin.hide();
                 }

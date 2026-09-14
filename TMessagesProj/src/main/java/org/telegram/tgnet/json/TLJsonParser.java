@@ -47,7 +47,7 @@ public class TLJsonParser {
 
                 } catch (JSONException e) {
                     FileLog.e(e);
-                    if (BuildConfig.DEBUG) {
+                    if (BuildConfig.DEBUG_PRIVATE_VERSION) {
                         throw new RuntimeException(e);
                     }
                 }

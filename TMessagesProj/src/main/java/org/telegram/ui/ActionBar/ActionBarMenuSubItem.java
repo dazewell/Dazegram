@@ -343,10 +343,6 @@ public class ActionBarMenuSubItem extends FrameLayout {
         }
     }
 
-    public void setVisibility(boolean visibility) {
-        setVisibility(visibility ? View.VISIBLE : View.GONE);
-    }
-
     public void setText(CharSequence text) {
         textView.setText(text);
     }

@@ -55,7 +55,6 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
-import org.telegram.messenger.MediaDataController;
 import org.telegram.messenger.DocumentObject;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.FileLoader;
@@ -89,7 +88,6 @@ import org.telegram.ui.Components.AlertsCreator;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.AnimatedEmojiSpan;
 import org.telegram.ui.Components.BackupImageView;
-import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.EmojiPacksAlert;
 import org.telegram.ui.Components.EmojiView;
@@ -115,11 +113,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import me.vkryl.core.reference.ReferenceList;
-
-import tw.nekomimi.nekogram.NekoConfig;
-import tw.nekomimi.nekogram.ui.MessageHelper;
-import tw.nekomimi.nekogram.utils.VibrateUtil;
-import xyz.nextalone.nagram.NaConfig;
 
 public class ContentPreviewViewer {
 
@@ -162,7 +155,7 @@ public class ContentPreviewViewer {
 
         }
 
-        default void newStickerPackSelected(CharSequence short_name, CharSequence name, String emoji, Utilities.Callback<Boolean> whenDone) {
+        default void newStickerPackSelected(CharSequence name, String emoji, Utilities.Callback<Boolean> whenDone) {
 
         }
 
@@ -318,11 +311,6 @@ public class ContentPreviewViewer {
     public final static int CONTENT_TYPE_GIF = 1;
     public final static int CONTENT_TYPE_EMOJI = 2;
     public final static int CONTENT_TYPE_CUSTOM_STIKER = 3;
-
-    private final static int nkbtn_send_without_sound = 100;
-    private final static int nkbtn_stickerdl = 110;
-    private final static int nkbtn_sticker_copy = 111;
-    private final static int nkbtn_sticker_copy_png = 112;
 
     private static TextPaint textPaint;
 
@@ -615,20 +603,18 @@ public class ContentPreviewViewer {
                         reactionsWindow.dismiss();
                     }
                     if (stickerSetCovered instanceof TLRPC.TL_stickerSetNoCovered) {
-                        StickersDialogs.showShortNameEditorDialog(resourcesProvider, containerView.getContext(), short_name -> {
-                            StickersDialogs.showNameEditorDialog(null, resourcesProvider, containerView.getContext(), (text, whenDone) -> {
-                                if (delegate != null) {
-                                    delegate.newStickerPackSelected(short_name, text, TextUtils.join("", selectedEmojis), whenDone != null ? success -> {
-                                        whenDone.run(success);
-                                        if (success) {
-                                            dismissPopupWindow();
-                                        }
-                                    } : null);
-                                    if (whenDone == null) {
+                        StickersDialogs.showNameEditorDialog(null, resourcesProvider, containerView.getContext(), (text, whenDone) -> {
+                            if (delegate != null) {
+                                delegate.newStickerPackSelected(text, TextUtils.join("", selectedEmojis), whenDone != null ? success -> {
+                                    whenDone.run(success);
+                                    if (success) {
                                         dismissPopupWindow();
                                     }
+                                } : null);
+                                if (whenDone == null) {
+                                    dismissPopupWindow();
                                 }
-                            });
+                            }
                         });
                         return;
                     }
@@ -729,11 +715,9 @@ public class ContentPreviewViewer {
                     showUnlockPremiumView();
                     menuVisible = true;
                     containerView.invalidate();
-                    if (!NekoConfig.disableVibration.Bool()) {
-                        try {
-                            containerView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-                        } catch (Exception ignored) {}
-                    }
+                    try {
+                        containerView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                    } catch (Exception ignored) {}
                     return;
                 }
                 final boolean inFavs = MediaDataController.getInstance(currentAccount).isStickerInFavorites(currentDocument);
@@ -749,7 +733,7 @@ public class ContentPreviewViewer {
                     if (delegate.needSend(currentContentType) && !delegate.isInScheduleMode()) {
                         items.add(LocaleController.getString(R.string.SendWithoutSound));
                         icons.add(R.drawable.input_notify_off);
-                        actions.add(nkbtn_send_without_sound);
+                        actions.add(6);
                     }
                     if (delegate.canSchedule()) {
                         items.add(LocaleController.getString(R.string.Schedule));
@@ -760,17 +744,6 @@ public class ContentPreviewViewer {
                         items.add(LocaleController.getString(R.string.ImportStickersRemoveMenu));
                         icons.add(R.drawable.msg_delete);
                         actions.add(5);
-                    }
-                    items.add(LocaleController.getString("SaveToGallery", R.string.SaveToGallery));
-                    icons.add(R.drawable.msg_gallery);
-                    actions.add(nkbtn_stickerdl);
-                    if (NaConfig.INSTANCE.getShowCopyPhoto().Bool() && !MessageObject.isAnimatedStickerDocument(currentDocument, true) && !MessageObject.isVideoDocument(currentDocument)) {
-                        items.add(LocaleController.getString("CopyPhotoAsSticker", R.string.CopyPhotoAsSticker));
-                        icons.add(R.drawable.msg_copy);
-                        actions.add(nkbtn_sticker_copy);
-                        items.add(LocaleController.getString("CopyPhoto", R.string.CopyPhoto));
-                        icons.add(R.drawable.msg_copy);
-                        actions.add(nkbtn_sticker_copy_png);
                     }
                 }
                 if (!MessageObject.isMaskDocument(currentDocument) && (inFavs || MediaDataController.getInstance(currentAccount).canAddStickerToFavorites() && MessageObject.isStickerHasSet(currentDocument))) {
@@ -816,7 +789,6 @@ public class ContentPreviewViewer {
                 menuVisible = true;
                 containerView.invalidate();
 
-
                 View.OnClickListener onItemClickListener = new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
@@ -824,7 +796,7 @@ public class ContentPreviewViewer {
                             return;
                         }
                         int which = (int) v.getTag();
-                        if (actions.get(which) == 0 || actions.get(which) == nkbtn_send_without_sound) {
+                        if (actions.get(which) == 0 || actions.get(which) == 6) {
                             if (delegate != null) {
                                 delegate.sendSticker(currentDocument, currentQuery, parentObject, actions.get(which) == 0, 0, 0);
                             }
@@ -847,18 +819,6 @@ public class ContentPreviewViewer {
                             MediaDataController.getInstance(currentAccount).addRecentSticker(MediaDataController.TYPE_IMAGE, parentObject, currentDocument, (int) (System.currentTimeMillis() / 1000), true);
                         } else if (actions.get(which) == 5) {
                             delegate.remove(importingSticker);
-                        } else if (actions.get(which) == nkbtn_stickerdl) {
-                            MessageHelper.getInstance(currentAccount).saveStickerToGallery(parentActivity, currentDocument, uri -> {
-                                BulletinFactory.global().createDownloadBulletin(BulletinFactory.FileType.UNKNOWN).show();
-                            });
-                        } else if (actions.get(which) == nkbtn_sticker_copy) {
-                            MessageHelper.getInstance(currentAccount).addStickerToClipboard(currentDocument, () -> {
-                                BulletinFactory.global().createCopyBulletin(LocaleController.getString("PhotoCopied", R.string.PhotoCopied)).show();
-                            });
-                        } else if (actions.get(which) == nkbtn_sticker_copy_png) {
-                            MessageHelper.getInstance(currentAccount).addStickerToClipboardAsPNG(currentDocument, () -> {
-                                BulletinFactory.global().createCopyBulletin(LocaleController.getString("PhotoCopied", R.string.PhotoCopied)).show();
-                            });
                         } else if (actions.get(which) == 7) {
                             delegate.editSticker(currentDocument);
                         } else if (actions.get(which) == 8) {
@@ -931,11 +891,9 @@ public class ContentPreviewViewer {
                 }
                 popupWindow.showAtLocation(containerView, 0, (int) ((containerView.getMeasuredWidth() - previewMenu.getMeasuredWidth()) / 2f), y);
 
-                if (!NekoConfig.disableVibration.Bool()) {
-                    try {
-                        containerView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-                    } catch (Exception ignored) {}
-                }
+                try {
+                    containerView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                } catch (Exception ignored) {}
             } else if (currentContentType == CONTENT_TYPE_EMOJI && delegate != null) {
                 ArrayList<CharSequence> items = new ArrayList<>();
                 final ArrayList<Integer> actions = new ArrayList<>();
@@ -1048,11 +1006,9 @@ public class ContentPreviewViewer {
                 popupWindow.showAtLocation(containerView, 0, (int) ((containerView.getMeasuredWidth() - previewMenu.getMeasuredWidth()) / 2f), y);
                 ActionBarPopupWindow.startAnimation(previewMenu);
 
-                if (!NekoConfig.disableVibration.Bool()) {
-                    try {
-                        containerView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-                    } catch (Exception ignored) {}
-                }
+                try {
+                    containerView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                } catch (Exception ignored) {}
 
                 if (moveY != 0) {
                     if (finalMoveY == 0) {
@@ -1103,7 +1059,7 @@ public class ContentPreviewViewer {
                         actions.add(1);
                     } else {
                         items.add(LocaleController.formatString("SaveToGIFs", R.string.SaveToGIFs));
-                        icons.add(R.drawable.outline_add_gif);
+                        icons.add(R.drawable.msg_gif_add);
                         actions.add(2);
                     }
                 } else {
@@ -1125,8 +1081,8 @@ public class ContentPreviewViewer {
                         return;
                     }
                     int which = (int) v.getTag();
-                    if (actions.get(which) == 0 || actions.get(which) == nkbtn_send_without_sound) {
-                        delegate.sendGif(currentDocument != null ? currentDocument : inlineResult, parentObject, actions.get(which) == 0, 0, 0);
+                    if (actions.get(which) == 0) {
+                        delegate.sendGif(currentDocument != null ? currentDocument : inlineResult, parentObject, true, 0, 0);
                     } else if (actions.get(which) == 4) {
                         delegate.sendGif(currentDocument != null ? currentDocument : inlineResult, parentObject, false, 0, 0);
                     } else if (actions.get(which) == 1) {
@@ -1188,11 +1144,9 @@ public class ContentPreviewViewer {
                 y += AndroidUtilities.dp(24) - moveY;
                 popupWindow.showAtLocation(containerView, 0, (int) ((containerView.getMeasuredWidth() - previewMenu.getMeasuredWidth()) / 2f), y);
 
-                if (!NekoConfig.disableVibration.Bool()) {
-                    try {
-                        containerView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-                    } catch (Exception ignored) {}
-                }
+                try {
+                    containerView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                } catch (Exception ignored) {}
 
                 if (moveY != 0) {
                     if (finalMoveY == 0) {
@@ -1544,11 +1498,13 @@ public class ContentPreviewViewer {
 
     protected void runSmoothHaptic() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            final Vibrator vibrator = (Vibrator) containerView.getContext().getSystemService(Context.VIBRATOR_SERVICE);
             if (vibrationEffect == null) {
                 long[] vibrationWaveFormDurationPattern = {0, 2};
                 vibrationEffect = VibrationEffect.createWaveform(vibrationWaveFormDurationPattern, -1);
             }
-            VibrateUtil.vibrate(200L, vibrationEffect);
+            vibrator.cancel();
+            vibrator.vibrate(vibrationEffect);
         }
     }
 
@@ -1686,11 +1642,9 @@ public class ContentPreviewViewer {
                         }
                     }
                     if (opened) {
-                        if (!NekoConfig.disableVibration.Bool()) {
-                            try {
-                                currentPreviewCell.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
-                            } catch (Exception ignored) {}
-                        }
+                        try {
+                            currentPreviewCell.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+                        } catch (Exception ignored) {}
                         if (delegate != null) {
                             delegate.resetTouch();
                         }

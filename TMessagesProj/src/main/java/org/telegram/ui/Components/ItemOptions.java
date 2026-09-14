@@ -187,8 +187,6 @@ public class ItemOptions {
     private int foregroundIndex;
     private ActionBarPopupWindow.ActionBarPopupWindowLayout lastLayout;
 
-    public ActionBarMenuSubItem subItem;
-
     public boolean swipeback, shownFromBottom, useScrollView;
 
     private static BaseFragment downFragment(BaseFragment fragment) {
@@ -368,7 +366,7 @@ public class ItemOptions {
             return this;
         }
 
-        subItem = new ActionBarMenuSubItem(context, false, false, resourcesProvider);
+        ActionBarMenuSubItem subItem = new ActionBarMenuSubItem(context, false, false, resourcesProvider);
         subItem.setPadding(dp(18), 0, dp(18), 0);
         if (iconResId != 0 || iconDrawable != null) {
             subItem.setTextAndIcon(text, iconResId, iconDrawable);
@@ -780,7 +778,7 @@ public class ItemOptions {
         }
         ActionBarMenuSubItem lastSubItem = (ActionBarMenuSubItem) lastChild;
         lastSubItem.setRightIcon(R.drawable.msg_text_check);
-        lastSubItem.getRightIcon().setColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteBlueIcon, resourcesProvider), PorterDuff.Mode.MULTIPLY);
+        lastSubItem.getRightIcon().setColorFilter(0xffffffff, PorterDuff.Mode.MULTIPLY);
         lastSubItem.getRightIcon().setScaleX(.85f);
         lastSubItem.getRightIcon().setScaleY(.85f);
         return this;
@@ -1829,12 +1827,6 @@ public class ItemOptions {
     private View.OnTouchListener hoverReleaseListener;
     private View hoveredItem;
     private final int[] hoverLoc = new int[2];
-
-    public ItemOptions disableHoverRelease() {
-        longPressSelectionEnabled = false;
-        clearHoverListener();
-        return this;
-    }
 
     private void installHoverReleaseListener() {
         if (scrimView == null) return;

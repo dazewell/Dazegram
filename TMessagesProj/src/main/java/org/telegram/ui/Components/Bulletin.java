@@ -85,8 +85,6 @@ import java.lang.annotation.Retention;
 import java.util.ArrayList;
 import java.util.List;
 
-import xyz.nextalone.nagram.NaConfig;
-
 public class Bulletin {
 
     public static final int DURATION_SHORT = 1500;
@@ -1352,7 +1350,7 @@ public class Bulletin {
             final int undoInfoColor = getThemedColor(Theme.key_undo_infoColor);
 
             imageView = new ImageView(context);
-            imageView.setColorFilter(new PorterDuffColorFilter(undoInfoColor, PorterDuff.Mode.SRC_IN));
+            imageView.setColorFilter(new PorterDuffColorFilter(undoInfoColor, PorterDuff.Mode.MULTIPLY));
             addView(imageView, LayoutHelper.createFrameRelatively(24, 24, Gravity.START | Gravity.CENTER_VERTICAL, 16, 12, 16, 12));
 
             textView = new LinkSpanDrawable.LinksTextView(context);
@@ -1366,12 +1364,6 @@ public class Bulletin {
 
         public CharSequence getAccessibilityText() {
             return textView.getText();
-        }
-
-        @Override
-        protected void onShow() {
-            super.onShow();
-            AndroidUtilities.makeAccessibilityAnnouncement(textView.getText());
         }
     }
 
@@ -1391,12 +1383,6 @@ public class Bulletin {
             textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
             textView.setTypeface(Typeface.SANS_SERIF);
             addView(textView, LayoutHelper.createFrameRelatively(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.START | Gravity.CENTER_VERTICAL, 56, 0, 16, 0));
-        }
-
-        @Override
-        protected void onShow() {
-            super.onShow();
-            AndroidUtilities.makeAccessibilityAnnouncement(textView.getText());
         }
 
         public CharSequence getAccessibilityText() {
@@ -1430,20 +1416,16 @@ public class Bulletin {
             titleTextView.setTypeface(AndroidUtilities.bold());
             linearLayout.addView(titleTextView);
 
-            subtitleTextView = new LinkSpanDrawable.LinksTextView(context);
+            subtitleTextView = new TextView(context);
             subtitleTextView.setMaxLines(2);
             subtitleTextView.setTextColor(undoInfoColor);
             subtitleTextView.setLinkTextColor(getThemedColor(Theme.key_undo_cancelColor));
+            subtitleTextView.setMovementMethod(new LinkMovementMethod());
             subtitleTextView.setTypeface(Typeface.SANS_SERIF);
             subtitleTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
             linearLayout.addView(subtitleTextView);
         }
 
-        @Override
-        protected void onShow() {
-            super.onShow();
-            AndroidUtilities.makeAccessibilityAnnouncement(titleTextView.getText() + ". " + subtitleTextView.getText());
-        }
         public CharSequence getAccessibilityText() {
             return titleTextView.getText() + ".\n" + subtitleTextView.getText();
         }
@@ -1499,7 +1481,6 @@ public class Bulletin {
         protected void onShow() {
             super.onShow();
             imageView.playAnimation();
-            AndroidUtilities.makeAccessibilityAnnouncement(titleTextView.getText() + ". " + subtitleTextView.getText());
         }
 
         public void setAnimation(int resId, String... layers) {
@@ -1775,7 +1756,6 @@ public class Bulletin {
         }
 
         public void init() {
-            if (NaConfig.INSTANCE.getDisableShortcutTagActions().Bool()) return;
             textView.setLayoutParams(LayoutHelper.createFrameRelatively(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.START | Gravity.TOP, 56, 6, 8, 0));
             imageView.setLayoutParams(LayoutHelper.createFrameRelatively(56, 48, Gravity.START | Gravity.TOP));
             reactionsContainerLayout = new ReactionsContainerLayout(ReactionsContainerLayout.TYPE_TAGS, fragment, getContext(), fragment.getCurrentAccount(), fragment.getResourceProvider()) {
@@ -2044,7 +2024,6 @@ public class Bulletin {
         protected void onShow() {
             super.onShow();
             imageView.playAnimation();
-            AndroidUtilities.makeAccessibilityAnnouncement(textView.getText());
         }
 
         public void setAnimation(int resId, String... layers) {

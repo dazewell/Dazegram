@@ -71,8 +71,6 @@ import org.telegram.ui.Stories.recorder.HintView2;
 
 import java.util.ArrayList;
 
-import tw.nekomimi.nekogram.NekoConfig;
-
 public class PremiumPreviewBottomSheet extends BottomSheetWithRecyclerListView implements NotificationCenter.NotificationCenterDelegate {
 
     protected ArrayList<PremiumPreviewFragment.PremiumFeatureData> premiumFeatures = new ArrayList<>();
@@ -141,7 +139,7 @@ public class PremiumPreviewBottomSheet extends BottomSheetWithRecyclerListView i
         dummyCell = new PremiumFeatureCell(getContext());
         PremiumPreviewFragment.fillPremiumFeaturesList(premiumFeatures, currentAccount, false);
 
-        if (UserConfig.getInstance(currentAccount).isPremium()) {
+        if (giftTier != null || UserConfig.getInstance(currentAccount).isPremium()) {
             buttonContainer.setVisibility(View.GONE);
         }
 
@@ -186,7 +184,7 @@ public class PremiumPreviewBottomSheet extends BottomSheetWithRecyclerListView i
         rowCount += premiumFeatures.size();
         featuresEndRow = rowCount;
         sectionRow = rowCount++;
-        if (!UserConfig.getInstance(currentAccount).isPremium() && true) {
+        if (!UserConfig.getInstance(currentAccount).isPremium() && giftTier == null) {
             buttonRow = rowCount++;
         }
     }
@@ -718,8 +716,7 @@ public class PremiumPreviewBottomSheet extends BottomSheetWithRecyclerListView i
         if (animateConfetti) {
             AndroidUtilities.runOnUIThread(()->{
                 try {
-                    if (!NekoConfig.disableVibration.Bool())
-                        container.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+                    container.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                 } catch (Exception ignored) {}
                 fireworksOverlay.start(animateConfettiWithStars);
             }, 200);

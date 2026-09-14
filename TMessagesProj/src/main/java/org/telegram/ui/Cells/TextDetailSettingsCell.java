@@ -23,10 +23,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.LocaleController;
 import org.telegram.ui.ActionBar.Theme;
-import org.telegram.ui.Components.EmojiTextView;
 import org.telegram.ui.Components.LayoutHelper;
-
-import cn.hutool.core.util.StrUtil;
 
 public class TextDetailSettingsCell extends FrameLayout {
 
@@ -39,7 +36,7 @@ public class TextDetailSettingsCell extends FrameLayout {
     public TextDetailSettingsCell(Context context) {
         super(context);
 
-        textView = new EmojiTextView(context);
+        textView = new TextView(context);
         textView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
         textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         textView.setLines(1);
@@ -49,7 +46,7 @@ public class TextDetailSettingsCell extends FrameLayout {
         textView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL);
         addView(textView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 21, 10, 21, 0));
 
-        valueTextView = new EmojiTextView(context);
+        valueTextView = new TextView(context);
         valueTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2));
         valueTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
         valueTextView.setGravity(LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT);
@@ -61,12 +58,9 @@ public class TextDetailSettingsCell extends FrameLayout {
 
         imageView = new ImageView(context);
         imageView.setScaleType(ImageView.ScaleType.CENTER);
-        imageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon), PorterDuff.Mode.SRC_IN));
+        imageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon), PorterDuff.Mode.MULTIPLY));
         imageView.setVisibility(GONE);
         addView(imageView, LayoutHelper.createFrame(52, 52, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 8, 6, 8, 0));
-
-        setMultilineDetail(true);
-
     }
 
     @Override
@@ -103,11 +97,6 @@ public class TextDetailSettingsCell extends FrameLayout {
 
     public void setTextAndValue(CharSequence text, CharSequence value, boolean divider) {
         textView.setText(text);
-        if (StrUtil.isBlank(value)) {
-            valueTextView.setVisibility(GONE);
-        } else {
-            valueTextView.setVisibility(VISIBLE);
-        }
         valueTextView.setText(value);
         needDivider = divider;
         imageView.setVisibility(GONE);
@@ -127,6 +116,13 @@ public class TextDetailSettingsCell extends FrameLayout {
 
     public void setValue(CharSequence value) {
         valueTextView.setText(value);
+    }
+
+    public void setTextWithEmojiAnd21Value(String text, CharSequence value, boolean divider) {
+        textView.setText(Emoji.replaceEmoji(text, textView.getPaint().getFontMetricsInt(), false));
+        valueTextView.setText(value);
+        needDivider = divider;
+        setWillNotDraw(!divider);
     }
 
     @Override

@@ -6,7 +6,6 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.text.TextUtils;
 import android.util.LongSparseArray;
-import android.util.SparseArray;
 
 import androidx.annotation.Nullable;
 
@@ -38,9 +37,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
-
-import tw.nekomimi.nekogram.helpers.remote.WallpaperHelper;
-import xyz.nextalone.nagram.NaConfig;
 
 public class ChatThemeController extends BaseController {
 
@@ -235,7 +231,6 @@ public class ChatThemeController extends BaseController {
                 }
                 callback.onComplete(null);
             }
-
             @Override
             public void onError(TLRPC.TL_error error) {
                 callback.onComplete(null);
@@ -244,16 +239,16 @@ public class ChatThemeController extends BaseController {
     }
 
 
-    private static final SparseArray<ChatThemeController> instances = new SparseArray<>();
+    private static final ChatThemeController[] instances = new ChatThemeController[UserConfig.MAX_ACCOUNT_COUNT];
 
     public static ChatThemeController getInstance(int accountNum) {
-        ChatThemeController local = instances.get(accountNum);
+        ChatThemeController local = instances[accountNum];
         if (local == null) {
             synchronized (ChatThemeController.class) {
-                local = instances.get(accountNum);
+                local = instances[accountNum];
                 if (local == null) {
                     local = new ChatThemeController(accountNum);
-                    instances.put(accountNum, local);
+                    instances[accountNum] = local;
                 }
             }
         }
@@ -374,25 +369,12 @@ public class ChatThemeController extends BaseController {
     }
 
     public TLRPC.WallPaper getDialogWallpaper(long dialogId) {
-        TLRPC.WallPaper info = WallpaperHelper.getInstance().getDialogWallpaper(dialogId);
         if (dialogId >= 0) {
-            if (NaConfig.INSTANCE.getDisableCustomWallpaperUser().Bool()) {
-                return null;
-            }
-            if (info != null) {
-                return info;
-            }
             TLRPC.UserFull userFull = getMessagesController().getUserFull(dialogId);
             if (userFull != null) {
                 return userFull.wallpaper;
             }
         } else {
-            if (NaConfig.INSTANCE.getDisableCustomWallpaperChannel().Bool()) {
-                return null;
-            }
-            if (info != null) {
-                return info;
-            }
             TLRPC.ChatFull chatFull = getMessagesController().getChatFull(-dialogId);
             if (chatFull != null) {
                 return chatFull.wallpaper;

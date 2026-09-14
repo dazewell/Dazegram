@@ -79,8 +79,7 @@ static JNINativeMethod NativeByteBufferMethods[] = {
 };
 
 jlong getCurrentTimeMillis(JNIEnv *env, jclass c, jint instanceNum) {
-    return ConnectionsManager::getInstance(instanceNum).getCurrentTimeMillis() +
-           ((jlong) ConnectionsManager::getInstance(instanceNum).getTimeDifference()) * 1000;
+    return ConnectionsManager::getInstance(instanceNum).getCurrentTimeMillis() + ((jlong) ConnectionsManager::getInstance(instanceNum).getTimeDifference()) * 1000;
 }
 
 jint getCurrentTime(JNIEnv *env, jclass c, jint instanceNum) {
@@ -100,9 +99,6 @@ jlong getCurrentAuthKeyId(JNIEnv *env, jclass c, jint instanceNum) {
 }
 
 jint isTestBackend(JNIEnv *env, jclass c, jint instanceNum) {
-    if (instanceNum < 0) {
-        return 0;
-    }
     return ConnectionsManager::getInstance(instanceNum).isTestBackend() ? 1 : 0;
 }
 
@@ -217,29 +213,23 @@ void bindRequestToGuid(JNIEnv *env, jclass c, jint instanceNum, jint requestToke
     return ConnectionsManager::getInstance(instanceNum).bindRequestToGuid(requestToken, guid);
 }
 
-void applyDatacenterAddress(JNIEnv *env, jclass c, jint instanceNum, jint datacenterId,
-                            jstring ipAddress, jint port) {
+void applyDatacenterAddress(JNIEnv *env, jclass c, jint instanceNum, jint datacenterId, jstring ipAddress, jint port) {
     const char *valueStr = env->GetStringUTFChars(ipAddress, 0);
 
-    ConnectionsManager::getInstance(instanceNum).applyDatacenterAddress((uint32_t) datacenterId,
-                                                                        std::string(valueStr),
-                                                                        (uint32_t) port);
+    ConnectionsManager::getInstance(instanceNum).applyDatacenterAddress((uint32_t) datacenterId, std::string(valueStr), (uint32_t) port);
 
     if (valueStr != 0) {
         env->ReleaseStringUTFChars(ipAddress, valueStr);
     }
 }
 
-void setProxySettings(JNIEnv *env, jclass c, jint instanceNum, jstring address, jint port,
-                      jstring username, jstring password, jstring secret) {
+void setProxySettings(JNIEnv *env, jclass c, jint instanceNum, jstring address, jint port, jstring username, jstring password, jstring secret) {
     const char *addressStr = env->GetStringUTFChars(address, 0);
     const char *usernameStr = env->GetStringUTFChars(username, 0);
     const char *passwordStr = env->GetStringUTFChars(password, 0);
     const char *secretStr = env->GetStringUTFChars(secret, 0);
 
-    ConnectionsManager::getInstance(instanceNum).setProxySettings(addressStr, (uint16_t) port,
-                                                                  usernameStr, passwordStr,
-                                                                  secretStr);
+    ConnectionsManager::getInstance(instanceNum).setProxySettings(addressStr, (uint16_t) port, usernameStr, passwordStr, secretStr);
 
     if (addressStr != 0) {
         env->ReleaseStringUTFChars(address, addressStr);
@@ -291,8 +281,7 @@ void setIpStrategy(JNIEnv *env, jclass c, jint instanceNum, jbyte value) {
     ConnectionsManager::getInstance(instanceNum).setIpStrategy((uint8_t) value);
 }
 
-void setNetworkAvailable(JNIEnv *env, jclass c, jint instanceNum, jboolean value, jint networkType,
-                         jboolean slow) {
+void setNetworkAvailable(JNIEnv *env, jclass c, jint instanceNum, jboolean value, jint networkType, jboolean slow) {
     ConnectionsManager::getInstance(instanceNum).setNetworkAvailable(value, networkType, slow);
 }
 
@@ -300,20 +289,16 @@ void setPushConnectionEnabled(JNIEnv *env, jclass c, jint instanceNum, jboolean 
     ConnectionsManager::getInstance(instanceNum).setPushConnectionEnabled(value);
 }
 
-void
-applyDnsConfig(JNIEnv *env, jclass c, jint instanceNum, jlong address, jstring phone, jint date) {
+void applyDnsConfig(JNIEnv *env, jclass c, jint instanceNum, jlong address, jstring phone, jint date) {
     const char *phoneStr = env->GetStringUTFChars(phone, 0);
 
-    ConnectionsManager::getInstance(instanceNum).applyDnsConfig(
-            (NativeByteBuffer *) (intptr_t) address, phoneStr, date);
+    ConnectionsManager::getInstance(instanceNum).applyDnsConfig((NativeByteBuffer *) (intptr_t) address, phoneStr, date);
     if (phoneStr != 0) {
         env->ReleaseStringUTFChars(phone, phoneStr);
     }
 }
 
-jlong
-checkProxy(JNIEnv *env, jclass c, jint instanceNum, jstring address, jint port, jstring username,
-           jstring password, jstring secret, jobject requestTimeFunc) {
+jlong checkProxy(JNIEnv *env, jclass c, jint instanceNum, jstring address, jint port, jstring username, jstring password, jstring secret, jobject requestTimeFunc) {
     const char *addressStr = env->GetStringUTFChars(address, 0);
     const char *usernameStr = env->GetStringUTFChars(username, 0);
     const char *passwordStr = env->GetStringUTFChars(password, 0);
@@ -324,20 +309,11 @@ checkProxy(JNIEnv *env, jclass c, jint instanceNum, jstring address, jint port, 
         requestTimeFunc = env->NewGlobalRef(requestTimeFunc);
     }
 
-    jlong result = ConnectionsManager::getInstance(instanceNum).checkProxy(addressStr,
-                                                                           (uint16_t) port,
-                                                                           usernameStr, passwordStr,
-                                                                           secretStr,
-                                                                           [instanceNum, requestTimeFunc](
-                                                                                   int64_t time) {
-                                                                               if (requestTimeFunc !=
-                                                                                   nullptr) {
-                                                                                   jniEnv[instanceNum]->CallVoidMethod(
-                                                                                           requestTimeFunc,
-                                                                                           jclass_RequestTimeDelegate_run,
-                                                                                           time);
-                                                                               }
-                                                                           }, requestTimeFunc);
+    jlong result = ConnectionsManager::getInstance(instanceNum).checkProxy(addressStr, (uint16_t) port, usernameStr, passwordStr, secretStr, [instanceNum, requestTimeFunc](int64_t time) {
+        if (requestTimeFunc != nullptr) {
+            jniEnv[instanceNum]->CallVoidMethod(requestTimeFunc, jclass_RequestTimeDelegate_run, time);
+        }
+    }, requestTimeFunc);
 
     if (addressStr != 0) {
         env->ReleaseStringUTFChars(address, addressStr);
@@ -356,90 +332,65 @@ checkProxy(JNIEnv *env, jclass c, jint instanceNum, jstring address, jint port, 
 }
 
 class Delegate : public ConnectiosManagerDelegate {
-
+    
     void onUpdate(int32_t instanceNum) {
-        jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager,
-                                                  jclass_ConnectionsManager_onUpdate, instanceNum);
+        jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager, jclass_ConnectionsManager_onUpdate, instanceNum);
     }
-
+    
     void onSessionCreated(int32_t instanceNum) {
-        jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager,
-                                                  jclass_ConnectionsManager_onSessionCreated,
-                                                  instanceNum);
+        jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager, jclass_ConnectionsManager_onSessionCreated, instanceNum);
     }
-
+    
     void onConnectionStateChanged(ConnectionState state, int32_t instanceNum) {
-        jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager,
-                                                  jclass_ConnectionsManager_onConnectionStateChanged,
-                                                  state, instanceNum);
+        jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager, jclass_ConnectionsManager_onConnectionStateChanged, state, instanceNum);
     }
-
-    void onUnparsedMessageReceived(int64_t reqMessageId, NativeByteBuffer *buffer,
-                                   ConnectionType connectionType, int32_t instanceNum) {
+    
+    void onUnparsedMessageReceived(int64_t reqMessageId, NativeByteBuffer *buffer, ConnectionType connectionType, int32_t instanceNum) {
         if (connectionType == ConnectionTypeGeneric) {
-            jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager,
-                                                      jclass_ConnectionsManager_onUnparsedMessageReceived,
-                                                      (jlong) (intptr_t) buffer, instanceNum, reqMessageId);
+            jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager, jclass_ConnectionsManager_onUnparsedMessageReceived, (jlong) (intptr_t) buffer, instanceNum, reqMessageId);
         }
     }
-
+    
     void onLogout(int32_t instanceNum) {
-        jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager,
-                                                  jclass_ConnectionsManager_onLogout, instanceNum);
+        jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager, jclass_ConnectionsManager_onLogout, instanceNum);
     }
-
+    
     void onUpdateConfig(TL_config *config, int32_t instanceNum) {
-        NativeByteBuffer *buffer = BuffersStorage::getInstance().getFreeBuffer(
-                config->getObjectSize());
+        NativeByteBuffer *buffer = BuffersStorage::getInstance().getFreeBuffer(config->getObjectSize());
         config->serializeToStream(buffer);
         buffer->position(0);
-        jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager,
-                                                  jclass_ConnectionsManager_onUpdateConfig,
-                                                  (jlong) (intptr_t) buffer, instanceNum);
+        jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager, jclass_ConnectionsManager_onUpdateConfig, (jlong) (intptr_t) buffer, instanceNum);
         buffer->reuse();
     }
-
+    
     void onInternalPushReceived(int32_t instanceNum) {
-        jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager,
-                                                  jclass_ConnectionsManager_onInternalPushReceived,
-                                                  instanceNum);
+        jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager, jclass_ConnectionsManager_onInternalPushReceived, instanceNum);
     }
 
     void onBytesReceived(int32_t amount, int32_t networkType, int32_t instanceNum) {
-        jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager,
-                                                  jclass_ConnectionsManager_onBytesReceived, amount,
-                                                  networkType, instanceNum);
+        jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager, jclass_ConnectionsManager_onBytesReceived, amount, networkType, instanceNum);
     }
 
     void onBytesSent(int32_t amount, int32_t networkType, int32_t instanceNum) {
-        jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager,
-                                                  jclass_ConnectionsManager_onBytesSent, amount,
-                                                  networkType, instanceNum);
+        jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager, jclass_ConnectionsManager_onBytesSent, amount, networkType, instanceNum);
     }
 
     void onRequestNewServerIpAndPort(int32_t second, int32_t instanceNum) {
-        jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager,
-                                                  jclass_ConnectionsManager_onRequestNewServerIpAndPort,
-                                                  second, instanceNum);
+        jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager, jclass_ConnectionsManager_onRequestNewServerIpAndPort, second, instanceNum);
     }
 
     void onProxyError(int32_t instanceNum) {
-        jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager,
-                                                  jclass_ConnectionsManager_onProxyError,
-                                                  instanceNum);
+        jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager, jclass_ConnectionsManager_onProxyError);
     }
 
     void getHostByName(std::string domain, int32_t instanceNum, ConnectionSocket *socket) {
         jstring domainName = jniEnv[instanceNum]->NewStringUTF(domain.c_str());
-        jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager,
-                                                  jclass_ConnectionsManager_getHostByName,
-                                                  domainName, (jlong) (intptr_t) socket);
+        jniEnv[instanceNum]->CallStaticVoidMethod(jclass_ConnectionsManager, jclass_ConnectionsManager_getHostByName, domainName, (jlong) (intptr_t) socket);
         jniEnv[instanceNum]->DeleteLocalRef(domainName);
     }
 
     int32_t getInitFlags(int32_t instanceNum) {
-        return (int32_t) jniEnv[instanceNum]->CallStaticIntMethod(jclass_ConnectionsManager,
-                                                                  jclass_ConnectionsManager_getInitFlags);
+        return (int32_t) jniEnv[instanceNum]->CallStaticIntMethod(jclass_ConnectionsManager, jclass_ConnectionsManager_getInitFlags);
     }
 
     void onPremiumFloodWait(int32_t instanceNum, int32_t requestToken, bool isUpload) {
@@ -464,8 +415,7 @@ class Delegate : public ConnectiosManagerDelegate {
 
 };
 
-void
-onHostNameResolved(JNIEnv *env, jclass c, jstring host, jlong address, jstring ip, jboolean ipv6) {
+void onHostNameResolved(JNIEnv *env, jclass c, jstring host, jlong address, jstring ip) {
     const char *ipStr = env->GetStringUTFChars(ip, 0);
     const char *hostStr = env->GetStringUTFChars(host, 0);
     std::string i = std::string(ipStr);
@@ -477,7 +427,7 @@ onHostNameResolved(JNIEnv *env, jclass c, jstring host, jlong address, jstring i
         env->ReleaseStringUTFChars(host, hostStr);
     }
     ConnectionSocket *socket = (ConnectionSocket *) (intptr_t) address;
-    socket->onHostNameResolved(h, i, ipv6);
+    socket->onHostNameResolved(h, i, false);
 }
 
 void discardConnection(JNIEnv *env, jclass c,  jint instanceNum, jint datacenerId, jint connectionType) {
@@ -514,12 +464,7 @@ void setSystemLangCode(JNIEnv *env, jclass c, jint instanceNum, jstring langCode
     }
 }
 
-void init(JNIEnv *env, jclass c, jint instanceNum, jint version, jint layer, jint apiId,
-          jstring deviceModel, jstring systemVersion, jstring appVersion, jstring langCode,
-          jstring systemLangCode, jstring configPath, jstring logPath, jstring regId,
-          jstring cFingerprint, jstring installerId, jstring packageId, jint timezoneOffset, jlong userId,
-          jboolean userPremium, jboolean enablePushConnection, jboolean hasNetwork,
-          jint networkType, jint performanceClass) {
+void init(JNIEnv *env, jclass c, jint instanceNum, jint version, jint layer, jint apiId, jstring deviceModel, jstring systemVersion, jstring appVersion, jstring langCode, jstring systemLangCode, jstring configPath, jstring logPath, jstring regId, jstring cFingerprint, jstring installerId, jstring packageId, jint timezoneOffset, jlong userId, jboolean userPremium, jboolean enablePushConnection, jboolean hasNetwork, jint networkType, jint performanceClass) {
     const char *deviceModelStr = env->GetStringUTFChars(deviceModel, 0);
     const char *systemVersionStr = env->GetStringUTFChars(systemVersion, 0);
     const char *appVersionStr = env->GetStringUTFChars(appVersion, 0);
@@ -532,19 +477,7 @@ void init(JNIEnv *env, jclass c, jint instanceNum, jint version, jint layer, jin
     const char *installerIdStr = env->GetStringUTFChars(installerId, 0);
     const char *packageIdStr = env->GetStringUTFChars(packageId, 0);
 
-    ConnectionsManager::getInstance(instanceNum).init((uint32_t) version, layer, apiId,
-                                                      std::string(deviceModelStr),
-                                                      std::string(systemVersionStr),
-                                                      std::string(appVersionStr),
-                                                      std::string(langCodeStr),
-                                                      std::string(systemLangCodeStr),
-                                                      std::string(configPathStr),
-                                                      std::string(logPathStr),
-                                                      std::string(regIdStr),
-                                                      std::string(cFingerprintStr),
-                                                      std::string(installerIdStr), std::string(packageIdStr), timezoneOffset,
-                                                      userId, userPremium, true, enablePushConnection,
-                                                      hasNetwork, networkType, performanceClass);
+    ConnectionsManager::getInstance(instanceNum).init((uint32_t) version, layer, apiId, std::string(deviceModelStr), std::string(systemVersionStr), std::string(appVersionStr), std::string(langCodeStr), std::string(systemLangCodeStr), std::string(configPathStr), std::string(logPathStr), std::string(regIdStr), std::string(cFingerprintStr), std::string(installerIdStr), std::string(packageIdStr), timezoneOffset, userId, userPremium, true, enablePushConnection, hasNetwork, networkType, performanceClass);
 
     if (deviceModelStr != 0) {
         env->ReleaseStringUTFChars(deviceModel, deviceModelStr);
@@ -583,13 +516,9 @@ void init(JNIEnv *env, jclass c, jint instanceNum, jint version, jint layer, jin
 
 void setJava(JNIEnv *env, jclass c, jboolean useJavaByteBuffers) {
     ConnectionsManager::useJavaVM(java, useJavaByteBuffers);
-}
-
-void setJava1(JNIEnv *env, jclass c, jint instanceNum) {
-    if (instanceNum < 0 || instanceNum >= MAX_ACCOUNT_COUNT) {
-        return;
+    for (int a = 0; a < MAX_ACCOUNT_COUNT; a++) {
+        ConnectionsManager::getInstance(a).setDelegate(new Delegate());
     }
-    ConnectionsManager::getInstance(instanceNum).setDelegate(new Delegate());
 }
 
 static const char *ConnectionsManagerClassPathName = "org/telegram/tgnet/ConnectionsManager";
@@ -623,10 +552,9 @@ static JNINativeMethod ConnectionsManagerMethods[] = {
         {"native_setNetworkAvailable", "(IZIZ)V", (void *) setNetworkAvailable},
         {"native_setPushConnectionEnabled", "(IZ)V", (void *) setPushConnectionEnabled},
         {"native_setJava", "(Z)V", (void *) setJava},
-        {"native_setJava",                  "(I)V",                                                                                                                                                                                             (void *) setJava1},
         {"native_applyDnsConfig", "(IJLjava/lang/String;I)V", (void *) applyDnsConfig},
         {"native_checkProxy", "(ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Lorg/telegram/tgnet/RequestTimeDelegate;)J", (void *) checkProxy},
-        {"native_onHostNameResolved", "(Ljava/lang/String;JLjava/lang/String;Z)V", (void *) onHostNameResolved},
+        {"native_onHostNameResolved", "(Ljava/lang/String;JLjava/lang/String;)V", (void *) onHostNameResolved},
         {"native_discardConnection", "(III)V", (void *) discardConnection},
         {"native_failNotRunningRequest", "(II)V", (void *) failNotRunningRequest},
         {"native_receivedIntegrityCheckClassic", "(IILjava/lang/String;Ljava/lang/String;)V", (void *) receivedIntegrityCheckClassic},
@@ -660,18 +588,17 @@ inline int registerNativeMethods(JNIEnv *env, const char *className, JNINativeMe
 
 extern "C" int registerNativeTgNetFunctions(JavaVM *vm, JNIEnv *env) {
     java = vm;
-
+    
     if (!registerNativeMethods(env, NativeByteBufferClassPathName, NativeByteBufferMethods, sizeof(NativeByteBufferMethods) / sizeof(NativeByteBufferMethods[0]))) {
         return JNI_FALSE;
     }
-
+    
     if (!registerNativeMethods(env, ConnectionsManagerClassPathName, ConnectionsManagerMethods, sizeof(ConnectionsManagerMethods) / sizeof(ConnectionsManagerMethods[0]))) {
         return JNI_FALSE;
     }
 
     DEBUG_REF("RequestTimeDelegate class");
-    jclass_RequestTimeDelegate = (jclass) env->NewGlobalRef(
-            env->FindClass("org/telegram/tgnet/RequestTimeDelegate"));
+    jclass_RequestTimeDelegate = (jclass) env->NewGlobalRef(env->FindClass("org/telegram/tgnet/RequestTimeDelegate"));
     if (jclass_RequestTimeDelegate == 0) {
         return JNI_FALSE;
     }
@@ -681,8 +608,7 @@ extern "C" int registerNativeTgNetFunctions(JavaVM *vm, JNIEnv *env) {
     }
 
     DEBUG_REF("ConnectionsManager class");
-    jclass_ConnectionsManager = (jclass) env->NewGlobalRef(
-            env->FindClass("org/telegram/tgnet/ConnectionsManager"));
+    jclass_ConnectionsManager = (jclass) env->NewGlobalRef(env->FindClass("org/telegram/tgnet/ConnectionsManager"));
     if (jclass_ConnectionsManager == 0) {
         return JNI_FALSE;
     }
@@ -706,64 +632,51 @@ extern "C" int registerNativeTgNetFunctions(JavaVM *vm, JNIEnv *env) {
     if (jclass_ConnectionsManager_onUnparsedMessageReceived == 0) {
         return JNI_FALSE;
     }
-    jclass_ConnectionsManager_onUpdate = env->GetStaticMethodID(jclass_ConnectionsManager,
-                                                                "onUpdate", "(I)V");
+    jclass_ConnectionsManager_onUpdate = env->GetStaticMethodID(jclass_ConnectionsManager, "onUpdate", "(I)V");
     if (jclass_ConnectionsManager_onUpdate == 0) {
         return JNI_FALSE;
     }
-    jclass_ConnectionsManager_onSessionCreated = env->GetStaticMethodID(jclass_ConnectionsManager,
-                                                                        "onSessionCreated", "(I)V");
+    jclass_ConnectionsManager_onSessionCreated = env->GetStaticMethodID(jclass_ConnectionsManager, "onSessionCreated", "(I)V");
     if (jclass_ConnectionsManager_onSessionCreated == 0) {
         return JNI_FALSE;
     }
-    jclass_ConnectionsManager_onLogout = env->GetStaticMethodID(jclass_ConnectionsManager,
-                                                                "onLogout", "(I)V");
+    jclass_ConnectionsManager_onLogout = env->GetStaticMethodID(jclass_ConnectionsManager, "onLogout", "(I)V");
     if (jclass_ConnectionsManager_onLogout == 0) {
         return JNI_FALSE;
     }
-    jclass_ConnectionsManager_onConnectionStateChanged = env->GetStaticMethodID(
-            jclass_ConnectionsManager, "onConnectionStateChanged", "(II)V");
+    jclass_ConnectionsManager_onConnectionStateChanged = env->GetStaticMethodID(jclass_ConnectionsManager, "onConnectionStateChanged", "(II)V");
     if (jclass_ConnectionsManager_onConnectionStateChanged == 0) {
         return JNI_FALSE;
     }
-    jclass_ConnectionsManager_onInternalPushReceived = env->GetStaticMethodID(
-            jclass_ConnectionsManager, "onInternalPushReceived", "(I)V");
+    jclass_ConnectionsManager_onInternalPushReceived = env->GetStaticMethodID(jclass_ConnectionsManager, "onInternalPushReceived", "(I)V");
     if (jclass_ConnectionsManager_onInternalPushReceived == 0) {
         return JNI_FALSE;
     }
-    jclass_ConnectionsManager_onUpdateConfig = env->GetStaticMethodID(jclass_ConnectionsManager,
-                                                                      "onUpdateConfig", "(JI)V");
+    jclass_ConnectionsManager_onUpdateConfig = env->GetStaticMethodID(jclass_ConnectionsManager, "onUpdateConfig", "(JI)V");
     if (jclass_ConnectionsManager_onUpdateConfig == 0) {
         return JNI_FALSE;
     }
-    jclass_ConnectionsManager_onBytesSent = env->GetStaticMethodID(jclass_ConnectionsManager,
-                                                                   "onBytesSent", "(III)V");
+    jclass_ConnectionsManager_onBytesSent = env->GetStaticMethodID(jclass_ConnectionsManager, "onBytesSent", "(III)V");
     if (jclass_ConnectionsManager_onBytesSent == 0) {
         return JNI_FALSE;
     }
-    jclass_ConnectionsManager_onBytesReceived = env->GetStaticMethodID(jclass_ConnectionsManager,
-                                                                       "onBytesReceived", "(III)V");
+    jclass_ConnectionsManager_onBytesReceived = env->GetStaticMethodID(jclass_ConnectionsManager, "onBytesReceived", "(III)V");
     if (jclass_ConnectionsManager_onBytesReceived == 0) {
         return JNI_FALSE;
     }
-    jclass_ConnectionsManager_onRequestNewServerIpAndPort = env->GetStaticMethodID(
-            jclass_ConnectionsManager, "onRequestNewServerIpAndPort", "(II)V");
+    jclass_ConnectionsManager_onRequestNewServerIpAndPort = env->GetStaticMethodID(jclass_ConnectionsManager, "onRequestNewServerIpAndPort", "(II)V");
     if (jclass_ConnectionsManager_onRequestNewServerIpAndPort == 0) {
         return JNI_FALSE;
     }
-    jclass_ConnectionsManager_onProxyError = env->GetStaticMethodID(jclass_ConnectionsManager,
-                                                                    "onProxyError", "(I)V");
+    jclass_ConnectionsManager_onProxyError = env->GetStaticMethodID(jclass_ConnectionsManager, "onProxyError", "()V");
     if (jclass_ConnectionsManager_onProxyError == 0) {
         return JNI_FALSE;
     }
-    jclass_ConnectionsManager_getHostByName = env->GetStaticMethodID(jclass_ConnectionsManager,
-                                                                     "getHostByName",
-                                                                     "(Ljava/lang/String;J)V");
+    jclass_ConnectionsManager_getHostByName = env->GetStaticMethodID(jclass_ConnectionsManager, "getHostByName", "(Ljava/lang/String;J)V");
     if (jclass_ConnectionsManager_getHostByName == 0) {
         return JNI_FALSE;
     }
-    jclass_ConnectionsManager_getInitFlags = env->GetStaticMethodID(jclass_ConnectionsManager,
-                                                                    "getInitFlags", "()I");
+    jclass_ConnectionsManager_getInitFlags = env->GetStaticMethodID(jclass_ConnectionsManager, "getInitFlags", "()I");
     if (jclass_ConnectionsManager_getInitFlags == 0) {
         return JNI_FALSE;
     }

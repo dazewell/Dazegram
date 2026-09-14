@@ -4,14 +4,12 @@
     <item name="menu_regular" type="id"/>
     <item name="menu_bold" type="id"/>
     <item name="menu_italic" type="id"/>
-    <item name="menu_mention" type="id"/>
     <item name="menu_link" type="id"/>
     <item name="menu_mono" type="id"/>
     <item name="menu_strike" type="id"/>
     <item name="menu_underline" type="id"/>
     <item name="menu_date" type="id"/>
     <item name="menu_groupbolditalic" type="id"/>
-    <item name="menu_undoredo" type="id"/>
     <item name="menu_delete" type="id"/>
     <item name="menu_translate" type="id"/>
     <item name="parent_tag" type="id"/>

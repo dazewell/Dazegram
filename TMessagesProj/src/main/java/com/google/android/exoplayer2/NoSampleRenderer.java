@@ -20,17 +20,14 @@ import com.google.android.exoplayer2.analytics.PlayerId;
 import com.google.android.exoplayer2.source.SampleStream;
 import com.google.android.exoplayer2.util.Assertions;
 import com.google.android.exoplayer2.util.MediaClock;
-
-import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
-
 import java.io.IOException;
+import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 
 /**
  * A {@link Renderer} implementation whose track type is {@link C#TRACK_TYPE_NONE} and does not
  * consume data from its {@link SampleStream}.
  */
 public abstract class NoSampleRenderer implements Renderer, RendererCapabilities {
-
 
   private @MonotonicNonNull RendererConfiguration configuration;
   private int index;
@@ -178,7 +175,7 @@ public abstract class NoSampleRenderer implements Renderer, RendererCapabilities
     return ADAPTIVE_NOT_SUPPORTED;
   }
 
-  // PlayerMessage.CCTarget implementation.
+  // PlayerMessage.Target implementation.
 
   @Override
   public void handleMessage(@MessageType int messageType, @Nullable Object message)

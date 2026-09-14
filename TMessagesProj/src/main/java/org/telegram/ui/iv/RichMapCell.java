@@ -183,7 +183,7 @@ public class RichMapCell extends RichBlockCell
             final WebFile webFile = WebFile.createWithGeoPoint(map.geo, wDp, hDp, MAP_ZOOM, Math.min(2, (int) Math.ceil(AndroidUtilities.density)));
             imageReceiver.setImage(ImageLocation.getForWebFile(webFile), null, null, null, null, 0);
         } else {
-            final String url = AndroidUtilities.formapMapUrl(false, map.geo.lat, map.geo._long, wDp, hDp, true, MAP_ZOOM);
+            final String url = AndroidUtilities.formapMapUrl(currentAccount, map.geo.lat, map.geo._long, wDp, hDp, true, MAP_ZOOM, -1);
             imageReceiver.setImage(url, null, null, null, 0);
         }
     }

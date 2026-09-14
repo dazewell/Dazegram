@@ -14,7 +14,7 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
-import android.widget.LinearLayout;
+import android.widget.FrameLayout;
 import android.widget.TextView;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -23,9 +23,8 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RadioButton;
 
-public class RadioButtonCell extends LinearLayout {
+public class RadioButtonCell extends FrameLayout {
 
-    private LinearLayout textLayout;
     private TextView textView;
     public TextView valueTextView;
     private RadioButton radioButton;
@@ -38,17 +37,14 @@ public class RadioButtonCell extends LinearLayout {
     public RadioButtonCell(Context context, boolean dialog) {
         super(context);
 
-        setOrientation(LinearLayout.HORIZONTAL);
-        setGravity(Gravity.CENTER_VERTICAL);
-
-        textLayout = new LinearLayout(context);
-        textLayout.setOrientation(LinearLayout.VERTICAL);
-        textLayout.setGravity(Gravity.CENTER);
-        int padding = AndroidUtilities.dp(10);
-        textLayout.setPadding(AndroidUtilities.dp(24),padding,padding,padding);
-        addView(textLayout, new LinearLayout.LayoutParams(-1, -2) {{
-            weight = 1;
-        }});
+        radioButton = new RadioButton(context);
+        radioButton.setSize(AndroidUtilities.dp(20));
+        if (dialog) {
+            radioButton.setColor(Theme.getColor(Theme.key_dialogRadioBackground), Theme.getColor(Theme.key_dialogRadioBackgroundChecked));
+        } else {
+            radioButton.setColor(Theme.getColor(Theme.key_radioBackground), Theme.getColor(Theme.key_radioBackgroundChecked));
+        }
+        addView(radioButton, LayoutHelper.createFrame(22, 22, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, (LocaleController.isRTL ? 0 : 20), 10, (LocaleController.isRTL ? 20 : 0), 0));
 
         textView = new TextView(context);
         if (dialog) {
@@ -57,8 +53,11 @@ public class RadioButtonCell extends LinearLayout {
             textView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
         }
         textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
+        textView.setLines(1);
+        textView.setMaxLines(1);
+        textView.setSingleLine(true);
         textView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL);
-        textLayout.addView(textView, LayoutHelper.createLinear(-2, -2, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 0, 0, 0, 5));
+        addView(textView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, (LocaleController.isRTL ? 23 : 61), 10, (LocaleController.isRTL ? 61 : 23), 0));
 
         valueTextView = new TextView(context);
         if (dialog) {
@@ -71,17 +70,8 @@ public class RadioButtonCell extends LinearLayout {
         valueTextView.setLines(0);
         valueTextView.setMaxLines(0);
         valueTextView.setSingleLine(false);
-        textLayout.addView(valueTextView, LayoutHelper.createLinear(-2, -2, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP));
-
-        radioButton = new RadioButton(context);
-        radioButton.setSize(AndroidUtilities.dp(20));
-        if (dialog) {
-            radioButton.setColor(Theme.getColor(Theme.key_dialogRadioBackground), Theme.getColor(Theme.key_dialogRadioBackgroundChecked));
-        } else {
-            radioButton.setColor(Theme.getColor(Theme.key_radioBackground), Theme.getColor(Theme.key_radioBackgroundChecked));
-        }
-        addView(radioButton, LayoutHelper.createLinear(22, 22, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL,0,0,21,0));
-
+        valueTextView.setPadding(0, 0, 0, AndroidUtilities.dp(12));
+        addView(valueTextView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, (LocaleController.isRTL ? 17 : 61), 35, (LocaleController.isRTL ? 61 : 17), 0));
     }
 
     @Override
@@ -91,27 +81,15 @@ public class RadioButtonCell extends LinearLayout {
 
     public int itemId;
 
-    public void setTextAndValue(String text, boolean divider, boolean checked) {
-        textView.setText(text);
-        valueTextView.setVisibility(GONE);
-        radioButton.setChecked(checked, false);
-        needDivider = divider;
-    }
-
-    public void setTextAndValueAndCheck(String text, String value, boolean divider, boolean checked) {
+    public void setTextAndValue(String text, String value, boolean divider, boolean checked) {
         textView.setText(text);
         valueTextView.setText(value);
-        valueTextView.setVisibility(VISIBLE);
         radioButton.setChecked(checked, false);
         needDivider = divider;
     }
 
     public void setChecked(boolean checked, boolean animated) {
         radioButton.setChecked(checked, animated);
-    }
-
-    public boolean isChecked() {
-        return radioButton.isChecked();
     }
 
     @Override

@@ -669,11 +669,9 @@ public class ThanosEffect extends TextureView {
                 }
                 return;
             }
-            try {
-                Animation animation = new Animation(views, whenDone);
-                running = true;
-                postRunnable(() -> addAnimationInternal(animation));
-            } catch (IllegalArgumentException ignored) {}
+            Animation animation = new Animation(views, whenDone);
+            running = true;
+            postRunnable(() -> addAnimationInternal(animation));
         }
         public void animate(View view, float durationMultipier, Runnable whenDone) {
             if (!alive.get()) {
@@ -689,12 +687,10 @@ public class ThanosEffect extends TextureView {
                 }
                 return;
             }
-            try {
-                Animation animation = new Animation(view, durationMultipier, whenDone);
-                Handler handler = getHandler();
-                running = true;
-                postRunnable(() -> addAnimationInternal(animation));
-            } catch (IllegalArgumentException ignored) {}
+            Animation animation = new Animation(view, durationMultipier, whenDone);
+            Handler handler = getHandler();
+            running = true;
+            postRunnable(() -> addAnimationInternal(animation));
         }
 
         public void cancel(View view) {

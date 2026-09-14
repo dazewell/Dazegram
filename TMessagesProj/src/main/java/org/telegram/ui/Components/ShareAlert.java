@@ -138,8 +138,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
-import tw.nekomimi.nekogram.NekoConfig;
-
 public class ShareAlert extends BottomSheet implements NotificationCenter.NotificationCenterDelegate {
 
     private FrameLayout frameLayout;
@@ -1761,7 +1759,9 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
         writeButton.newCounterPos = true;
         writeButtonContainer.addView(writeButton, LayoutHelper.createFrameMatchParent());
         writeButton.setOnClickListener(v -> sendInternal(true));
-        writeButton.setOnLongClickListener(v -> onSendLongClick(writeButton));
+        writeButton.setOnLongClickListener(v -> {
+            return onSendLongClick(writeButton);
+        });
 
         textPaint.setTextSize(dp(12));
         textPaint.setTypeface(AndroidUtilities.bold());
@@ -2391,11 +2391,9 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
         }
         sendPopupWindow.showAtLocation(view, Gravity.LEFT | Gravity.TOP, location[0] + view.getMeasuredWidth() - layout.getMeasuredWidth() + dp(8), y);
         sendPopupWindow.dimBehind();
-        if (!NekoConfig.disableVibration.Bool()) {
-            try {
-                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
-            } catch (Exception ignored) {}
-        }
+        try {
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+        } catch (Exception ignored) {}
 
         return true;
     }
@@ -2499,21 +2497,14 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
                     if (replyTopMsg != null) {
                         replyTopMsg.isTopicMainMessage = true;
                     }
-                    int result = 0;
-                    if (NekoConfig.sendCommentAfterForward.Bool()) {
-                        // send fwd message first.
-                        result = SendMessagesHelper.getInstance(currentAccount).sendMessage(sendingMessageObjects, key, !showSendersName, false, withSound, 0, 0, replyTopMsg, video_timestamp, price == null ? 0 : price, monoForumPeerId, null);
-                    }
+                    int result;
                     if (frameLayout2.getTag() != null && commentTextView.length() > 0) {
                         SendMessagesHelper.SendMessageParams params = SendMessagesHelper.SendMessageParams.of(text[0] == null ? null : text[0].toString(), key, replyTopMsg, replyTopMsg, null, true, entities, null, null, withSound, 0, 0, null, false);
                         params.payStars = price == null ? 0 : price;
                         params.monoForumPeer = monoForumPeerId;
                         SendMessagesHelper.getInstance(currentAccount).sendMessage(params);
                     }
-                    if (!NekoConfig.sendCommentAfterForward.Bool()) {
-                        // send fwd message second.
-                        result = SendMessagesHelper.getInstance(currentAccount).sendMessage(sendingMessageObjects, key, !showSendersName,false, withSound, 0, 0, replyTopMsg, video_timestamp, price == null ? 0 : price, monoForumPeerId, null);
-                    }
+                    result = SendMessagesHelper.getInstance(currentAccount).sendMessage(sendingMessageObjects, key, !showSendersName,false, withSound, 0, 0, replyTopMsg, video_timestamp, price == null ? 0 : price, monoForumPeerId, null);
                     if (result != 0) {
                         removeKeys.add(key);
                     }
@@ -2580,24 +2571,16 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
                         long monoForumPeerId = topic != null && isMonoForum ? DialogObject.getPeerDialogId(topic.from_id) : 0;
                         MessageObject replyTopMsg = topic != null && !isMonoForum ? new MessageObject(currentAccount, topic.topicStartMessage, false, false) : null;
 
-                        if (NekoConfig.sendCommentAfterForward.Bool()) {
-                            SendMessagesHelper.SendMessageParams params2 = SendMessagesHelper.SendMessageParams.of(sendingText[num], key, replyTopMsg, replyTopMsg, null, true, null, null, null, withSound, 0, 0, null, false);
-                            params2.payStars = price == null ? 0 : price;
-                            params2.monoForumPeer = monoForumPeerId;
-                            SendMessagesHelper.getInstance(currentAccount).sendMessage(params2);
-                        }
                         if (frameLayout2.getTag() != null && commentTextView.length() > 0) {
                             SendMessagesHelper.SendMessageParams params = SendMessagesHelper.SendMessageParams.of(text[0] == null ? null : text[0].toString(), key, replyTopMsg, replyTopMsg, null, true, entities, null, null, withSound, 0, 0, null, false);
                             params.payStars = price == null ? 0 : price;
                             params.monoForumPeer = monoForumPeerId;
                             SendMessagesHelper.getInstance(currentAccount).sendMessage(params);
                         }
-                        if (!NekoConfig.sendCommentAfterForward.Bool()) {
-                            SendMessagesHelper.SendMessageParams params2 = SendMessagesHelper.SendMessageParams.of(sendingText[num], key, replyTopMsg, replyTopMsg, null, true, null, null, null, withSound, 0, 0, null, false);
-                            params2.payStars = price == null ? 0 : price;
-                            params2.monoForumPeer = monoForumPeerId;
-                            SendMessagesHelper.getInstance(currentAccount).sendMessage(params2);
-                        }
+                        SendMessagesHelper.SendMessageParams params2 = SendMessagesHelper.SendMessageParams.of(sendingText[num], key, replyTopMsg, replyTopMsg, null, true, null, null, null, withSound, 0, 0, null, false);
+                        params2.payStars = price == null ? 0 : price;
+                        params2.monoForumPeer = monoForumPeerId;
+                        SendMessagesHelper.getInstance(currentAccount).sendMessage(params2);
                     }
                 }
 

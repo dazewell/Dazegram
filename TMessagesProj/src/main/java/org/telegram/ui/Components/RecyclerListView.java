@@ -64,7 +64,6 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.BuildConfig;
-import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.GenericProvider;
 import org.telegram.messenger.LocaleController;
@@ -95,8 +94,6 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
-
-import tw.nekomimi.nekogram.NekoConfig;
 
 @SuppressWarnings("JavaReflectionMemberAccess")
 public class RecyclerListView extends RecyclerView implements IBlur3Capture {
@@ -1186,20 +1183,16 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
                     View child = currentChildView;
                     if (onItemLongClickListener != null) {
                         if (onItemLongClickListener.onItemClick(currentChildView, currentChildPosition)) {
-                            if (!NekoConfig.disableVibration.Bool()) {
-                                try {
-                                    child.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-                                } catch (Exception ignored) {}
-                            }
+                            try {
+                                child.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                            } catch (Exception ignored) {}
                             child.sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_LONG_CLICKED);
                         }
                     } else {
                         if (onItemLongClickListenerExtended.onItemClick(currentChildView, currentChildPosition, event.getX() - currentChildView.getX(), event.getY() - currentChildView.getY())) {
-                            if (!NekoConfig.disableVibration.Bool()) {
-                                try {
-                                    child.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-                                } catch (Exception ignored) {}
-                            }
+                            try {
+                                child.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                            } catch (Exception ignored) {}
                             child.sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_LONG_CLICKED);
                             longPressCalled = true;
                         }
@@ -3161,7 +3154,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
             }
             canvas.restore();
 
-            if (BuildVars.DEBUG_PRIVATE_VERSION) {
+            if (BuildConfig.DEBUG_PRIVATE_VERSION) {
             //     canvas.drawColor(0x80FF00FF);
             }
         } else {

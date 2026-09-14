@@ -8,7 +8,6 @@
 
 package org.telegram.ui.Components;
 
-import android.graphics.BlendMode;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;

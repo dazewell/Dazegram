@@ -56,8 +56,6 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import tw.nekomimi.nekogram.NekoConfig;
-
 public class RLottieDrawable extends BitmapDrawable implements Animatable, BitmapsCache.Cacheable {
 
     public boolean skipFrameUpdate;
@@ -608,7 +606,7 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
         } else {
             isSingleChannel = false;
 
-            if (BuildConfig.DEBUG) {
+            if (BuildConfig.DEBUG_PRIVATE_VERSION) {
                 throw new IllegalArgumentException("rawRes not found");
             }
 
@@ -1148,7 +1146,7 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
     private void performVibration() {
         if (vibrationPattern != null && allowVibration) {
             Integer force = vibrationPattern.get(currentFrame - 1);
-            if (force != null && !NekoConfig.disableVibration.Bool()) {
+            if (force != null) {
                 try {
                     Activity activity = LaunchActivity.instance;
                     if (activity == null) activity = BubbleActivity.instance;

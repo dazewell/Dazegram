@@ -59,8 +59,6 @@ public class RenderView extends TextureView {
 
     private boolean shuttingDown;
 
-    public boolean isColorPicker = false;
-
     public RenderView(Context context, Painting paint, Bitmap bitmap, Bitmap blurBitmap, BlurringShader.BlurManager blurManager) {
         super(context);
         setOpaque(false);

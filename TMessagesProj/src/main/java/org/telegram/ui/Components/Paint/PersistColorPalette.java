@@ -2,10 +2,8 @@ package org.telegram.ui.Components.Paint;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.util.SparseArray;
 
 import org.telegram.messenger.ApplicationLoader;
-import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
 import org.telegram.ui.Components.Paint.Views.PaintTextOptionsView;
 
@@ -51,7 +49,7 @@ public class PersistColorPalette {
     public final static int COLORS_COUNT = MODIFIABLE_COLORS_COUNT + PRESET_COLORS_COUNT;
 
     private final static int BRUSH_TEXT = -1;
-    private static SparseArray<PersistColorPalette> instances = new SparseArray<>();
+    private static PersistColorPalette[] instances = new PersistColorPalette[UserConfig.MAX_ACCOUNT_COUNT];
 
     private final SharedPreferences mConfig;
     private final List<Integer> colors = new ArrayList<>(COLORS_COUNT);
@@ -80,10 +78,10 @@ public class PersistColorPalette {
     }
 
     public static PersistColorPalette getInstance(int currentAccount) {
-        if (instances.get(currentAccount) == null) {
-            instances.set(currentAccount, new PersistColorPalette(currentAccount));
+        if (instances[currentAccount] == null) {
+            instances[currentAccount] = new PersistColorPalette(currentAccount);
         }
-        return instances.get(currentAccount);
+        return instances[currentAccount];
     }
 
     public int getCurrentTextType() {

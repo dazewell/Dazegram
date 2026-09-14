@@ -111,6 +111,7 @@ import org.telegram.ui.ActionBar.ActionBarPopupWindow;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BackDrawable;
 import org.telegram.ui.ActionBar.BaseFragment;
+import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ActionBar.ThemeDescription;
 import org.telegram.ui.Adapters.SearchAdapterHelper;
@@ -172,13 +173,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Objects;
-
-import kotlin.Unit;
-import tw.nekomimi.nekogram.NekoXConfig;
-import tw.nekomimi.nekogram.ui.BottomBuilder;
-import tw.nekomimi.nekogram.utils.AlertUtil;
-import tw.nekomimi.nekogram.utils.ProxyUtil;
-import xyz.nextalone.nagram.NaConfig;
 
 @SuppressWarnings("unchecked")
 public class SharedMediaLayout extends FrameLayout implements NotificationCenter.NotificationCenterDelegate, DialogCell.DialogCellDelegate {
@@ -690,7 +684,6 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
     public ActionBarMenuItem searchItemIcon;
     @Nullable
     private ActionBarMenuItem searchItem;
-    private ActionBarMenuItem forwardNoQuoteItem;
     private float searchAlpha;
     private float optionsAlpha;
     public TextView saveItem;
@@ -1548,7 +1541,6 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
     private SharedMediaPreloader sharedMediaPreloader;
 
     private final static int forward = 100;
-    private final static int forward_noquote = 1001;
     private final static int delete = 101;
     private final static int gotochat = 102;
     private final static int pin = 103;
@@ -1623,7 +1615,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             this.initialTab = TAB_BOT_PREVIEWS;
         } else if (userInfo != null && userInfo.bot_info != null && userInfo.bot_info.has_preview_medias) {
             this.initialTab = TAB_STORIES;
-        } else if (main_tab instanceof TLRPC.TL_profileTabPosts && !NaConfig.INSTANCE.getDisableStories().Bool() && (userInfo != null && userInfo.stories_pinned_available || chatInfo != null && chatInfo.stories_pinned_available || isStoriesView())) {
+        } else if (main_tab instanceof TLRPC.TL_profileTabPosts && (userInfo != null && userInfo.stories_pinned_available || chatInfo != null && chatInfo.stories_pinned_available || isStoriesView())) {
             this.initialTab = TAB_STORIES;
         } else if (main_tab instanceof TLRPC.TL_profileTabGifts && (userInfo != null && userInfo.stargifts_count > 0 || chatInfo != null && chatInfo.stargifts_count > 0)) {
             this.initialTab = TAB_GIFTS;
@@ -1639,7 +1631,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             this.initialTab = TAB_VOICE;
         } else if (userInfo != null && userInfo.stories_pinned_available || chatInfo != null && chatInfo.stories_pinned_available || isStoriesView()) {
             this.initialTab = getInitialTab();
-        } else if (!NaConfig.INSTANCE.getDisableGifts().Bool() && (userInfo != null && userInfo.stargifts_count > 0 || chatInfo != null && chatInfo.stargifts_count > 0)) {
+        } else if (userInfo != null && userInfo.stargifts_count > 0 || chatInfo != null && chatInfo.stargifts_count > 0) {
             this.initialTab = TAB_GIFTS;
         } else if (initialTab != -1 && topicId == 0) {
             this.initialTab = initialTab;
@@ -2233,14 +2225,6 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
 
         if (!DialogObject.isEncryptedDialog(dialog_id)) {
             if (!isStoriesView()) {
-                forwardNoQuoteItem = new ActionBarMenuItem(context, null, Theme.getColor(Theme.key_actionBarActionModeDefaultSelector), Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2), false);
-                forwardNoQuoteItem.setIcon(R.drawable.msg_forward_noquote);
-                forwardNoQuoteItem.setContentDescription(LocaleController.getString("NoQuoteForward", R.string.NoQuoteForward));
-                forwardNoQuoteItem.setDuplicateParentStateEnabled(false);
-                actionModeLayout.addView(forwardNoQuoteItem, new LinearLayout.LayoutParams(AndroidUtilities.dp(54), ViewGroup.LayoutParams.MATCH_PARENT));
-                actionModeViews.add(forwardNoQuoteItem);
-                forwardNoQuoteItem.setOnClickListener(v -> onActionBarItemClick(v, forward_noquote));
-
                 gotoItem = new ActionBarMenuItem(context, null, getThemedColor(Theme.key_actionBarActionModeDefaultSelector), getThemedColor(Theme.key_actionBarActionModeDefaultIcon), false);
                 gotoItem.setIcon(R.drawable.msg_message);
                 gotoItem.setContentDescription(getString(R.string.AccDescrGoToMessage));
@@ -3249,8 +3233,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 } else if (mediaPage.selectedType == TAB_PHOTOVIDEO && view instanceof SharedPhotoVideoCell2) {
                     final SharedPhotoVideoCell2 cell = (SharedPhotoVideoCell2) view;
                     final MessageObject messageObject = cell.getMessageObject();
-                    final boolean showSensitiveAlert = profileActivity == null || !MessagesController.getInstance(profileActivity.getCurrentAccount()).showSensitiveContent();
-                    if (messageObject != null && messageObject.isSensitive() && showSensitiveAlert) {
+                    if (messageObject != null && messageObject.isSensitive()) {
                         if (profileActivity == null) return;
                         final int currentAccount = profileActivity.getCurrentAccount();
                         final MessagesController messagesController = MessagesController.getInstance(currentAccount);
@@ -3848,8 +3831,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
     }
 
     protected boolean includeStories() {
-        return !NaConfig.INSTANCE.getDisableStories().Bool();
-//        return true;
+        return true;
     }
 
     protected boolean includeSavedDialogs() {
@@ -3914,19 +3896,15 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         if (forwardItem == null) {
             return;
         }
-        boolean noforwards = profileActivity.getMessagesController().isPeerNoForwardsWithOverride(dialog_id) || hasNoforwardsMessage();
+        boolean noforwards = profileActivity.getMessagesController().isPeerNoForwards(dialog_id) || hasNoforwardsMessage();
         forwardItem.setAlpha(noforwards ? 0.5f : 1f);
-        forwardNoQuoteItem.setAlpha(noforwards ? 0.5f : 1f);
-        if (noforwards) {
-            if (forwardItem.getBackground() != null) forwardItem.setBackground(null);
-            if (forwardNoQuoteItem.getBackground() != null) forwardNoQuoteItem.setBackground(null);
-        } else if (forwardItem.getBackground() == null) {
+        if (noforwards && forwardItem.getBackground() != null) {
+            forwardItem.setBackground(null);
+        } else if (!noforwards && forwardItem.getBackground() == null) {
             forwardItem.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_actionBarActionModeDefaultSelector), 5));
-            forwardNoQuoteItem.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_actionBarActionModeDefaultSelector), 5));
         }
     }
     private boolean hasNoforwardsMessage() {
-        if (NekoXConfig.disableFlagSecure) return false;
         boolean hasNoforwardsMessage = false;
         for (int a = 1; a >= 0; a--) {
             ArrayList<Integer> ids = new ArrayList<>();
@@ -5325,7 +5303,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 actionBar.closeSearchField();
                 cantDeleteMessagesCount = 0;
             }, null, resourcesProvider);
-        } else if (id == forward || id == forward_noquote) {
+        } else if (id == forward) {
             if (userInfo != null) {
                 if (profileActivity.getMessagesController().isUserNoForwards(userInfo)) {
                     if (fwdRestrictedHint != null) {
@@ -5387,12 +5365,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                         if (message != null) {
                             profileActivity.getSendMessagesHelper().sendMessage(SendMessagesHelper.SendMessageParams.of(message.toString(), did, null, null, null, true, null, null, null, true, 0, 0, null, false));
                         }
-                        if (id == forward_noquote) {
-                            //profileActivity.getMessageHelper().processForwardFromMyName(fmessages, did, true, 0);
-                            profileActivity.getSendMessagesHelper().sendMessage(fmessages, did, true,false, true, 0, 0);
-                        } else {
-                            profileActivity.getSendMessagesHelper().sendMessage(fmessages, did, false,false, true, 0, 0);
-                        }
+                        profileActivity.getSendMessagesHelper().sendMessage(fmessages, did, false, false, true, 0, 0);
                     }
                     fragment1.finishFragment();
                     UndoView undoView = null;
@@ -5409,9 +5382,6 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 } else {
                     long did = dids.get(0).dialogId;
                     Bundle args1 = new Bundle();
-                    if (id == forward_noquote) {
-                        args1.putBoolean("forward_noquote", true);
-                    }
                     args1.putBoolean("scrollToTopOnResume", true);
                     if (DialogObject.isEncryptedDialog(did)) {
                         args1.putInt("enc_id", DialogObject.getEncryptedChatId(did));
@@ -6888,8 +6858,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         boolean hasEditBotPreviews = user != null && user.bot && user.bot_has_main_app && user.bot_can_edit;
         boolean hasBotPreviews = user != null && user.bot && !user.bot_can_edit && (userInfo != null && userInfo.bot_info != null && userInfo.bot_info.has_preview_medias) && !hasEditBotPreviews;
         boolean hasStories = (DialogObject.isUserDialog(dialog_id) || DialogObject.isChatDialog(dialog_id)) && !DialogObject.isEncryptedDialog(dialog_id) && (userInfo != null && userInfo.stories_pinned_available || info != null && info.stories_pinned_available || isStoriesView()) && includeStories();
-        hasStories = !NaConfig.INSTANCE.getDisableStories().Bool() && hasStories;
-        boolean hasGifts = !NaConfig.INSTANCE.getDisableGifts().Bool() && giftsContainer != null && (userInfo != null && userInfo.stargifts_count > 0 || info != null && info.stargifts_count > 0);
+        boolean hasGifts = giftsContainer != null && (userInfo != null && userInfo.stargifts_count > 0 || info != null && info.stargifts_count > 0);
         final TLRPC.ProfileTab main_tab = info != null ? info.main_tab : userInfo != null ? userInfo.main_tab : null;
         int changed = 0;
         if (wasReordering != scrollSlidingTextTabStrip.isReordering()) {
@@ -7002,7 +6971,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             }
             if (hasBotPreviews) {
                 tabs.add(new Pair(TAB_STORIES, getString(R.string.ProfileBotPreviewTab)));
-            } else if (!NaConfig.INSTANCE.getDisableStories().Bool() && ((DialogObject.isUserDialog(dialog_id) || DialogObject.isChatDialog(dialog_id)) && !DialogObject.isEncryptedDialog(dialog_id) && (userInfo != null && userInfo.stories_pinned_available || info != null && info.stories_pinned_available || isStoriesView()) && includeStories())) {
+            } else if ((DialogObject.isUserDialog(dialog_id) || DialogObject.isChatDialog(dialog_id)) && !DialogObject.isEncryptedDialog(dialog_id) && (userInfo != null && userInfo.stories_pinned_available || info != null && info.stories_pinned_available || isStoriesView()) && includeStories()) {
                 if (isArchivedOnlyStoriesView()) {
                     tabs.add(new Pair(TAB_ARCHIVED_STORIES, getString(R.string.ProfileArchivedStories)));
                     scrollSlidingTextTabStrip.animationDuration = 420;
@@ -7809,7 +7778,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                     cantDeleteMessagesCount--;
                 }
             } else {
-                if (selectedFiles[0].size() + selectedFiles[1].size() >= 1024) {
+                if (selectedFiles[0].size() + selectedFiles[1].size() >= 100) {
                     return;
                 }
                 selectedFiles[loadIndex].put(message.getId(), message);
@@ -7990,29 +7959,21 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         @Override
         public void onLinkPress(String urlFinal, boolean longPress) {
             if (longPress) {
-                BottomBuilder builder = new BottomBuilder(profileActivity.getParentActivity());
-                builder.addTitle(urlFinal);
-                builder.addItems(
-                        new String[]{LocaleController.getString("Open", R.string.Open), LocaleController.getString("Copy", R.string.Copy), LocaleController.getString("ShareQRCode", R.string.ShareQRCode)},
-                        new int[]{R.drawable.msg_openin, R.drawable.msg_copy, R.drawable.msg_qrcode}, (which, text, __) -> {
-                            if (which == 0 || which == 2) {
-                                if (which == 0) {
-                                    openUrl(urlFinal);
-                                } else {
-                                    ProxyUtil.showQrDialog(profileActivity.getParentActivity(), urlFinal);
-                                }
-                            } else if (which == 1) {
-                                String url1 = urlFinal;
-                                if (url1.startsWith("mailto:")) {
-                                    url1 = url1.substring(7);
-                                } else if (url1.startsWith("tel:")) {
-                                    url1 = url1.substring(4);
-                                }
-                                AndroidUtilities.addToClipboard(url1);
-                                AlertUtil.showToast(LocaleController.getString("LinkCopied", R.string.LinkCopied));
-                            }
-                            return Unit.INSTANCE;
-                        });
+                BottomSheet.Builder builder = new BottomSheet.Builder(profileActivity.getParentActivity());
+                builder.setTitle(urlFinal);
+                builder.setItems(new CharSequence[]{getString("Open", R.string.Open), getString("Copy", R.string.Copy)}, (dialog, which) -> {
+                    if (which == 0) {
+                        openUrl(urlFinal);
+                    } else if (which == 1) {
+                        String url = urlFinal;
+                        if (url.startsWith("mailto:")) {
+                            url = url.substring(7);
+                        } else if (url.startsWith("tel:")) {
+                            url = url.substring(4);
+                        }
+                        AndroidUtilities.addToClipboard(url);
+                    }
+                });
                 profileActivity.showDialog(builder.create());
             } else {
                 openUrl(urlFinal);
@@ -11359,10 +11320,6 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         if (gotoItem != null) {
             arrayList.add(new ThemeDescription(gotoItem.getIconView(), ThemeDescription.FLAG_IMAGECOLOR, null, null, null, null, Theme.key_actionBarActionModeDefaultIcon));
             arrayList.add(new ThemeDescription(gotoItem, ThemeDescription.FLAG_BACKGROUNDFILTER, null, null, null, null, Theme.key_actionBarActionModeDefaultSelector));
-        }
-        if (forwardNoQuoteItem != null) {
-            arrayList.add(new ThemeDescription(forwardNoQuoteItem.getIconView(), ThemeDescription.FLAG_IMAGECOLOR, null, null, null, null, Theme.key_actionBarActionModeDefaultIcon));
-            arrayList.add(new ThemeDescription(forwardNoQuoteItem, ThemeDescription.FLAG_BACKGROUNDFILTER, null, null, null, null, Theme.key_actionBarActionModeDefaultSelector));
         }
         if (forwardItem != null) {
             arrayList.add(new ThemeDescription(forwardItem.getIconView(), ThemeDescription.FLAG_IMAGECOLOR, null, null, null, null, Theme.key_actionBarActionModeDefaultIcon));

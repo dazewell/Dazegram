@@ -38,7 +38,6 @@ import android.text.util.Linkify;
 import android.util.Pair;
 import android.util.SparseArray;
 import android.widget.FrameLayout;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -48,8 +47,6 @@ import androidx.core.content.pm.ShortcutManagerCompat;
 import androidx.core.graphics.drawable.IconCompat;
 
 import com.android.billingclient.api.ProductDetails;
-
-import androidx.collection.LongSparseArray;
 
 import org.telegram.SQLite.SQLiteCursor;
 import org.telegram.SQLite.SQLiteDatabase;
@@ -114,12 +111,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import tw.nekomimi.nekogram.DialogConfig;
-import tw.nekomimi.nekogram.NekoConfig;
-import tw.nekomimi.nekogram.ui.PinnedStickerHelper;
-import xyz.nextalone.nagram.NaConfig;
-import xyz.nextalone.nagram.helper.ExternalStickerCacheHelper;
-
 @SuppressWarnings("unchecked")
 public class MediaDataController extends BaseController {
     public final static String
@@ -141,17 +132,23 @@ public class MediaDataController extends BaseController {
 
     public static String SHORTCUT_CATEGORY = "org.telegram.messenger.SHORTCUT_SHARE";
 
-    private static final SparseArray<MediaDataController> Instance = new SparseArray<>();
-    private static final Object lockObject = new Object();
+    private static volatile MediaDataController[] Instance = new MediaDataController[UserConfig.MAX_ACCOUNT_COUNT];
+    private static final Object[] lockObjects = new Object[UserConfig.MAX_ACCOUNT_COUNT];
+
+    static {
+        for (int i = 0; i < UserConfig.MAX_ACCOUNT_COUNT; i++) {
+            lockObjects[i] = new Object();
+        }
+    }
 
 
     public static MediaDataController getInstance(int num) {
-        MediaDataController localInstance = Instance.get(num);
+        MediaDataController localInstance = Instance[num];
         if (localInstance == null) {
-            synchronized (lockObject) {
-                localInstance = Instance.get(num);
+            synchronized (lockObjects) {
+                localInstance = Instance[num];
                 if (localInstance == null) {
-                    Instance.put(num, localInstance = new MediaDataController(num));
+                    Instance[num] = localInstance = new MediaDataController(num);
                 }
             }
         }
@@ -916,7 +913,7 @@ public class MediaDataController extends BaseController {
         if (type == TYPE_PREMIUM_STICKERS) {
             return new ArrayList<>(recentStickers[type]);
         }
-        ArrayList<TLRPC.Document> result = new ArrayList<>(arrayList.subList(0, Math.min(arrayList.size(), NekoConfig.maxRecentStickerCount.Int())));
+        ArrayList<TLRPC.Document> result = new ArrayList<>(arrayList.subList(0, Math.min(arrayList.size(), 20)));
         if (firstEmpty && !result.isEmpty() && !StickersAlert.DISABLE_STICKER_EDITOR) {
             result.add(0, new TLRPC.TL_documentEmpty());
         }
@@ -982,7 +979,7 @@ public class MediaDataController extends BaseController {
             if (remove) {
                 NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.showBulletin, Bulletin.TYPE_STICKER, document, StickerSetBulletinLayout.TYPE_REMOVED_FROM_FAVORITES);
             } else {
-                boolean replace = recentStickers[type].size() > getMessagesController().getMaxFaveStickersCount();
+                boolean replace = recentStickers[type].size() > getMessagesController().maxFaveStickersCount;
                 NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.showBulletin, Bulletin.TYPE_STICKER, document, replace ? StickerSetBulletinLayout.TYPE_REPLACED_TO_FAVORITES : StickerSetBulletinLayout.TYPE_ADDED_TO_FAVORITES);
             }
             TLRPC.TL_messages_faveSticker req = new TLRPC.TL_messages_faveSticker();
@@ -1001,7 +998,7 @@ public class MediaDataController extends BaseController {
                     AndroidUtilities.runOnUIThread(() -> getMediaDataController().loadRecents(MediaDataController.TYPE_FAVE, false, false, true));
                 }
             });
-            maxCount = NekoConfig.unlimitedFavedStickers.Bool() ? Integer.MAX_VALUE : getMessagesController().getMaxFaveStickersCount();
+            maxCount = getMessagesController().maxFaveStickersCount;
         } else {
             if (type == TYPE_IMAGE && remove) {
                 NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.showBulletin, Bulletin.TYPE_STICKER, document, StickerSetBulletinLayout.TYPE_REMOVED_FROM_RECENT);
@@ -1911,9 +1908,6 @@ public class MediaDataController extends BaseController {
     }
 
     public void loadRecents(int type, boolean gif, boolean cache, boolean force) {
-        if (NekoConfig.unlimitedFavedStickers.Bool() && type == TYPE_FAVE && !cache) {
-            return;
-        }
         if (gif) {
             if (loadingRecentGifs) {
                 return;
@@ -2096,7 +2090,7 @@ public class MediaDataController extends BaseController {
                         if (type == TYPE_GREETINGS || type == TYPE_PREMIUM_STICKERS) {
                             maxCount = 200;
                         } else if (type == TYPE_FAVE) {
-                            maxCount = NekoConfig.unlimitedFavedStickers.Bool() ? Integer.MAX_VALUE : getMessagesController().getMaxFaveStickersCount();
+                            maxCount = getMessagesController().maxFaveStickersCount;
                         } else {
                             maxCount = getMessagesController().maxRecentStickersCount;
                         }
@@ -2273,7 +2267,7 @@ public class MediaDataController extends BaseController {
     }
 
     public void loadFeaturedStickers(boolean emoji, boolean cache) {
-        if (loadingFeaturedStickers[emoji ? 1 : 0] || NaConfig.INSTANCE.getDisableFeaturedStickers().Bool()) {
+        if (loadingFeaturedStickers[emoji ? 1 : 0]) {
             return;
         }
         loadingFeaturedStickers[emoji ? 1 : 0] = true;
@@ -2605,7 +2599,7 @@ public class MediaDataController extends BaseController {
                 archivedStickersCount[type] = count;
                 getNotificationCenter().postNotificationName(NotificationCenter.archivedStickersCountDidLoad, type);
             }
-        } else if (getUserConfig().isClientActivated() && !getUserConfig().getCurrentUser().bot) {
+        } else {
             TLRPC.TL_messages_getArchivedStickers req = new TLRPC.TL_messages_getArchivedStickers();
             req.limit = 0;
             req.masks = type == TYPE_MASK;
@@ -2632,18 +2626,7 @@ public class MediaDataController extends BaseController {
             processLoadedStickers(type, newStickerArray, false, (int) (System.currentTimeMillis() / 1000), res.hash2, onDone);
         } else {
             LongSparseArray<TLRPC.TL_messages_stickerSet> newStickerSets = new LongSparseArray<>();
-            // NekoX: Pin Sticker
-            if (NekoConfig.enableStickerPin.Bool() && type == MediaDataController.TYPE_IMAGE) {
-                PinnedStickerHelper ins = PinnedStickerHelper.getInstance(UserConfig.selectedAccount);
-                if (ins.reorderPinnedStickersForSS(res.sets, true))
-                    AndroidUtilities.runOnUIThread(() -> {
-                        if (BuildVars.DEBUG_VERSION) {
-                            Toast.makeText(ApplicationLoader.applicationContext, "Reorder loaded stickers, sync now. Pinned: " + ins.pinnedList.size(), Toast.LENGTH_SHORT).show();
-                        }
-                        ins.sendOrderSyncForSS(res.sets);
-                    });
-            }
-            for (int a = 0; a < res.sets.size(); a++) { // reload all sitckers here
+            for (int a = 0; a < res.sets.size(); a++) {
                 TLRPC.StickerSet stickerSet = res.sets.get(a);
 
                 TLRPC.TL_messages_stickerSet oldSet = stickerSetsById.get(stickerSet.id);
@@ -2659,10 +2642,10 @@ public class MediaDataController extends BaseController {
                     }
                     continue;
                 }
-                // oldset == null, new sticker comes here
 
                 newStickerArray.add(null);
                 int index = a;
+
                 TLRPC.TL_messages_getStickerSet req = new TLRPC.TL_messages_getStickerSet();
                 req.stickerset = new TLRPC.TL_inputStickerSetID();
                 req.stickerset.id = stickerSet.id;
@@ -3018,7 +3001,7 @@ public class MediaDataController extends BaseController {
                     }
                 });
             });
-        } else if (getUserConfig().isClientActivated() && !getUserConfig().getCurrentUser().bot)  {
+        } else {
             if (type == TYPE_FEATURED || type == TYPE_FEATURED_EMOJIPACKS) {
                 final boolean emoji = type == TYPE_FEATURED_EMOJIPACKS;
                 TLRPC.TL_messages_allStickers response = new TLRPC.TL_messages_allStickers();
@@ -3406,10 +3389,6 @@ public class MediaDataController extends BaseController {
         }
         final int type = type1;
 
-        if (NekoConfig.enableStickerPin.Bool() && type == MediaDataController.TYPE_IMAGE && (toggle == 0 || toggle == 1)) {
-            PinnedStickerHelper.getInstance(currentAccount).removePinnedStickerLocal(stickerSet.id);
-        }
-
         stickerSet.archived = toggle == 1;
 
         int currentIndex = 0;
@@ -3433,8 +3412,6 @@ public class MediaDataController extends BaseController {
         loadHash[type] = calcStickersHash(stickerSets[type]);
         putStickersToCache(type, stickerSets[type], loadDate[type], loadHash[type]);
 
-        if (context == null && baseFragment != null) context = baseFragment.getParentActivity();
-
         if (toggle == 2) {
             if (!cancelRemovingStickerSet(stickerSet.id)) {
                 toggleStickerSetInternal(context, toggle, baseFragment, bulletinContainer, showSettings, stickerSetObject, stickerSet, sticker, type, showTooltip);
@@ -3443,11 +3420,7 @@ public class MediaDataController extends BaseController {
             toggleStickerSetInternal(context, toggle, baseFragment, bulletinContainer, showSettings, stickerSetObject, stickerSet, sticker, type, false);
         } else {
             StickerSetBulletinLayout bulletinLayout = new StickerSetBulletinLayout(context, stickerSetObject, toggle, sticker, baseFragment == null ? null : baseFragment.getResourceProvider());
-            int finalCurrentIndex = NekoConfig.enableStickerPin.Bool() && type == TYPE_IMAGE && PinnedStickerHelper.getInstance(UserConfig.selectedAccount).isPinned(stickerSet.id)
-                    ? PinnedStickerHelper.getInstance(UserConfig.selectedAccount).pinnedList.size()
-                    : currentIndex;
-            // NekoX: Pin Sticker, Fix undo for Archiving and Deleting
-            Context finalContext = context;
+            int finalCurrentIndex = currentIndex;
             boolean[] undoDone = new boolean[1];
             markSetUninstalling(stickerSet.id, true);
             Bulletin.UndoButton undoButton = new Bulletin.UndoButton(context, false).setUndoAction(() -> {
@@ -3478,7 +3451,7 @@ public class MediaDataController extends BaseController {
                     return;
                 }
                 undoDone[0] = true;
-                toggleStickerSetInternal(finalContext, toggle, baseFragment, bulletinContainer, showSettings, stickerSetObject, stickerSet, sticker, type, false);
+                toggleStickerSetInternal(context, toggle, baseFragment, bulletinContainer, showSettings, stickerSetObject, stickerSet, sticker, type, false);
             });
             bulletinLayout.setButton(undoButton);
             removingStickerSetsUndos.put(stickerSet.id, undoButton::undo);
@@ -3704,7 +3677,6 @@ public class MediaDataController extends BaseController {
     private SparseArray<MessageObject>[] searchServerResultMessagesMap = new SparseArray[]{new SparseArray<>(), new SparseArray<>()};
     private ArrayList<MessageObject> deletedFromResultMessages = new ArrayList<>();
     private String lastSearchQuery;
-    private TLRPC.MessagesFilter lastSearchFilter;
     private int lastReturnedNum;
     private boolean loadingMoreSearchMessages;
     private boolean loadingSearchLocal;
@@ -3822,8 +3794,8 @@ public class MediaDataController extends BaseController {
         return searchServerResultMessagesMap[mergeDialog ? 1 : 0].indexOfKey(messageId) >= 0;
     }
 
-    public void searchMessagesInChat(String query, long dialogId, long mergeDialogId, int guid, int direction, long replyMessageId, TLRPC.User user, TLRPC.Chat chat, ReactionsLayoutInBubble.VisibleReaction reaction, TLRPC.MessagesFilter filter) {
-        searchMessagesInChat(query, dialogId, mergeDialogId, guid, direction, replyMessageId, false, user, chat, true, reaction, filter);
+    public void searchMessagesInChat(String query, long dialogId, long mergeDialogId, int guid, int direction, long replyMessageId, TLRPC.User user, TLRPC.Chat chat, ReactionsLayoutInBubble.VisibleReaction reaction) {
+        searchMessagesInChat(query, dialogId, mergeDialogId, guid, direction, replyMessageId, false, user, chat, true, reaction);
     }
 
     public void jumpToSearchedMessage(int guid, int index) {
@@ -3864,7 +3836,7 @@ public class MediaDataController extends BaseController {
         int temp = lastReturnedNum;
         lastReturnedNum = searchResultMessages.size();
         loadingMoreSearchMessages = true;
-        searchMessagesInChat(null, lastDialogId, lastMergeDialogId, lastGuid, 1, lastReplyMessageId, false, lastSearchUser, lastSearchChat, false, lastReaction, lastSearchFilter);
+        searchMessagesInChat(null, lastDialogId, lastMergeDialogId, lastGuid, 1, lastReplyMessageId, false, lastSearchUser, lastSearchChat, false, lastReaction);
         lastReturnedNum = temp;
     }
 
@@ -3872,7 +3844,7 @@ public class MediaDataController extends BaseController {
         return reqId != 0;
     }
 
-    public void searchMessagesInChat(String query, long dialogId, long mergeDialogId, int guid, int direction, long replyMessageId, boolean internal, TLRPC.User user, TLRPC.Chat chat, boolean jumpToMessage, ReactionsLayoutInBubble.VisibleReaction reaction, TLRPC.MessagesFilter filter) {
+    public void searchMessagesInChat(String query, long dialogId, long mergeDialogId, int guid, int direction, long replyMessageId, boolean internal, TLRPC.User user, TLRPC.Chat chat, boolean jumpToMessage, ReactionsLayoutInBubble.VisibleReaction reaction) {
         int max_id = 0;
         long queryWithDialog = dialogId;
         boolean firstQuery = !internal;
@@ -3978,11 +3950,7 @@ public class MediaDataController extends BaseController {
                     req.saved_reaction.add(reaction.toTLReaction());
                     req.flags |= 8;
                 }
-                if (filter == null) {
-                    req.filter = new TLRPC.TL_inputMessagesFilterEmpty();
-                } else {
-                    req.filter = filter;
-                }
+                req.filter = new TLRPC.TL_inputMessagesFilterEmpty();
                 mergeReqId = getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                     if (lastMergeDialogId == mergeDialogId) {
                         mergeReqId = 0;
@@ -3990,11 +3958,11 @@ public class MediaDataController extends BaseController {
                             TLRPC.messages_Messages res = (TLRPC.messages_Messages) response;
                             messagesSearchEndReached[1] = res.messages.isEmpty();
                             messagesSearchCount[1] = res instanceof TLRPC.TL_messages_messagesSlice ? res.count : res.messages.size();
-                            searchMessagesInChat(req.q, dialogId, mergeDialogId, guid, direction, replyMessageId, true, user, chat, jumpToMessage, reaction, filter);
+                            searchMessagesInChat(req.q, dialogId, mergeDialogId, guid, direction, replyMessageId, true, user, chat, jumpToMessage, reaction);
                         } else {
                             messagesSearchEndReached[1] = true;
                             messagesSearchCount[1] = 0;
-                            searchMessagesInChat(req.q, dialogId, mergeDialogId, guid, direction, replyMessageId, true, user, chat, jumpToMessage, reaction, filter);
+                            searchMessagesInChat(req.q, dialogId, mergeDialogId, guid, direction, replyMessageId, true, user, chat, jumpToMessage, reaction);
                         }
                     }
                 }), ConnectionsManager.RequestFlagFailOnServerErrors);
@@ -4011,7 +3979,6 @@ public class MediaDataController extends BaseController {
             loadingMoreSearchMessages = false;
             return;
         }
-        lastSearchFilter = filter;
         lastGuid = guid;
         lastDialogId = dialogId;
         lastSearchUser = user;
@@ -4068,11 +4035,7 @@ public class MediaDataController extends BaseController {
             req.saved_reaction.add(reaction.toTLReaction());
             req.flags |= 8;
         }
-        if (filter == null) {
-            req.filter = new TLRPC.TL_inputMessagesFilterEmpty();
-        } else {
-            req.filter = filter;
-        }
+        req.filter = new TLRPC.TL_inputMessagesFilterEmpty();
         lastSearchQuery = query;
         long queryWithDialogFinal = queryWithDialog;
         String finalQuery = query;
@@ -4144,7 +4107,7 @@ public class MediaDataController extends BaseController {
                                 }
                             }
                             if (queryWithDialogFinal == dialogId && messagesSearchEndReached[0] && mergeDialogId != 0 && !messagesSearchEndReached[1]) {
-                                searchMessagesInChat(lastSearchQuery, dialogId, mergeDialogId, guid, 0, replyMessageId, true, user, chat, jumpToMessage, lastReaction, lastSearchFilter);
+                                searchMessagesInChat(lastSearchQuery, dialogId, mergeDialogId, guid, 0, replyMessageId, true, user, chat, jumpToMessage, lastReaction);
                             }
                         };
                         if (isSaved) {
@@ -4190,6 +4153,7 @@ public class MediaDataController extends BaseController {
     public final static int MEDIA_VIDEOS_ONLY = 7;
     public final static int MEDIA_POLL = 8;
     public final static int MEDIA_TYPES_COUNT = 9;
+
 
     public void loadMedia(long dialogId, int count, int max_id, int min_id, int type, long topicId, int fromCache, int classGuid, int requestIndex, ReactionsLayoutInBubble.VisibleReaction tag, String query) {
         boolean isChannel = DialogObject.isChatDialog(dialogId) && ChatObject.isChannel(-dialogId, currentAccount);
@@ -4840,7 +4804,6 @@ public class MediaDataController extends BaseController {
                             if (DialogObject.isEncryptedDialog(uid)) {
                                 message.random_id = cursor.longValue(2);
                             }
-
                             if (message.grouped_id != 0 && groupsToLoad != null) {
                                 groupsToLoad.add(message.grouped_id);
                             }
@@ -5046,7 +5009,6 @@ public class MediaDataController extends BaseController {
                 }
             }
         }
-        DialogConfig.modifyShareTarget(hintsFinal);
         boolean recreateShortcuts = Build.VERSION.SDK_INT >= 30;
         Utilities.globalQueue.postRunnable(() -> {
             try {
@@ -7215,21 +7177,15 @@ public class MediaDataController extends BaseController {
         return runs;
     }
 
-    public void addStyle(TextStyleSpan.TextStyleRun styleRun, int spanStart, int spanEnd, ArrayList<TLRPC.MessageEntity> entities) {
-        int flags = styleRun.flags;
+    public void addStyle(int flags, int spanStart, int spanEnd, ArrayList<TLRPC.MessageEntity> entities) {
         if ((flags & TextStyleSpan.FLAG_STYLE_SPOILER) != 0)
             entities.add(setEntityStartEnd(new TLRPC.TL_messageEntitySpoiler(), spanStart, spanEnd));
         if ((flags & TextStyleSpan.FLAG_STYLE_BOLD) != 0)
             entities.add(setEntityStartEnd(new TLRPC.TL_messageEntityBold(), spanStart, spanEnd));
         if ((flags & TextStyleSpan.FLAG_STYLE_ITALIC) != 0)
             entities.add(setEntityStartEnd(new TLRPC.TL_messageEntityItalic(), spanStart, spanEnd));
-        if ((flags & TextStyleSpan.FLAG_STYLE_MONO) != 0) {
-            if (styleRun.urlEntity != null) {
-                entities.add(setEntityStartEnd(styleRun.urlEntity, spanStart, spanEnd));
-            } else {
-                entities.add(setEntityStartEnd(new TLRPC.TL_messageEntityCode(), spanStart, spanEnd));
-            }
-        }
+        if ((flags & TextStyleSpan.FLAG_STYLE_MONO) != 0)
+            entities.add(setEntityStartEnd(new TLRPC.TL_messageEntityCode(), spanStart, spanEnd));
         if ((flags & TextStyleSpan.FLAG_STYLE_STRIKE) != 0)
             entities.add(setEntityStartEnd(new TLRPC.TL_messageEntityStrike(), spanStart, spanEnd));
         if ((flags & TextStyleSpan.FLAG_STYLE_UNDERLINE) != 0)
@@ -7257,7 +7213,7 @@ public class MediaDataController extends BaseController {
         boolean isPre = false;
         final String mono = "`";
         final String pre = "```";
-        while (!(xyz.nextalone.nagram.NaConfig.INSTANCE.getNewMarkdownParser().Bool() || xyz.nextalone.nagram.NaConfig.INSTANCE.getDisableMarkdown().Bool()) && parseMarkdown && (index = TextUtils.indexOf(message[0], !isPre ? mono : pre, lastIndex)) != -1) {
+        while (parseMarkdown && (index = TextUtils.indexOf(message[0], !isPre ? mono : pre, lastIndex)) != -1) {
             if (start == -1) {
                 isPre = message[0].length() - index > 2 && message[0].charAt(index + 1) == '`' && message[0].charAt(index + 2) == '`';
                 start = index;
@@ -7343,11 +7299,6 @@ public class MediaDataController extends BaseController {
             entities.add(entity);
         }
 
-        // Nagram: call new markdown parser before processing Spanned
-        if (!xyz.nextalone.nagram.NaConfig.INSTANCE.getDisableMarkdown().Bool() && xyz.nextalone.nagram.NaConfig.INSTANCE.getNewMarkdownParser().Bool() && parseMarkdown) {
-            xyz.nextalone.nagram.helper.EntitiesHelper.parseMarkdown(message, allowStrike);
-        }
-
         if (message[0] instanceof Spanned) {
             Spanned spannable = (Spanned) message[0];
             TextStyleSpan[] spans = spannable.getSpans(0, message[0].length(), TextStyleSpan.class);
@@ -7362,7 +7313,7 @@ public class MediaDataController extends BaseController {
                     if (entities == null) {
                         entities = new ArrayList<>();
                     }
-                    addStyle(span.getTextStyleRun(), spanStart, spanEnd, entities);
+                    addStyle(span.getStyleFlags(), spanStart, spanEnd, entities);
                 }
             }
 
@@ -7398,7 +7349,7 @@ public class MediaDataController extends BaseController {
                     entities.add(entity);
                     TextStyleSpan.TextStyleRun style = spansUrlReplacement[b].getTextStyleRun();
                     if (style != null) {
-                        addStyle(style, entity.offset, entity.offset + entity.length, entities);
+                        addStyle(style.flags, entity.offset, entity.offset + entity.length, entities);
                     }
                 }
             }
@@ -7539,8 +7490,6 @@ public class MediaDataController extends BaseController {
         CharSequence cs = message[0];
         if (entities == null) entities = new ArrayList<>();
         if (parseMarkdown) {
-            // Nagram: skip old regex parsing when using new parser or markdown disabled
-            if (xyz.nextalone.nagram.NaConfig.INSTANCE.getNewMarkdownParser().Bool() || xyz.nextalone.nagram.NaConfig.INSTANCE.getDisableMarkdown().Bool()) return entities;
             cs = parsePattern(cs, BOLD_PATTERN, entities, obj -> new TLRPC.TL_messageEntityBold());
             cs = parsePattern(cs, ITALIC_PATTERN, entities, obj -> new TLRPC.TL_messageEntityItalic());
             cs = parsePattern(cs, SPOILER_PATTERN, entities, obj -> new TLRPC.TL_messageEntitySpoiler());
@@ -8031,7 +7980,7 @@ public class MediaDataController extends BaseController {
                 }
             }
             if (threadId == 0) {
-                draftPreferences.edit().remove("" + dialogId).remove("r_" + dialogId).apply();
+                draftPreferences.edit().remove("" + dialogId).remove("r_" + dialogId).commit();
             } else {
                 draftPreferences.edit().remove("t_" + dialogId + "_" + threadId).remove("rt_" + dialogId + "_" + threadId).commit();
             }
@@ -8094,7 +8043,7 @@ public class MediaDataController extends BaseController {
                 FileLog.e(e);
             }
         }
-        editor.apply();
+        editor.commit();
         if (fromServer && (threadId == 0 || getMessagesController().isForum(dialogId))) {
             if (draft != null && draft.reply_to != null && draft.reply_to.reply_to_msg_id != 0 && (replyToMessage == null || replyToMessage.reply_to instanceof TLRPC.TL_messageReplyHeader && replyToMessage.replyMessage == null)) {
                 final long replyDialogId = (draft.reply_to.flags & 2) != 0 ? DialogObject.getPeerDialogId(draft.reply_to.reply_to_peer_id) : dialogId;
@@ -8203,7 +8152,7 @@ public class MediaDataController extends BaseController {
                 threads2.put(threadId, message);
                 SerializedData serializedData = new SerializedData(message.getObjectSize());
                 message.serializeToStream(serializedData);
-                draftPreferences.edit().putString(threadId == 0 ? ("r_" + dialogId) : ("rt_" + dialogId + "_" + threadId), Utilities.bytesToHex(serializedData.toByteArray())).apply();
+                draftPreferences.edit().putString(threadId == 0 ? ("r_" + dialogId) : ("rt_" + dialogId + "_" + threadId), Utilities.bytesToHex(serializedData.toByteArray())).commit();
                 getNotificationCenter().postNotificationName(NotificationCenter.newDraftReceived, dialogId);
                 serializedData.cleanup();
             }
@@ -8214,7 +8163,7 @@ public class MediaDataController extends BaseController {
         drafts.clear();
         draftMessages.clear();
         draftsFolderIds.clear();
-        draftPreferences.edit().clear().apply();
+        draftPreferences.edit().clear().commit();
         if (notify) {
             getMessagesController().sortDialogs(null);
             getNotificationCenter().postNotificationName(NotificationCenter.dialogsNeedReload);
@@ -8247,7 +8196,7 @@ public class MediaDataController extends BaseController {
                 }
             }
             if (threadId == 0) {
-                draftPreferences.edit().remove("" + dialogId).remove("r_" + dialogId).apply();
+                draftPreferences.edit().remove("" + dialogId).remove("r_" + dialogId).commit();
                 getMessagesController().sortDialogs(null);
                 getNotificationCenter().postNotificationName(NotificationCenter.dialogsNeedReload);
             } else {

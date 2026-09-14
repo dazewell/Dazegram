@@ -65,9 +65,6 @@ import org.telegram.ui.PaymentFormActivity;
 
 import java.util.ArrayList;
 
-import tw.nekomimi.nekogram.NekoConfig;
-import tw.nekomimi.nekogram.helpers.AppRestartHelper;
-
 @SuppressWarnings("FieldCanBeLocal")
 @Deprecated // use Bulletin instead
 public class UndoView extends FrameLayout {
@@ -186,8 +183,6 @@ public class UndoView extends FrameLayout {
     public final static int ACTION_EMAIL_COPIED = 80;
     public final static int ACTION_CLEAR_DATES = 81;
 
-    public final static int ACTION_NEED_RESATRT = 100;
-
     public final static int ACTION_PREVIEW_MEDIA_DESELECTED = 82;
     public static int ACTION_RINGTONE_ADDED = 83;
     public final static int ACTION_PREMIUM_TRANSCRIPTION = 84;
@@ -265,7 +260,7 @@ public class UndoView extends FrameLayout {
         infoTextView.setMovementMethod(new LinkMovementMethodMy());
         addView(infoTextView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.LEFT, 45, 13, 0, 0));
 
-        subinfoTextView = new EmojiTextView(context);
+        subinfoTextView = new TextView(context);
         subinfoTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
         subinfoTextView.setTextColor(getThemedColor(Theme.key_undo_infoColor));
         subinfoTextView.setLinkTextColor(getThemedColor(Theme.key_undo_cancelColor));
@@ -311,7 +306,7 @@ public class UndoView extends FrameLayout {
 
         undoImageView = new ImageView(context);
         undoImageView.setImageResource(R.drawable.chats_undo);
-        undoImageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_undo_cancelColor), PorterDuff.Mode.SRC_IN));
+        undoImageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_undo_cancelColor), PorterDuff.Mode.MULTIPLY));
         undoButton.addView(undoImageView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL | Gravity.LEFT, 4, 4, 0, 4));
 
         undoTextView = new TextView(context);
@@ -486,12 +481,6 @@ public class UndoView extends FrameLayout {
         currentAction = action;
         timeLeft = 5000;
         currentInfoObject = infoObject;
-
-        if (NekoConfig.disableUndo.Bool() && !isTooltipAction()) {
-            if (actionRunnable != null) actionRunnable.run();
-            return;
-        }
-
         currentInfoObject2 = infoObject2;
         lastUpdateTime = SystemClock.elapsedRealtime();
         undoTextView.setText(LocaleController.getString(R.string.UndoNoCaps));
@@ -535,32 +524,11 @@ public class UndoView extends FrameLayout {
 
         infoTextView.setMovementMethod(null);
 
-        if (currentAction == ACTION_NEED_RESATRT) {
-            infoTextView.setText(LocaleController.getString("RestartAppToTakeEffect", R.string.RestartAppToTakeEffect));
-
-            layoutParams.leftMargin = AndroidUtilities.dp(58);
-            layoutParams.topMargin = AndroidUtilities.dp(13);
-            layoutParams.rightMargin = 0;
-
-            infoTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
-            undoButton.setVisibility(VISIBLE);
-            infoTextView.setTypeface(Typeface.DEFAULT);
-            subinfoTextView.setVisibility(GONE);
-
-            leftImageView.setVisibility(VISIBLE);
-            leftImageView.setAnimation(R.raw.chats_infotip, 36, 36);
-            leftImageView.setProgress(0);
-            leftImageView.playAnimation();
-            undoImageView.setVisibility(GONE);
-
-            undoTextView.setText(LocaleController.getString("ApplyTheme", R.string.ApplyTheme));
-            currentCancelRunnable = AppRestartHelper::triggerRebirth;
-
-        } else if (isTooltipAction()) {
-            CharSequence infoText = "";
-            CharSequence subInfoText = "";
+        if (isTooltipAction()) {
+            CharSequence infoText;
+            CharSequence subInfoText;
             @DrawableRes
-            int icon = 0;
+            int icon;
             int size = 36;
             boolean iconIsDrawable = false;
 
@@ -984,7 +952,7 @@ public class UndoView extends FrameLayout {
             undoButton.setVisibility(GONE);
         } else if (currentAction == ACTION_IMPORT_NOT_MUTUAL || currentAction == ACTION_IMPORT_GROUP_NOT_ADMIN || currentAction == ACTION_IMPORT_INFO ||
                 currentAction == ACTION_MESSAGE_COPIED ||
-                currentAction == ACTION_FWD_MESSAGES || currentAction == ACTION_NOTIFY_ON || currentAction == ACTION_NOTIFY_OFF || currentAction == ACTION_USERNAME_COPIED ||
+                currentAction == ACTION_FWD_MESSAGES || currentAction == ACTION_NOTIFY_ON || currentAction == ACTION_NOTIFY_OFF ||  currentAction == ACTION_USERNAME_COPIED ||
                 currentAction == ACTION_HASHTAG_COPIED || currentAction == ACTION_TEXT_COPIED || currentAction == ACTION_LINK_COPIED || currentAction == ACTION_PHONE_COPIED ||
                 currentAction == ACTION_AUTO_DELETE_OFF || currentAction == ACTION_AUTO_DELETE_ON || currentAction == ACTION_GIGAGROUP_CANCEL || currentAction == ACTION_GIGAGROUP_SUCCESS ||
                 currentAction == ACTION_VOIP_INVITE_LINK_SENT || currentAction == ACTION_PIN_DIALOGS || currentAction == ACTION_UNPIN_DIALOGS || currentAction == ACTION_SHARE_BACKGROUND || currentAction == ACTION_EMAIL_COPIED) {
@@ -1174,11 +1142,9 @@ public class UndoView extends FrameLayout {
             leftImageView.playAnimation();
             if (hapticDelay > 0) {
                 leftImageView.postDelayed(() -> {
-                    if (!NekoConfig.disableVibration.Bool()) {
-                        try {
-                            leftImageView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
-                        } catch (Exception ignored) {}
-                    }
+                    try {
+                        leftImageView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+                    } catch (Exception ignored) {}
                 }, hapticDelay);
             }
         } else if (currentAction == ACTION_PROXIMITY_SET || currentAction == ACTION_PROXIMITY_REMOVED) {
@@ -1302,9 +1268,9 @@ public class UndoView extends FrameLayout {
                 } else {
                     String info = LocaleController.getServerString("DiceEmojiInfo_" + emoji);
                     if (!TextUtils.isEmpty(info)) {
-                        infoTextView.setText(info);
+                        infoTextView.setText(Emoji.replaceEmoji(info, infoTextView.getPaint().getFontMetricsInt(), false));
                     } else {
-                        infoTextView.setText(LocaleController.formatString("DiceEmojiInfo", R.string.DiceEmojiInfo, emoji));
+                        infoTextView.setText(Emoji.replaceEmoji(LocaleController.formatString("DiceEmojiInfo", R.string.DiceEmojiInfo, emoji), infoTextView.getPaint().getFontMetricsInt(), false));
                     }
                 }
                 leftImageView.setImageDrawable(Emoji.getEmojiDrawable(emoji));
@@ -1723,8 +1689,8 @@ public class UndoView extends FrameLayout {
                 canvas.restore();
             }
 
-            // canvas.drawText(timeLeftString, rect.centerX() - textWidth / 2, AndroidUtilities.dp(28.2f), textPaint);
-            // canvas.drawText(timeLeftString, , textPaint);
+           // canvas.drawText(timeLeftString, rect.centerX() - textWidth / 2, AndroidUtilities.dp(28.2f), textPaint);
+           // canvas.drawText(timeLeftString, , textPaint);
             canvas.drawArc(rect, -90, -360 * (timeLeft / 5000.0f), false, progressPaint);
         }
 

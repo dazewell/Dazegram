@@ -58,10 +58,6 @@ import org.telegram.ui.Stories.recorder.HintView2;
 
 import java.util.ArrayList;
 
-import tw.nekomimi.nekogram.NekoConfig;
-import xyz.nextalone.nagram.NaConfig;
-import xyz.nextalone.nagram.TabStyle;
-
 public class ViewPagerFixed extends FrameLayout {
 
     private Theme.ResourcesProvider resourcesProvider;
@@ -1599,10 +1595,6 @@ public class ViewPagerFixed extends FrameLayout {
             super(context);
             this.resourcesProvider = resourcesProvider;
 
-            if (NaConfig.INSTANCE.getTabStyle().Int() >= TabStyle.PILLS.getValue()) {
-                tabsSelectorType = SELECTOR_TYPE_BUBBLE_STYLE;
-            }
-
             this.selectorType = tabsSelectorType;
             textCounterPaint.setTextSize(dp(13));
             textCounterPaint.setTypeface(AndroidUtilities.bold());
@@ -2053,18 +2045,11 @@ public class ViewPagerFixed extends FrameLayout {
                             final float TAB_INTERNAL_PADDING = 12.5f;
                             final float add = additionalTabWidth / 2f;
                             final int y = height / 2 - dp(14);
-                            if (NaConfig.INSTANCE.getTabStyleStroke().Bool()) {
-                                selectorDrawable.setStroke(AndroidUtilities.dp(1), Theme.getColor(activeTextColorKey, resourcesProvider));
-                                selectorDrawable.setColor(ColorUtils.setAlphaComponent(Theme.getColor(tabLineColorKey, resourcesProvider), 50));
-                            } else {
-                                selectorDrawable.setStroke(0, 0);
-                                selectorDrawable.setColor(Theme.getColor(tabLineColorKey, resourcesProvider));
-                            }
                             selectorDrawable.setBounds(
                                 (int) (indicatorX - dp(TAB_INTERNAL_PADDING) - add), y,
                                 (int) (indicatorX + indicatorWidth + dp(TAB_INTERNAL_PADDING) + add),
                                 y + dp(28));
-                            selectorDrawable.setAlpha(NaConfig.INSTANCE.getTabStyleStroke().Bool() ? 255 : 31);
+                            selectorDrawable.setAlpha(31);
                             selectorDrawable.draw(canvas);
                         } else {
                             selectorDrawable.setBounds(indicatorX, (int) (height - AndroidUtilities.dpr(4) + hideProgress * AndroidUtilities.dpr(4)), indicatorX + indicatorWidth, (int) (height + hideProgress * AndroidUtilities.dpr(4)));

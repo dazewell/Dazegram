@@ -27,8 +27,6 @@ import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import androidx.recyclerview.widget.RecyclerView;
-
 import androidx.collection.LongSparseArray;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -39,8 +37,6 @@ import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.ImageLocation;
-import org.telegram.messenger.LocaleController;
-import org.telegram.messenger.MediaDataController;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MediaDataController;
 import org.telegram.messenger.MessageObject;
@@ -82,9 +78,6 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
-
-import tw.nekomimi.nekogram.helpers.InlineBotRulesRepository;
-import tw.nekomimi.nekogram.helpers.remote.InlineBotRulesHelper;
 
 public class MentionsAdapter extends RecyclerListView.SelectionAdapter implements NotificationCenter.NotificationCenterDelegate {
 
@@ -167,7 +160,6 @@ public class MentionsAdapter extends RecyclerListView.SelectionAdapter implement
     private boolean contextMedia;
     private Runnable contextQueryRunnable;
     private Location lastKnownLocation;
-    private boolean autoSearching;
 
     private ArrayList<StickerResult> stickers;
     private HashMap<String, TLRPC.Document> stickersMap;
@@ -684,10 +676,6 @@ public class MentionsAdapter extends RecyclerListView.SelectionAdapter implement
 //    }
 
     private void searchForContextBot(final String username, final String query) {
-        searchForContextBot(username, query, false);
-    }
-
-    private void searchForContextBot(final String username, final String query, boolean autoSearching) {
         if (foundContextBot != null && foundContextBot.username != null && foundContextBot.username.equals(username) && searchingContextQuery != null && searchingContextQuery.equals(query)) {
             return;
         }
@@ -701,7 +689,6 @@ public class MentionsAdapter extends RecyclerListView.SelectionAdapter implement
             AndroidUtilities.cancelRunOnUIThread(contextQueryRunnable);
             contextQueryRunnable = null;
         }
-        this.autoSearching = autoSearching;
         if (TextUtils.isEmpty(username) || searchingContextUsername != null && !searchingContextUsername.equals(username)) {
             if (contextUsernameReqid != 0) {
                 ConnectionsManager.getInstance(currentAccount).cancelRequest(contextUsernameReqid, true);
@@ -817,19 +804,12 @@ public class MentionsAdapter extends RecyclerListView.SelectionAdapter implement
     }
 
     public String getBotCaption() {
-        if (autoSearching) {
-            return null;
-        }
         if (foundContextBot != null) {
             return foundContextBot.bot_inline_placeholder;
         } else if (searchingContextUsername != null && searchingContextUsername.equals("gif")) {
             return LocaleController.getString(R.string.SearchGifsTitle);
         }
         return null;
-    }
-
-    public boolean isAutoSearchingContextBot() {
-        return autoSearching;
     }
 
     public void searchForContextBotForNextOffset() {
@@ -1033,7 +1013,6 @@ public class MentionsAdapter extends RecyclerListView.SelectionAdapter implement
             isValidEmoji = spans == null || spans.length == 0;
         }
 
-        var inlineBot = InlineBotRulesRepository.matchRule(text);
         if (allowStickers && isValidEmoji && (currentChat == null || ChatObject.canSendStickers(currentChat))) {
             stickersToLoad.clear();
             if (SharedConfig.suggestStickers == 2 || !isValidEmoji) {
@@ -1171,8 +1150,6 @@ public class MentionsAdapter extends RecyclerListView.SelectionAdapter implement
             }
 //            searchForStickers(null, false);
             searchForContextBot(username, query);
-        } else if (inlineBot != null) {
-            searchForContextBot(inlineBot, text, true);
         } else if (allowStickers && parentFragment != null && parentFragment.getCurrentEncryptedChat() == null && (currentChat == null || ChatObject.canSendStickers(currentChat)) && text.trim().length() >= 2 && text.trim().indexOf(' ') < 0) {
 //            searchForStickers(text.trim(), false);
             searchForContextBot(null, null);
@@ -1911,7 +1888,7 @@ public class MentionsAdapter extends RecyclerListView.SelectionAdapter implement
     }
 
     public boolean isLongClickEnabled() {
-        return searchResultHashtags != null || searchResultCommands != null || searchResultUsernames != null;
+        return searchResultHashtags != null || searchResultCommands != null;
     }
 
     public boolean isBotCommands() {

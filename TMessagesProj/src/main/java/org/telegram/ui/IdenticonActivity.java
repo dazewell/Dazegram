@@ -46,7 +46,6 @@ import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.ThemeDescription;
-import org.telegram.ui.Components.EmojiTextView;
 import org.telegram.ui.Components.IdenticonDrawable;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.ActionBar.Theme;
@@ -178,7 +177,7 @@ public class IdenticonActivity extends BaseFragment implements NotificationCente
         textView.setMovementMethod(new LinkMovementMethodMy());
         linearLayout1.addView(textView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL));
 
-        emojiTextView = new EmojiTextView(context);
+        emojiTextView = new TextView(context);
         emojiTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText4));
         emojiTextView.setGravity(Gravity.CENTER);
         emojiTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 32);
@@ -314,7 +313,7 @@ public class IdenticonActivity extends BaseFragment implements NotificationCente
     @Override
     public void onTransitionAnimationEnd(boolean isOpen, boolean backward) {
         if (isOpen && !backward && emojiText != null) {
-            emojiTextView.setText(emojiText);
+            emojiTextView.setText(Emoji.replaceEmoji(emojiText, emojiTextView.getPaint().getFontMetricsInt(), false));
         }
     }
 

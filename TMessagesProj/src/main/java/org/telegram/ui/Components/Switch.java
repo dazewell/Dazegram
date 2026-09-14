@@ -297,7 +297,7 @@ public class Switch extends View {
         if (icon != 0) {
             iconDrawable = getResources().getDrawable(icon).mutate();
             if (iconDrawable != null) {
-                iconDrawable.setColorFilter(new PorterDuffColorFilter(lastIconColor = Theme.getColor(isChecked ? trackCheckedColorKey : trackColorKey, resourcesProvider), PorterDuff.Mode.SRC_IN));
+                iconDrawable.setColorFilter(new PorterDuffColorFilter(lastIconColor = Theme.getColor(isChecked ? trackCheckedColorKey : trackColorKey, resourcesProvider), PorterDuff.Mode.MULTIPLY));
             }
         } else {
             iconDrawable = null;
@@ -425,7 +425,7 @@ public class Switch extends View {
             color1 = processColor(Theme.getColor(trackColorKey, resourcesProvider));
             color2 = processColor(Theme.getColor(trackCheckedColorKey, resourcesProvider));
             if (a == 0 && iconDrawable != null && lastIconColor != (isChecked ? color2 : color1)) {
-                iconDrawable.setColorFilter(new PorterDuffColorFilter(lastIconColor = (isChecked ? color2 : color1), PorterDuff.Mode.SRC_IN));
+                iconDrawable.setColorFilter(new PorterDuffColorFilter(lastIconColor = (isChecked ? color2 : color1), PorterDuff.Mode.MULTIPLY));
             }
 
             r1 = Color.red(color1);
@@ -561,5 +561,4 @@ public class Switch extends View {
         info.setChecked(isChecked);
         //info.setContentDescription(isChecked ? LocaleController.getString(R.string.NotificationsOn) : LocaleController.getString(R.string.NotificationsOff));
     }
-
 }

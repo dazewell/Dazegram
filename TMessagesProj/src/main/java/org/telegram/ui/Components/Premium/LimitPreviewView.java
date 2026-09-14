@@ -54,8 +54,6 @@ import org.telegram.ui.Stories.recorder.HintView2;
 
 import java.util.ArrayList;
 
-import tw.nekomimi.nekogram.NekoConfig;
-
 public class LimitPreviewView extends LinearLayout {
 
     public interface DarkGradientProvider {
@@ -474,7 +472,6 @@ public class LimitPreviewView extends LinearLayout {
                     if (!wasHaptic) {
                         wasHaptic = true;
                         try {
-                            if (!NekoConfig.disableVibration.Bool())
                             limitIcon.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
                         } catch (Exception ignored) {}
                     }

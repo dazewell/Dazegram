@@ -20,7 +20,6 @@ import static java.lang.Math.min;
 import static java.lang.annotation.ElementType.TYPE_USE;
 
 import android.util.Pair;
-
 import androidx.annotation.IntDef;
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.Format;
@@ -45,8 +44,6 @@ import java.lang.annotation.Target;
 import org.checkerframework.checker.nullness.qual.EnsuresNonNull;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 import org.checkerframework.checker.nullness.qual.RequiresNonNull;
-
-import java.io.IOException;
 
 /** Extracts data from WAV byte streams. */
 public final class WavExtractor implements Extractor {
@@ -399,11 +396,9 @@ public final class WavExtractor implements Extractor {
 
     /** Number of frames per block of the input (yet to be decoded) data. */
     private final int framesPerBlock;
-    /**
-     * CCTarget for the input (yet to be decoded) data.
-     */
+    /** Target for the input (yet to be decoded) data. */
     private final byte[] inputData;
-    /** CCTarget for decoded (yet to be output) data. */
+    /** Target for decoded (yet to be output) data. */
     private final ParsableByteArray decodedData;
     /** The target size of each output sample, in frames. */
     private final int targetSampleSizeFrames;

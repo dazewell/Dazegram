@@ -1821,7 +1821,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 
                         addViewStatistics(popupLayout, storyItem);
 
-                        if ((!unsupported || true) && !currentStory.isLive) {
+                        if (!unsupported && !currentStory.isLive) {
                             final String str = currentStory.isVideo() ? getString(R.string.SaveVideo) : getString(R.string.SaveImage);
                             ActionBarMenuItem.addItem(popupLayout, R.drawable.msg_gallery, str, false, resourcesProvider).setOnClickListener(v -> {
                                 saveToGallery();
@@ -2068,8 +2068,8 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                             createQualityItem(popupLayout);
                         }
 
-                        if (!unsupported && (allowShare || true) && !currentStory.isLive) {
-                            if (UserConfig.getInstance(currentAccount).isPremium() || true) {
+                        if (!unsupported && allowShare && !currentStory.isLive) {
+                            if (UserConfig.getInstance(currentAccount).isPremium()) {
                                 ActionBarMenuItem.addItem(popupLayout, R.drawable.msg_gallery, getString(R.string.SaveToGallery), false, resourcesProvider).setOnClickListener(v -> {
                                     saveToGallery();
                                     if (popupMenu != null) {
@@ -2468,7 +2468,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 
     private void createQualityItem(ActionBarPopupWindow.ActionBarPopupWindowLayout popupLayout) {
         final boolean qualityFull = MessagesController.getInstance(currentAccount).storyQualityFull;
-        if (UserConfig.getInstance(currentAccount).isPremium() || true) {
+        if (UserConfig.getInstance(currentAccount).isPremium()) {
             ActionBarMenuItem.addItem(popupLayout, qualityFull ? R.drawable.menu_quality_sd : R.drawable.menu_quality_hd, getString(qualityFull ? R.string.StoryQualityDecrease : R.string.StoryQualityIncrease), false, resourcesProvider).setOnClickListener(v -> {
                 final boolean newQualityFull = !qualityFull;
                 MessagesController.getInstance(currentAccount).setStoryQuality(newQualityFull);
@@ -4401,7 +4401,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 
         TextView buttonTextView = new TextView(getContext());
         ScaleStateListAnimator.apply(buttonTextView);
-        buttonTextView.setText(getString(R.string.AppUpdate).replace("Telegram", LocaleController.getString(R.string.NekoX)));
+        buttonTextView.setText(getString(R.string.AppUpdate));
         buttonTextView.setTextColor(Theme.getColor(Theme.key_featuredStickers_buttonText, resourcesProvider));
         buttonTextView.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(12), AndroidUtilities.dp(16), AndroidUtilities.dp(12));
         buttonTextView.setGravity(Gravity.CENTER);
@@ -4413,16 +4413,15 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                 ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_featuredStickers_buttonText, resourcesProvider), 30))
         );
         buttonTextView.setOnClickListener(v -> {
-//            if (ApplicationLoader.isStandaloneBuild()) {
-//                if (LaunchActivity.instance != null) {
-//                    LaunchActivity.instance.checkAppUpdate(true, null);
-//                }
-//            } else if (BuildVars.isHuaweiStoreApp()){
-//                Browser.openUrl(getContext(), BuildVars.HUAWEI_STORE_URL);
-//            } else {
-//                Browser.openUrl(getContext(), BuildVars.PLAYSTORE_APP_URL);
-//            }
-            Browser.openUrl(getContext(), BuildVars.GITHUB_RELEASE_URL);
+            if (ApplicationLoader.isStandaloneBuild()) {
+                if (LaunchActivity.instance != null) {
+                    LaunchActivity.instance.checkAppUpdate(true, null);
+                }
+            } else if (BuildVars.isHuaweiStoreApp()){
+                Browser.openUrl(getContext(), BuildVars.HUAWEI_STORE_URL);
+            } else {
+                Browser.openUrl(getContext(), BuildVars.PLAYSTORE_APP_URL);
+            }
         });
         linearLayout.addView(textView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
         linearLayout.addView(buttonTextView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 24, 0, 0));
@@ -4839,9 +4838,6 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
         } else if (id == NotificationCenter.storiesLimitUpdate) {
             StoriesController.StoryLimit storyLimit = MessagesController.getInstance(currentAccount).getStoriesController().checkStoryLimit();
             if (storyLimit == null || !storyLimit.active(currentAccount) || delegate == null) {
-                return;
-            }
-            if (!storyLimit.active(currentAccount)) {
                 return;
             }
             final LimitReachedBottomSheet sheet = new LimitReachedBottomSheet(fragmentForLimit(), findActivity(), storyLimit.getLimitReachedType(), currentAccount, null);

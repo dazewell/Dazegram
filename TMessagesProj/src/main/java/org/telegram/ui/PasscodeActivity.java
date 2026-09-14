@@ -39,9 +39,6 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
-
 import androidx.annotation.IntDef;
 import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
@@ -91,9 +88,6 @@ import java.lang.annotation.RetentionPolicy;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import tw.nekomimi.nekogram.helpers.PasscodeHelper;
-import tw.nekomimi.nekogram.utils.VibrateUtil;
 
 public class PasscodeActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
     public final static int TYPE_MANAGE_CODE_SETTINGS = 0,
@@ -163,14 +157,6 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
     };
 
     private Runnable onShowKeyboardCallback;
-
-    private int account = -1;
-
-    public PasscodeActivity(@PasscodeActivityType int type, int account) {
-        super();
-        this.type = type;
-        this.account = account;
-    }
 
     public PasscodeActivity(@PasscodeActivityType int type) {
         super();
@@ -322,32 +308,28 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
                         builder.setTitle(LocaleController.getString(R.string.AutoLock));
                         final NumberPicker numberPicker = new NumberPicker(getParentActivity());
                         numberPicker.setMinValue(0);
-                        numberPicker.setMaxValue(5);
+                        numberPicker.setMaxValue(4);
                         if (SharedConfig.autoLockIn == 0) {
                             numberPicker.setValue(0);
-                        } else if (SharedConfig.autoLockIn == 1) {
-                            numberPicker.setValue(1);
                         } else if (SharedConfig.autoLockIn == 60) {
-                            numberPicker.setValue(2);
+                            numberPicker.setValue(1);
                         } else if (SharedConfig.autoLockIn == 60 * 5) {
-                            numberPicker.setValue(3);
+                            numberPicker.setValue(2);
                         } else if (SharedConfig.autoLockIn == 60 * 60) {
-                            numberPicker.setValue(4);
+                            numberPicker.setValue(3);
                         } else if (SharedConfig.autoLockIn == 60 * 60 * 5) {
-                            numberPicker.setValue(5);
+                            numberPicker.setValue(4);
                         }
                         numberPicker.setFormatter(value -> {
                             if (value == 0) {
                                 return LocaleController.getString(R.string.AutoLockDisabled);
                             } else if (value == 1) {
-                                return LocaleController.getString("AutoLockImmediately", R.string.AutoLockImmediately);
-                            } else if (value == 2) {
                                 return LocaleController.formatString("AutoLockInTime", R.string.AutoLockInTime, LocaleController.formatPluralString("Minutes", 1));
-                            } else if (value == 3) {
+                            } else if (value == 2) {
                                 return LocaleController.formatString("AutoLockInTime", R.string.AutoLockInTime, LocaleController.formatPluralString("Minutes", 5));
-                            } else if (value == 4) {
+                            } else if (value == 3) {
                                 return LocaleController.formatString("AutoLockInTime", R.string.AutoLockInTime, LocaleController.formatPluralString("Hours", 1));
-                            } else if (value == 5) {
+                            } else if (value == 4) {
                                 return LocaleController.formatString("AutoLockInTime", R.string.AutoLockInTime, LocaleController.formatPluralString("Hours", 5));
                             }
                             return "";
@@ -358,14 +340,12 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
                             if (which == 0) {
                                 SharedConfig.autoLockIn = 0;
                             } else if (which == 1) {
-                                SharedConfig.autoLockIn = 1;
-                            } else if (which == 2) {
                                 SharedConfig.autoLockIn = 60;
-                            } else if (which == 3) {
+                            } else if (which == 2) {
                                 SharedConfig.autoLockIn = 60 * 5;
-                            } else if (which == 4) {
+                            } else if (which == 3) {
                                 SharedConfig.autoLockIn = 60 * 60;
-                            } else if (which == 5) {
+                            } else if (which == 4) {
                                 SharedConfig.autoLockIn = 60 * 60 * 5;
                             }
                             listAdapter.notifyItemChanged(position);
@@ -964,24 +944,18 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
                 return;
             }
 
-            boolean isFirst;
-            if (account != -1) {
-                isFirst = false;
-                PasscodeHelper.setPasscodeForAccount(firstPassword, account);
-            } else {
-                isFirst = SharedConfig.passcodeHash.isEmpty();
-                try {
-                    SharedConfig.passcodeSalt = new byte[16];
-                    Utilities.random.nextBytes(SharedConfig.passcodeSalt);
-                    byte[] passcodeBytes = firstPassword.getBytes(StandardCharsets.UTF_8);
-                    byte[] bytes = new byte[32 + passcodeBytes.length];
-                    System.arraycopy(SharedConfig.passcodeSalt, 0, bytes, 0, 16);
-                    System.arraycopy(passcodeBytes, 0, bytes, 16, passcodeBytes.length);
-                    System.arraycopy(SharedConfig.passcodeSalt, 0, bytes, passcodeBytes.length + 16, 16);
-                    SharedConfig.passcodeHash = Utilities.bytesToHex(Utilities.computeSHA256(bytes, 0, bytes.length));
-                } catch (Exception e) {
-                    FileLog.e(e);
-                }
+            boolean isFirst = SharedConfig.passcodeHash.isEmpty();
+            try {
+                SharedConfig.passcodeSalt = new byte[16];
+                Utilities.random.nextBytes(SharedConfig.passcodeSalt);
+                byte[] passcodeBytes = firstPassword.getBytes(StandardCharsets.UTF_8);
+                byte[] bytes = new byte[32 + passcodeBytes.length];
+                System.arraycopy(SharedConfig.passcodeSalt, 0, bytes, 0, 16);
+                System.arraycopy(passcodeBytes, 0, bytes, 16, passcodeBytes.length);
+                System.arraycopy(SharedConfig.passcodeSalt, 0, bytes, passcodeBytes.length + 16, 16);
+                SharedConfig.passcodeHash = Utilities.bytesToHex(Utilities.computeSHA256(bytes, 0, bytes.length));
+            } catch (Exception e) {
+                FileLog.e(e);
             }
             SharedConfig.allowScreenCapture = true;
             SharedConfig.passcodeType = currentPasswordType;
@@ -1023,7 +997,7 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
                 onPasscodeError();
                 return;
             }
-            if (!PasscodeHelper.checkPasscode(getParentActivity(), password) && !SharedConfig.checkPasscode(password)) {
+            if (!SharedConfig.checkPasscode(password)) {
                 SharedConfig.increaseBadPasscodeTries();
                 passwordEditText.setText("");
                 for (CodeNumberField f : codeFieldContainer.codeField) {
@@ -1063,7 +1037,9 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
 
     private void onPasscodeError() {
         if (getParentActivity() == null) return;
-        VibrateUtil.vibrate();
+        try {
+            fragmentView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+        } catch (Exception ignore) {}
         if (isPinCode()) {
             for (CodeNumberField f : codeFieldContainer.codeField) {
                 f.animateErrorProgress(1f);
@@ -1160,8 +1136,6 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
                         String val;
                         if (SharedConfig.autoLockIn == 0) {
                             val = LocaleController.formatString("AutoLockDisabled", R.string.AutoLockDisabled);
-                        } else if (SharedConfig.autoLockIn == 1) {
-                            val = LocaleController.formatString("AutoLockImmediately", R.string.AutoLockImmediately);
                         } else if (SharedConfig.autoLockIn < 60 * 60) {
                             val = LocaleController.formatString("AutoLockInTime", R.string.AutoLockInTime, LocaleController.formatPluralString("Minutes", SharedConfig.autoLockIn / 60));
                         } else if (SharedConfig.autoLockIn < 60 * 60 * 24) {

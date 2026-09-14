@@ -132,8 +132,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
-import xyz.nextalone.nagram.helper.LocalPeerColorHelper;
-
 public class PeerColorActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
 
     private final boolean isChannel;
@@ -1798,7 +1796,6 @@ public class PeerColorActivity extends BaseFragment implements NotificationCente
         if (isChannel) {
             finishFragment();
         } else {
-            LocalPeerColorHelper.apply(namePage.selectedColor, namePage.selectedEmoji, profilePage.selectedColor, profilePage.selectedEmoji);
             final TLRPC.User me = getUserConfig().getCurrentUser();
             if (me.color == null) {
                 me.color = new TLRPC.TL_peerColor();

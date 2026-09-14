@@ -16,10 +16,6 @@ import org.telegram.PhoneFormat.PhoneFormat;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_account;
 
-import tw.nekomimi.nekogram.helpers.remote.PeerColorHelper;
-import xyz.nextalone.nagram.helper.MessageHelper;
-import xyz.nextalone.nagram.helper.LocalPeerColorHelper;
-
 public class UserObject {
 
     public static final long REPLY_BOT = 1271266957L;
@@ -119,7 +115,7 @@ public class UserObject {
         } else if (!allowShort && name.length() <= 2) {
             return ContactsController.formatName(user.first_name, user.last_name);
         }
-        return !TextUtils.isEmpty(name) ? MessageHelper.INSTANCE.zalgoFilter(name) : LocaleController.getString(R.string.HiddenName);
+        return !TextUtils.isEmpty(name) ? name : LocaleController.getString(R.string.HiddenName);
     }
 
     public static String getForcedFirstName(TLRPC.User user) {
@@ -193,44 +189,22 @@ public class UserObject {
 
     public static int getColorId(TLRPC.User user) {
         if (user == null) return 0;
-
-        Integer replace = LocalPeerColorHelper.getColorId(user);
-        if (replace != null) return replace;
-        replace = PeerColorHelper.getInstance().getColorId(user);
-        if (replace != null) return replace;
-
         if (user.color instanceof TLRPC.TL_peerColor && (user.color.flags & 1) != 0) return user.color.color;
         return (int) (user.id % 7);
     }
 
     public static long getEmojiId(TLRPC.User user) {
-        Long replace = LocalPeerColorHelper.getEmojiId(user);
-        if (replace != null) return replace;
-        replace = PeerColorHelper.getInstance().getEmojiId(user);
-        if (replace != null) return replace;
-
         if (user != null && user.color instanceof TLRPC.TL_peerColor && (user.color.flags & 2) != 0) return user.color.background_emoji_id;
         return 0;
     }
 
     public static int getProfileColorId(TLRPC.User user) {
         if (user == null) return 0;
-
-        Integer replace = LocalPeerColorHelper.getProfileColorId(user);
-        if (replace != null) return replace;
-        replace = PeerColorHelper.getInstance().getProfileColorId(user);
-        if (replace != null) return replace;
-
         if (user.profile_color instanceof TLRPC.TL_peerColor && (user.profile_color.flags & 1) != 0) return user.profile_color.color;
         return -1;
     }
 
     public static long getProfileEmojiId(TLRPC.User user) {
-        Long replace = LocalPeerColorHelper.getProfileEmojiId(user);
-        if (replace != null) return replace;
-        replace = PeerColorHelper.getInstance().getProfileEmojiId(user);
-        if (replace != null) return replace;
-
         if (user != null && user.emoji_status instanceof TLRPC.TL_emojiStatusCollectible) {
             return ((TLRPC.TL_emojiStatusCollectible) user.emoji_status).pattern_document_id;
         }

@@ -49,11 +49,6 @@ import androidx.annotation.NonNull;
 import androidx.collection.LongSparseArray;
 import androidx.core.graphics.ColorUtils;
 
-import top.qwq2333.nullgram.utils.StringUtils;
-import xyz.nextalone.nagram.NaConfig;
-import xyz.nextalone.nagram.helper.MessageHelper;
-import xyz.nextalone.nagram.ui.syntaxhighlight.SyntaxHighlight;
-
 import org.telegram.PhoneFormat.PhoneFormat;
 import org.telegram.messenger.browser.Browser;
 import org.telegram.messenger.ringtone.RingtoneDataStore;
@@ -123,8 +118,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Objects;
-import java.util.Locale;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -132,10 +125,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import me.vkryl.core.BitwiseUtils;
-
-import cn.hutool.core.util.StrUtil;
-import tw.nekomimi.nekogram.NekoConfig;
-import tw.nekomimi.nekogram.NekoXConfig;
 
 public class MessageObject {
     private static final int MESSAGE_ID_RESERVED_BITS_MASK = 0x70000000;
@@ -273,7 +262,7 @@ public class MessageObject {
     public boolean expandedExplanation;
     public boolean forceShowPollResults;
 
-    public boolean isSpoilersRevealed = NekoConfig.showSpoilersDirectly.Bool();
+    public boolean isSpoilersRevealed;
     public boolean isMediaSpoilersRevealed;
     public boolean isMediaSpoilersRevealedInSharedMedia;
     public boolean revealingMediaSpoilers;
@@ -319,9 +308,6 @@ public class MessageObject {
     public boolean notime;
     
     public int richMessageMediaType;
-
-    // nekogram
-    public boolean translating;
 
     public int getChatMode() {
         if (scheduled) {
@@ -658,7 +644,6 @@ public class MessageObject {
     }
 
     public boolean hasMediaSpoilers() {
-        if (NekoConfig.showSpoilersDirectly.Bool()) return false;
         return !isRepostPreview && (messageOwner.media != null && messageOwner.media.spoiler || needDrawBluredPreview()) || isHiddenSensitive();
     }
 
@@ -726,10 +711,6 @@ public class MessageObject {
 
     public boolean shouldDrawReactionsInLayout() {
         return true;
-    }
-
-    public boolean isSenderChannel() {
-        return messageOwner.from_id instanceof TLRPC.TL_peerChannel;
     }
 
     public TLRPC.MessagePeerReaction getRandomUnreadReaction() {
@@ -1953,12 +1934,6 @@ public class MessageObject {
             fromUser = getUser(users, sUsers, message.from_id.user_id);
         }
 
-        if (generateLayout && messageOwner.message != null && NaConfig.INSTANCE.getEnablePanguOnReceiving().Bool()) {
-            var pair = StringUtils.spacingText(messageOwner.message, messageOwner.entities);
-            messageOwner.message = pair.getFirst();
-            messageOwner.entities = pair.getSecond();
-        }
-
         updateMessageText(users, chats, sUsers, sChats);
         setType();
         if (generateLayout) {
@@ -2558,7 +2533,7 @@ public class MessageObject {
             }
             TLRPC.TL_chatBannedRights o = action.prev_participant.banned_rights;
             TLRPC.TL_chatBannedRights n = action.new_participant.banned_rights;
-            if (chat.megagroup && (o == null || n == null || !n.view_messages || o != null && n.until_date != o.until_date)) {
+            if (chat.megagroup && (n == null || !n.view_messages || o != null && n.until_date != o.until_date)) {
                 StringBuilder rights;
                 StringBuilder bannedDuration;
                 if (n != null && !AndroidUtilities.isBannedForever(n)) {
@@ -3776,7 +3751,6 @@ public class MessageObject {
         if (TextUtils.isEmpty(text)) {
             return;
         }
-
         TLRPC.User fromUser = null;
         if (isFromUser()) {
             fromUser = MessagesController.getInstance(currentAccount).getUser(messageOwner.from_id.user_id);
@@ -5952,7 +5926,7 @@ public class MessageObject {
         } else {
             isRestrictedMessage = false;
             String restrictionReason = MessagesController.getInstance(currentAccount).getRestrictionReason(messageOwner.restriction_reason);
-            if (!TextUtils.isEmpty(restrictionReason) && !NekoConfig.ignoreContentRestrictions.Bool()) {
+            if (!TextUtils.isEmpty(restrictionReason)) {
                 messageText = restrictionReason;
                 isRestrictedMessage = true;
             } else if (messageOwner.rich_message != null) {
@@ -6084,8 +6058,6 @@ public class MessageObject {
                         }
                     }
                 }
-            } else if (messageOwner.translated) {
-                messageText = messageOwner.translatedMessage;
             } else {
                 if (messageOwner.message != null) {
                     try {
@@ -6100,7 +6072,6 @@ public class MessageObject {
                 } else {
                     messageText = messageOwner.message;
                 }
-                messageText = MessageHelper.INSTANCE.zalgoFilter(messageText);
             }
         }
 
@@ -7658,13 +7629,6 @@ public class MessageObject {
             captionSummarized = false;
             captionTranslated = false;
         }
-        if (messageOwner.translated && messageOwner.translatedMessage != null && !messageOwner.translatedMessage.isEmpty()) {
-            // NekoX Translate
-            captionSummarized = false;
-            captionTranslated = true;
-            text = messageOwner.translatedMessage;
-            // keep the entities as is
-        }
         if (!isMediaEmpty() && !(getMedia(messageOwner) instanceof TLRPC.TL_messageMediaGame) && !TextUtils.isEmpty(text)) {
             caption = Emoji.replaceEmoji(text, Theme.chat_msgTextPaint.getFontMetricsInt(), false);
             caption = replaceAnimatedEmoji(caption, entities, Theme.chat_msgTextPaint.getFontMetricsInt(), false);
@@ -7964,7 +7928,7 @@ public class MessageObject {
     }
 
     public void replaceEmojiToLottieFrame(CharSequence text, int[] emojiOnly) {
-        if (!(text instanceof Spannable) || Emoji.isSelectedCustomPack()) {
+        if (!(text instanceof Spannable)) {
             return;
         }
         Spannable spannable = (Spannable) text;
@@ -8185,7 +8149,6 @@ public class MessageObject {
                 newRun.flags = TextStyleSpan.FLAG_STYLE_ITALIC;
             } else if (entity instanceof TLRPC.TL_messageEntityCode) {
                 newRun.flags = TextStyleSpan.FLAG_STYLE_MONO;
-                newRun.urlEntity = entity;
             } else if (entity instanceof TLRPC.TL_messageEntityDiffInsert) {
                 newRun.flags = TextStyleSpan.FLAG_STYLE_ACCENT;
             } else if (entity instanceof TLRPC.TL_messageEntityMentionName) {
@@ -8304,9 +8267,6 @@ public class MessageObject {
                 if (linksCount >= MediaDataController.MAX_LINKS_COUNT) continue;
                 linksCount++;
                 spannable.setSpan(new URLSpanNoUnderline(url, run), run.start, run.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                if (run.urlEntity instanceof TLRPC.TL_messageEntityHashtag && run.urlEntity.length > 6 && run.urlEntity.length < 10) {
-                    SyntaxHighlight.highlight(run, spannable);
-                }
             } else if (run.urlEntity instanceof TLRPC.TL_messageEntityEmail) {
                 if (linksCount >= MediaDataController.MAX_LINKS_COUNT) continue;
                 linksCount++;
@@ -8351,9 +8311,6 @@ public class MessageObject {
                 spannable.setSpan(new URLSpanUserMention("" + ((TLRPC.TL_inputMessageEntityMentionName) run.urlEntity).user_id.user_id, t, run), run.start, run.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             } else if ((run.flags & TextStyleSpan.FLAG_STYLE_MONO) != 0) {
                 spannable.setSpan(new URLSpanMono(spannable, run.start, run.end, t, run), run.start, run.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                if (run.urlEntity instanceof TLRPC.TL_messageEntityPre) {
-                    SyntaxHighlight.highlight(run, spannable);
-                }
             } else {
                 setRun = true;
                 spannable.setSpan(new TextStyleSpan(run), run.start, run.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
@@ -9990,9 +9947,6 @@ public class MessageObject {
     }
 
     public static boolean shouldEncryptPhotoOrVideo(int currentAccount, TLRPC.Message message) {
-        if (NekoXConfig.disableFlagSecure) {
-            return false;
-        }
         if (message != null && message.media != null && (isVoiceDocument(getDocument(message)) || isRoundVideoMessage(message)) && message.media.ttl_seconds == 0x7FFFFFFF) {
             return true;
         }
@@ -10014,9 +9968,6 @@ public class MessageObject {
     }
 
     public static boolean isSecretPhotoOrVideo(TLRPC.Message message) {
-        if (NekoXConfig.disableFlagSecure) {
-            return false;
-        }
         if (message instanceof TLRPC.TL_message_secret) {
             return (getMedia(message) instanceof TLRPC.TL_messageMediaPhoto || isRoundVideoMessage(message) || isVideoMessage(message)) && message.ttl > 0 && message.ttl <= 60;
         } else if (message instanceof TLRPC.TL_message) {
@@ -10026,9 +9977,6 @@ public class MessageObject {
     }
 
     public static boolean isSecretMedia(TLRPC.Message message) {
-        if (NekoXConfig.disableFlagSecure) {
-            return false;
-        }
         if (message instanceof TLRPC.TL_message_secret) {
             return (getMedia(message) instanceof TLRPC.TL_messageMediaPhoto || isRoundVideoMessage(message) || isVideoMessage(message)) && getMedia(message).ttl_seconds != 0;
         } else if (message instanceof TLRPC.TL_message) {
@@ -10038,9 +9986,6 @@ public class MessageObject {
     }
 
     public boolean needDrawBluredPreview() {
-        if (NekoXConfig.disableFlagSecure) {
-            return false;
-        }
         if (isRepostPreview) {
             return false;
         }
@@ -10060,9 +10005,6 @@ public class MessageObject {
     }
 
     public boolean isSecretMedia() {
-        if (NekoXConfig.disableFlagSecure) {
-            return false;
-        }
         if (messageOwner instanceof TLRPC.TL_message_secret) {
             return (((getMedia(messageOwner) instanceof TLRPC.TL_messageMediaPhoto) || isGif()) && messageOwner.ttl > 0 && messageOwner.ttl <= 60 || isVoice() || isRoundVideo() || isVideo());
         } else if (messageOwner instanceof TLRPC.TL_message) {
@@ -10401,7 +10343,7 @@ public class MessageObject {
             }
             if (!TextUtils.isEmpty(document.mime_type)) {
                 String mime = document.mime_type.toLowerCase();
-                if (mime.equals("audio/flac") || mime.equals("audio/ogg") || mime.equals("audio/opus") || mime.equals("audio/x-opus+ogg") || mime.equals("audio/wav") || mime.equals("audio/x-wav")) {
+                if (mime.equals("audio/flac") || mime.equals("audio/ogg") || mime.equals("audio/opus") || mime.equals("audio/x-opus+ogg")) {
                     return true;
                 } else if (mime.equals("application/octet-stream") && FileLoader.getDocumentFileName(document).endsWith(".opus")) {
                     return true;
@@ -11471,12 +11413,7 @@ public class MessageObject {
                         return null;
                     }
                     try {
-                        String query = TextUtils.isEmpty(performer) ? title : performer + " - " + title;
-                        String custom_api = NaConfig.INSTANCE.getCustomArtworkApi().String();
-                        if (!Objects.equals(custom_api, "")) {
-                            return custom_api + URLEncoder.encode(query, "UTF-8");
-                        }
-                        return "athumb://itunes.apple.com/search?term=" + URLEncoder.encode(query, "UTF-8") + "&entity=song&limit=4" + (small ? "&s=1" : "");
+                        return "athumb://itunes.apple.com/search?term=" + URLEncoder.encode(performer + " - " + title, "UTF-8") + "&entity=song&limit=4" + (small ? "&s=1" : "");
                     } catch (Exception ignore) {
 
                     }

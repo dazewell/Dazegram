@@ -147,14 +147,15 @@ import androidx.viewpager.widget.ViewPager;
 
 import com.android.internal.telephony.ITelephony;
 import com.google.android.exoplayer2.util.Consumer;
-
+import com.google.android.gms.auth.api.phone.SmsRetriever;
+import com.google.android.gms.auth.api.phone.SmsRetrieverClient;
+import com.google.android.gms.tasks.Task;
 
 import org.telegram.PhoneFormat.PhoneFormat;
 import org.telegram.messenger.browser.Browser;
 import org.telegram.messenger.utils.CustomHtml;
 import org.telegram.messenger.utils.DebugRecordingCanvas;
 import org.telegram.tgnet.ConnectionsManager;
-import org.telegram.tgnet.RequestTimeDelegate;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.AlertDialog;
@@ -217,7 +218,6 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.Comparator;
@@ -227,7 +227,6 @@ import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Callable;
@@ -243,12 +242,6 @@ import java.util.regex.Pattern;
 import java.util.zip.GZIPOutputStream;
 
 import me.vkryl.core.BitwiseUtils;
-
-import tw.nekomimi.nekogram.NekoConfig;
-import tw.nekomimi.nekogram.utils.EnvUtil;
-import tw.nekomimi.nekogram.utils.FileUtil;
-import tw.nekomimi.nekogram.utils.TelegramUtil;
-import xyz.nextalone.nagram.helper.ColorOsHelper;
 
 public class AndroidUtilities {
     public final static int REPLACING_TAG_TYPE_LINK = 0;
@@ -871,10 +864,6 @@ public class AndroidUtilities {
         }
     }
 
-    public static boolean isMapsInstalled(BaseFragment fragment) {
-        return true;
-    }
-
     public static void googleVoiceClientService_performAction(Intent intent, boolean isVerified, Bundle options) {
         if (!isVerified) {
             return;
@@ -953,16 +942,16 @@ public class AndroidUtilities {
     }
 
     public static File getLogsDir() {
-//        try {
-//            if (Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) {
-//                File path = ApplicationLoader.applicationContext.getExternalFilesDir(null);
-//                File dir = new File(path.getAbsolutePath() + "/logs");
-//                dir.mkdirs();
-//                return dir;
-//            }
-//        } catch (Exception e) {
-//
-//        }
+        try {
+            if (Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) {
+                File path = ApplicationLoader.applicationContext.getExternalFilesDir(null);
+                File dir = new File(path.getAbsolutePath() + "/logs");
+                dir.mkdirs();
+                return dir;
+            }
+        } catch (Exception e) {
+
+        }
         try {
             File dir = new File(ApplicationLoader.applicationContext.getCacheDir() + "/logs");
             dir.mkdirs();
@@ -977,7 +966,7 @@ public class AndroidUtilities {
         } catch (Exception e) {
 
         }
-//        ApplicationLoader.appCenterLog(new RuntimeException("can't create logs directory"));
+        ApplicationLoader.appCenterLog(new RuntimeException("can't create logs directory"));
         return null;
     }
 
@@ -1810,6 +1799,31 @@ public class AndroidUtilities {
         }
     }
 
+    public static boolean isMapsInstalled(BaseFragment fragment) {
+        String pkg = ApplicationLoader.getMapsProvider().getMapsAppPackageName();
+        try {
+            ApplicationLoader.applicationContext.getPackageManager().getApplicationInfo(pkg, 0);
+            return true;
+        } catch (PackageManager.NameNotFoundException e) {
+            if (fragment.getParentActivity() == null) {
+                return false;
+            }
+            AlertDialog.Builder builder = new AlertDialog.Builder(fragment.getParentActivity());
+            builder.setMessage(getString(ApplicationLoader.getMapsProvider().getInstallMapsString()));
+            builder.setPositiveButton(getString(R.string.OK), (dialogInterface, i) -> {
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + pkg));
+                    fragment.getParentActivity().startActivityForResult(intent, 500);
+                } catch (Exception e1) {
+                    FileLog.e(e1);
+                }
+            });
+            builder.setNegativeButton(getString(R.string.Cancel), null);
+            fragment.showDialog(builder.create());
+            return false;
+        }
+    }
+
     public static int[] toIntArray(List<Integer> integers) {
         int[] ret = new int[integers.size()];
         for (int i = 0; i < ret.length; i++) {
@@ -1835,10 +1849,6 @@ public class AndroidUtilities {
             }
             // Allow sending VoIP logs from cache/voip_logs
             if (pathString.matches(Pattern.quote(new File(ApplicationLoader.applicationContext.getCacheDir(), "voip_logs").getAbsolutePath()) + "/\\d+\\.log")) {
-                return false;
-            }
-            // NekoX: Allow send media
-            if (pathString.startsWith(EnvUtil.getTelegramPath().toString())) {
                 return false;
             }
             int tries = 0;
@@ -2382,24 +2392,6 @@ public class AndroidUtilities {
 
     public static Typeface getTypeface(String assetPath) {
         synchronized (typefaceCache) {
-            if (NekoConfig.typeface.Bool() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                if (assetPath.contains("medium") && assetPath.contains("italic")) {
-                    return Typeface.create("sans-serif-medium", Typeface.ITALIC);
-                }
-                if (assetPath.contains("medium")) {
-                    return Typeface.create("sans-serif-medium", Typeface.NORMAL);
-                }
-                if (assetPath.contains("italic")) {
-                    return Typeface.create((Typeface) null, Typeface.ITALIC);
-                }
-                if (assetPath.contains("mono")) {
-                    return Typeface.MONOSPACE;
-                }
-                if (assetPath.contains("mw_bold")) {
-                    return Typeface.create("serif", Typeface.BOLD);
-                }
-                //return Typeface.create((Typeface) null, Typeface.NORMAL);
-            }
             if (!typefaceCache.containsKey(assetPath)) {
                 try {
                     Typeface t;
@@ -2439,6 +2431,22 @@ public class AndroidUtilities {
     }
 
     public static void setWaitingForSms(boolean value) {
+        synchronized (smsLock) {
+            waitingForSms = value;
+            try {
+                if (waitingForSms) {
+                    SmsRetrieverClient client = SmsRetriever.getClient(ApplicationLoader.applicationContext);
+                    Task<Void> task = client.startSmsRetriever();
+                    task.addOnSuccessListener(aVoid -> {
+                        if (BuildVars.DEBUG_VERSION) {
+                            FileLog.d("sms listener registered");
+                        }
+                    });
+                }
+            } catch (Throwable e) {
+                FileLog.e(e);
+            }
+        }
     }
 
     public static int getShadowHeight() {
@@ -2538,12 +2546,12 @@ public class AndroidUtilities {
                     }
                 }
                 if (!TextUtils.isEmpty(locale2)) {
-                    return new String[]{locale.replace('_', '-'), locale2, "en"};
+                    return new String[]{locale.replace('_', '-'), locale2};
                 } else {
-                    return new String[]{locale.replace('_', '-'), "en"};
+                    return new String[]{locale.replace('_', '-')};
                 }
             } else {
-                return new String[]{locale.replace('_', '-'), "en"};
+                return new String[]{locale.replace('_', '-')};
             }
         } catch (Exception ignore) {}
         return new String[]{"en"};
@@ -2626,14 +2634,69 @@ public class AndroidUtilities {
     }
 
     public static File getCacheDir() {
+        String state = null;
         try {
-            File file = new File(EnvUtil.getTelegramPath(), "caches");
-            FileUtil.initDir(file);
-            return file;
-        } catch (Throwable e) {
+            state = Environment.getExternalStorageState();
+        } catch (Exception e) {
             FileLog.e(e);
         }
-        return new File(ApplicationLoader.getDataDirFixed(), "cache/media/caches");
+
+        if (state == null || state.startsWith(Environment.MEDIA_MOUNTED)) {
+            FileLog.d("external dir mounted");
+            try {
+                File file;
+
+                File[] dirs = ApplicationLoader.applicationContext.getExternalCacheDirs();
+                file = dirs[0];
+                if (!TextUtils.isEmpty(SharedConfig.storageCacheDir)) {
+                    for (int a = 0; a < dirs.length; a++) {
+                        if (dirs[a] != null && dirs[a].getAbsolutePath().startsWith(SharedConfig.storageCacheDir)) {
+                            file = dirs[a];
+                            break;
+                        }
+                    }
+                }
+
+                FileLog.d("check dir " + (file == null ? null : file.getPath()) + " ");
+                if (file != null && (file.exists() || file.mkdirs()) && file.canWrite()) {
+//                    boolean canWrite = true;
+//                    try {
+//                        AndroidUtilities.createEmptyFile(new File(file, ".nomedia"));
+//                    } catch (Exception e) {
+//                        canWrite = false;
+//                    }
+//                    if (canWrite) {
+//                        return file;
+//                    }
+                    return file;
+                } else if (file != null) {
+                    FileLog.d("check dir file exist " + file.exists() + " can write " + file.canWrite());
+                }
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+        }
+        try {
+            File file = ApplicationLoader.applicationContext.getCacheDir();
+            if (file != null) {
+                return file;
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+        try {
+            File file = ApplicationLoader.applicationContext.getFilesDir();
+            if (file != null) {
+                File cacheFile = new File(file, "cache/");
+                cacheFile.mkdirs();
+                if ((file.exists() || file.mkdirs()) && file.canWrite()) {
+                    return cacheFile;
+                }
+            }
+        } catch (Exception e) {
+
+        }
+        return new File("");
     }
 
     public static int dp(float value) {
@@ -2787,17 +2850,10 @@ public class AndroidUtilities {
         return ((long) (value * 1000000)) / 1000000.0;
     }
 
-    public static String formapMapUrl(boolean isSecretChat, double lat, double lon, int width, int height, boolean marker, int zoom) {
+    public static String formapMapUrl(int account, double lat, double lon, int width, int height, boolean marker, int zoom, int provider) {
         int scale = Math.min(2, (int) Math.ceil(AndroidUtilities.density));
-        int provider = 2;
-        if (isSecretChat) {
-            if (SharedConfig.mapPreviewType == 1) {
-                provider = 1;
-            }
-        } else {
-            if (NekoConfig.mapPreviewProvider.Int() == 1) {
-                provider = 1;
-            }
+        if (provider == -1) {
+            provider = MessagesController.getInstance(account).mapProvider;
         }
         if (provider == 1 || provider == 3) {
             String lang = null;
@@ -2817,7 +2873,7 @@ public class AndroidUtilities {
                 return String.format(Locale.US, "https://static-maps.yandex.ru/1.x/?ll=%.6f,%.6f&z=%d&size=%d,%d&l=map&scale=%d&lang=%s", lon, lat, zoom, width * scale, height * scale, scale, lang);
             }
         } else {
-            String k = "";
+            String k = MessagesController.getInstance(account).mapKey;
             if (!TextUtils.isEmpty(k)) {
                 if (marker) {
                     return String.format(Locale.US, "https://maps.googleapis.com/maps/api/staticmap?center=%.6f,%.6f&zoom=%d&size=%dx%d&maptype=roadmap&scale=%d&markers=color:red%%7Csize:mid%%7C%.6f,%.6f&sensor=false&key=%s", lat, lon, zoom, width, height, scale, lat, lon, k);
@@ -2895,21 +2951,7 @@ public class AndroidUtilities {
 
     public static boolean isTabletInternal() {
         if (isTablet == null) {
-            if (ApplicationLoader.applicationContext == null) {
-                return isTablet = false;
-            }
-            switch (NekoConfig.tabletMode.Int()) {
-                case 0:
-                    isTablet = isTabletForce();
-                    break;
-                case 1:
-                case 3:
-                    isTablet = true;
-                    break;
-                case 2:
-                    isTablet = false;
-                    break;
-            }
+            isTablet = isTabletForce();
         }
         return isTablet;
     }
@@ -2949,8 +2991,6 @@ public class AndroidUtilities {
     }
 
     public static boolean isSmallTablet() {
-        if (NekoConfig.tabletMode.Int() == 1) return false;
-        if (NekoConfig.tabletMode.Int() == 3) return true;
         float minSide = Math.min(displaySize.x, displaySize.y) / density;
         return minSide <= 690;
     }
@@ -3108,7 +3148,8 @@ public class AndroidUtilities {
                     return insets.bottom;
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            FileLog.e(e);
         }
         return 0;
     }
@@ -3415,7 +3456,6 @@ public class AndroidUtilities {
             }
             return false;
         }
-
     }
 
     public static boolean needShowPasscode() {
@@ -3432,7 +3472,7 @@ public class AndroidUtilities {
             FileLog.d("wasInBackground = " + wasInBackground + " appLocked = " + SharedConfig.appLocked + " autoLockIn = " + SharedConfig.autoLockIn + " lastPauseTime = " + SharedConfig.lastPauseTime + " uptime = " + uptime);
         }
         return SharedConfig.passcodeHash.length() > 0 && wasInBackground &&
-                (SharedConfig.appLocked || SharedConfig.autoLockIn == 1 ||
+                (SharedConfig.appLocked ||
                         SharedConfig.autoLockIn != 0 && SharedConfig.lastPauseTime != 0 && !SharedConfig.appLocked && (SharedConfig.lastPauseTime + SharedConfig.autoLockIn) <= uptime ||
                         uptime + 5 < SharedConfig.lastPauseTime);
     }
@@ -3552,16 +3592,12 @@ public class AndroidUtilities {
         }
     }*/
 
-//    public static void appCenterLog(Throwable e) {
-//        ApplicationLoader.appCenterLog(e);
-//    }
+    public static void appCenterLog(Throwable e) {
+        ApplicationLoader.appCenterLog(e);
+    }
 
     public static boolean shouldShowClipboardToast() {
-        boolean origin = (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || !OneUIUtilities.hasBuiltInClipboardToasts()) && Build.VERSION.SDK_INT < 32;
-        if (origin) return true;
-        boolean isMIUI = XiaomiUtilities.isMIUI();
-        boolean isColorOS = ColorOsHelper.INSTANCE.isColorOS();
-        return isMIUI || isColorOS;
+        return (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || !OneUIUtilities.hasBuiltInClipboardToasts()) && Build.VERSION.SDK_INT < 32;
     }
 
     public static boolean addToClipboard(CharSequence plain, String html) {
@@ -3634,7 +3670,7 @@ public class AndroidUtilities {
         }
         File storageDir = null;
         if (Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) {
-            storageDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Nagram");
+            storageDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Telegram");
             if (!storageDir.mkdirs()) {
                 if (!storageDir.exists()) {
                     if (BuildVars.LOGS_ENABLED) {
@@ -4192,18 +4228,18 @@ public class AndroidUtilities {
                         }
                     }
                     if (Build.VERSION.SDK_INT >= 24) {
-                        intent.setDataAndType(FileProvider.getUriForFile(activity, ApplicationLoader.getApplicationId() + ".provider", f), realMimeType != null ? realMimeType : "*/*");
+                        intent.setDataAndType(FileProvider.getUriForFile(activity, ApplicationLoader.getApplicationId() + ".provider", f), realMimeType != null ? realMimeType : "text/plain");
                     } else {
-                        intent.setDataAndType(Uri.fromFile(f), realMimeType != null ? realMimeType : "*/*");
+                        intent.setDataAndType(Uri.fromFile(f), realMimeType != null ? realMimeType : "text/plain");
                     }
                     if (realMimeType != null) {
                         try {
                             activity.startActivityForResult(intent, 500);
                         } catch (Exception e) {
                             if (Build.VERSION.SDK_INT >= 24) {
-                                intent.setDataAndType(FileProvider.getUriForFile(activity, ApplicationLoader.getApplicationId() + ".provider", f), "*/*");
+                                intent.setDataAndType(FileProvider.getUriForFile(activity, ApplicationLoader.getApplicationId() + ".provider", f), "text/plain");
                             } else {
-                                intent.setDataAndType(Uri.fromFile(f), "*/*");
+                                intent.setDataAndType(Uri.fromFile(f), "text/plain");
                             }
                             activity.startActivityForResult(intent, 500);
                         }
@@ -4283,10 +4319,6 @@ public class AndroidUtilities {
         return false;
     }
 
-    public static boolean openForView(MessageObject message, Activity activity) {
-        return openForView(message, activity, null, false);
-    }
-
     public static boolean openForView(MessageObject message, Activity activity, Theme.ResourcesProvider resourcesProvider, boolean restrict) {
         File f = null;
         if (message.messageOwner.attachPath != null && message.messageOwner.attachPath.length() != 0) {
@@ -4294,18 +4326,6 @@ public class AndroidUtilities {
         }
         if (f == null || !f.exists()) {
             f = FileLoader.getInstance(message.currentAccount).getPathToMessage(message.messageOwner);
-        }
-        if (f != null && !f.exists()) {
-            String cacheFilePath = AndroidUtilities.getCacheDir().getAbsolutePath();
-            cacheFilePath += "/" + TelegramUtil.getFileNameWithoutEx(f.getName());
-            List<String> suffix = Arrays.asList(".pt", ".temp");
-            for (int ii = 0; ii < suffix.size(); ii++) {
-                f = new File(cacheFilePath + suffix.get(ii));
-                if (f.exists()) {
-                    message.putInDownloadsStore = true;
-                    break;
-                }
-            }
         }
         String mimeType = message.type == MessageObject.TYPE_FILE || message.type == MessageObject.TYPE_TEXT ? message.getMimeType() : null;
         return openForView(f, message.getFileName(), mimeType, activity, resourcesProvider, restrict);
@@ -4702,8 +4722,7 @@ public class AndroidUtilities {
         statusTextView[0].setDisablePaddingsOffsetY(true);
         statusTextView[0].setPadding(dp(12.66f), dp(9.33f), dp(12.66f), dp(9.33f));
         final boolean[] checking = new boolean[1];
-        final Runnable[] checkLink = new Runnable[1];
-        statusTextView[0].setText(replaceSingleLink(getString(R.string.ProxyBottomSheetCheckStatus), Theme.getColor(Theme.key_chat_messageLinkIn), checkLink[0] = () -> {
+        statusTextView[0].setText(replaceSingleLink(getString(R.string.ProxyBottomSheetCheckStatus), Theme.getColor(Theme.key_chat_messageLinkIn), () -> {
             if (checking[0]) return;
 
             final Runnable check = () -> {
@@ -4714,7 +4733,6 @@ public class AndroidUtilities {
                 statusTextView[0].clear();
                 try {
                     ConnectionsManager.getInstance(UserConfig.selectedAccount).checkProxy(address, Integer.parseInt(port), user, password, secret, time -> AndroidUtilities.runOnUIThread(() -> {
-                        checking[0] = false;
                         if (time == -1) {
                             statusTextView[0].setText(getString(R.string.Unavailable));
                             statusTextView[0].setTextColor(Theme.getColor(Theme.key_text_RedRegular));
@@ -4722,11 +4740,8 @@ public class AndroidUtilities {
                             statusTextView[0].setText(LocaleController.formatString(R.string.Ping2, time));
                             statusTextView[0].setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGreenText));
                         }
-                        statusTextView[0].setOnClickListener((v) -> checkLink[0].run());
                     }));
                 } catch (NumberFormatException ignored) {
-                    checking[0] = false;
-                    statusTextView[0].setOnClickListener((v) -> checkLink[0].run());
                     statusTextView[0].setText(getString(R.string.Unavailable));
                     statusTextView[0].setTextColor(Theme.getColor(Theme.key_text_RedRegular));
                 }
@@ -4824,13 +4839,13 @@ public class AndroidUtilities {
         return null;
     }
 
-    public static void fixGoogleMapsBug() {/* //https://issuetracker.google.com/issues/154855417#comment301
+    public static void fixGoogleMapsBug() { //https://issuetracker.google.com/issues/154855417#comment301
         SharedPreferences googleBug = ApplicationLoader.applicationContext.getSharedPreferences("google_bug_154855417", Context.MODE_PRIVATE);
         if (!googleBug.contains("fixed")) {
             File corruptedZoomTables = new File(ApplicationLoader.getFilesDirFixed(), "ZoomTables.data");
             corruptedZoomTables.delete();
             googleBug.edit().putBoolean("fixed", true).apply();
-        }*/
+        }
     }
 
     public static CharSequence concat(CharSequence... text) {
@@ -5549,9 +5564,6 @@ public class AndroidUtilities {
     }
 
     public static boolean shouldShowUrlInAlert(String url) {
-        if (NekoConfig.skipOpenLinkConfirm.Bool()) {
-            return false;
-        }
         try {
             Uri uri = Uri.parse(url);
             url = uri.getHost();
@@ -6534,7 +6546,6 @@ public class AndroidUtilities {
             if (view == null || view.getContext() == null) return;
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
             if (!((Vibrator) view.getContext().getSystemService(Context.VIBRATOR_SERVICE)).hasAmplitudeControl()) return;
-            if (NekoConfig.disableVibration.Bool()) return;
             view.performHapticFeedback(HapticFeedbackConstants.TEXT_HANDLE_MOVE, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
         } catch (Exception ignore) {}
     }
@@ -6544,7 +6555,6 @@ public class AndroidUtilities {
             if (view == null || view.getContext() == null) return;
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
             if (!((Vibrator) view.getContext().getSystemService(Context.VIBRATOR_SERVICE)).hasAmplitudeControl()) return;
-            if (NekoConfig.disableVibration.Bool()) return;
             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
         } catch (Exception ignore) {}
     }
@@ -6688,36 +6698,34 @@ public class AndroidUtilities {
     }
 
     public static String getBuildVersionInfo() {
-        String[] abi = Build.SUPPORTED_ABIS[0].toLowerCase(Locale.ROOT).split("-");
-        return "Nagram v" + BuildConfig.VERSION_NAME + " (" + BuildConfig.BUILD_TIMESTAMP + ") " + abi[abi.length - 1];
-//        try {
-//            PackageInfo pInfo = ApplicationLoader.applicationContext.getPackageManager().getPackageInfo(ApplicationLoader.applicationContext.getPackageName(), 0);
-//            int code = pInfo.versionCode / 10;
-//            String abi = "";
-//            switch (pInfo.versionCode % 10) {
-//                case 1:
-//                case 2:
-//                    abi = "store bundled " + Build.CPU_ABI + " " + Build.CPU_ABI2;
-//                    break;
-//                default:
-//                case 9:
-//                    if (ApplicationLoader.isStandaloneBuild()) {
-//                        abi = "direct " + Build.CPU_ABI + " " + Build.CPU_ABI2;
-//                    } else {
-//                        abi = "universal " + Build.CPU_ABI + " " + Build.CPU_ABI2;
-//                    }
-//                    break;
-//            }
-//            return formatString("TelegramVersion", R.string.TelegramVersion, String.format(Locale.US, "v%s (%d) %s", pInfo.versionName, code, abi));
-//        } catch (Exception e) {
-//            FileLog.e(e);
-//        }
-//        return null;
+        try {
+            PackageInfo pInfo = ApplicationLoader.applicationContext.getPackageManager().getPackageInfo(ApplicationLoader.applicationContext.getPackageName(), 0);
+            int code = pInfo.versionCode / 10;
+            String abi = "";
+            switch (pInfo.versionCode % 10) {
+                case 1:
+                case 2:
+                    abi = "store bundled " + Build.CPU_ABI + " " + Build.CPU_ABI2;
+                    break;
+                default:
+                case 9:
+                    if (ApplicationLoader.isStandaloneBuild()) {
+                        abi = "direct " + Build.CPU_ABI + " " + Build.CPU_ABI2;
+                    } else {
+                        abi = "universal " + Build.CPU_ABI + " " + Build.CPU_ABI2;
+                    }
+                    break;
+            }
+            return formatString("TelegramVersion", R.string.TelegramVersion, String.format(Locale.US, "v%s (%d) %s", pInfo.versionName, code, abi));
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+        return null;
     }
 
 
     public static void printStackTrace(String tag) {
-        if (!BuildVars.DEBUG_PRIVATE_VERSION) {
+        if (!BuildConfig.DEBUG_PRIVATE_VERSION) {
             return;
         }
 
@@ -6764,7 +6772,7 @@ public class AndroidUtilities {
     }
 
     public static void logFlagSecure() {
-        if (!BuildVars.DEBUG_VERSION) {
+        if (!BuildConfig.DEBUG_VERSION) {
             return;
         }
 
@@ -7049,7 +7057,7 @@ public class AndroidUtilities {
     }
 
     public static void dumpCanvas(View v) {
-        if (!BuildConfig.DEBUG) {
+        if (!BuildConfig.DEBUG_PRIVATE_VERSION) {
             return;
         }
 

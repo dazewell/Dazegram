@@ -52,12 +52,11 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.R;
 import org.telegram.messenger.browser.Browser;
-import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.BaseFragment;
+import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.AlertsCreator;
 import org.telegram.ui.Components.BulletinFactory;
-import org.telegram.ui.Components.EmojiTextView;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.LinkPath;
 import org.telegram.ui.Components.LinkSpanDrawable;
@@ -66,11 +65,6 @@ import org.telegram.ui.Components.StaticLayoutEx;
 import org.telegram.ui.Components.URLSpanNoUnderline;
 
 import java.util.concurrent.atomic.AtomicReference;
-
-import kotlin.Unit;
-import tw.nekomimi.nekogram.NekoConfig;
-import tw.nekomimi.nekogram.ui.BottomBuilder;
-import xyz.nextalone.nagram.NaConfig;
 
 public class AboutLinkCell extends FrameLayout {
 
@@ -125,7 +119,7 @@ public class AboutLinkCell extends FrameLayout {
         links = new LinkSpanDrawable.LinkCollector(container);
         rippleBackground = Theme.createRadSelectorDrawable(Theme.getColor(Theme.key_listSelector, resourcesProvider), 0, 0);
 
-        valueTextView = new EmojiTextView(context);
+        valueTextView = new TextView(context);
         valueTextView.setVisibility(GONE);
         valueTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2, resourcesProvider));
         valueTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
@@ -407,41 +401,33 @@ public class AboutLinkCell extends FrameLayout {
                     url = pressedLink.getSpan().toString();
                 }
 
-                if (!NekoConfig.disableVibration.Bool()) {
-                    try {
-                        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
-                    } catch (Exception ignore) {}
-                }
+                try {
+                    performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+                } catch (Exception ignore) {}
 
                 final Layout layout = pressedLinkLayout;
                 final float yOffset = pressedLinkYOffset;
 
                 if (getContext() != null) {
                     ClickableSpan pressedLinkFinal = (ClickableSpan) pressedLink.getSpan();
-                    BottomBuilder builder = new BottomBuilder(parentFragment.getParentActivity());
-                    builder.addTitle(url);
-                    builder.addItems(new String[]{LocaleController.getString(R.string.Open), LocaleController.getString(R.string.Copy)},
-                            new int[]{R.drawable.msg_openin, R.drawable.msg_copy},
-                            (which, __, ___) -> {
-                                if (which == 0) {
-                                    onLinkClick(pressedLinkFinal, layout, yOffset);
-                                } else if (which == 1) {
-                                    AndroidUtilities.addToClipboard(url);
-                                    if (AndroidUtilities.shouldShowClipboardToast()) {
-                                        if (url.startsWith("@")) {
-                                            BulletinFactory.of(parentFragment).createSimpleBulletin(R.raw.copy,
-                                                    LocaleController.getString(R.string.UsernameCopied)).show();
-                                        } else if (url.startsWith("#") || url.startsWith("$")) {
-                                            BulletinFactory.of(parentFragment).createSimpleBulletin(R.raw.copy,
-                                                    LocaleController.getString(R.string.HashtagCopied)).show();
-                                        } else {
-                                            BulletinFactory.of(parentFragment).createSimpleBulletin(R.raw.copy,
-                                                    LocaleController.getString(R.string.LinkCopied)).show();
-                                        }
-                                    }
+                    BottomSheet.Builder builder = new BottomSheet.Builder(getContext());
+                    builder.setTitle(url);
+                    builder.setItems(new CharSequence[]{LocaleController.getString(R.string.Open), LocaleController.getString(R.string.Copy)}, (dialog, which) -> {
+                        if (which == 0) {
+                            onLinkClick(pressedLinkFinal, layout, yOffset);
+                        } else if (which == 1) {
+                            AndroidUtilities.addToClipboard(url);
+                            if (AndroidUtilities.shouldShowClipboardToast()) {
+                                if (url.startsWith("@")) {
+                                    BulletinFactory.of(parentFragment).createSimpleBulletin(R.raw.copy, LocaleController.getString(R.string.UsernameCopied)).show();
+                                } else if (url.startsWith("#") || url.startsWith("$")) {
+                                    BulletinFactory.of(parentFragment).createSimpleBulletin(R.raw.copy, LocaleController.getString(R.string.HashtagCopied)).show();
+                                } else {
+                                    BulletinFactory.of(parentFragment).createSimpleBulletin(R.raw.copy, LocaleController.getString(R.string.LinkCopied)).show();
                                 }
-                                return Unit.INSTANCE;
-                            });
+                            }
+                        }
+                    });
                     builder.setOnPreDismissListener(di -> resetPressedLink());
                     builder.show();
                 }
@@ -721,10 +707,6 @@ public class AboutLinkCell extends FrameLayout {
             textLayout = makeTextLayout(stringBuilder, maxWidth);
             shouldExpand = textLayout.getLineCount() >= 4; // && valueTextView.getVisibility() != View.VISIBLE;
 
-            if (NaConfig.INSTANCE.getShowFullAbout().Bool() && shouldExpand) {
-                shouldExpand = false;
-            }
-
             if (textLayout.getLineCount() >= 3 && shouldExpand) {
                 int end = Math.max(textLayout.getLineStart(2), textLayout.getLineEnd(2));
                 if (stringBuilder.charAt(end - 1) == '\n')
@@ -847,9 +829,5 @@ public class AboutLinkCell extends FrameLayout {
 
     public void setMoreButtonDisabled(boolean moreButtonDisabled) {
         this.moreButtonDisabled = moreButtonDisabled;
-    }
-
-    public boolean isExpanded() {
-        return this.expanded;
     }
 }

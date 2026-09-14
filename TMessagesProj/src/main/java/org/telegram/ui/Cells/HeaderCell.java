@@ -199,30 +199,6 @@ public class HeaderCell extends FrameLayout {
         textView2.setText(text);
     }
 
-    public void setText2Long(CharSequence text) {
-        if (textView2 == null) {
-            return;
-        }
-
-        FrameLayout.LayoutParams textLayoutParams = (FrameLayout.LayoutParams) textView.getLayoutParams();
-        textLayoutParams.height = AndroidUtilities.dp(height);
-        textLayoutParams.gravity = (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP;
-        textView.setLayoutParams(textLayoutParams);
-        textView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL);
-
-        int textColorKey = (int) textView.getTag();
-
-        FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) textView2.getLayoutParams();
-        layoutParams.topMargin = AndroidUtilities.dp(height) + AndroidUtilities.dp(10);
-        layoutParams.gravity = (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP;
-        textView2.setLayoutParams(layoutParams);
-        textView2.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP);
-        textView2.setMaxLines(Integer.MAX_VALUE);
-        textView2.setText(text);
-        textView2.setTextColor(getThemedColor(textColorKey));
-        textView2.setTag(textColorKey);
-    }
-
     public TextView getTextView() {
         return textView;
     }
@@ -247,14 +223,5 @@ public class HeaderCell extends FrameLayout {
 
     private int getThemedColor(int key) {
         return Theme.getColor(key, resourcesProvider);
-    }
-
-    public HeaderCell setBigTitle(boolean enabled) {
-        if (enabled) {
-            textView.setTypeface(AndroidUtilities.getTypeface("fonts/mw_bold.ttf"));
-        } else {
-            textView.setTypeface(AndroidUtilities.getTypeface("fonts/rmedium.ttf"));
-        }
-        return this;
     }
 }

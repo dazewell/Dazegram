@@ -43,9 +43,6 @@ import org.telegram.ui.ProfileActivity;
 
 import java.util.ArrayList;
 
-import tw.nekomimi.nekogram.NekoConfig;
-import xyz.nextalone.nagram.NaConfig;
-
 public class ProfileGalleryView extends CircularViewPager implements NotificationCenter.NotificationCenterDelegate {
 
     private final PointF downPoint = new PointF();
@@ -133,8 +130,6 @@ public class ProfileGalleryView extends CircularViewPager implements Notificatio
         void onDown(boolean left);
 
         void onRelease();
-
-        default void onClick() {};
 
         void onPhotosLoaded();
 
@@ -1295,13 +1290,7 @@ public class ProfileGalleryView extends CircularViewPager implements Notificatio
             item.imageView.getImageReceiver().setCrossfadeAlpha((byte) 2);
 
             item.imageView.setRoundRadius(roundTopRadius, roundTopRadius, roundBottomRadius, roundBottomRadius);
-
-            if (NaConfig.INSTANCE.getDisableClickProfileGalleryView().Bool()) {
-                item.imageView.setOnClickListener(__ -> callback.onClick());
-            }
-
             item.imageView.setTag(realPosition);
-
             return item;
         }
 

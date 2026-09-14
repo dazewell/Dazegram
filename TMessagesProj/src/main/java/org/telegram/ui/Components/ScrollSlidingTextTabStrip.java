@@ -17,6 +17,7 @@ import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
@@ -50,8 +51,6 @@ import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
 import org.telegram.ui.Stories.recorder.HintView2;
 
 import java.util.ArrayList;
-
-import xyz.nextalone.nagram.NaConfig;
 
 public class ScrollSlidingTextTabStrip extends HorizontalScrollView implements Theme.Colorable {
 
@@ -757,16 +756,11 @@ public class ScrollSlidingTextTabStrip extends HorizontalScrollView implements T
 //                height
 //            );
             selectorDrawable.setBounds(
-                    getPaddingLeft() + (int) l + dp(4),
-                    getPaddingTop() + dp(4),
-                    getPaddingLeft() + (int) r - dp(4),
-                    height - getPaddingBottom() - dp(4)
+                getPaddingLeft() + (int) l + dp(4),
+                getPaddingTop() + dp(4),
+                getPaddingLeft() + (int) r - dp(4),
+                height - getPaddingBottom() - dp(4)
             );
-            if (NaConfig.INSTANCE.getTabStyleStroke().Bool()) {
-                selectorDrawable.setStroke(AndroidUtilities.dp(1), processColor(Theme.getColor(activeTextColorKey, resourcesProvider)));
-            } else {
-                selectorDrawable.setStroke(0, 0);
-            }
             selectorDrawable.draw(canvas);
             selectorDrawable.setAlpha(wasAlpha);
 

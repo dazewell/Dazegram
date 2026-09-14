@@ -385,17 +385,6 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
             });
         }
 
-        public void fetchChannelMsg(TLRPC.ChatFull chatFull) {
-            if (chatFull == null || chatFull.linked_chat_id == 0) {
-                searchId++;
-                loaded = true;
-                messageObjects.clear();
-                done(false);
-                return;
-            }
-            fetch(chatFull.linked_chat_id, 0);
-        }
-
         private ArrayList<Runnable> callbacks = new ArrayList<>();
 
         public void subscribe(Runnable callback) {

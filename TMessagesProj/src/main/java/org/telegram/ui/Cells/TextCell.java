@@ -364,13 +364,8 @@ public class TextCell extends FrameLayout {
         textView.setText(text);
         textView.setRightDrawable(null);
         valueTextView.setText(valueText = null, false);
-        if (resId != 0) {
-            imageView.setImageResource(resId);
-            imageView.setVisibility(VISIBLE);
-            imageView.setPadding(0, AndroidUtilities.dp(7), 0, 0);
-        } else {
-            imageView.setVisibility(GONE);
-        }
+        imageView.setImageResource(resId);
+        imageView.setVisibility(VISIBLE);
         valueTextView.setVisibility(GONE);
         valueSpoilersTextView.setVisibility(GONE);
         valueImageView.setVisibility(GONE);
@@ -626,7 +621,7 @@ public class TextCell extends FrameLayout {
         imageView.setPadding(dp(2), dp(2), dp(2), dp(2));
         imageView.setTranslationX(dp(LocaleController.isRTL ? 0 : -3));
         imageView.setImageResource(resId);
-        Theme.applyThemeMonetColor(imageView, resourcesProvider, true);
+        imageView.setColorFilter(new PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN));
 
         final boolean border = resourcesProvider != null ? resourcesProvider.isDark() : Theme.isCurrentThemeDark();
         SettingsActivity.SettingCell.Background drawable = new SettingsActivity.SettingCell.Background();
@@ -675,7 +670,7 @@ public class TextCell extends FrameLayout {
         }
     }
 
-    public void setTextAndCheckAndIcon(CharSequence text, boolean checked, Drawable resDrawable, boolean divider) {
+    public void setTextAndCheckAndIcon(String text, boolean checked, Drawable resDrawable, boolean divider) {
         imageLeft = 16;
         offsetFromImage = getOffsetFromImage(false);
         textView.setText(text);

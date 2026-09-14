@@ -100,7 +100,7 @@ public class TONIntroActivity extends GradientHeaderActivity implements Notifica
     private ButtonWithCounterView withdrawButton;
 
     public static boolean allowTopUp() {
-        return ApplicationLoader.isStandaloneBuild() || ApplicationLoader.isBetaBuild() || ApplicationLoader.isHuaweiStoreBuild();
+        return ApplicationLoader.isStandaloneBuild() || BuildVars.isBetaApp() || BuildVars.isHuaweiStoreApp();
     }
 
     public TONIntroActivity() {

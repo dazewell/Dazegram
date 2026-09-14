@@ -8,7 +8,6 @@ import static org.telegram.ui.ActionBar.Theme.key_chat_inTextSelectionHighlight;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
-import android.app.Activity;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.CornerPathEffect;
@@ -46,11 +45,11 @@ import androidx.annotation.NonNull;
 import androidx.core.widget.NestedScrollView;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
-import org.jetbrains.annotations.NotNull;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.FileLog;
+import org.telegram.messenger.LanguageDetector;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.R;
@@ -58,7 +57,6 @@ import org.telegram.messenger.RichMessageLayout;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.Utilities;
 import org.telegram.ui.ActionBar.ActionBarPopupWindow;
-import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.FloatingActionMode;
 import org.telegram.ui.ActionBar.FloatingToolbar;
 import org.telegram.ui.iv.RichTextCell;
@@ -67,23 +65,10 @@ import org.telegram.ui.ArticleViewer;
 import org.telegram.ui.Components.AnimatedEmojiSpan;
 import org.telegram.ui.Components.CornerPath;
 import org.telegram.ui.Components.LayoutHelper;
-import org.telegram.ui.Components.LinkPath;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.RestrictedLanguagesSelectActivity;
 
 import java.util.ArrayList;
-
-import tw.nekomimi.nekogram.NekoConfig;
-import tw.nekomimi.nekogram.transtale.TranslateDb;
-import tw.nekomimi.nekogram.transtale.Translator;
-import tw.nekomimi.nekogram.utils.AlertUtil;
-import tw.nekomimi.nekogram.utils.ProxyUtil;
-import xyz.nextalone.nagram.NaConfig;
-import xyz.nextalone.nagram.helper.SystemAiServiceHelper;
-
-import static com.google.zxing.common.detector.MathUtils.distance;
-import static org.telegram.ui.ActionBar.FloatingToolbar.STYLE_THEME;
-import static org.telegram.ui.ActionBar.Theme.key_chat_inTextSelectionHighlight;
 
 public abstract class TextSelectionHelper<Cell extends TextSelectionHelper.SelectableView> {
 
@@ -292,11 +277,9 @@ public abstract class TextSelectionHelper<Cell extends TextSelectionHelper.Selec
                 textY = maybeTextY;
 
                 selectedView = newView;
-                if (!NekoConfig.disableVibration.Bool()) {
-                    try {
-                        textSelectionOverlay.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
-                    } catch (Exception ignored) {}
-                }
+                try {
+                    textSelectionOverlay.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
+                } catch (Exception ignored) {}
                 AndroidUtilities.cancelRunOnUIThread(showActionsRunnable);
                 AndroidUtilities.runOnUIThread(showActionsRunnable);
                 showHandleViews();
@@ -1555,7 +1538,6 @@ public abstract class TextSelectionHelper<Cell extends TextSelectionHelper.Selec
         }
     }
 
-    public static final int HYPEROS_AI = 6;
     private static final int TRANSLATE = 3;
     private ActionMode.Callback createActionCallback() {
         final ActionMode.Callback callback = new ActionMode.Callback() {
@@ -1567,9 +1549,6 @@ public abstract class TextSelectionHelper<Cell extends TextSelectionHelper.Selec
                 menu.add(Menu.NONE, android.R.id.cut, 3, android.R.string.cut);
                 menu.add(Menu.NONE, android.R.id.paste, 4, android.R.string.paste);
                 menu.add(Menu.NONE, android.R.id.selectAll, 5, android.R.string.selectAll);
-                if (SystemAiServiceHelper.INSTANCE.isSystemAiAvailable(textSelectionOverlay.getContext())) {
-                    menu.add(Menu.NONE, HYPEROS_AI, HYPEROS_AI, "AI");
-                }
                 return true;
             }
 
@@ -1581,12 +1560,12 @@ public abstract class TextSelectionHelper<Cell extends TextSelectionHelper.Selec
                 }
                 MenuItem copyItem = menu.findItem(android.R.id.copy);
                 if (copyItem != null) {
-                    copyItem.setVisible(canCopyOverride());
+                    copyItem.setVisible(canCopy());
                 }
                 MenuItem selectAllItem = menu.findItem(android.R.id.selectAll);
                 if (selectAllItem != null && selectedView != null) {
                     CharSequence charSequence = getText(selectedView, false);
-                    if (!canCopyOverride()) {
+                    if (!canCopy()) {
                         selectAllItem.setVisible(false);
                     } else if (forceShowSelectAll()) {
                         selectAllItem.setVisible(true);
@@ -1595,7 +1574,6 @@ public abstract class TextSelectionHelper<Cell extends TextSelectionHelper.Selec
                     } else {
                         selectAllItem.setVisible(true);
                     }
-                    selectAllItem.setVisible(selectedView instanceof View);
                 }
                 MenuItem cutItem = menu.findItem(android.R.id.cut);
                 if (cutItem != null) {
@@ -1605,26 +1583,39 @@ public abstract class TextSelectionHelper<Cell extends TextSelectionHelper.Selec
                 if (pasteItem != null) {
                     pasteItem.setVisible(canPaste() && clipboardHasContent());
                 }
-                // NekoX: Merge 8.5.0, remove due to removing LanguageDetector
+                if (onTranslateListener != null && LanguageDetector.hasSupport() && getSelectedText() != null) {
+                    LanguageDetector.detectLanguage(getSelectedText().toString(), lng -> {
+                        translateFromLanguage = lng;
+                        updateTranslateButton(menu);
+                    }, err -> {
+                        FileLog.e("mlkit: failed to detect language in selection");
+                        FileLog.e(err);
+                        translateFromLanguage = null;
+                        updateTranslateButton(menu);
+                    });
+                } else {
+                    translateFromLanguage = null;
+                    updateTranslateButton(menu);
+                }
                 return true;
             }
 
-//            private String translateFromLanguage = null;
-//            private void updateTranslateButton(Menu menu) {
-//                String translateToLanguage = LocaleController.getInstance().getCurrentLocale().getLanguage();
-//                MenuItem translateItem = menu.findItem(TRANSLATE);
-//                if (translateItem == null) {
-//                    return;
-//                }
-//                translateItem.setVisible(
-//                    onTranslateListener != null && (
-//                        (
-//                            translateFromLanguage != null &&
-//                            !RestrictedLanguagesSelectActivity.getRestrictedLanguages().contains(translateFromLanguage)
-//                        ) || !LanguageDetector.hasSupport()
-//                    )
-//                );
-//            }
+            private String translateFromLanguage = null;
+            private void updateTranslateButton(Menu menu) {
+                String translateToLanguage = LocaleController.getInstance().getCurrentLocale().getLanguage();
+                MenuItem translateItem = menu.findItem(TRANSLATE);
+                if (translateItem == null) {
+                    return;
+                }
+                translateItem.setVisible(
+                    onTranslateListener != null && (
+                        (
+                            translateFromLanguage != null &&
+                            !RestrictedLanguagesSelectActivity.getRestrictedLanguages().contains(translateFromLanguage)
+                        ) || !LanguageDetector.hasSupport()
+                    )
+                );
+            }
 
             @Override
             public boolean onActionItemClicked(ActionMode mode, MenuItem item) {
@@ -1651,44 +1642,11 @@ public abstract class TextSelectionHelper<Cell extends TextSelectionHelper.Selec
                     AndroidUtilities.runOnUIThread(showActionsRunnable);
                     return true;
                 } else if (itemId == TRANSLATE) {
-                    CharSequence textS = getSelectedText();
-                    if (textS == null) {
-                        return true;
+                    if (onTranslateListener != null) {
+                        String translateToLanguage = LocaleController.getInstance().getCurrentLocale().getLanguage();
+                        onTranslateListener.run(getSelectedText(), translateFromLanguage, translateToLanguage, () -> showActions());
                     }
-                    String urlFinal = textS.toString();
-                    Activity activity = ProxyUtil.getOwnerActivity((((View) selectedView).getContext()));
-                    TranslateDb db = TranslateDb.currentTarget();
-                    if (db.contains(urlFinal)) {
-                        AlertUtil.showCopyAlert(activity, db.query(urlFinal));
-                    } else {
-                        AlertDialog pro = AlertUtil.showProgress(activity);
-                        pro.show();
-                        Translator.translate(urlFinal, new Translator.Companion.TranslateCallBack() {
-                            @Override
-                            public void onSuccess(@NotNull String translation) {
-                                pro.dismiss();
-                                AlertUtil.showCopyAlert(activity, translation);
-                            }
-
-                            @Override
-                            public void onFailed(boolean unsupported, @NotNull String message) {
-                                pro.dismiss();
-                                AlertUtil.showTransFailedDialog(activity, unsupported, message, () -> {
-                                    pro.show();
-                                    Translator.translate(urlFinal, this);
-                                });
-                            }
-                        });
-                    }
-                    return true;
-                } else if (itemId == HYPEROS_AI) {
-                    CharSequence str = getSelectedText();
-                    if (str == null) {
-                        return true;
-                    }
-                    SystemAiServiceHelper.INSTANCE.startSystemAiService(textSelectionOverlay, str.toString());
                     hideActions();
-                    clear(true);
                     return true;
                 } else if (itemId == R.id.menu_quote) {
                     quoteText();
@@ -2014,15 +1972,8 @@ public abstract class TextSelectionHelper<Cell extends TextSelectionHelper.Selec
 
 
     public static class Callback {
-        public void onStateChanged(boolean isSelected) {
-        }
-
-        ;
-
-        public void onTextCopied() {
-        }
-
-        ;
+        public void onStateChanged(boolean isSelected){};
+        public void onTextCopied(){};
     }
 
     protected void fillLayoutForOffset(int offset, LayoutBlock layoutBlock) {
@@ -4132,10 +4083,6 @@ public abstract class TextSelectionHelper<Cell extends TextSelectionHelper.Selec
 
     protected Theme.ResourcesProvider getResourcesProvider() {
         return resourcesProvider;
-    }
-
-    protected boolean canCopyOverride() {
-        return NaConfig.INSTANCE.getForceCopy().Bool() || canCopy();
     }
 
     protected boolean canCopy() {
