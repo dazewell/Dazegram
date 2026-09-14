@@ -112,7 +112,7 @@ ever meant to propose the feature upstream. Nothing to keep alive, nothing to pa
 gitGraph
   commit id: "12.10.0 base"
   branch nbase
-  commit id: "Nagram snapshot"
+  commit id: "source snapshot"
   checkout main
   commit id: "dev trunk"
   branch 2026-07-07_chatlock
@@ -1076,8 +1076,9 @@ It is **snapshot-mediated**, not a direct upstream merge. In outline:
    pushes nothing and Telegram-pings `⚠️ … blocked … Finish on the PC`.
 
 The first steady-state run is expected to take the no-op path while Telegram
-master still equals the pinned source commit. If it has moved, the full guarded
-path runs instead. The anchor only advances by a reviewed edit to
+master's tree still equals the pinned nbase tree, even if the tip SHA moved
+without a tree change. A different tree takes the full guarded path. The anchor
+only advances by a reviewed edit to
 `.github/sync/pins.env`, never by the workflow itself. Full contract:
 `.github/sync/README.md`.
 

@@ -127,8 +127,9 @@ prune pass; there is nothing to clean up by hand.
 ## The no-op fast path
 
 Once the attended re-anchor below finishes, `origin/nbase` carries the pinned
-Telegram tree. If Telegram master still resolves to the pinned source commit, a
-`sync-upstream` run has no delta to apply. Before this fast path existed the
+Telegram tree. If the resolved Telegram master tree still equals
+`OLD_NBASE_TREE`, a `sync-upstream` run has no delta to apply even when master
+points to a newer commit with the same tree. Before this fast path existed the
 workflow still minted a snapshot and merged it every run, moving both refs for no
 reason — which is exactly how the redundant commits `58eaec2f` (a snapshot whose
 tree is identical to its parent's) and the `dev` merge `73455ee65e` (`dev`'s tree
@@ -327,11 +328,11 @@ The human-attended remainder is fail-closed:
 6. Verify live `pins.env`, `origin/nbase`, snapshot tree, configured source tip,
    and source tree agree. Then re-enable the four disabled workflows.
 7. Immediately before dispatching one verification sync, resolve
-   `DrKLO/Telegram` master again. If it still equals
-   `62b56a07ca7e30e39f7fd00a6728d6bbd716ca1c`, expect the `uptodate`
-   no-op path: no snapshot and no ref push. If master moved, expect the full
-   path and treat a guard block as a new source-delta result, not a failed
-   re-anchor.
+   `DrKLO/Telegram` master and its tree again. If the tree still equals
+   `b406defb637ed56d392f1b934507221b8243822c`, expect the `uptodate`
+   no-op path (no snapshot and no ref push), regardless of the tip commit SHA.
+   If the tree differs, expect the full path and treat a guard block as a new
+   source-delta result, not a failed re-anchor.
 
 ## Files
 

@@ -24,8 +24,8 @@ name: Sync upstream
 # and it pings Telegram so the reconciliation is finished on the PC. There is
 # deliberately no branch input and no bypass input.
 #
-# The verification run is a no-op while the source tip still matches the pinned
-# anchor. A moved source tip takes the full guarded path instead.
+# The verification run is a no-op while the resolved source tree matches the
+# pinned nbase tree. A different source tree takes the full guarded path.
 
 on:
   workflow_dispatch: {}
@@ -144,7 +144,7 @@ jobs:
           fi
           git fetch origin nbase
 
-      - name: Fetch Nagram source (hardcoded repo + branch)
+      - name: Fetch configured source (pinned repo + branch)
         run: |
           set -e
           git remote add nagram "${{ steps.pins.outputs.nagram_repo }}" \
@@ -439,7 +439,7 @@ jobs:
           # refs/sync/* is a non-branch, non-tag namespace: GitHub's `push` event
           # only fires for refs/heads/* and refs/tags/*, so this can never trigger
           # sync-guard-check.yml (which would hard-fail with no
-          # .github/sync/sync-guard.ps1 checked out on Nagram's tree) or
+          # .github/sync/sync-guard.ps1 checked out on the source tree) or
           # staging.yml's or ci.yml's pull_request trigger. It also never appears in
           # the branch list, branch picker, or any PR head/base dropdown.
           # Publish the SNAPSHOT only, never the merge candidate: the candidate is
