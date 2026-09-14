@@ -1497,6 +1497,38 @@ is.)
 *(Established 2026-09-10, `#ghost-hold`, ghost-hold-audit branch superseding
 PR #336.)*
 
+## A parent with no workflow tree needs guard capability before `nbase` moves
+
+DrKLO/Telegram master at `62b56a07ca7e30e39f7fd00a6728d6bbd716ca1c`
+has no `.github` root entry, while the current Nagram snapshot contract still
+has three required workflow rows (`.github/sync/workflow-manifest.tsv:1-4`).
+Moving `nbase` first would therefore make the always-on real-candidate fixture
+fail across the repository: `manifest` correctly rejects the workflow-free
+snapshot, and the previous unconditional non-empty-manifest startup check also
+prevented an empty manifest from reaching `-SelfTestOnly`, real-candidate, or
+`-LandCheckOnly` assertions.
+
+Advancing or replacing the parent is not a supported sync-land operation.
+sync-land only ever fast-forwards nbase onto a snapshot of a commit that descends
+from the pinned ANCHOR_SRC in the pinned upstream repo. A -LandCheckOnly pass
+never implies a parent change is permitted; a parent transition is a human,
+attended, pre-certified transaction.
+
+The transition order is load-bearing. First land the two-policy guard while
+`WORKFLOW_POLICY=manifest` remains pinned (`.github/sync/pins.env:23-30`).
+The later parent bootstrap does not use `sync-land`; its attended transaction is
+pre-certified before any ref moves with source/snapshot tree equality, snapshot
+parent equality with live `nbase`, `dev` anchor ancestry and tree identity, sync
+identity, an empty workflow tree, disabled workflows with `dev` frozen, and a
+pre-reviewed pins PR. Routine land checks keep the strict pinned policy:
+`manifest` requires the exact approved workflow set and `none` permits only an
+empty set (`.github/sync/sync-guard.ps1:185-215,1185-1192`). The always-on
+fixtures prove clean/changed/added/removed manifest land cases and empty/present
+none land cases (`.github/workflows/sync-guard-check.yml:260-324,377-413`).
+
+*(Established 2026-09-13, `#infra`; Telegram root tree verified through the
+GitHub tree object for the commit above.)*
+
 ## `squash_merge_commit_message: COMMIT_MESSAGES` plus an un-overridden squash message is what keeps `#slug` tags alive on `dev` — and no CI check guards either
 
 The repo lands PRs by **squash merge** (`allow_merge_commit: false`, `allow_squash_merge: true`, 2026-09-10). A squash writes one new commit onto `dev` and discards the PR branch's commits — the very commits `commit-tag.yml` validated. So whether the `#<slug>` tag reaches `dev` at all rests on **two** things, not one: the `squash_merge_commit_message` setting **and** the squash message being left at its default rather than overridden at merge time. With `COMMIT_MESSAGES` (the current, correct value) GitHub builds the *default* squash body from every branch commit's message — **including each commit's subject line, rendered as a `* <subject>` bullet** — so a tag that lives only in a commit *subject* still lands in the squash body and survives (verified 2026-09-10). But that is only the default: flipping the setting to `PR_BODY` or `BLANK`, **or** overriding the body at merge time (the merge UI's editable message, or `gh pr merge --body`/`--subject` — see the merge-command note in `.claude/skills/nagramx-branch-flow/SKILL.md`), can drop the tags, so a later merge **can** land a tag-less commit on `dev`. **No CI check catches this** — `commit-tag.yml` runs against the PR branch, which was tagged; it never sees the squash GitHub writes afterward. The failure is silent and permanent in the `dev` log.

@@ -190,6 +190,12 @@ above) — `sync-land` drafts that edit, it does not bypass the review. What it 
 is that the review is now backed by machine-verified evidence rather than three
 opaque hex strings, and the pins PR is genuinely gated:
 
+Advancing or replacing the parent is not a supported sync-land operation.
+sync-land only ever fast-forwards nbase onto a snapshot of a commit that descends
+from the pinned ANCHOR_SRC in the pinned upstream repo. A -LandCheckOnly pass
+never implies a parent change is permitted; a parent transition is a human,
+attended, pre-certified transaction.
+
 - **`sync-guard.ps1 -LandCheckOnly` runs before any ref moves.** The two obvious
   ancestry facts — old `nbase` is an ancestor of the snapshot, and the snapshot is
   reachable from `dev` — both pass for a snapshot whose *tree was hand-edited
@@ -257,7 +263,7 @@ these three repository permissions:
 | Permission | Why |
 | --- | --- |
 | Contents: write | push `dev` (steady-state sync) and `nbase` (both workflows fast-forward or merge onto it). |
-| Workflows: write | the snapshot tree carries `.github/workflows/`, so any push whose diff touches a workflow file needs this even when the ref itself is `dev`/`nbase`. |
+| Workflows: write | `manifest` snapshots carry `.github/workflows/`, and a parent transition may remove them. Any push whose diff touches a workflow file needs this even when the ref itself is `dev`/`nbase`. |
 | Pull requests: write | `sync-land.yml` opens the pins PR with `SYNC_TOKEN` rather than `GITHUB_TOKEN`, so `sync-guard-check` actually runs on it (see above) — a PR opened by the default token would arrive with that check missing. |
 
 Missing any one of these fails a run, but not all three are provable up front.
@@ -271,13 +277,40 @@ push later in the run, which fails explicitly (not silently) if the token lacks 
 Where a permission is proven up front, the failure names it precisely rather than
 surfacing only a generic auth error after a ref has already moved.
 
+## Snapshot workflow policy
+
+`WORKFLOW_POLICY` in `pins.env` is a reviewed, trusted pin with two allowed values:
+
+- **`manifest`** requires the snapshot's `.github/workflows/*` paths and blobs to
+  match every row in `workflow-manifest.tsv` exactly. The manifest must be non-empty.
+- **`none`** requires an empty manifest and zero `.github/workflows/*` paths in the
+  snapshot. Any workflow path blocks.
+
+The parent transition keeps `manifest` while this capability lands. The later
+parent bootstrap never uses `sync-land`: strict land validation continues to
+enforce the current policy with no transition exception. Before the attended
+transaction may move any ref, its reviewed evidence must pre-certify:
+
+- source and snapshot tree equality;
+- snapshot parent equality with live `nbase`;
+- `dev` anchor ancestry and anchor-tree identity;
+- the pinned sync author and committer identity;
+- an empty snapshot workflow tree;
+- disabled sync workflows and a frozen `dev`; and
+- a pre-reviewed pins PR carrying the new parent pins, `WORKFLOW_POLICY=none`,
+  and a header-only `workflow-manifest.tsv`.
+
+The operator applies that pre-certified transaction as one coordinated parent
+change. Routine `sync-land` remains limited to descendants of the already-pinned
+parent.
+
 ## Files
 
 | File | Purpose |
 | --- | --- |
-| `pins.env` | Scalar invariants — anchor, keystore blob + cert, gitmodules blob, the vendored-native table (boringssl/libyuv/openh264/tlottie_lib/tlottie), layer floors, Ayu schema. Read from PRE, never from a candidate. |
+| `pins.env` | Scalar invariants — parent and workflow policy, anchor, keystore blob + cert, gitmodules blob, the vendored-native table (boringssl/libyuv/openh264/tlottie_lib/tlottie), layer floors, Ayu schema. Read from PRE, never from a candidate. |
 | `protected-paths.tsv` | The 49 fork-owned paths that must stay byte-identical to `dev` (signing key, Firebase config, branding, README, `.gitmodules`). |
-| `workflow-manifest.tsv` | The approved `.github/workflows` set the snapshot may carry (Nagram's `debug`/`pr`/`release`). Any addition or change blocks. |
+| `workflow-manifest.tsv` | The approved `.github/workflows` set under `manifest` policy (Nagram's `debug`/`pr`/`release`). Under `none`, keep the file and its header row but remove every data row. |
 | `sync-guard.ps1` | The gate. Self-tests, then classifies every tree delta. Also runs the pre-land snapshot check for `sync-land.yml` (`-LandCheckOnly`). |
 
 ## What the guard checks per sync — and what it cannot
@@ -288,7 +321,8 @@ surfacing only a generic auth error after a ref has already moved.
   modification of a pre-existing shared file, or it blocks.
 - The 49 protected blobs byte-identical in PRE and candidate.
 - The guard and its workflows unchanged by the candidate.
-- `.github/workflows` in the snapshot matches the approved manifest exactly.
+- `.github/workflows` in the snapshot obeys the pinned policy: exact approved
+  path/blob rows under `manifest`, or no workflow paths under `none`.
 - `.gitmodules` blob unchanged; every vendored native keeps its pinned git object
   shape — boringssl, libyuv, openh264 and tlottie_lib stay `040000 tree`, and the
   tlottie gitlink keeps its pinned `160000 commit`. The table is data in `pins.env`

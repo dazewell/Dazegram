@@ -179,11 +179,29 @@ function Test-SelfProtect([hashtable]$preBlobs, [hashtable]$candBlobs, [string[]
     return $f
 }
 
-# Guard 5: the snapshot's .github/workflows must exactly match the approved
-# manifest — no added workflow, no changed blob. Validated against the SNAPSHOT
-# tree, because nbase is what carries the executable workflows.
-function Test-Workflows([hashtable]$snapWf, $manifestRows) {
+# Guard 5: the snapshot's .github/workflows policy. `manifest` requires the
+# snapshot to match every approved path/blob exactly. `none` requires both an
+# empty manifest and zero workflow paths in the snapshot.
+function Test-Workflows([string]$policy, [hashtable]$snapWf, $manifestRows) {
     $f = @()
+    if ($policy -notin @('manifest', 'none')) {
+        $f += "workflow policy '$policy' is unknown or malformed (expected manifest or none)"
+        return $f
+    }
+    if ($policy -eq 'manifest' -and $manifestRows.Count -lt 1) {
+        $f += 'workflow policy manifest requires a non-empty workflow-manifest.tsv'
+    }
+    if ($policy -eq 'none' -and $manifestRows.Count -ne 0) {
+        $f += 'workflow policy none requires an empty workflow-manifest.tsv'
+    }
+    if ($f.Count -gt 0) { return $f }
+    if ($policy -eq 'none') {
+        foreach ($p in $snapWf.Keys) {
+            $f += "workflow forbidden under none policy: $p"
+        }
+        return $f
+    }
+
     $approved = @{}
     foreach ($r in $manifestRows) { $approved[$r.Path] = $r.Blob }
     foreach ($p in $snapWf.Keys) {
@@ -194,6 +212,11 @@ function Test-Workflows([hashtable]$snapWf, $manifestRows) {
         if (-not $snapWf.ContainsKey($p)) { $f += "approved workflow MISSING from snapshot: $p" }
     }
     return $f
+}
+
+function Test-FastPathWorkflows([string]$decision, [string]$policy, [hashtable]$liveNbaseWf, $manifestRows) {
+    if ($decision -ne 'uptodate') { return @() }
+    return @(Test-Workflows $policy $liveNbaseWf $manifestRows)
 }
 
 # Guard 9 + 11 + "every tree delta must be partitioned; unclassified means BLOCK".
@@ -581,12 +604,28 @@ function Invoke-SelfTest([hashtable]$pins) {
     $ok = (Assert-Fails  'Test-SelfProtect' (Test-SelfProtect $pg $cb @('.github/sync/sync-guard.ps1')) ([ref]$log)) -and $ok
     $ok = (Assert-Passes 'Test-SelfProtect' (Test-SelfProtect $pg $pg @('.github/sync/sync-guard.ps1')) ([ref]$log)) -and $ok
 
-    # Guard 5 workflows
+    # Guard 5 workflows. Manifest mode preserves the current exact path/blob
+    # contract in every failure direction. None mode accepts only an empty
+    # manifest plus an empty snapshot workflow tree.
     $man = @([pscustomobject]@{ Path = '.github/workflows/debug.yml'; Blob = 'fa4b0e5d17bf39a5e054658885c33046ac671b78' })
-    $wfBad  = @{ '.github/workflows/debug.yml' = 'fa4b0e5d17bf39a5e054658885c33046ac671b78'; '.github/workflows/evil.yml' = 'deadbeef' }
+    $wfAdded = @{ '.github/workflows/debug.yml' = 'fa4b0e5d17bf39a5e054658885c33046ac671b78'; '.github/workflows/evil.yml' = 'deadbeef' }
+    $wfChanged = @{ '.github/workflows/debug.yml' = 'deadbeef' }
+    $wfMissing = @{}
     $wfGood = @{ '.github/workflows/debug.yml' = 'fa4b0e5d17bf39a5e054658885c33046ac671b78' }
-    $ok = (Assert-Fails  'Test-Workflows' (Test-Workflows $wfBad  $man) ([ref]$log)) -and $ok
-    $ok = (Assert-Passes 'Test-Workflows' (Test-Workflows $wfGood $man) ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-Workflows(manifest-added)'   (Test-Workflows 'manifest' $wfAdded $man) ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-Workflows(manifest-changed)' (Test-Workflows 'manifest' $wfChanged $man) ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-Workflows(manifest-missing)' (Test-Workflows 'manifest' $wfMissing $man) ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-Workflows(manifest-empty)'   (Test-Workflows 'manifest' @{} @()) ([ref]$log)) -and $ok
+    $ok = (Assert-Passes 'Test-Workflows(manifest)'         (Test-Workflows 'manifest' $wfGood $man) ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-Workflows(none-present)'     (Test-Workflows 'none' $wfGood @()) ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-Workflows(none-manifest)'    (Test-Workflows 'none' @{} $man) ([ref]$log)) -and $ok
+    $ok = (Assert-Passes 'Test-Workflows(none)'             (Test-Workflows 'none' @{} @()) ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-Workflows(policy-empty)'     (Test-Workflows '' @{} @()) ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-Workflows(policy-unknown)'   (Test-Workflows 'unknown' @{} @()) ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-FastPathWorkflows(none-present)' (Test-FastPathWorkflows 'uptodate' 'none' $wfGood @()) ([ref]$log)) -and $ok
+    $ok = (Assert-Passes 'Test-FastPathWorkflows(none)'         (Test-FastPathWorkflows 'uptodate' 'none' @{} @()) ([ref]$log)) -and $ok
+    $ok = (Assert-Passes 'Test-FastPathWorkflows(manifest)'     (Test-FastPathWorkflows 'uptodate' 'manifest' $wfGood $man) ([ref]$log)) -and $ok
+    $ok = (Assert-Passes 'Test-FastPathWorkflows(proceed)'      (Test-FastPathWorkflows 'proceed' 'none' $wfGood @()) ([ref]$log)) -and $ok
 
     # Guard 9 / 11 partition (fork ∩ upstream)
     $pre = @{ 'a' = '1'; 'b' = '2' }
@@ -774,7 +813,7 @@ function Invoke-RealGuard([hashtable]$pins, $protectedRows, $manifestRows) {
     $failures += Test-SelfProtect $preBlobs $candBlobs $selfPaths
 
     # Guard 5 workflows (against the SNAPSHOT tree)
-    $failures += Test-Workflows (Get-WorkflowBlobs $NewSnapshot) $manifestRows
+    $failures += Test-Workflows $pins['WORKFLOW_POLICY'] (Get-WorkflowBlobs $NewSnapshot) $manifestRows
 
     # Guard 9 + 11 partition (fork ∩ upstream). base of the sync merge is OLD_NBASE.
     $forkDelta   = @(git diff --name-only $OldNbase $PreRef)
@@ -855,6 +894,7 @@ $pins = Read-Pins $PinsFile
 # "pins this script reads".
 $requiredPins = @(
     'ANCHOR_SRC', 'OLD_NBASE', 'OLD_NBASE_TREE', 'NAGRAM_REPO', 'NAGRAM_BRANCH',
+    'WORKFLOW_POLICY',
     'KEYSTORE_PATH', 'KEYSTORE_BLOB', 'KEYSTORE_CERT_SHA256',
     'SIGNING_GRADLE_PATH', 'SIGNING_GRADLE_BLOB',
     'GITMODULES_BLOB', 'VENDORED_NATIVES',
@@ -931,10 +971,13 @@ if ($pinProblems.Count) {
 # them only on the real-candidate path, so -SelfTestOnly could pass while a
 # manifest was empty or a pin was stale — which is exactly how the stale README
 # pin survived. Reading and sanity-checking them here closes that.
+$workflowManifestLines = @(Get-Content $WorkflowManifest)
+if ($workflowManifestLines.Count -lt 1 -or $workflowManifestLines[0] -cne "path`tblob") {
+    Write-Host '::error::workflow-manifest.tsv header must be exactly path<TAB>blob'; exit 2
+}
 $protectedRows = @(Read-Tsv $ProtectedFile)
 $manifestRows  = @(Read-Tsv $WorkflowManifest)
 if ($protectedRows.Count -lt 1) { Write-Host '::error::protected-paths.tsv is empty or unreadable'; exit 2 }
-if ($manifestRows.Count  -lt 1) { Write-Host '::error::workflow-manifest.tsv is empty or unreadable'; exit 2 }
 foreach ($r in $protectedRows) {
     if ([string]::IsNullOrWhiteSpace($r.Path) -or $r.Blob -notmatch '^[0-9a-f]{40}$') {
         Write-Host "::error::protected-paths.tsv malformed row: '$($r.Path)' -> '$($r.Blob)'"; exit 2
@@ -944,6 +987,13 @@ foreach ($r in $manifestRows) {
     if ([string]::IsNullOrWhiteSpace($r.Path) -or $r.Blob -notmatch '^[0-9a-f]{40}$') {
         Write-Host "::error::workflow-manifest.tsv malformed row: '$($r.Path)' -> '$($r.Blob)'"; exit 2
     }
+}
+$manifestBlobs = @{}
+foreach ($r in $manifestRows) { $manifestBlobs[$r.Path] = $r.Blob }
+$workflowPolicyProblems = @(Test-Workflows $pins['WORKFLOW_POLICY'] $manifestBlobs $manifestRows)
+if ($workflowPolicyProblems.Count -gt 0) {
+    $workflowPolicyProblems | ForEach-Object { Write-Host "::error::$_" }
+    exit 2
 }
 
 Write-Host '=== guard self-test (must prove it can fail before any pass is trusted) ==='
@@ -1010,6 +1060,13 @@ if ($FastPathOnly) {
     $devContainsNbase = ($mbExit -eq 0)
 
     $d = Test-SyncFastPath $srcTree $OldNbase $liveNbaseTree $pins['OLD_NBASE'] $pins['OLD_NBASE_TREE'] $devContainsNbase
+    $fastWorkflowFailures = @(Test-FastPathWorkflows $d.Decision $pins['WORKFLOW_POLICY'] (Get-WorkflowBlobs $OldNbase) $manifestRows)
+    if ($fastWorkflowFailures.Count -gt 0) {
+        Write-Host '::error::fast path BLOCKED — live nbase violates the pinned workflow policy:'
+        $fastWorkflowFailures | ForEach-Object { Write-Host "::error::  - $_" }
+        Write-Host '::error::No snapshot created, no ref pushed.'
+        exit 1
+    }
     switch ($d.Decision) {
         'proceed' {
             Write-Host "fast path: proceeding to the full sync path — $($d.Reason)."
@@ -1129,6 +1186,7 @@ if ($LandCheckOnly) {
     if (-not $anchorSrcNew) {
         $failures += "land: the snapshot tree $snapTree matches no commit in nagram/$branch — it is not a faithful copy of any upstream commit"
     }
+    $failures += Test-Workflows $pins['WORKFLOW_POLICY'] (Get-WorkflowBlobs $snap) $manifestRows
     $failures += Test-LandCheck $snapParents $expectedOldNbase $revMinusOld $snap $snapTree $srcTree $srcDescends `
         $expectedOldNbaseTree $pinnedAnchorTree $pins['OLD_NBASE'] $pins['OLD_NBASE_TREE'] $snapDescendsDev
     $failures += Test-SnapshotIdentity $an $ae $cn $ce $pins['SYNC_IDENTITY_NAME'] $pins['SYNC_IDENTITY_EMAIL']
