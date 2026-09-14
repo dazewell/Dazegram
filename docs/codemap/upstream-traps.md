@@ -1524,10 +1524,17 @@ parent equality with live `nbase`, `dev` anchor ancestry and tree identity, sync
 identity, an empty workflow tree, disabled workflows with `dev` frozen, and a
 pre-reviewed pins PR. That PR is intentionally red before the ref move because
 the real-candidate fixture compares live `origin/nbase` with its candidate
-`OLD_NBASE` (`.github/workflows/sync-guard-check.yml:152-161`). It must turn
-green after `nbase` moves, with the new parent pins, `WORKFLOW_POLICY=none`, and
-the header-only manifest still together. Weakening the fixture to erase this
-window would also erase the stale-pin detector.
+`OLD_NBASE` (`.github/workflows/sync-guard-check.yml:152-161`). Moving `nbase`
+does not rerun the unchanged PR head; the workflow reacts only to push and
+pull-request events (`.github/workflows/sync-guard-check.yml:23-25`).
+Immediately after the ref move, rerun the existing failed workflow run with
+GitHub's **Re-run jobs** action or `gh run rerun <run-id>`. Before merging,
+verify its `headSha` still equals the reviewed pins PR head, its conclusion is
+`success`, and `Every commit carries a #tag` remains successful. Keep the new
+parent pins, `WORKFLOW_POLICY=none`, and the header-only manifest in that
+unchanged head. Do not create an empty trigger commit, and do not merge if the
+head moved or the rerun is unavailable or red. Weakening the fixture to erase
+this window would also erase the stale-pin detector.
 
 Certification uses three distinct proofs. For snapshot `S`, anchor merge `M`,
 and documentation head `C`, `Every commit carries a #tag` enumerates every
