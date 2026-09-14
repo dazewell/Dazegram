@@ -1522,23 +1522,10 @@ The later parent bootstrap does not use `sync-land`; its attended transaction is
 pre-certified before any ref moves with source/snapshot tree equality, snapshot
 parent equality with live `nbase`, `dev` anchor ancestry and tree identity, sync
 identity, an empty workflow tree, disabled workflows with `dev` frozen, and a
-pre-reviewed pins PR. That PR is intentionally red before the ref move because
+pre-reviewed pins PR. That PR is intentionally red before `nbase` moves because
 the real-candidate fixture compares live `origin/nbase` with its candidate
-`OLD_NBASE` (`.github/workflows/sync-guard-check.yml:152-161`). Record the
-human-reviewed pins PR head SHA, then immediately before moving `nbase` re-read
-the live PR's `headRefOid`/`head.sha` and require exact equality. Moving
-`nbase` does not rerun the unchanged PR head; the workflow reacts only to push
-and pull-request events (`.github/workflows/sync-guard-check.yml:23-25`).
-Immediately after the ref move, rerun the existing failed workflow run with
-GitHub's **Re-run jobs** action or `gh run rerun <run-id>`. Before merging,
-require its `headSha` to equal the reviewed SHA and its conclusion to be
-`success`, then re-read the live PR head and require it still equals that SHA.
-Also require `Every commit carries a` to remain successful. Any mismatch stops
-for review; never merge or move refs on a stale review. Keep the new parent
-pins, `WORKFLOW_POLICY=none`, and the header-only manifest in that unchanged
-head. Do not create an empty trigger commit, and do not merge if the rerun is
-unavailable or red. Weakening the fixture to erase this window would also erase
-the stale-pin detector.
+`OLD_NBASE` (`.github/workflows/sync-guard-check.yml:152-161`). Weakening the
+fixture to erase this window would also erase the stale-pin detector.
 
 Certification uses three distinct proofs. For snapshot `S`, anchor merge `M`,
 and documentation head `C`, `Every commit carries a` enumerates every
@@ -1552,11 +1539,10 @@ transaction's exact-SHA git proofs are therefore the authority for `S`/`M`/`C`
 topology and the final branch tree: snapshot parent/tree/identity and anchor
 parent order/tree/ancestry.
 
-Routine land checks keep the strict pinned policy:
-`manifest` requires the exact approved workflow set and `none` permits only an
-empty set (`.github/sync/sync-guard.ps1:185-215,1185-1192`). The always-on
-fixtures prove clean/changed/added/removed manifest land cases and empty/present
-none land cases (`.github/workflows/sync-guard-check.yml:260-324,377-413`).
+The complete attended procedure, including exact refspecs, rerun identity and
+semantics, the close/reopen fallback, all-check green condition, atomic pins
+merge, and final verification, lives only in `.github/sync/README.md` under
+**Attended parent-replacement transaction**.
 
 *(Established 2026-09-13, `#infra`; Telegram root tree verified through the
 GitHub tree object for the commit above.)*

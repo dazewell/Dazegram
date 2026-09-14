@@ -301,37 +301,77 @@ transaction may move any ref, its reviewed evidence must pre-certify:
 - a pre-reviewed pins PR carrying the new parent pins, `WORKFLOW_POLICY=none`,
   and a header-only `workflow-manifest.tsv`.
 
-The pins PR's content is reviewed before the transaction, but its
-`sync-guard-check` is expected to be red until the operator fast-forwards
-`origin/nbase` to the new snapshot: the real-candidate fixture compares live
-`origin/nbase` with the candidate's new `OLD_NBASE`. Record the human-reviewed
-pins PR head SHA. Immediately before moving `nbase`, re-read the live PR's
-`headRefOid` (GraphQL) or `head.sha` (REST) and require exact equality with that
-reviewed SHA. Moving `nbase` does not trigger a new run for the unchanged PR
-head. Immediately after the ref move, rerun the existing failed workflow run
-with GitHub's **Re-run jobs** action or `gh run rerun <run-id>`. Before merging,
-require the rerun's `headSha` to equal the reviewed SHA and its conclusion to be
-`success`; then re-read the live PR head and require it still equals the
-reviewed SHA. Also require `Every commit carries a` to remain successful. Any
-head mismatch stops the transaction for review: never merge or move refs on a
-stale review. The new parent pins, `WORKFLOW_POLICY=none`, and the header-only
-manifest must remain together in that unchanged head. Do not create an empty
-commit to trigger CI, and do not merge if the rerun is unavailable or red.
-Never weaken the fixture to hide this red window.
+### Attended parent-replacement transaction
 
-The certification evidence is deliberately split. For snapshot `S`, anchor
-merge `M`, and documentation head `C`, `Every commit carries a` checks the
-complete `origin/dev..C` range: `S` and `C` are tagged, while `M` is
-merge-exempt. On a pull request, `sync-guard-check` executes against GitHub's
-generated merge-ref candidate tree and proves guard health and protected-pin
-behavior for that candidate. It does not certify raw `C`'s final tree or
-inspect `S`/`M` topology. The attended transaction's exact-SHA git evidence
-proves `S`/`M`/`C` topology and the final branch tree, including the snapshot
-parent, source-tree identity, sync identity, empty workflow tree, anchor parent
-order, anchor tree identity, and ancestry.
+Use this procedure only for the pre-certified parent replacement described
+above. Routine `sync-land` remains limited to descendants of the already-pinned
+parent.
 
-The operator applies that evidence as one coordinated parent change. Routine
-`sync-land` remains limited to descendants of the already-pinned parent.
+1. Record the exact snapshot `S`, tree-identical anchor merge `M`, certification
+   head `C`, pins PR number, and human-reviewed pins PR head SHA. Re-run the
+   exact-SHA git proofs for `S`/`M`/`C` and freeze `dev`, the certification
+   branch, and the pins PR.
+2. Confirm the certification evidence split:
+   - `Every commit carries a`, associated with branch head `C`, checks the
+     complete `origin/dev..C` commit-message range: authored commits are tagged
+     and `M` is merge-exempt.
+   - A pull-request `sync-guard-check` checks GitHub's generated merge-ref
+     candidate tree. It proves guard health and protected-pin behavior for that
+     candidate, not raw `C`'s final tree or `S`/`M` anchor topology.
+   - The attended transaction's exact-SHA git evidence proves `S`/`M`/`C`
+     topology and the final branch tree: snapshot parent/source tree/identity,
+     empty workflow tree, anchor parent order/tree/ancestry, and the
+     certification head's final tree.
+3. Fast-forward `dev` to `C` with the exact, plain refspec
+   `git push origin <C>:refs/heads/dev`. Then immediately before moving `nbase`,
+   re-read the live pins PR's `headRefOid` (GraphQL) or `head.sha` (REST) and
+   require exact equality with the recorded reviewed pins SHA. Move `nbase` to
+   `S` only with `git push origin <S>:refs/heads/nbase`. Both pushes must be
+   fast-forwards: never use `--force` or a `+` refspec. The `dev` move uses an
+   administrator bypass, so this exact process rule is load-bearing.
+4. Expect the pre-reviewed pins PR's `sync-guard-check` to be red before
+   `nbase` moves: the real-candidate fixture compares live `origin/nbase` with
+   the candidate's new `OLD_NBASE`. The ref move does not trigger a new run for
+   the unchanged PR head. Select the rerun target from workflow
+   `sync-guard-check.yml` with both `event=pull_request` and
+   `head_sha=<reviewed-pins-sha>`, matching the proven query in
+   `sync-land.yml`; require exactly one workflow run or abort. Never rerun a
+   push-event run as the candidate proof.
+5. Rerun that failed pull-request workflow with GitHub's **Re-run jobs** action
+   or `gh run rerun <run-id>`. A rerun replays the original `pull_request`
+   `GITHUB_SHA` and generated merge commit. It re-fetches live `nbase`, but does
+   not regenerate the merge candidate; checkout can fail if the old merge ref
+   is unavailable. If rerun is unavailable or fails for that reason, close and
+   reopen the unchanged pins PR to produce a fresh pull-request event and merge
+   ref, without creating a commit. Before and after reopening, require the live
+   PR head to equal the recorded reviewed SHA.
+6. Before merging the pins PR, require all of these facts:
+   - the selected or replacement pull-request run has `headSha` equal to the
+     reviewed pins SHA and conclusion `success`;
+   - every check run named `Guard self-test, wiring, and real fixture` on that
+     SHA is successful, including a pull-request-produced run;
+   - `Every commit carries a` on that SHA remains successful;
+   - the live pins PR head, re-read after the checks, still equals the reviewed
+     SHA; and
+   - `mergeStateStatus` is `CLEAN`.
+
+   Any head mismatch, unavailable/red run, leftover red push run, or
+   `UNSTABLE` merge state blocks. Do not create an empty trigger commit, weaken
+   the fixture, merge, or move another ref to make the checks green. The new
+   parent pins, `WORKFLOW_POLICY=none`, and header-only manifest stay together
+   in the reviewed pins head.
+7. The human operator merges the pins PR atomically with
+   `gh pr merge <n> --squash --match-head-commit <reviewed-sha>`. Never pass
+   `--admin`, `--auto`, `--body`, `--subject`, or `--delete-branch`. The
+   branch-flow skill's **Land a change** section owns the normative merge
+   mechanics; this checklist adds only the parent-transaction constraints.
+8. Re-fetch and verify the final `dev`, `nbase`, pins, workflow policy,
+   header-only manifest, PR state, and exact trees rather than inferring the
+   outcome from the command. The durable certification head is
+   `refs/pull/366/head`, not a tag. Because direct-fast-forwarding `dev` makes
+   PR #366's head reachable, GitHub may mark that PR merged; verify whether it
+   did and verify `dev` equals the intended commit rather than claiming GitHub
+   created a squash commit.
 
 ## Files
 
