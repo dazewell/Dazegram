@@ -1,6 +1,6 @@
 ---
 name: nagramx-branch-flow
-description: "Dazewell's git branch / integration / upstream-sync model for the NagramX fork (dazewell/Dazegram, live upstream parent NextAlone/Nagram, formerly the archived base fork risin42/NagramX). Trigger this for anything about *how commits are organized* rather than what the code does: starting a feature branch, whether to work in a git worktree vs. in-place, the #tag every commit must carry, keeping a change's commits discoverable, proposing a feature upstream, syncing onto the base fork, the fast CI validation gate and the publish-on-request staging build, the mandatory `<YYYY-MM-DD>_<slug>` branch naming, the no-force-push rule (follow-ups are new commits, not amends), or the phone-triggered sync-build-Telegram automation. Companion to the nagramx-workflow skill: that one owns design review / hooks / compile gate (and its CI fallback) / FEATURES.md / commit style; THIS one owns the branch topology and the plumbing around it. Also edit this file when dazewell corrects the flow."
+description: "Dazewell's git branch / integration / upstream-sync model for the NagramX fork (dazewell/Dazegram, live source parent DrKLO/Telegram, with NextAlone/Nagram retained as a compatibility/reference and proposal target, and risin42/NagramX as the archived historical base). Trigger this for anything about *how commits are organized* rather than what the code does: starting a feature branch, whether to work in a git worktree vs. in-place, the #tag every commit must carry, keeping a change's commits discoverable, proposing a feature upstream, syncing onto the base fork, the fast CI validation gate and the publish-on-request staging build, the mandatory `<YYYY-MM-DD>_<slug>` branch naming, the no-force-push rule (follow-ups are new commits, not amends), or the phone-triggered sync-build-Telegram automation. Companion to the nagramx-workflow skill: that one owns design review / hooks / compile gate (and its CI fallback) / FEATURES.md / commit style; THIS one owns the branch topology and the plumbing around it. Also edit this file when dazewell corrects the flow."
 ---
 
 # NagramX branch & integration flow
@@ -26,7 +26,7 @@ something an agent deletes).
   still lands a merge commit. It holds unique history that exists nowhere else,
   so it is **never rebuilt and never force-pushed**.
 - `nbase` — the upstream anchor: a chain of locally-authored snapshot commits
-  carrying Nagram's trees, **append-only** and an ancestor of `dev`. Each new
+  carrying the configured source parent's trees, **append-only** and an ancestor of `dev`. Each new
   snapshot is merged forward into `dev` by the guarded sync. Never force-pushed,
   never deleted.
 
@@ -112,7 +112,7 @@ ever meant to propose the feature upstream. Nothing to keep alive, nothing to pa
 gitGraph
   commit id: "12.10.0 base"
   branch nbase
-  commit id: "Nagram snapshot"
+  commit id: "source snapshot"
   checkout main
   commit id: "dev trunk"
   branch 2026-07-07_chatlock
@@ -341,14 +341,16 @@ Remotes (as configured in this clone):
 - `origin` → `dazewell/Dazegram` (personal fork; the repo was renamed from
   `dazewell/NagramX` — the old name still redirects but is not something to build
   on, so every command and URL uses `dazewell/Dazegram`)
-- `nagram` → `NextAlone/Nagram` (the **live upstream parent**)
+- `nagram` → the source URL in `.github/sync/pins.env`, currently
+  `DrKLO/Telegram`. The remote name and `NAGRAM_*` pin names are temporary
+  legacy identifiers; their values point to Telegram `master`.
 
 Branches (on `origin`):
 - **`dev`** — the trunk / integration branch and the build source. `staging.yml`
   builds the dual APK from every push to `dev`. Never rebuilt, never
   force-pushed.
 - **`nbase`** — the upstream anchor. A chain of locally-authored *snapshot*
-  commits, each carrying a Nagram tree and parented on the previous snapshot. It
+  commits, each carrying a configured-source tree and parented on the previous snapshot. It
   is an ancestor of `dev` (the anchor merge made it one), **append-only**, never
   force-pushed, never deleted.
 - **`base`** — the frozen mirror of the risin42-era fork at commit a6c7d0ae, no
@@ -358,7 +360,8 @@ Branches (on `origin`):
   recoverable via `refs/pull/<N>/head`, so nothing is kept alive, upstream
   candidate or not.
 
-Upstream now flows from **`nagram`** through a snapshot into `dev`. The full sync
+Source updates now flow from the legacy-named **`nagram`** remote through a
+snapshot into `dev`. The full sync
 topology (anchor, snapshot, the `nbase` chain, and the guarded merge strategy)
 lives in **`.github/sync/README.md`**.
 
@@ -860,6 +863,12 @@ and its later fix together. If the fix is user-visible, update the `FEATURES.md`
 entry in the same branch.
 
 ### Sync onto a new upstream (trigger the guarded automation; PC only if it blocks)
+This section covers a new upstream state of the already-pinned parent named by
+`NAGRAM_REPO` / `NAGRAM_BRANCH`. Replacing the parent itself is a separate,
+human-attended transaction and never a `sync-land` operation; follow
+`.github/sync/README.md`'s attended re-anchor section. `-LandCheckOnly` rejects
+a source that does not descend from the pinned `ANCHOR_SRC`.
+
 The routine path is the guarded workflow, not a manual merge — it builds a
 snapshot on `nbase`, 3-way merges it into `dev`, runs `sync-guard.ps1`, and
 pushes `dev`+`nbase` atomically only if the guard is clean (see Automation).
@@ -967,17 +976,17 @@ it. **Never** fast-forward the `base` branch into `dev`: that path is retired an
 bypasses the guard entirely.
 
 ### Propose a feature upstream (the only place rewriting/force happens)
-For any merged feature worth upstreaming — recover its range from
-`refs/pull/<N>/head` (branches are auto-deleted at merge, but that ref is
-permanent). Upstream is now `NextAlone/Nagram` (`nagram`), not the archived base
-fork.
+For any merged feature worth proposing to the inherited fork community, recover
+its range from `refs/pull/<N>/head` (branches are auto-deleted at merge, but that
+ref is permanent). `NextAlone/Nagram` remains the intentional proposal target
+for compatible features even though it is no longer Dazegram's sync parent.
 ```powershell
-git fetch nagram dev
+git fetch https://github.com/NextAlone/Nagram.git dev:refs/remotes/nagram-reference/dev
 git fetch origin refs/pull/<N>/head:<YYYY-MM-DD>_<slug>   # branch auto-deleted at merge; recover the range
 git switch -c <YYYY-MM-DD>_<slug>-pr <YYYY-MM-DD>_<slug>   # throwaway copy
-git rebase --onto nagram/dev <branch-point> <YYYY-MM-DD>_<slug>-pr   # replay onto pristine upstream
-git checkout nagram/dev -- FEATURES.md                    # drop the fork-only doc hunk
-git rebase -i nagram/dev                                  # squash to one clean commit
+git rebase --onto nagram-reference/dev <branch-point> <YYYY-MM-DD>_<slug>-pr   # replay onto pristine proposal target
+git checkout nagram-reference/dev -- FEATURES.md          # drop the fork-only doc hunk
+git rebase -i nagram-reference/dev                        # squash to one clean commit
 git push origin <YYYY-MM-DD>_<slug>-pr
 gh pr create --repo NextAlone/Nagram --base dev --head dazewell:<YYYY-MM-DD>_<slug>-pr
 ```
@@ -1051,17 +1060,17 @@ publish build is unchanged.
 
 ### Phone-triggered sync → build → Telegram (`sync-upstream.yml`)
 Triggerable from the GitHub mobile app ("Run workflow") or a Telegram bot hitting
-the `workflow_dispatch` REST API. There are **no inputs** — the source repo
-(`NextAlone/Nagram`) and branch (`dev`) are hardcoded, there is no branch
-selector and no bypass switch.
+the `workflow_dispatch` REST API. There are **no inputs** — the source repo and
+branch come from reviewed `pins.env` values (currently `DrKLO/Telegram`,
+`master`), with no branch selector and no bypass switch.
 
 It is **snapshot-mediated**, not a direct upstream merge. In outline:
-1. Resolve Nagram/dev's tip; record its commit and tree SHA.
-2. Build one **locally-authored snapshot** commit whose tree is Nagram's tree and
+1. Resolve the pinned source tip; record its commit and tree SHA.
+2. Build one **locally-authored snapshot** commit whose tree is the source tree and
    whose only parent is the current `nbase` (this becomes the new `nbase`). No
    upstream commit, author or message is imported.
 3. 3-way merge that snapshot into `dev`. Because `nbase` is an ancestor of `dev`,
-   the merge base is the previous snapshot, so `dev` gets exactly Nagram's
+   the merge base is the previous snapshot, so `dev` gets exactly the configured source's
    upstream delta. **A conflict aborts** — never auto-resolved.
 4. Run `.github/sync/sync-guard.ps1` from the trusted `dev` checkout. It
    classifies every tree delta and blocks on anything unclassified: a new path, a
@@ -1072,16 +1081,17 @@ It is **snapshot-mediated**, not a direct upstream merge. In outline:
    `staging.yml`. Any failure — topology, guard, token, conflict, atomic-push —
    pushes nothing and Telegram-pings `⚠️ … blocked … Finish on the PC`.
 
-The first steady-state run is **expected to block** (Nagram's tip adds a new
-`BRANDING.md`, an unreviewed path). That block is the guard working, not a bug.
-The anchor only advances by a reviewed edit to `.github/sync/pins.env`, never by
-the workflow itself. Full contract: `.github/sync/README.md`.
+The first steady-state run is expected to take the no-op path while Telegram
+master's tree still equals the pinned nbase tree, even if the tip SHA moved
+without a tree change. A different tree takes the full guarded path. The anchor
+only advances by a reviewed edit to
+`.github/sync/pins.env`, never by the workflow itself. Full contract:
+`.github/sync/README.md`.
 
-**Push token — must have Contents: write + Workflows: write, and there is no fallback.** The
-snapshot carries `.github/workflows/*` (nbase legitimately holds Nagram's
-`debug.yml`/`pr.yml`/`release.yml`), and the built-in `GITHUB_TOKEN` is
-*structurally* forbidden from pushing under `.github/workflows/` — and it would
-also skip the staging trigger. So the workflow **requires** the `SYNC_TOKEN`
+**Push token — the existing Contents: write + Workflows: write scope is retained, and there is no fallback.** The
+scope stays unchanged through the attended transition; under policy
+`none`, normal Telegram snapshots cannot carry workflow paths. Permanently
+recertifying or reducing that scope is separate work. The workflow **requires** the `SYNC_TOKEN`
 secret (a fine-grained PAT with **Contents: write + Workflows: write** on
 `dazewell/Dazegram`) and fails loudly if it is missing, rather than degrading to
 `GITHUB_TOKEN`. If a sync fails on the push with `without 'workflows' permission`,
@@ -1140,8 +1150,9 @@ It is idempotent: if `origin/nbase` already equals the snapshot the fast-forward
 is skipped, if the pins branch or its PR already exists they are reused, so a
 partial failure (fast-forward lands, PR creation trips) is fixed by re-running,
 not hand surgery. Token scope is `SYNC_TOKEN` with **Contents: write + Workflows:
-write** (the snapshot tree carries `.github/workflows/`) **+ Pull requests:
-write** (open the pins PR).
+write** retained but not exercised under policy `none`, which rejects every
+workflow path; it is required again if policy returns to `manifest`. **Pull
+requests: write** remains required to open the pins PR.
 
 ### Telegram → GitHub trigger (optional)
 A bot command (or shortcut) that POSTs to

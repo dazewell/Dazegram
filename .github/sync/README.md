@@ -6,65 +6,54 @@ touching `sync-upstream.yml`, `sync-guard.ps1`, or any pin.
 
 ## Provenance
 
-- **Original base fork:** `risin42/NagramX` — now **archived**. Historically this
-  was the base fork, and the app's About screen retains that attribution. The
-  `source` remote and the old sync flow through it are no longer configured; the
-  full history is preserved in the `base` branch on `origin`.
-- **Current parent:** `NextAlone/Nagram` (`nagram` remote). This is where
-  upstream changes now come from.
+- **Current source parent:** `DrKLO/Telegram`, branch `master`.
+- **Former source parent:** `NextAlone/Nagram`. It remains an optional
+  compatibility/reference source and the intentional target for suitable
+  upstream feature proposals, but routine source sync no longer follows it.
+- **Original base fork:** `risin42/NagramX` — now **archived**. The app's About
+  screen keeps that historical attribution, and the frozen `base` branch on
+  `origin` preserves its history.
 - **This repo:** `dazewell/Dazegram` (renamed from `dazewell/NagramX`; the old
   name redirects but is not relied on).
 
-`dev` was already at Telegram **12.10.0**, the same base as Nagram's tip at the
-time of the parent move — both are 12.10.0 plus different fork layers. So there
-was **no upstream code to import** at the switch: the reconciliation tree is
-byte-identical to `dev`.
+The pin names `NAGRAM_REPO` / `NAGRAM_BRANCH` and the internal remote name
+`nagram` are temporary legacy identifiers. Their configured values point to
+Telegram and are authoritative; neutral renaming is later mechanical work.
 
 ## The anchor
 
-Direct-merging Nagram into `dev` is unusable: the merge base is `b206febda45b…`
-and a dry run reports **503 conflicts**. That does not change, and this mechanism
-does not pretend to change it.
+Source history is never merged directly into `dev`. There is an **anchor** and
+an append-only `nbase` chain. The recorded anchor advances by a reviewed
+[`pins.env`](pins.env) edit after a new snapshot lands:
 
-Instead there is an **anchor** and an `nbase` chain. The recorded anchor advances
-along that chain by a reviewed `pins.env` edit each time a new snapshot lands. The
-live values are in [`pins.env`](pins.env), which is the source of truth — read
-them there, not here, because this file would go stale the moment the next
-snapshot lands:
-
-- **`ANCHOR_SRC`** is the upstream Nagram commit whose tree the current snapshot
-  copies.
+- **`ANCHOR_SRC`** is the configured source commit whose tree the current
+  snapshot copies.
 - **`OLD_NBASE`** is the current `origin/nbase` (tree `OLD_NBASE_TREE`) — a
   **locally-authored** commit whose tree is byte-identical to that anchor's,
   importing no upstream author, message or committer. It is the tip of the chain,
-  and its single parent is the snapshot before it, back to the bootstrap below.
+  and its single parent is the previous snapshot.
 
-The chain was **bootstrapped** at 12.10.0: the first snapshot `c21ee8ac…` (tree
-`5ecc658245…`, byte-identical to the 12.10.0 anchor `e09f49fa8c…`) had parent
-`b206febda45b…`, and a `-s ours` **anchor merge** recorded it as a second parent of
-`dev` while keeping `dev`'s tree byte-identical, so `merge-base(dev, c21ee8ac) =
-c21ee8ac`. Each later snapshot chains onto the one before it.
+The Telegram re-anchor snapshot is
+`e5cc4221decd4c1e12f3a0eef3602ec304372c2b`: its single parent is the old
+Nagram-backed `nbase` `981806a992a1665b03906aa33e212fb9af3d7f97`, and its
+tree `b406defb637ed56d392f1b934507221b8243822c` is byte-identical to
+`DrKLO/Telegram` master
+`62b56a07ca7e30e39f7fd00a6728d6bbd716ca1c` (12.10.1 / 7038). Anchor merge
+`100c3e1142a3a6681e139bfd73a1e7d05e87a249` records that snapshot as the
+second parent of `dev` while keeping the reviewed Dazegram tree from first
+parent `f47b9da651580811a70f82ee13e5d8da97568db2`.
 
-What the anchor buys: a **future snapshot** built on `nbase` (parent = `nbase`,
-tree = a newer Nagram tree) 3-way-merges into `dev` against the 12.10.0 base, so
-`dev` receives exactly Nagram's real upstream delta. The payoff is only through
-`nbase`. The anchor does **not** change the direct `nagram/dev` merge base — that
-stays `b206febda45b…` with its 503 conflicts.
-
-Why `-s ours` is the right strategy here, not a shortcut: `dev` and Nagram's tip
-are both Telegram 12.10.0 plus different fork layers, so there is nothing upstream
-to import. An ordinary 3-way merge of the two conflicts on 503 paths; resolving
-every one of those conflicts lands on a tree byte-identical to `dev` — which was
-verified against the full-reconciliation branch before that branch was deleted.
-`-s ours` records that same result directly. It *asserts* the outcome rather than
-re-deriving it, which is only sound because the two trees carry no upstream delta
-to merge; do not reuse `-s ours` for a sync that actually has a delta.
+`-s ours` is permitted only for that bootstrap re-anchor: it records the
+separately proven parent relationship and deliberately imports no tree content.
+Normal sync never uses it. Every later source delta is carried by a new snapshot
+on `nbase` and an ordinary 3-way merge into `dev`; conflicts or guard failures
+block for reviewed reconciliation.
 
 ## Steady-state sync (`sync-upstream.yml`)
 
 Every routine sync, on `workflow_dispatch` (no inputs):
 
-1. Resolve Nagram/dev's tip and tree.
+1. Resolve the configured source tip and tree (`DrKLO/Telegram` `master`).
 2. **No-op fast path.** Compare the resolved source tree against the live
    `origin/nbase` tree. If they are equal there is nothing to import, so the run
    skips straight to success — **no snapshot commit, no ref pushed** — but only
@@ -73,7 +62,7 @@ Every routine sync, on `workflow_dispatch` (no inputs):
    contains `nbase` as an ancestor. If the trees are equal but any of those is
    stale, it **blocks loudly** and asks for a repin rather than reporting up to date
    (see below). If the trees differ, it falls through to the full path unchanged.
-3. Build a new locally-authored snapshot: tree = Nagram's tree, single parent =
+3. Build a new locally-authored snapshot: tree = the source tree, single parent =
    current `nbase`. This is the new `nbase`.
 4. 3-way merge the snapshot into `dev`. **Conflict aborts** — never auto-resolved.
 5. Run `sync-guard.ps1` from the trusted `dev` checkout.
@@ -108,7 +97,7 @@ git merge refs/sync/snapshot-<srcshort>
 ```
 
 The exact ref name (`refs/sync/snapshot-<srcshort>`, `<srcshort>` being the
-short SHA of the resolved Nagram source commit) is named in both the job
+short SHA of the resolved source commit) is named in both the job
 summary and the Telegram ping, along with the conflicting-file list (with
 per-file conflict-hunk counts) or the guard's classified violation list,
 whichever applies — capped to about ten entries in the Telegram message, with
@@ -117,7 +106,7 @@ the full list always in the job summary.
 `refs/sync/*` is deliberately not a branch. GitHub's `push` event only fires
 for `refs/heads/*` and `refs/tags/*`, so a push to this namespace can never
 trigger `sync-guard-check.yml` (which would hard-fail — it checks out the
-pushed tree looking for `.github/sync/sync-guard.ps1`, and a bare Nagram tree
+pushed tree looking for `.github/sync/sync-guard.ps1`, and a bare source tree
 doesn't have one) or the `pull_request` trigger on `staging.yml` / `ci.yml`. It also
 never shows up in the branch list, the branch picker, or any PR head/base
 dropdown, so it cannot be mistaken for a reviewed branch or merged by habit.
@@ -137,8 +126,10 @@ prune pass; there is nothing to clean up by hand.
 
 ## The no-op fast path
 
-`origin/nbase` currently carries Nagram's tree with nothing outstanding to import,
-so a `sync-upstream` run has no delta to apply. Before this fast path existed the
+Once the attended re-anchor below finishes, `origin/nbase` carries the pinned
+Telegram tree. If the resolved Telegram master tree still equals
+`OLD_NBASE_TREE`, a `sync-upstream` run has no delta to apply even when master
+points to a newer commit with the same tree. Before this fast path existed the
 workflow still minted a snapshot and merged it every run, moving both refs for no
 reason — which is exactly how the redundant commits `58eaec2f` (a snapshot whose
 tree is identical to its parent's) and the `dev` merge `73455ee65e` (`dev`'s tree
@@ -263,19 +254,15 @@ these three repository permissions:
 | Permission | Why |
 | --- | --- |
 | Contents: write | push `dev` (steady-state sync) and `nbase` (both workflows fast-forward or merge onto it). |
-| Workflows: write | `manifest` snapshots carry `.github/workflows/`, and a parent transition may remove them. Any push whose diff touches a workflow file needs this even when the ref itself is `dev`/`nbase`. |
+| Workflows: write | Retained for `manifest` policy, where a snapshot may change `.github/workflows/`. Policy `none` rejects those paths instead. |
 | Pull requests: write | `sync-land.yml` opens the pins PR with `SYNC_TOKEN` rather than `GITHUB_TOKEN`, so `sync-guard-check` actually runs on it (see above) — a PR opened by the default token would arrive with that check missing. |
 
-Missing any one of these fails a run, but not all three are provable up front.
 `sync-upstream.yml`'s "Verify SYNC_TOKEN can push dev" step and `sync-land.yml`'s
 "Verify SYNC_TOKEN can push" step each prove Contents: write with a non-mutating
-dry-run push before any ref moves; `sync-land.yml`'s "Verify SYNC_TOKEN can open pull
-requests" step proves Pull requests: write the same way, before a real PR is opened.
-Workflows: write is not provable by a dry-run — GitHub only enforces it on a real push
-whose diff touches a workflow file — so it stays unverified until the real snapshot
-push later in the run, which fails explicitly (not silently) if the token lacks it.
-Where a permission is proven up front, the failure names it precisely rather than
-surfacing only a generic auth error after a ref has already moved.
+dry-run before any ref moves; `sync-land.yml` similarly proves Pull requests:
+write before opening a PR. Workflows: write is retained through this parent
+transition but is not exercised under policy `none`. Permanently recertifying or
+reducing that scope is separate work.
 
 ## Snapshot workflow policy
 
@@ -286,23 +273,70 @@ surfacing only a generic auth error after a ref has already moved.
 - **`none`** requires an empty manifest and zero `.github/workflows/*` paths in the
   snapshot. Any workflow path blocks.
 
-The parent transition keeps `manifest` while this capability lands. The later
-parent bootstrap never uses `sync-land`: strict land validation continues to
-enforce the current policy with no transition exception. Before the attended
-transaction may move any ref, its reviewed evidence must pre-certify:
+Telegram has no workflow tree, so the steady-state policy is `none` and
+`workflow-manifest.tsv` contains only its exact `path<TAB>blob` header.
+Manifest-policy fixtures remain synthetic and independent of the live parent;
+both policies stay tested.
 
-- source and snapshot tree equality;
-- snapshot parent equality with live `nbase`;
-- `dev` anchor ancestry and anchor-tree identity;
-- the pinned sync author and committer identity;
-- an empty snapshot workflow tree;
-- disabled sync workflows and a frozen `dev`; and
-- a pre-reviewed pins PR carrying the new parent pins, `WORKFLOW_POLICY=none`,
-  and a header-only `workflow-manifest.tsv`.
+## Attended Telegram re-anchor
 
-The operator applies that pre-certified transaction as one coordinated parent
-change. Routine `sync-land` remains limited to descendants of the already-pinned
-parent.
+This is a one-time parent replacement, not a `sync-land` operation. The
+procedure here is the single source of truth for its provenance and ordering;
+branch-flow remains the source for ordinary PR merge mechanics.
+
+**State already established:** `dev` was fast-forwarded to exact anchor merge
+`100c3e1142a3a6681e139bfd73a1e7d05e87a249` during a human-attended
+ruleset transaction, and ruleset `22861936` was restored active afterward.
+The four build/sync workflows (`ci`, `staging`, `sync-upstream`, `sync-land`)
+remain disabled; `sync-guard-check` and `commit-tag` remain active. No app tree
+changed, so no release build is expected.
+
+**Pre-move window:** this pins PR is reviewed while live
+`origin/nbase` is still
+`981806a992a1665b03906aa33e212fb9af3d7f97`. Its candidate pins intentionally
+name `e5cc4221decd4c1e12f3a0eef3602ec304372c2b` and policy `none`.
+The real-candidate fixture exits at
+`.github/workflows/sync-guard-check.yml:155` because live `nbase` does not
+equal candidate `OLD_NBASE`; later manifest/none fixtures do not run. Only
+#368 is expected red in this window.
+
+**Post-move window:** after `nbase` moves, #368 can pass, but other branches
+whose checkouts still pin the old `nbase` go red until they merge updated
+`dev` and rerun their checks. Freeze `dev` across the whole attended
+transaction: no other PR merges from now until #368 lands and each affected
+active branch has incorporated the updated `dev`.
+
+The human-attended remainder is fail-closed:
+
+1. Record the PR's reviewed head SHA and require the live PR head to equal it
+   immediately before moving `nbase`.
+2. Fast-forward only the exact snapshot with
+   `git push origin e5cc4221decd4c1e12f3a0eef3602ec304372c2b:refs/heads/nbase`.
+   This is a plain refspec: never force, and never push `dev` from this step.
+   The credential must have Workflows: write because this specific move deletes
+   `debug.yml`, `pr.yml`, and `release.yml` from `nbase`; do not change its
+   configured scope during the transaction.
+3. Moving `nbase` does **not** emit a pull-request event and does not rerun this
+   PR's check. Rerun the existing pull-request guard run; select the result only
+   when workflow identity, `event=pull_request`, exact reviewed head SHA, and PR
+   association all match. Abort on zero or multiple candidates. If GitHub needs
+   a fresh merge-ref event, reopen the unchanged PR; do not add an empty commit.
+4. Require `Guard self-test, wiring, and real fixture` to succeed on that current
+   PR candidate, require exact context `Every commit carries a` to succeed, and
+   recheck that the live PR head still equals the reviewed SHA.
+5. The human merges the `.github/sync/**` PR using branch-flow's SHA-bound squash
+   command with `--match-head-commit <reviewed-sha>`. Do not use admin/auto mode,
+   override the subject/body, or request branch deletion.
+6. Verify live `pins.env` and `origin/nbase` agree, the current Telegram master
+   tree equals `OLD_NBASE_TREE`, and current Telegram master descends from
+   `ANCHOR_SRC`. Tip SHA equality is not required. Then re-enable the four
+   disabled workflows.
+7. Immediately before dispatching one verification sync, resolve
+   `DrKLO/Telegram` master and its tree again. If the tree still equals
+   `b406defb637ed56d392f1b934507221b8243822c`, expect the `uptodate`
+   no-op path (no snapshot and no ref push), regardless of the tip commit SHA.
+   If the tree differs, expect the full path and treat a guard block as a new
+   source-delta result, not a failed re-anchor.
 
 ## Files
 
@@ -310,7 +344,7 @@ parent.
 | --- | --- |
 | `pins.env` | Scalar invariants — parent and workflow policy, anchor, keystore blob + cert, gitmodules blob, the vendored-native table (boringssl/libyuv/openh264/tlottie_lib/tlottie), layer floors, Ayu schema. Read from PRE, never from a candidate. |
 | `protected-paths.tsv` | The 49 fork-owned paths that must stay byte-identical to `dev` (signing key, Firebase config, branding, README, `.gitmodules`). |
-| `workflow-manifest.tsv` | The approved `.github/workflows` set under `manifest` policy (Nagram's `debug`/`pr`/`release`). Under `none`, keep the file and its header row but remove every data row. |
+| `workflow-manifest.tsv` | The approved `.github/workflows` set under `manifest` policy. Under `none`, keep the file and its header row but remove every data row. |
 | `sync-guard.ps1` | The gate. Self-tests, then classifies every tree delta. Also runs the pre-land snapshot check for `sync-land.yml` (`-LandCheckOnly`). |
 
 ## What the guard checks per sync — and what it cannot
@@ -328,8 +362,8 @@ parent.
   tlottie gitlink keeps its pinned `160000 commit`. The table is data in `pins.env`
   (`VENDORED_NATIVES`), so a `040000 tree` silently turning into a `160000 commit`
   submodule (as the 12.10.1 default merge did to libyuv and openh264) blocks.
-- Layer floors: `tw/nekomimi` ≥ 172 files, `com/radolyn` = 63, `strings_nax` ≥
-  599 entries, `NaConfig` ≥ 262 `addConfig`.
+- Layer floors: `tw/nekomimi` ≥ 172 files, `com/radolyn` = 68, `strings_nax` ≥
+  726 entries, `NaConfig` ≥ 262 `addConfig`.
 - Ayu schema: 4 entities, `VERSION=27`, `MIN_SUPPORTED_VERSION=21`, migrations
   wired to the current version.
 - Signing: keystore + signing-config blobs pinned, **and** the alias resolves to a

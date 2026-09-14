@@ -2,18 +2,18 @@ name: Sync upstream
 
 # Snapshot-mediated nbase sync onto dev.
 #
-# The old mechanism merged the archived risin42 base fork directly. That parent
-# is gone; the live parent is NextAlone/Nagram. We never merge Nagram's history
-# into dev — that would import its commits, authors and messages and re-open the
-# 503-conflict merge-base. Instead:
+# The old mechanism merged the archived risin42 base fork directly. Current
+# source provenance and re-anchor history are owned by .github/sync/README.md.
+# We never merge source history into dev: that would import upstream commits,
+# authors and messages. Instead:
 #
-#   1. take Nagram/dev's TREE at a resolved SHA,
+#   1. take the configured source's TREE at a resolved SHA,
 #   2. wrap it in one locally-authored snapshot commit whose only parent is the
 #      current nbase (this is the new nbase),
 #   3. 3-way merge that snapshot into dev.
 #
 # Because nbase is an ancestor of dev (the anchor commit made it one), the merge
-# base is the previous snapshot and dev gets exactly Nagram's upstream delta and
+# base is the previous snapshot and dev gets exactly the source delta and
 # nothing else. A locally-authored snapshot imports no upstream message/author.
 #
 # Nothing is pushed until sync-guard.ps1 — run from the trusted dev checkout, not
@@ -24,8 +24,8 @@ name: Sync upstream
 # and it pings Telegram so the reconciliation is finished on the PC. There is
 # deliberately no branch input and no bypass input.
 #
-# The first steady-state run is EXPECTED to block (Nagram's tip adds BRANDING.md,
-# an unreviewed new path). That block is the mechanism working, not a failure.
+# The verification run is a no-op while the resolved source tree matches the
+# pinned nbase tree. A different source tree takes the full guarded path.
 
 on:
   workflow_dispatch: {}
@@ -41,7 +41,7 @@ concurrency:
 
 jobs:
   sync:
-    name: Snapshot-merge Nagram onto dev
+    name: Snapshot-merge configured source onto dev
     runs-on: ubuntu-latest
 
     steps:
@@ -144,7 +144,7 @@ jobs:
           fi
           git fetch origin nbase
 
-      - name: Fetch Nagram source (hardcoded repo + branch)
+      - name: Fetch configured source (pinned repo + branch)
         run: |
           set -e
           git remote add nagram "${{ steps.pins.outputs.nagram_repo }}" \
@@ -212,7 +212,7 @@ jobs:
           SHORT=$(git rev-parse --short "${{ steps.refs.outputs.new_src }}")
           NEW_SNAP=$(git commit-tree "${{ steps.refs.outputs.src_tree }}" \
             -p "${{ steps.refs.outputs.old_nbase }}" \
-            -m "snapshot Nagram ${SHORT} as nbase anchor #infra")
+            -m "snapshot source ${SHORT} as nbase anchor #infra")
           echo "new_snap=$NEW_SNAP" >> "$GITHUB_OUTPUT"
           echo "snapshot=$NEW_SNAP"
 
@@ -439,7 +439,7 @@ jobs:
           # refs/sync/* is a non-branch, non-tag namespace: GitHub's `push` event
           # only fires for refs/heads/* and refs/tags/*, so this can never trigger
           # sync-guard-check.yml (which would hard-fail with no
-          # .github/sync/sync-guard.ps1 checked out on Nagram's tree) or
+          # .github/sync/sync-guard.ps1 checked out on the source tree) or
           # staging.yml's or ci.yml's pull_request trigger. It also never appears in
           # the branch list, branch picker, or any PR head/base dropdown.
           # Publish the SNAPSHOT only, never the merge candidate: the candidate is

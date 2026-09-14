@@ -1497,37 +1497,39 @@ is.)
 *(Established 2026-09-10, `#ghost-hold`, ghost-hold-audit branch superseding
 PR #336.)*
 
-## A parent with no workflow tree needs guard capability before `nbase` moves
+## Parent replacement and workflow-free sources are stricter than normal sync
 
-DrKLO/Telegram master at `62b56a07ca7e30e39f7fd00a6728d6bbd716ca1c`
-has no `.github` root entry, while the current Nagram snapshot contract still
-has three required workflow rows (`.github/sync/workflow-manifest.tsv:1-4`).
-Moving `nbase` first would therefore make the always-on real-candidate fixture
-fail across the repository: `manifest` correctly rejects the workflow-free
-snapshot, and the previous unconditional non-empty-manifest startup check also
-prevented an empty manifest from reaching `-SelfTestOnly`, real-candidate, or
-`-LandCheckOnly` assertions.
+The configured source and anchor topology is data, despite the legacy names:
+`NAGRAM_REPO` / `NAGRAM_BRANCH` point to `DrKLO/Telegram` `master`,
+`ANCHOR_SRC` names the Telegram commit, and `OLD_NBASE` names the locally
+authored snapshot carrying its tree (`.github/sync/pins.env:14-31`). Parent
+replacement is not a `sync-land` case: normal land validation requires the
+source to descend from the already-pinned anchor
+(`.github/sync/sync-guard.ps1:464-468`).
 
-Advancing or replacing the parent is not a supported sync-land operation.
-sync-land only ever fast-forwards nbase onto a snapshot of a commit that descends
-from the pinned ANCHOR_SRC in the pinned upstream repo. A -LandCheckOnly pass
-never implies a parent change is permitted; a parent transition is a human,
-attended, pre-certified transaction.
+A source with no workflow tree requires `WORKFLOW_POLICY=none`, an exact
+header-only manifest, and rejection of any workflow path. Treating an empty
+manifest as a relaxed `manifest` policy would remove the guard precisely when
+the source changes shape (`.github/sync/sync-guard.ps1:185-201`;
+`.github/sync/workflow-manifest.tsv:1`).
 
-The transition order is load-bearing. First land the two-policy guard while
-`WORKFLOW_POLICY=manifest` remains pinned (`.github/sync/pins.env:23-30`).
-The later parent bootstrap does not use `sync-land`; its attended transaction is
-pre-certified before any ref moves with source/snapshot tree equality, snapshot
-parent equality with live `nbase`, `dev` anchor ancestry and tree identity, sync
-identity, an empty workflow tree, disabled workflows with `dev` frozen, and a
-pre-reviewed pins PR. Routine land checks keep the strict pinned policy:
-`manifest` requires the exact approved workflow set and `none` permits only an
-empty set (`.github/sync/sync-guard.ps1:185-215,1185-1192`). The always-on
-fixtures prove clean/changed/added/removed manifest land cases and empty/present
-none land cases (`.github/workflows/sync-guard-check.yml:260-324,377-413`).
+The expected-red window is diagnostic, not a bypass: before the human moves
+`nbase`, candidate pins name the new snapshot while live `origin/nbase` still
+names the old one, and the live tree still contains workflows that policy
+`none` forbids. The fixture compares the live ref to candidate `OLD_NBASE`
+before constructing its real candidate
+(`.github/workflows/sync-guard-check.yml:154-157`). The attended procedure and
+its exact recovery ordering live only in `.github/sync/README.md`.
 
-*(Established 2026-09-13, `#infra`; Telegram root tree verified through the
-GitHub tree object for the commit above.)*
+Moving `nbase` starts a separate `push` run but does not rerun or associate a
+new `pull_request` check with an existing PR; the workflow has distinct `push`
+and `pull_request` events (`.github/workflows/sync-guard-check.yml:23-25`).
+Select the post-move PR verdict by event, exact head, workflow identity, and PR
+association rather than treating an unrelated push run as evidence. The exact
+guard context is `Guard self-test, wiring, and real fixture`
+(`.github/workflows/sync-guard-check.yml:32`).
+
+*(Established 2026-09-13, `#infra`; re-verify the cited lines before use.)*
 
 ## `squash_merge_commit_message: COMMIT_MESSAGES` plus an un-overridden squash message is what keeps `#slug` tags alive on `dev` — and no CI check guards either
 
