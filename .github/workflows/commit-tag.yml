@@ -5,6 +5,8 @@ name: Commit tag check
 # a change greppable by one token (git log --grep '#chatlock').
 
 on:
+  push:
+    branches: ['*-parent-anchor-certify']
   pull_request:
     types: [opened, reopened, synchronize]
 
@@ -13,6 +15,7 @@ permissions:
 
 jobs:
   check:
+    # Unquoted #tag is intentional: ruleset 22861936 requires the truncated context.
     name: Every commit carries a #tag
     runs-on: ubuntu-latest
     steps:
@@ -20,10 +23,31 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Verify commit tags
+      - name: Resolve pull request range
+        if: github.event_name == 'pull_request'
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          echo "BASE_SHA=$PR_BASE_SHA" >> "$GITHUB_ENV"
+          echo "HEAD_SHA=$PR_HEAD_SHA" >> "$GITHUB_ENV"
+      - name: Certify parent anchor
+        if: github.event_name == 'push'
+        run: bash .github/scripts/parent-anchor-certify.sh
+      - name: Verify resolved range
+        run: |
+          set -e
+          for sha in "$BASE_SHA" "$HEAD_SHA"; do
+            if ! printf '%s\n' "$sha" | grep -Eq '^[0-9a-f]{40}$'; then
+              echo "::error::commit range contains an invalid SHA"
+              exit 1
+            fi
+            if ! git cat-file -e "$sha^{commit}"; then
+              echo "::error::commit range SHA is not an available commit: $sha"
+              exit 1
+            fi
+          done
+      - name: Verify commit tags
         run: |
           set -e
           git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA" || true

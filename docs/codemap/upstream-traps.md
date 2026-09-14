@@ -1212,7 +1212,7 @@ and the formatting gone, pointing at the wrong half.
 
 ## `commit-tag.yml`'s job name is declared unquoted, so its real status-check context is the truncated string `Every commit carries a`, and the required-checks ruleset pins that exact truncation
 
-`commit-tag.yml` declares its job as `name: Every commit carries a #tag`, unquoted (`.github/workflows/commit-tag.yml:16`). In YAML a space-preceded `#` starts a comment, so everything from `#tag` on is discarded and the job's real name — and therefore the **GitHub status-check context** it reports under — is the truncated literal `Every commit carries a` (22 chars, trailing space trimmed). Verified live with `gh pr view 334 --json statusCheckRollup --jq '.statusCheckRollup[].name'`, which returns exactly `Every commit carries a` (2026-09-10).
+`commit-tag.yml` declares its job as `name: Every commit carries a #tag`, unquoted, with an adjacent warning not to quote it (`.github/workflows/commit-tag.yml:18-19`). In YAML a space-preceded `#` starts a comment, so everything from `#tag` on is discarded and the job's real name — and therefore the **GitHub status-check context** it reports under — is the truncated literal `Every commit carries a` (22 chars, trailing space trimmed). Verified live with `gh pr view 334 --json statusCheckRollup --jq '.statusCheckRollup[].name'`, which returns exactly `Every commit carries a` (2026-09-10).
 
 The no-bypass ruleset that gates merges into `dev` requires **that exact truncated string** as its one status check: ruleset `22861936` (`dev required checks (no bypass)`), `rule=required_status_checks`, context `Every commit carries a`, `strict=false`, `bypass_actors: []` — all confirmed via `gh api repos/dazewell/Dazegram/rulesets/22861936` (2026-09-10). **Quoting the job name to "fix" the YAML would rename the check context to `Every commit carries a #tag`; the required context `Every commit carries a` would then never report, and every PR into `dev` would sit forever waiting on a check that no longer runs — a hard deadlock against the live ruleset.** If the name is ever corrected, the ruleset's required context must be updated **first**, in a separate step, or in lockstep. This is why `commit-tag.yml` is deliberately out of scope for any "tidy the workflow YAML" change.
 
@@ -1221,6 +1221,26 @@ The reason this ruleset is *separate* from the pre-existing `dev` ruleset rather
 One live behaviour to expect around all this: GitHub computes `mergeable` and `mergeStateStatus` **asynchronously**, and they are distinct fields — `mergeable` settles to `MERGEABLE`/`CONFLICTING`, while `CLEAN` is a value of `mergeStateStatus`. After ruleset `22861936` was created, open PRs read `mergeable: UNKNOWN` (and `mergeStateStatus: UNKNOWN`) for minutes before `mergeable` settled to `MERGEABLE` and `mergeStateStatus` to `CLEAN`, and a PR that had already MERGED read `UNKNOWN` indefinitely (2026-09-10). So `mergeable: MERGEABLE` is never a freshness guarantee — it answers "does this textually merge", not "is this green" — and the instant any merge moves `dev`, every other open PR's `mergeStateStatus` drops back to `UNKNOWN` until a background job recomputes it. Gate on `mergeStateStatus == CLEAN` plus a head-pinned green head check, re-read each time by polling `mergeStateStatus` itself, never on a cached or just-observed `mergeable`.
 
 *(Established 2026-09-10, #docs.)*
+
+## Parent-anchor certification must stay job-unconditional and tree-identical to live `dev`
+
+The pull-request and parent-anchor push paths share the same unconditional
+required-check job; only their SHA setup steps are conditional, followed by an
+unconditional resolved-range guard
+(`.github/workflows/commit-tag.yml:16-50`). Moving event selection to a
+job-level `if:` is fail-open: GitHub reports a skipped required-check job as
+success-shaped, vacating the only context required by ruleset `22861936`.
+
+Certification fetches `origin/dev` and `origin/nbase` with explicit live
+refspecs (`.github/scripts/parent-anchor-certify.sh:14-22`) and rejects any
+head tree that differs from live `dev` (`:45-47`), then independently checks
+the merge tree against that same `dev` tree (`:72-78`). Tree identity is the
+safety boundary: the certified merge can change topology but not `dev` content,
+and the push run executes validator bytes identical to live `dev`. Relaxing
+either tree check to carry a reconciliation delta changes the security
+contract, not merely the accepted input shape.
+
+*(Established 2026-09-13, #infra.)*
 
 ## Event-schedule per-account state survives logout unless explicitly torn down, and a BottomSheet picker can straddle the logout
 
