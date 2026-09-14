@@ -1524,27 +1524,33 @@ parent equality with live `nbase`, `dev` anchor ancestry and tree identity, sync
 identity, an empty workflow tree, disabled workflows with `dev` frozen, and a
 pre-reviewed pins PR. That PR is intentionally red before the ref move because
 the real-candidate fixture compares live `origin/nbase` with its candidate
-`OLD_NBASE` (`.github/workflows/sync-guard-check.yml:152-161`). Moving `nbase`
-does not rerun the unchanged PR head; the workflow reacts only to push and
-pull-request events (`.github/workflows/sync-guard-check.yml:23-25`).
+`OLD_NBASE` (`.github/workflows/sync-guard-check.yml:152-161`). Record the
+human-reviewed pins PR head SHA, then immediately before moving `nbase` re-read
+the live PR's `headRefOid`/`head.sha` and require exact equality. Moving
+`nbase` does not rerun the unchanged PR head; the workflow reacts only to push
+and pull-request events (`.github/workflows/sync-guard-check.yml:23-25`).
 Immediately after the ref move, rerun the existing failed workflow run with
 GitHub's **Re-run jobs** action or `gh run rerun <run-id>`. Before merging,
-verify its `headSha` still equals the reviewed pins PR head, its conclusion is
-`success`, and `Every commit carries a` remains successful. Keep the new
-parent pins, `WORKFLOW_POLICY=none`, and the header-only manifest in that
-unchanged head. Do not create an empty trigger commit, and do not merge if the
-head moved or the rerun is unavailable or red. Weakening the fixture to erase
-this window would also erase the stale-pin detector.
+require its `headSha` to equal the reviewed SHA and its conclusion to be
+`success`, then re-read the live PR head and require it still equals that SHA.
+Also require `Every commit carries a` to remain successful. Any mismatch stops
+for review; never merge or move refs on a stale review. Keep the new parent
+pins, `WORKFLOW_POLICY=none`, and the header-only manifest in that unchanged
+head. Do not create an empty trigger commit, and do not merge if the rerun is
+unavailable or red. Weakening the fixture to erase this window would also erase
+the stale-pin detector.
 
 Certification uses three distinct proofs. For snapshot `S`, anchor merge `M`,
 and documentation head `C`, `Every commit carries a` enumerates every
 non-merge commit in `origin/dev..C`: it checks tagged `S` and `C` while
 exempting merge `M` (`.github/workflows/commit-tag.yml:23-39`).
-`sync-guard-check` checks `C`'s final tree for guard health and protected-pin
-identity, then builds its fixture from live `origin/nbase`; it does not inspect
-the `S`/`M` objects (`.github/workflows/sync-guard-check.yml:40-45,137-161`).
-The human transaction record is therefore the authority for snapshot
-parent/tree/identity and anchor parent order/tree/ancestry.
+On a PR, `sync-guard-check` checks GitHub's generated merge-ref candidate tree
+for guard health and protected-pin behavior, then builds its fixture from live
+`origin/nbase` (`.github/workflows/sync-guard-check.yml:35-45,137-161`). It does
+not certify raw `C`'s final tree or inspect the `S`/`M` objects. The human
+transaction's exact-SHA git proofs are therefore the authority for `S`/`M`/`C`
+topology and the final branch tree: snapshot parent/tree/identity and anchor
+parent order/tree/ancestry.
 
 Routine land checks keep the strict pinned policy:
 `manifest` requires the exact approved workflow set and `none` permits only an

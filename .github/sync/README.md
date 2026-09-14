@@ -304,25 +304,31 @@ transaction may move any ref, its reviewed evidence must pre-certify:
 The pins PR's content is reviewed before the transaction, but its
 `sync-guard-check` is expected to be red until the operator fast-forwards
 `origin/nbase` to the new snapshot: the real-candidate fixture compares live
-`origin/nbase` with the candidate's new `OLD_NBASE`. Moving `nbase` does not
-trigger a new run for the unchanged PR head. Immediately after the ref move,
-rerun the existing failed workflow run with GitHub's **Re-run jobs** action or
-`gh run rerun <run-id>`. Before merging, verify that rerun's `headSha` still
-equals the reviewed pins PR head, its conclusion is `success`, and the required
-`Every commit carries a` check remains successful. The new parent pins,
-`WORKFLOW_POLICY=none`, and the header-only manifest must remain together in
-that unchanged head. Do not create an empty commit to trigger CI, and do not
-merge if the head moved or the rerun is unavailable or red. Never weaken the
-fixture to hide this red window.
+`origin/nbase` with the candidate's new `OLD_NBASE`. Record the human-reviewed
+pins PR head SHA. Immediately before moving `nbase`, re-read the live PR's
+`headRefOid` (GraphQL) or `head.sha` (REST) and require exact equality with that
+reviewed SHA. Moving `nbase` does not trigger a new run for the unchanged PR
+head. Immediately after the ref move, rerun the existing failed workflow run
+with GitHub's **Re-run jobs** action or `gh run rerun <run-id>`. Before merging,
+require the rerun's `headSha` to equal the reviewed SHA and its conclusion to be
+`success`; then re-read the live PR head and require it still equals the
+reviewed SHA. Also require `Every commit carries a` to remain successful. Any
+head mismatch stops the transaction for review: never merge or move refs on a
+stale review. The new parent pins, `WORKFLOW_POLICY=none`, and the header-only
+manifest must remain together in that unchanged head. Do not create an empty
+commit to trigger CI, and do not merge if the rerun is unavailable or red.
+Never weaken the fixture to hide this red window.
 
 The certification evidence is deliberately split. For snapshot `S`, anchor
 merge `M`, and documentation head `C`, `Every commit carries a` checks the
 complete `origin/dev..C` range: `S` and `C` are tagged, while `M` is
-merge-exempt. `sync-guard-check` proves guard health and protected-pin identity
-for `C`'s final documentation tree; it does not inspect or certify `S`/`M`
-topology. The attended transaction's recorded human evidence proves the
-snapshot parent, source-tree identity, sync identity, empty workflow tree,
-anchor parent order, anchor tree identity, and ancestry.
+merge-exempt. On a pull request, `sync-guard-check` executes against GitHub's
+generated merge-ref candidate tree and proves guard health and protected-pin
+behavior for that candidate. It does not certify raw `C`'s final tree or
+inspect `S`/`M` topology. The attended transaction's exact-SHA git evidence
+proves `S`/`M`/`C` topology and the final branch tree, including the snapshot
+parent, source-tree identity, sync identity, empty workflow tree, anchor parent
+order, anchor tree identity, and ancestry.
 
 The operator applies that evidence as one coordinated parent change. Routine
 `sync-land` remains limited to descendants of the already-pinned parent.
