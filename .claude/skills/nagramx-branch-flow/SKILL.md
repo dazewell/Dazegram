@@ -350,7 +350,7 @@ Branches (on `origin`):
   builds the dual APK from every push to `dev`. Never rebuilt, never
   force-pushed.
 - **`nbase`** — the upstream anchor. A chain of locally-authored *snapshot*
-  commits, each carrying a Nagram tree and parented on the previous snapshot. It
+  commits, each carrying a configured-source tree and parented on the previous snapshot. It
   is an ancestor of `dev` (the anchor merge made it one), **append-only**, never
   force-pushed, never deleted.
 - **`base`** — the frozen mirror of the risin42-era fork at commit a6c7d0ae, no

@@ -41,7 +41,7 @@ concurrency:
 
 jobs:
   sync:
-    name: Snapshot-merge Nagram onto dev
+    name: Snapshot-merge configured source onto dev
     runs-on: ubuntu-latest
 
     steps:
