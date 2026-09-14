@@ -260,15 +260,6 @@ jobs:
           $manifestLandBranch = 'manifest-land-fixture'
           $manifestLandRef = "refs/remotes/nagram/$manifestLandBranch"
           $manifestLandPins = Join-Path $env:RUNNER_TEMP 'gc-manifest-land-pins.env'
-          $manifestLandPinText = Get-Content .github/sync/pins.env -Raw
-          $manifestLandPinText = $manifestLandPinText -replace '(?m)^ANCHOR_SRC=.*$', "ANCHOR_SRC=$anchor"
-          $manifestLandPinText = $manifestLandPinText -replace '(?m)^OLD_NBASE=.*$', "OLD_NBASE=$oldNbase"
-          $manifestLandPinText = $manifestLandPinText -replace '(?m)^OLD_NBASE_TREE=.*$', "OLD_NBASE_TREE=$anchorTree"
-          $manifestLandPinText = $manifestLandPinText -replace '(?m)^NAGRAM_BRANCH=.*$', "NAGRAM_BRANCH=$manifestLandBranch"
-          $manifestLandPinText = $manifestLandPinText -replace '(?m)^WORKFLOW_POLICY=.*$', 'WORKFLOW_POLICY=manifest'
-          $manifestLandPinText = $manifestLandPinText -replace '(?m)^SYNC_IDENTITY_NAME=.*$', 'SYNC_IDENTITY_NAME=guard-check'
-          $manifestLandPinText = $manifestLandPinText -replace '(?m)^SYNC_IDENTITY_EMAIL=.*$', 'SYNC_IDENTITY_EMAIL=guard-check@dazegram.local'
-          Set-Content -LiteralPath $manifestLandPins -Value $manifestLandPinText -NoNewline -Encoding utf8
 
           # Keep manifest-policy coverage independent of the live parent. Build a
           # synthetic workflow-bearing source/snapshot and derive its manifest from
@@ -282,10 +273,13 @@ jobs:
           git update-index --add --cacheinfo "100644,$fixtureWorkflowBlob,$fixtureWorkflowPath"
           $manifestTree = (git write-tree).Trim()
           Remove-Item Env:\GIT_INDEX_FILE
-          $manifestSrc = (git commit-tree $manifestTree -p $anchor -m "guard-check manifest source #infra").Trim()
-          $manifestSnap = (git commit-tree $manifestTree -p $oldNbase -m "guard-check manifest snapshot #infra").Trim()
           $headTree = (git rev-parse "$head^{tree}").Trim()
-          $manifestDev = (git commit-tree $headTree -p $head -p $manifestSnap -m "guard-check manifest dev #infra").Trim()
+          $manifestAnchor = (git commit-tree $manifestTree -p $oldNbase -m "guard-check manifest anchor #infra").Trim()
+          $manifestOld = (git commit-tree $manifestTree -p $oldNbase -m "guard-check manifest old nbase #infra").Trim()
+          $manifestSrc = (git commit-tree $manifestTree -p $manifestAnchor -m "guard-check manifest source #infra").Trim()
+          $manifestSnap = (git commit-tree $manifestTree -p $manifestOld -m "guard-check manifest snapshot #infra").Trim()
+          $manifestPre = (git commit-tree $headTree -p $head -p $manifestOld -m "guard-check manifest pre #infra").Trim()
+          $manifestDev = (git commit-tree $headTree -p $manifestPre -p $manifestSnap -m "guard-check manifest dev #infra").Trim()
           $manifestLandManifest = Join-Path $env:RUNNER_TEMP 'gc-manifest-land.tsv'
           $manifestRows = @("path`tblob")
           git ls-tree -r $manifestTree -- .github/workflows | ForEach-Object {
@@ -296,9 +290,19 @@ jobs:
           }
           Set-Content -LiteralPath $manifestLandManifest -Value $manifestRows -Encoding utf8
 
+          $manifestLandPinText = Get-Content .github/sync/pins.env -Raw
+          $manifestLandPinText = $manifestLandPinText -replace '(?m)^ANCHOR_SRC=.*$', "ANCHOR_SRC=$manifestAnchor"
+          $manifestLandPinText = $manifestLandPinText -replace '(?m)^OLD_NBASE=.*$', "OLD_NBASE=$manifestOld"
+          $manifestLandPinText = $manifestLandPinText -replace '(?m)^OLD_NBASE_TREE=.*$', "OLD_NBASE_TREE=$manifestTree"
+          $manifestLandPinText = $manifestLandPinText -replace '(?m)^NAGRAM_BRANCH=.*$', "NAGRAM_BRANCH=$manifestLandBranch"
+          $manifestLandPinText = $manifestLandPinText -replace '(?m)^WORKFLOW_POLICY=.*$', 'WORKFLOW_POLICY=manifest'
+          $manifestLandPinText = $manifestLandPinText -replace '(?m)^SYNC_IDENTITY_NAME=.*$', 'SYNC_IDENTITY_NAME=guard-check'
+          $manifestLandPinText = $manifestLandPinText -replace '(?m)^SYNC_IDENTITY_EMAIL=.*$', 'SYNC_IDENTITY_EMAIL=guard-check@dazegram.local'
+          Set-Content -LiteralPath $manifestLandPins -Value $manifestLandPinText -NoNewline -Encoding utf8
+
           function Assert-ManifestLand([string]$name, [string]$source, [string]$snapshot, [string]$candidate, [string]$failurePattern) {
             git update-ref $manifestLandRef $source
-            $out = (& ./.github/sync/sync-guard.ps1 -LandCheckOnly -OldNbase $oldNbase -NewSnapshot $snapshot -NewDev $candidate -PinsFile $manifestLandPins -WorkflowManifest $manifestLandManifest *>&1 | Out-String -Width 8192)
+            $out = (& ./.github/sync/sync-guard.ps1 -LandCheckOnly -OldNbase $manifestOld -NewSnapshot $snapshot -NewDev $candidate -PinsFile $manifestLandPins -WorkflowManifest $manifestLandManifest *>&1 | Out-String -Width 8192)
             $code = $LASTEXITCODE
             Write-Host "--- manifest land $name (exit $code) ---"
             Write-Host $out
@@ -306,6 +310,10 @@ jobs:
             if ($failurePattern -and $code -eq 0) { Write-Host "::error::manifest land $name unexpectedly passed"; exit 1 }
             if ($failurePattern -and $out -notmatch $failurePattern) { Write-Host "::error::manifest land $name failed for the wrong reason"; exit 1 }
           }
+
+          Write-Host '--- running guard on MANIFEST-POLICY candidate (expect exit 0) ---'
+          ./.github/sync/sync-guard.ps1 -PreRef $manifestPre -OldNbase $manifestOld -NewSnapshot $manifestSnap -NewSrc $manifestSrc -NewDev $manifestDev -AnchorOverride $manifestAnchor -PinsFile $manifestLandPins -WorkflowManifest $manifestLandManifest
+          if ($LASTEXITCODE -ne 0) { Write-Host '::error::guard blocked a manifest-policy candidate matching its exact workflow set'; exit 1 }
 
           Assert-ManifestLand 'clean' $manifestSrc $manifestSnap $manifestDev ''
           $debugPath = $fixtureWorkflowPath
@@ -317,9 +325,9 @@ jobs:
           git update-index --cacheinfo "100644,$badBlob,$debugPath"
           $changedTree = (git write-tree).Trim()
           Remove-Item Env:\GIT_INDEX_FILE
-          $changedSrc = (git commit-tree $changedTree -p $anchor -m "guard-check manifest changed source #infra").Trim()
-          $changedSnap = (git commit-tree $changedTree -p $oldNbase -m "guard-check manifest changed snapshot #infra").Trim()
-          $changedDev = (git commit-tree $headTree -p $head -p $changedSnap -m "guard-check manifest changed dev #infra").Trim()
+          $changedSrc = (git commit-tree $changedTree -p $manifestAnchor -m "guard-check manifest changed source #infra").Trim()
+          $changedSnap = (git commit-tree $changedTree -p $manifestOld -m "guard-check manifest changed snapshot #infra").Trim()
+          $changedDev = (git commit-tree $headTree -p $manifestPre -p $changedSnap -m "guard-check manifest changed dev #infra").Trim()
           Assert-ManifestLand 'changed' $changedSrc $changedSnap $changedDev 'workflow blob CHANGED'
 
           $addedIdx = Join-Path $env:RUNNER_TEMP 'gc-manifest-added.idx'
@@ -329,9 +337,9 @@ jobs:
           git update-index --add --cacheinfo "100644,$badBlob,.github/workflows/evil.yml"
           $addedTree = (git write-tree).Trim()
           Remove-Item Env:\GIT_INDEX_FILE
-          $addedSrc = (git commit-tree $addedTree -p $anchor -m "guard-check manifest added source #infra").Trim()
-          $addedSnap = (git commit-tree $addedTree -p $oldNbase -m "guard-check manifest added snapshot #infra").Trim()
-          $addedDev = (git commit-tree $headTree -p $head -p $addedSnap -m "guard-check manifest added dev #infra").Trim()
+          $addedSrc = (git commit-tree $addedTree -p $manifestAnchor -m "guard-check manifest added source #infra").Trim()
+          $addedSnap = (git commit-tree $addedTree -p $manifestOld -m "guard-check manifest added snapshot #infra").Trim()
+          $addedDev = (git commit-tree $headTree -p $manifestPre -p $addedSnap -m "guard-check manifest added dev #infra").Trim()
           Assert-ManifestLand 'added' $addedSrc $addedSnap $addedDev 'workflow ADDED'
 
           $removedIdx = Join-Path $env:RUNNER_TEMP 'gc-manifest-removed.idx'
@@ -342,9 +350,9 @@ jobs:
             ForEach-Object { git update-index --force-remove -- $_ }
           $removedTree = (git write-tree).Trim()
           Remove-Item Env:\GIT_INDEX_FILE
-          $removedSrc = (git commit-tree $removedTree -p $anchor -m "guard-check manifest removed source #infra").Trim()
-          $removedSnap = (git commit-tree $removedTree -p $oldNbase -m "guard-check manifest removed snapshot #infra").Trim()
-          $removedDev = (git commit-tree $headTree -p $head -p $removedSnap -m "guard-check manifest removed dev #infra").Trim()
+          $removedSrc = (git commit-tree $removedTree -p $manifestAnchor -m "guard-check manifest removed source #infra").Trim()
+          $removedSnap = (git commit-tree $removedTree -p $manifestOld -m "guard-check manifest removed snapshot #infra").Trim()
+          $removedDev = (git commit-tree $headTree -p $manifestPre -p $removedSnap -m "guard-check manifest removed dev #infra").Trim()
           Assert-ManifestLand 'removed' $removedSrc $removedSnap $removedDev 'approved workflow MISSING'
 
           # Future Telegram steady state: old nbase and its successor snapshot both
