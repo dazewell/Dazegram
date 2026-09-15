@@ -1935,18 +1935,32 @@ SAVE, REPEAT and REPEAT_AS_COPY check `chatMode != MODE_SCHEDULED`, either
 directly or via the `allowChatActions` local it reads
 (`ChatActivity.java:2136` for `allowChatActions`, `:2166-2177` for the four
 `case` branches that use it or check it inline). EDIT and DELETE correctly
-have no schedule exclusion there, because `allowEdit`/`allowDelete` already
-forward the message's own `scheduled` state through
-`canEditMessage`/`canDeleteMessage` (`:2142`, `:2156`).
+have no schedule exclusion there, but by two different mechanisms, not one:
+`allowEdit` forwards the message's own `scheduled` field through
+`canEditMessage(currentChat)` -> `canEditMessage(..., scheduled)`
+(`ChatActivity.java:2142`, `MessageObject.java:11714-11715`), while
+`allowDelete` instead passes an externally-computed `chatMode == MODE_SCHEDULED`
+straight into `canDeleteMessage(inScheduleMode, chat)`
+(`ChatActivity.java:2156`, `MessageObject.java:11859`) — the message's own
+`scheduled` flag never enters that call.
 
 Despite that, `onDoubleTap`'s own top-level guard carried a second,
-independent `isInScheduleMode()` check (added 2025-01-27 as a reactions-only
-guard, then widened to cover every action in a 2025-01-28 merge-cleanup commit)
-that blocked EDIT and DELETE too, even though `hasDoubleTap` had just armed
-them. The two checks drifted the moment the widened guard stopped being
-reconciled with `hasDoubleTap`'s later per-action gating — the trap is that a
-guard clause can look redundant-but-harmless and actually be silently
-suppressing an already-approved action.
+independent `isInScheduleMode()` check that blocked EDIT and DELETE too, even
+though `hasDoubleTap` had just armed them. This guard is not a 2025 addition —
+it dates back to the original reactions-only double-tap feature
+(`9e740dfd4d`, 2021-12-30), when `onDoubleTap` had no dispatch switch at all
+and reactions were the only action it could take. EDIT, DELETE and TRANSLATE
+were added as dispatch `case`s over the following years without anyone
+revisiting that original top-level guard to reconcile it with their
+finer-grained needs. The 2025-01-28 merge-cleanup commit `aba0a372d8e6` some
+investigations attribute this widening to did no such thing — diffing it
+shows its parent already carried the identical blanket guard on the
+multi-action dispatcher; that commit only added a `!(view instanceof
+ChatMessageCell) ||` check and removed an already-redundant nested
+reactions-only guard one level down. Don't cite it as the drift point. The
+trap is that a guard clause can look redundant-but-harmless and actually be
+silently suppressing an already-approved action, and that its actual age is
+easy to misjudge from a superficially-relevant nearby commit.
 
 The fix (`#doubletap-schedule-fix`) removes the redundant top-level check and
 relies solely on `hasDoubleTap` as the single source of truth for schedule-mode
@@ -1954,12 +1968,14 @@ gating. TRANSLATE/TRANSLATE_LLM are the one exception: `hasDoubleTap` has no
 schedule check on that branch either, but the long-press menu's single-message
 options list never offers translate in schedule mode — its whole non-forward
 options block, translate included, is wrapped in `if (chatMode !=
-MODE_SCHEDULED)` (`ChatActivity.java:51346-51461`, `nkbtn_translate`/
-`nkbtn_translate_llm` added at `:51426`/`:51432`) — so those two `onDoubleTap`
-cases carry their own explicit `isInScheduleMode()` check instead of relying
-on `hasDoubleTap`. (The same menu-building method has a second,
-structurally similar `nkbtn_translate` block around `:51656`, but that one
-sits in the secret-chat branch, not the schedule-mode question this trap is
-about — don't conflate the two if re-reading this area.)
+MODE_SCHEDULED)` opened at `ChatActivity.java:51346` and closed at `:51441`
+(`nkbtn_translate`/`nkbtn_translate_llm` added at `:51426`/`:51432`) — so those
+two `onDoubleTap` cases carry their own explicit `isInScheduleMode()` check
+instead of relying on `hasDoubleTap`. (The same menu-building method has a
+second, structurally similar `nkbtn_translate` block around `:51656`, but that
+one sits in the secret-chat branch, not the schedule-mode question this trap
+is about — don't conflate the two if re-reading this area.)
 
-*(Established 2026-09-14/15, `#doubletap-schedule-fix`.)*
+*(Established 2026-09-14/15, `#doubletap-schedule-fix`; provenance corrected
+2026-09-15 after architect review disproved the original 2025-01-27/28
+widening claim against git history.)*
