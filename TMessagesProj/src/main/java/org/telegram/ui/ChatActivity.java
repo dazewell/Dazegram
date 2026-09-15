@@ -2186,7 +2186,7 @@ public class ChatActivity extends BaseFragment implements
 
         @Override
         public void onDoubleTap(View view, int position, float x, float y) {
-            // NagramX: schedule mode is gated per action in hasDoubleTap (reactions, save, repeat, reply), so edit, delete and translate stay reachable here.
+            // NagramX: schedule mode is gated per action in hasDoubleTap (reactions, save, repeat, reply), so edit and delete stay reachable here; translate is excluded below to match the long-press menu.
             if (getParentActivity() == null || isSecretChat() || isInPreviewMode() || isQuickRepliesOrWelcomeMessagesMode()) {
                 return;
             }
@@ -2245,9 +2245,17 @@ public class ChatActivity extends BaseFragment implements
                 selectedObjectGroup = getValidGroupedMessage(selectedObject = ((ChatMessageCell) view).getMessageObject());
                 switch (doubleTapAction) {
                     case DoubleTap.DOUBLE_TAP_ACTION_TRANSLATE:
+                        // NagramX: unlike edit/delete, the long-press menu never offers translate in schedule mode, so keep double-tap consistent with it here
+                        if (isInScheduleMode()) {
+                            return;
+                        }
                         MessageTransKt.translateMessages(ChatActivity.this);
                         break;
                     case DoubleTap.DOUBLE_TAP_ACTION_TRANSLATE_LLM:
+                        // NagramX: unlike edit/delete, the long-press menu never offers translate in schedule mode, so keep double-tap consistent with it here
+                        if (isInScheduleMode()) {
+                            return;
+                        }
                         if (handleTranslateDuringAutoTrans(null)) {
                             return;
                         }
