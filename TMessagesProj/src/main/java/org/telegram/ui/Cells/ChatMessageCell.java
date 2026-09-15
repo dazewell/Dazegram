@@ -2452,6 +2452,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         if (!(currentMessageObject.type == MessageObject.TYPE_TEXT || currentMessageObject.type == MessageObject.TYPE_EMOJIS || currentMessageObject.type == MessageObject.TYPE_STORY_MENTION) || currentMessageObject.textLayoutBlocks == null || currentMessageObject.textLayoutBlocks.isEmpty() || !(currentMessageObject.messageText instanceof Spannable)) {
             return -1;
         }
+        // NagramX (#double-tap-edit-cursor): mirrors getEventY's compensation -- the text block can be pushed
+        // down by the stars-price, topic-separator, and suggestion-offer headers above it.
+        y -= starsPriceTopPadding + topicSeparatorTopPadding + suggestionOfferTopPadding;
         if (x < textX || y < textY || x > textX + currentMessageObject.textWidth || y > textY + currentMessageObject.textHeight(transitionParams)) {
             return -1;
         }

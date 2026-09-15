@@ -750,9 +750,11 @@ public class ChatActivityEnterView extends FrameLayout implements
     private CharSequence editingOriginalText;
     // NagramX: in-progress edit text to show on the next edit-mode entry instead of the message's original (see setPendingEditText)
     private CharSequence pendingEditText;
+    // NagramX (#double-tap-edit-cursor): armed by ChatActivity's double-tap EDIT branch; only read/cleared
+    // by setEditingMessageObject, and only for the duration of that single call -- never consumed by the
+    // general setFieldText body (see setFieldTextForEdit above).
     private MessageObject pendingEditSelectionTarget;
     private int pendingEditSelectionOffset = -1;
-    private CharSequence pendingEditSelectionText;
 
     private TL_account.TL_businessChatLink editingBusinessLink;
 
@@ -12265,19 +12267,22 @@ public class ChatActivityEnterView extends FrameLayout implements
     public void setPendingEditSelection(MessageObject messageObject, int offset) {
         pendingEditSelectionTarget = messageObject;
         pendingEditSelectionOffset = offset;
-        pendingEditSelectionText = null;
     }
 
     public void clearPendingEditSelection() {
         pendingEditSelectionTarget = null;
         pendingEditSelectionOffset = -1;
-        pendingEditSelectionText = null;
     }
 
     public void setEditingMessageObject(MessageObject messageObject, MessageObject.GroupedMessages groupedMessages, boolean caption) {
-        if (pendingEditSelectionTarget != null && pendingEditSelectionTarget != messageObject) {
-            clearPendingEditSelection();
-        }
+        // NagramX (#double-tap-edit-cursor): consume-and-clear unconditionally, on every entry, whether or
+        // not this call goes on to build a new field text below. This is what stops a stale armed offset
+        // from an earlier double-tap (including one on the message already being edited, which the
+        // editingMessageObject == messageObject check below returns out of before ever building text)
+        // from leaking into a later, unrelated setFieldText call for the same target.
+        final MessageObject armedEditSelectionTarget = pendingEditSelectionTarget;
+        final int armedEditSelectionOffset = pendingEditSelectionOffset;
+        clearPendingEditSelection();
         if (audioToSend != null || videoToSendMessageObject != null || editingMessageObject == messageObject) {
             return;
         }
@@ -12378,6 +12383,12 @@ public class ChatActivityEnterView extends FrameLayout implements
                 currentLimit = accountInstance.getMessagesController().getMaxMessageLength();
                 editingText = editingMessageObject.messageText;
             }
+            // NagramX (#double-tap-edit-cursor): capture the untransformed rendered text BEFORE
+            // applyMessageEntities below can change its length via FormattedDateSpan's relative-date
+            // substitution. setFieldTextForEdit compares this against the actual post-transform field
+            // text at selection time, not against editingText's already-transformed form.
+            final CharSequence pendingEditSelectionRenderedText = (!caption && armedEditSelectionTarget == messageObject && armedEditSelectionOffset >= 0) ? editingText : null;
+            final int pendingEditSelectionOffsetFinal = armedEditSelectionOffset;
             if (editingText != null) {
                 final Paint.FontMetricsInt fontMetricsInt;
                 Paint paint = null;
@@ -12395,9 +12406,6 @@ public class ChatActivityEnterView extends FrameLayout implements
             } else {
                 textToSetWithKeyboard = "";
             }
-            if (pendingEditSelectionTarget == editingMessageObject) {
-                pendingEditSelectionText = textToSetWithKeyboard;
-            }
             if (draftMessage == null && !hadEditingMessage) {
                 draftMessage = messageEditText != null && messageEditText.length() > 0 ? messageEditText.getText() : null;
                 draftSearchWebpage = messageWebPageSearch;
@@ -12406,7 +12414,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (!keyboardVisible) {
                 final CharSequence textToSetWithKeyboardFinal = textToSetWithKeyboard;
                 AndroidUtilities.runOnUIThread(setTextFieldRunnable = () -> {
-                    setFieldText(textToSetWithKeyboardFinal);
+                    setFieldTextForEdit(textToSetWithKeyboardFinal, true, false, pendingEditSelectionRenderedText, pendingEditSelectionOffsetFinal);
                     editingOriginalText = messageEditText == null ? "" : messageEditText.getTextToUse();
                     applyPendingEditText();
                     setTextFieldRunnable = null;
@@ -12416,7 +12424,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     AndroidUtilities.cancelRunOnUIThread(setTextFieldRunnable);
                     setTextFieldRunnable = null;
                 }
-                setFieldText(textToSetWithKeyboard);
+                setFieldTextForEdit(textToSetWithKeyboard, true, false, pendingEditSelectionRenderedText, pendingEditSelectionOffsetFinal);
                 editingOriginalText = messageEditText == null ? "" : messageEditText.getTextToUse();
                 applyPendingEditText();
             }
@@ -12854,42 +12862,46 @@ public class ChatActivityEnterView extends FrameLayout implements
         setFieldText(text, ignoreChange, false);
     }
 
-    private Integer applyPendingEditSelection() {
-        if (pendingEditSelectionTarget == null || editingMessageObject != pendingEditSelectionTarget) {
-            clearPendingEditSelection();
-            return null;
-        }
-        Editable fieldText = messageEditText.getText();
-        if (pendingEditSelectionText != null && !TextUtils.equals(fieldText, pendingEditSelectionText)) {
-            FileLog.e("NAX_SMOKE_double-tap-edit-cursor FORBIDDEN_FALLBACK reason=text-mismatch");
-            clearPendingEditSelection();
-            return null;
-        }
-        if (pendingEditSelectionOffset < 0 || pendingEditSelectionOffset > fieldText.length()) {
-            FileLog.e("NAX_SMOKE_double-tap-edit-cursor FORBIDDEN_FALLBACK reason=out-of-bounds");
-            clearPendingEditSelection();
-            return null;
-        }
-        final int selection = Math.min(pendingEditSelectionOffset, fieldText.length());
-        clearPendingEditSelection();
-        FileLog.e("NAX_SMOKE_double-tap-edit-cursor EXPECT_PATH offset-applied");
-        return selection;
+    public void setFieldText(CharSequence text, boolean ignoreChange, boolean fromDraft) {
+        applyFieldText(text, ignoreChange, fromDraft, null, -1);
     }
 
-    public void setFieldText(CharSequence text, boolean ignoreChange, boolean fromDraft) {
+    // NagramX (#double-tap-edit-cursor): the ONLY setFieldText entry point that can land the caret away
+    // from end-of-text. Called exclusively from the two edit-fill call sites in setEditingMessageObject
+    // (inline + the 200ms-delayed runnable) with a one-shot, locally-scoped request -- never from a stored
+    // instance field consumed by the general setFieldText body, so every other caller (drafts, bot
+    // commands, stickers, business links, mention insertion, applyPendingEditText's in-progress-edit
+    // restore) is guaranteed cursor-at-end with no dependency on edit-selection state at all.
+    private void setFieldTextForEdit(CharSequence text, boolean ignoreChange, boolean fromDraft, CharSequence expectedRenderedText, int offset) {
+        applyFieldText(text, ignoreChange, fromDraft, expectedRenderedText, offset);
+    }
+
+    private void applyFieldText(CharSequence text, boolean ignoreChange, boolean fromDraft, CharSequence expectedRenderedText, int offset) {
         if (messageEditText == null) {
             return;
         }
         ignoreTextChange = ignoreChange;
         messageEditText.setText(text);
         messageEditText.invalidateQuotes(true);
-        boolean hadPendingEditSelection = pendingEditSelectionTarget == editingMessageObject && pendingEditSelectionTarget != null;
-        Integer selection = applyPendingEditSelection();
-        if (selection == null) {
-            selection = messageEditText.getText().length();
+        final boolean isEditSelectionRequest = expectedRenderedText != null;
+        int selection = messageEditText.getText().length();
+        if (isEditSelectionRequest) {
+            // NagramX: expectedRenderedText was captured BEFORE applyMessageEntities ran (see
+            // setEditingMessageObject), so this compares the pre-transform text against the actual
+            // post-transform field content -- it only passes when restoreFormatedDateEntities (or any
+            // other length-changing substitution in applyMessageEntities) left the text unchanged, which
+            // is exactly when the offset (computed against that same pre-transform text) is still valid.
+            if (!TextUtils.equals(expectedRenderedText, messageEditText.getText())) {
+                FileLog.e("NAX_SMOKE_double-tap-edit-cursor FORBIDDEN_FALLBACK reason=text-mismatch");
+            } else if (offset < 0 || offset > messageEditText.getText().length()) {
+                FileLog.e("NAX_SMOKE_double-tap-edit-cursor FORBIDDEN_FALLBACK reason=out-of-bounds");
+            } else {
+                selection = offset;
+                FileLog.e("NAX_SMOKE_double-tap-edit-cursor EXPECT_PATH offset-applied");
+            }
         }
         messageEditText.setSelection(selection);
-        if (hadPendingEditSelection) {
+        if (isEditSelectionRequest) {
             FileLog.e("NAX_SMOKE_double-tap-edit-cursor END");
         }
         ignoreTextChange = false;
