@@ -2186,7 +2186,8 @@ public class ChatActivity extends BaseFragment implements
 
         @Override
         public void onDoubleTap(View view, int position, float x, float y) {
-            if (getParentActivity() == null || isSecretChat() || isInScheduleMode() || isInPreviewMode() || isQuickRepliesOrWelcomeMessagesMode()) {
+            // NagramX: schedule mode is gated per action in hasDoubleTap (reactions, save, repeat, reply), so edit, delete and translate stay reachable here.
+            if (getParentActivity() == null || isSecretChat() || isInPreviewMode() || isQuickRepliesOrWelcomeMessagesMode()) {
                 return;
             }
             MessageObject messageObject;
