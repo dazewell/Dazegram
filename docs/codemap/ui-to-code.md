@@ -128,6 +128,28 @@ into reconcile candidate scanning through the membership prefix
 
 *(Updated 2026-09-07.)*
 
+## Double-tap edit keeps the caret on the tapped word
+
+The double-tap edit flow starts in `RecyclerListView`: the gesture detector fires
+`onDoubleTap(...)` with RecyclerListView-local coordinates, then `ChatActivity`
+translates the tap into the message cell and arms a message-scoped pending offset
+before the `OPTION_EDIT` branch runs (`org/telegram/ui/Components/RecyclerListView.java:1090-1122`,
+`org/telegram/ui/ChatActivity.java:2176-2289`). The edit field consumes that
+pending offset only when the active edit target matches and applies the selection
+inside `setFieldText(...)`, so the later 200ms field-refresh does not clobber it
+(`org/telegram/ui/Components/ChatActivityEnterView.java:12383-12439`,
+`12829-12850`).
+
+The tap offset itself is taken from the text layout hit test in `ChatMessageCell`,
+matching the existing word-boundary behavior and clamping emoji spans before the
+word walk; the selection is still rejected if the rendered text no longer matches
+what the field contains after `restoreFormatedDateEntities(...)` or if the tap lands
+out of the text bounds (`org/telegram/ui/Cells/ChatMessageCell.java:2450-2502`,
+`org/telegram/ui/Cells/TextSelectionHelper.java:252-270`,
+`org/telegram/ui/Components/FormattedDateSpan.java:105-121`).
+
+*(Established 2026-09-14.)*
+
 ## Chat privacy overflow row owns both per-chat privacy controls
 
 The in-chat overflow menu now has one `Chat privacy` row (`nkheaderbtn_chat_privacy`)

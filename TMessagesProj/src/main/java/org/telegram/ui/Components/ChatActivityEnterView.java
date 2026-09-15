@@ -750,6 +750,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     private CharSequence editingOriginalText;
     // NagramX: in-progress edit text to show on the next edit-mode entry instead of the message's original (see setPendingEditText)
     private CharSequence pendingEditText;
+    private MessageObject pendingEditSelectionTarget;
+    private int pendingEditSelectionOffset = -1;
+    private CharSequence pendingEditSelectionText;
 
     private TL_account.TL_businessChatLink editingBusinessLink;
 
@@ -12259,7 +12262,22 @@ public class ChatActivityEnterView extends FrameLayout implements
         return previewMessage;
     }
 
+    public void setPendingEditSelection(MessageObject messageObject, int offset) {
+        pendingEditSelectionTarget = messageObject;
+        pendingEditSelectionOffset = offset;
+        pendingEditSelectionText = null;
+    }
+
+    public void clearPendingEditSelection() {
+        pendingEditSelectionTarget = null;
+        pendingEditSelectionOffset = -1;
+        pendingEditSelectionText = null;
+    }
+
     public void setEditingMessageObject(MessageObject messageObject, MessageObject.GroupedMessages groupedMessages, boolean caption) {
+        if (pendingEditSelectionTarget != null && pendingEditSelectionTarget != messageObject) {
+            clearPendingEditSelection();
+        }
         if (audioToSend != null || videoToSendMessageObject != null || editingMessageObject == messageObject) {
             return;
         }
@@ -12376,6 +12394,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                 textToSetWithKeyboard = applyMessageEntities(entities, editingText, fontMetricsInt);
             } else {
                 textToSetWithKeyboard = "";
+            }
+            if (pendingEditSelectionTarget == editingMessageObject) {
+                pendingEditSelectionText = textToSetWithKeyboard;
             }
             if (draftMessage == null && !hadEditingMessage) {
                 draftMessage = messageEditText != null && messageEditText.length() > 0 ? messageEditText.getText() : null;
@@ -12833,6 +12854,25 @@ public class ChatActivityEnterView extends FrameLayout implements
         setFieldText(text, ignoreChange, false);
     }
 
+    private Integer applyPendingEditSelection() {
+        if (pendingEditSelectionTarget == null || editingMessageObject != pendingEditSelectionTarget) {
+            clearPendingEditSelection();
+            return null;
+        }
+        Editable fieldText = messageEditText.getText();
+        if (pendingEditSelectionText != null && !TextUtils.equals(fieldText, pendingEditSelectionText)) {
+            clearPendingEditSelection();
+            return null;
+        }
+        if (pendingEditSelectionOffset < 0 || pendingEditSelectionOffset > fieldText.length()) {
+            clearPendingEditSelection();
+            return null;
+        }
+        final int selection = Math.min(pendingEditSelectionOffset, fieldText.length());
+        clearPendingEditSelection();
+        return selection;
+    }
+
     public void setFieldText(CharSequence text, boolean ignoreChange, boolean fromDraft) {
         if (messageEditText == null) {
             return;
@@ -12840,7 +12880,11 @@ public class ChatActivityEnterView extends FrameLayout implements
         ignoreTextChange = ignoreChange;
         messageEditText.setText(text);
         messageEditText.invalidateQuotes(true);
-        messageEditText.setSelection(messageEditText.getText().length());
+        Integer selection = applyPendingEditSelection();
+        if (selection == null) {
+            selection = messageEditText.getText().length();
+        }
+        messageEditText.setSelection(selection);
         ignoreTextChange = false;
         if (ignoreChange && delegate != null) {
             delegate.onTextChanged(messageEditText.getText(), true, fromDraft);

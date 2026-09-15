@@ -2268,6 +2268,17 @@ public class ChatActivity extends BaseFragment implements
                         if (messageObject.isTodo()) {
                             processSelectedOption(OPTION_EDIT_TODO);
                         } else {
+                            if (chatActivityEnterView != null && view instanceof ChatMessageCell) {
+                                final ChatMessageCell cell = (ChatMessageCell) view;
+                                final float cellX = x - view.getX();
+                                final float cellY = y - view.getY();
+                                final int offset = cell.getTextBlockOffsetForTap(cellX, cellY);
+                                if (offset >= 0) {
+                                    chatActivityEnterView.setPendingEditSelection(messageObject, offset);
+                                } else {
+                                    chatActivityEnterView.clearPendingEditSelection();
+                                }
+                            }
                             processSelectedOption(OPTION_EDIT);
                         }
                         break;
