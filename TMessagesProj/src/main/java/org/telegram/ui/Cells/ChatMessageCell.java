@@ -2448,6 +2448,70 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         return handled;
     }
 
+    public int getTextBlockOffsetForTap(float x, float y) {
+        if (!(currentMessageObject.type == MessageObject.TYPE_TEXT || currentMessageObject.type == MessageObject.TYPE_EMOJIS || currentMessageObject.type == MessageObject.TYPE_STORY_MENTION) || currentMessageObject.textLayoutBlocks == null || currentMessageObject.textLayoutBlocks.isEmpty() || !(currentMessageObject.messageText instanceof Spannable)) {
+            return -1;
+        }
+        // NagramX (#double-tap-edit-cursor): mirrors getEventY's compensation -- the text block can be pushed
+        // down by the stars-price, topic-separator, and suggestion-offer headers above it.
+        y -= starsPriceTopPadding + topicSeparatorTopPadding + suggestionOfferTopPadding;
+        if (x < textX || y < textY || x > textX + currentMessageObject.textWidth || y > textY + currentMessageObject.textHeight(transitionParams)) {
+            return -1;
+        }
+        int localX = (int) x;
+        int localY = (int) y;
+        localY -= textY;
+        int blockNum = 0;
+        for (int a = 0; a < currentMessageObject.textLayoutBlocks.size(); a++) {
+            if (currentMessageObject.textLayoutBlocks.get(a).textYOffset(currentMessageObject.textLayoutBlocks, transitionParams) > localY) {
+                break;
+            }
+            blockNum = a;
+        }
+        try {
+            MessageObject.TextLayoutBlock block = currentMessageObject.textLayoutBlocks.get(blockNum);
+            localX -= textX - (block.isRtl() ? currentMessageObject.textXOffset : 0);
+            localY -= block.textYOffset(currentMessageObject.textLayoutBlocks, transitionParams);
+
+            final int line = block.textLayout.getLineForVertical(localY);
+            int offset = block.charactersOffset + block.textLayout.getOffsetForHorizontal(line, localX);
+            final float left = block.textLayout.getLineLeft(line);
+            if (left <= localX && left + block.textLayout.getLineWidth(line) >= localX) {
+                CharSequence text = currentMessageObject.messageText;
+                if (text instanceof Spanned) {
+                    Spanned spanned = (Spanned) text;
+                    Emoji.EmojiSpan[] emojiSpans = spanned.getSpans(0, spanned.length(), Emoji.EmojiSpan.class);
+                    for (Emoji.EmojiSpan emojiSpan : emojiSpans) {
+                        final int start = spanned.getSpanStart(emojiSpan);
+                        final int end = spanned.getSpanEnd(emojiSpan);
+                        if (offset >= start && offset <= end) {
+                            offset = start;
+                            break;
+                        }
+                    }
+                    if (offset >= 0 && offset <= spanned.length()) {
+                        AnimatedEmojiSpan[] animatedEmojiSpans = spanned.getSpans(0, spanned.length(), AnimatedEmojiSpan.class);
+                        for (AnimatedEmojiSpan animatedEmojiSpan : animatedEmojiSpans) {
+                            final int start = spanned.getSpanStart(animatedEmojiSpan);
+                            final int end = spanned.getSpanEnd(animatedEmojiSpan);
+                            if (offset >= start && offset <= end) {
+                                offset = start;
+                                break;
+                            }
+                        }
+                    }
+                }
+                while (offset > 0 && TextSelectionHelper.isInterruptedCharacter(text.charAt(offset - 1))) {
+                    offset--;
+                }
+                return offset;
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+        return -1;
+    }
+
     private boolean checkTextBlockMotionEvent(MotionEvent event) {
         if (!(currentMessageObject.type == MessageObject.TYPE_TEXT || currentMessageObject.type == MessageObject.TYPE_EMOJIS || currentMessageObject.type == MessageObject.TYPE_STORY_MENTION) || currentMessageObject.textLayoutBlocks == null || currentMessageObject.textLayoutBlocks.isEmpty() || !(currentMessageObject.messageText instanceof Spannable)) {
             return false;

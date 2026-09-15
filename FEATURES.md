@@ -118,6 +118,10 @@ Light and dark theme each get their own slider (0–50%, default 25%) in the lay
 
 The calendar icon is a one-tap schedule shortcut, instead of long-pressing Send.
 
+### Double-tap edit keeps the caret on the tapped word <!-- #double-tap-edit-cursor -->
+
+When a double-tap edit action opens a sent text message for editing, the cursor lands on the tapped word instead of the end of the field. It only applies to text messages, and falls back to the end if the mapped offset is stale or invalid. Captions and the long-press edit menu keep their current behavior.
+
 ### Floating input controls <!-- #input-satellites -->
 
 The floating send-column layout is gone. The glass-fill helper stays with the close button in reply, edit, forward, and link-preview panels.

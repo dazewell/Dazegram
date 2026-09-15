@@ -128,6 +128,35 @@ into reconcile candidate scanning through the membership prefix
 
 *(Updated 2026-09-07.)*
 
+## Double-tap edit keeps the caret on the tapped word
+
+The double-tap edit flow starts in `RecyclerListView`: the gesture detector fires
+`onDoubleTap(...)` with RecyclerListView-local coordinates, then `ChatActivity`
+translates the tap into the message cell and arms a message-scoped pending offset
+before the `OPTION_EDIT` branch runs (`org/telegram/ui/Components/RecyclerListView.java:1090-1122`,
+`org/telegram/ui/ChatActivity.java:2188-2293`). `setEditingMessageObject` consumes
+and unconditionally clears that armed offset at entry, before any early return, so
+a stale offset can never leak into an unrelated `setFieldText` call
+(`org/telegram/ui/Components/ChatActivityEnterView.java:12267-12283`). Only the two
+edit-fill call sites -- the inline call and the 200ms-delayed field-refresh runnable
+-- route through the edit-only `setFieldTextForEdit(...)` entry point, which carries
+the pre-transform rendered text and offset alongside the field text
+(`org/telegram/ui/Components/ChatActivityEnterView.java:12386-12424`, `:12875-12877`).
+That entry point validates the offset against the field before applying it -- the
+selection is rejected and falls back to end-of-text if the rendered text no longer
+matches what the field contains after `restoreFormatedDateEntities(...)`, or if the
+offset is out of bounds; every other `setFieldText` caller always lands at
+end-of-text with no dependency on this state at all
+(`org/telegram/ui/Components/ChatActivityEnterView.java:12879-12901`).
+
+The tap offset itself is taken from the text layout hit test in `ChatMessageCell`,
+matching the existing word-boundary behavior and clamping emoji spans before the
+word walk (`org/telegram/ui/Cells/ChatMessageCell.java:2451-2510`,
+`org/telegram/ui/Cells/TextSelectionHelper.java:252-270`,
+`org/telegram/ui/Components/FormattedDateSpan.java:105-121`).
+
+*(Established 2026-09-14.)*
+
 ## Chat privacy overflow row owns both per-chat privacy controls
 
 The in-chat overflow menu now has one `Chat privacy` row (`nkheaderbtn_chat_privacy`)
