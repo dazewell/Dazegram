@@ -2274,7 +2274,6 @@ public class ChatActivity extends BaseFragment implements
                         processSelectedOption(nkbtn_repeatascopy);
                         break;
                     case DoubleTap.DOUBLE_TAP_ACTION_EDIT:
-                        FileLog.e("NAX_SMOKE_double-tap-edit-cursor BEGIN build=" + BuildConfig.BUILD_VERSION_STRING + " app=" + BuildConfig.APPLICATION_ID);
                         if (messageObject.isTodo()) {
                             processSelectedOption(OPTION_EDIT_TODO);
                         } else {

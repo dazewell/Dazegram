@@ -12892,18 +12892,14 @@ public class ChatActivityEnterView extends FrameLayout implements
             // other length-changing substitution in applyMessageEntities) left the text unchanged, which
             // is exactly when the offset (computed against that same pre-transform text) is still valid.
             if (!TextUtils.equals(expectedRenderedText, messageEditText.getText())) {
-                FileLog.e("NAX_SMOKE_double-tap-edit-cursor FORBIDDEN_FALLBACK reason=text-mismatch");
+                // fall back to end-of-text
             } else if (offset < 0 || offset > messageEditText.getText().length()) {
-                FileLog.e("NAX_SMOKE_double-tap-edit-cursor FORBIDDEN_FALLBACK reason=out-of-bounds");
+                // fall back to end-of-text
             } else {
                 selection = offset;
-                FileLog.e("NAX_SMOKE_double-tap-edit-cursor EXPECT_PATH offset-applied");
             }
         }
         messageEditText.setSelection(selection);
-        if (isEditSelectionRequest) {
-            FileLog.e("NAX_SMOKE_double-tap-edit-cursor END");
-        }
         ignoreTextChange = false;
         if (ignoreChange && delegate != null) {
             delegate.onTextChanged(messageEditText.getText(), true, fromDraft);
