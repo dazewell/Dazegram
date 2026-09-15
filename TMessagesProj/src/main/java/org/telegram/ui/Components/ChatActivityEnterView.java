@@ -12861,15 +12861,18 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         Editable fieldText = messageEditText.getText();
         if (pendingEditSelectionText != null && !TextUtils.equals(fieldText, pendingEditSelectionText)) {
+            FileLog.e("NAX_SMOKE_double-tap-edit-cursor FORBIDDEN_FALLBACK reason=text-mismatch");
             clearPendingEditSelection();
             return null;
         }
         if (pendingEditSelectionOffset < 0 || pendingEditSelectionOffset > fieldText.length()) {
+            FileLog.e("NAX_SMOKE_double-tap-edit-cursor FORBIDDEN_FALLBACK reason=out-of-bounds");
             clearPendingEditSelection();
             return null;
         }
         final int selection = Math.min(pendingEditSelectionOffset, fieldText.length());
         clearPendingEditSelection();
+        FileLog.e("NAX_SMOKE_double-tap-edit-cursor EXPECT_PATH offset-applied");
         return selection;
     }
 
@@ -12880,11 +12883,15 @@ public class ChatActivityEnterView extends FrameLayout implements
         ignoreTextChange = ignoreChange;
         messageEditText.setText(text);
         messageEditText.invalidateQuotes(true);
+        boolean hadPendingEditSelection = pendingEditSelectionTarget == editingMessageObject && pendingEditSelectionTarget != null;
         Integer selection = applyPendingEditSelection();
         if (selection == null) {
             selection = messageEditText.getText().length();
         }
         messageEditText.setSelection(selection);
+        if (hadPendingEditSelection) {
+            FileLog.e("NAX_SMOKE_double-tap-edit-cursor END");
+        }
         ignoreTextChange = false;
         if (ignoreChange && delegate != null) {
             delegate.onTextChanged(messageEditText.getText(), true, fromDraft);
