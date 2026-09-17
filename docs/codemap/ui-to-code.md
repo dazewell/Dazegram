@@ -37,6 +37,25 @@ never meant to change.
 
 *(Updated 2026-09-08.)*
 
+## The composer Send button has two long-press menus, not one
+
+`ChatActivityEnterView.onSendLongClick` (`ChatActivityEnterView.java:5679`)
+branches on `isStories || (empty text && a pending forward is attached)`
+(`ChatActivityEnterView.java:5684`). When true, it builds a cached
+`ActionBarPopupWindow`/`ActionBarMenuSubItem` popup (`sendPopupLayout`,
+built once and reused across long-presses). Everything else — ordinary typed
+text in an in-app chat, which is what most users hit — falls through to a
+second, completely separate menu built fresh every time from
+`ItemOptions`/`MessageSendPreview` (`ChatActivityEnterView.java:6029`
+onward). The two duplicate the same three rows (schedule, send-when-online,
+silent) with near-identical eligibility conditions computed independently in
+each branch — a change to the ordinary composer's long-press menu only needs
+the `ItemOptions` branch; the `ActionBarPopupWindow` branch only fires for
+Stories or an empty-caption forward-in-progress, both edge cases relative to
+"the composer's Send button" as most features describe it.
+
+*(Updated 2026-09-16.)*
+
 ## Send on event card membership and collapse behavior
 
 The *Send early on event* sheet now uses a local `DisclosureHeaderCell`
