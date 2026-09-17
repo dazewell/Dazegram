@@ -6097,7 +6097,10 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }, resourcesProvider);
             });
 
-            if (!self && dialog_id > 0) {
+            // NagramX: same stale-status predicate the cached long-press menu already gates on --
+            // without it, a bot or a now-online/recently-seen user could still submit the 0x7FFFFFFE
+            // sentinel here, which updateSendButtonArmedState() then immediately disarms.
+            if (isSendWhenOnlineEligible()) {
                 options.addChecked(armedBeforeMenu == RememberedSendAction.SEND_WHEN_ONLINE, R.drawable.msg_online, getString(R.string.SendWhenOnline), () -> {
                     if (armedBeforeMenu == RememberedSendAction.SEND_WHEN_ONLINE) {
                         RememberedSendAction.disarm(currentAccount);
@@ -6153,8 +6156,14 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
 
         if (sendWithoutSoundButtonValue) {
-            options.addChecked(armedBeforeMenu == RememberedSendAction.SILENT, sendWithoutSoundNax ? R.drawable.input_notify_on : R.drawable.input_notify_off, sendWithoutSoundNax ? getString(R.string.SendWithSound) : getString(R.string.SendWithoutSound), () -> {
-                if (armedBeforeMenu == RememberedSendAction.SILENT) {
+            // NagramX: armedBeforeMenu == SILENT only ever means "the last tap actually sent without
+            // sound" (see the arm call below, gated the same way). If the default-silent setting flips
+            // after arming, this row's own direction flips too -- sendWithoutSoundNax true means tapping
+            // it now sends WITH sound, so it is no longer the armed row and must not take the disarm
+            // branch, which used to no-op instead of performing the send its own label promises.
+            final boolean thisRowIsArmedSilent = armedBeforeMenu == RememberedSendAction.SILENT && !sendWithoutSoundNax;
+            options.addChecked(thisRowIsArmedSilent, sendWithoutSoundNax ? R.drawable.input_notify_on : R.drawable.input_notify_off, sendWithoutSoundNax ? getString(R.string.SendWithSound) : getString(R.string.SendWithoutSound), () -> {
+                if (thisRowIsArmedSilent) {
                     RememberedSendAction.disarm(currentAccount);
                     updateSendButtonArmedState();
                     if (messageSendPreview != null) {
