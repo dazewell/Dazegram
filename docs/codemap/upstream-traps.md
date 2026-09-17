@@ -362,14 +362,14 @@ own animation callback back indefinitely, so `posAnimationProgress` never
 reaches `1.0f` and the self-rearm has no guaranteed terminating condition. The
 fragment now owns a wall-clock deadline instead — `glassCompositeRefreshUntilMs`
 — set by `scheduleGlassCompositeRefresh(long durationMs)`
-(`ChatActivity.java:52071`) via `Math.max(existing, now + durationMs)` so an
+(`ChatActivity.java:52104`) via `Math.max(existing, now + durationMs)` so an
 overlapping fade cannot shorten an already-armed refresh window.
 `rotateMotionBackgroundDrawable` arms it for 500ms, the duration the no-arg
 `switchToNextPosition()` overload always runs at
 (`fastAnimation` stays `false`, `MotionBackgroundDrawable.java:773`); every
 current-chat wallpaper pattern-alpha/colour-filter fade animator
-(`ChatActivity.java:47619`, `48046`) arms it for its own 250ms. `refreshGlassComposite`
-(`ChatActivity.java:52096`) self-rearms one 30 fps frame callback at a time only
+(`ChatActivity.java:47635`, `48062`) arms it for its own 250ms. `refreshGlassComposite`
+(`ChatActivity.java:52147`) self-rearms one 30 fps frame callback at a time only
 while `SystemClock.elapsedRealtime()` is still before that deadline, and the
 paused/detached bail clears the deadline outright so nothing keeps rearming
 while the fragment is backgrounded.
