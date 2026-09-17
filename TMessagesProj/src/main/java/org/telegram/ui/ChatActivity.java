@@ -3816,9 +3816,9 @@ public class ChatActivity extends BaseFragment implements
         // NagramX (#remember-send-action): only clears the slot if it still belongs to this chat, and only
         // when the user has "reset when you leave the chat" on -- otherwise it carries over to the next chat.
         // MODE_DEFAULT-only, matching onBecomeFullyVisible's guard below: every scheduled or send-when-online
-        // send auto-opens a same-dialog MODE_SCHEDULED ChatActivity (see didReceiveNewMessages above), and
-        // backing out of that subview destroys it -- without this guard that read as leaving the chat and
-        // disarmed the action the send itself had just armed.
+        // send auto-opens a same-dialog MODE_SCHEDULED ChatActivity (see the didReceiveNewMessages handler
+        // further down), and backing out of that subview destroys it -- without this guard that read as
+        // leaving the chat and disarmed the action the send itself had just armed.
         if (chatMode == MODE_DEFAULT && xyz.nextalone.nagram.NaConfig.INSTANCE.getRememberSendActionResetOnLeave().Bool()) {
             xyz.nextalone.nagram.RememberedSendAction.clearIfDialog(currentAccount, getDialogId());
         }

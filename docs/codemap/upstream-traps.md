@@ -1979,3 +1979,37 @@ is about — don't conflate the two if re-reading this area.)
 *(Established 2026-09-14/15, `#doubletap-schedule-fix`; provenance corrected
 2026-09-15 after architect review disproved the original 2025-01-27/28
 widening claim against git history.)*
+
+## A same-dialog `ChatActivity` subview auto-opens after any scheduled-mode send, and its own `onFragmentDestroy` looks like leaving the chat
+
+Sending any message with a non-zero schedule date -- an explicit Schedule
+pick, or the Send-When-Online sentinel `0x7FFFFFFE` -- makes the
+`didReceiveNewMessages` handler auto-open a **new** `ChatActivity` fragment
+for the **same dialog** in `MODE_SCHEDULED`, via `openScheduledMessages(...)`,
+whenever the current fragment isn't already in that mode
+(`ChatActivity.java:24123-24137` -> `:14481-14513`). The parent `MODE_DEFAULT`
+fragment stays on the back stack underneath it
+(`presentFragment(fragment, false)` at `:14513`).
+
+The trap: that auto-opened subview has the *same* `getDialogId()` as the
+chat the user is actually still in. When the user backs out of it, its own
+`onFragmentDestroy()` fires -- and any fork hook there that clears
+per-dialog state on "leaving the chat" fires too, even though the user never
+left. `#remember-send-action`'s reset-on-leave hook did exactly this: it
+disarmed the just-armed Schedule/SendWhenOnline action because the destroy
+hook lacked the `chatMode == MODE_DEFAULT` guard its sibling
+`onBecomeFullyVisible()` already carried (`:29369-29381` vs. the unguarded
+`:3816-3822` before the fix). Silent send never produces a `MODE_SCHEDULED`
+message, so it never triggered the auto-navigation and was unaffected --
+which is what made the symptom look schedule/send-when-online-specific
+rather than a general destroy-hook gap.
+
+Any `ChatActivity.onFragmentDestroy()` hook that means "the user left this
+chat" must gate on `chatMode == MODE_DEFAULT`, not just fire on every destroy
+-- a same-dialog subview (Scheduled Messages, Pinned, Search, Suggestions)
+being destroyed is not the user leaving. The manual header-menu route into
+Scheduled Messages hits the identical parent-below-child stack shape, so the
+guard covers both the auto-navigated and manually-opened cases with one
+condition.
+
+*(Established 2026-09-19, `#remember-send-action`.)*
