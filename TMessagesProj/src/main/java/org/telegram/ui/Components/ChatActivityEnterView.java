@@ -5657,6 +5657,19 @@ public class ChatActivityEnterView extends FrameLayout implements
         return armed;
     }
 
+    // NagramX (#remember-send-action): the single condition every arm() call site gates on -- master,
+    // context eligibility, and the specific action's own remember-toggle. Without this at the write
+    // site, arming while master is off would be legal and only ever get undone as a side effect of the
+    // next getEligibleArmedSendAction() call (badge draw, popup reopen, etc.), not prevented outright.
+    private boolean canArmRememberedAction(int action) {
+        if (!NaConfig.INSTANCE.getRememberSendActionMaster().Bool()) return false;
+        if (!isRememberSendActionContextEligible()) return false;
+        if (action == RememberedSendAction.SILENT) return NaConfig.INSTANCE.getRememberSendActionSilent().Bool();
+        if (action == RememberedSendAction.SEND_WHEN_ONLINE) return NaConfig.INSTANCE.getRememberSendActionSendWhenOnline().Bool();
+        if (action == RememberedSendAction.SCHEDULE) return NaConfig.INSTANCE.getRememberSendActionSchedule().Bool();
+        return false;
+    }
+
     // Sets the description/invalidate side effects only -- never recomputes eligibility itself, so
     // getEligibleArmedSendAction's own disarm branch can call this without recursing back into itself.
     private void applyArmedSendButtonState(int armed) {
@@ -6213,7 +6226,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     @Override
                     public void didSelectDate(boolean notify, int scheduleDate, int scheduleRepeatPeriod) {
                         sendMessageInternal(notify, scheduleDate, scheduleRepeatPeriod, 0, true);
-                        if (isRememberSendActionContextEligible() && NaConfig.INSTANCE.getRememberSendActionSchedule().Bool()) {
+                        if (canArmRememberedAction(RememberedSendAction.SCHEDULE)) {
                             RememberedSendAction.arm(currentAccount, RememberedSendAction.SCHEDULE, dialog_id);
                             updateSendButtonArmedState();
                         }
@@ -6243,7 +6256,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                         return;
                     }
                     sendMessageInternal(true, 0x7FFFFFFE, 0, 0, true);
-                    if (isRememberSendActionContextEligible() && NaConfig.INSTANCE.getRememberSendActionSendWhenOnline().Bool()) {
+                    if (canArmRememberedAction(RememberedSendAction.SEND_WHEN_ONLINE)) {
                         RememberedSendAction.arm(currentAccount, RememberedSendAction.SEND_WHEN_ONLINE, dialog_id);
                         updateSendButtonArmedState();
                     }
@@ -6311,7 +6324,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 // NagramX: this row's actual behavior flips with the current silent-by-default setting --
                 // sendWithoutSoundNax true means the row just sent WITH sound, not silently, so only arm
                 // the remembered SILENT action on the tap that genuinely sent without sound.
-                if (!sendWithoutSoundNax && isRememberSendActionContextEligible() && NaConfig.INSTANCE.getRememberSendActionSilent().Bool()) {
+                if (!sendWithoutSoundNax && canArmRememberedAction(RememberedSendAction.SILENT)) {
                     RememberedSendAction.arm(currentAccount, RememberedSendAction.SILENT, dialog_id);
                     updateSendButtonArmedState();
                 }
