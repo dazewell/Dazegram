@@ -29527,13 +29527,6 @@ public class ChatActivity extends BaseFragment implements
 
     @Override
     public void onBecomeFullyHidden() {
-        // NagramX (#remember-send-action): onFragmentDestroy's own clearIfDialog only fires when this
-        // fragment instance is actually destroyed, but ordinary navigation to another chat leaves it
-        // sitting in the back stack instead (ActionBarLayout hides it, doesn't destroy it) -- so "reset
-        // when you leave the chat" needs this hook too, or leaving via normal navigation never resets.
-        if (xyz.nextalone.nagram.NaConfig.INSTANCE.getRememberSendActionResetOnLeave().Bool()) {
-            xyz.nextalone.nagram.RememberedSendAction.clearIfDialog(currentAccount, getDialogId());
-        }
         hideTagSelector();
         if (!getMessagesController().premiumFeaturesBlocked() && getMessagesController().transcribeAudioTrialWeeklyNumber <= 0 && !getMessagesController().didPressTranscribeButtonEnough() && !getUserConfig().isPremium() && messages != null) {
             for (int i = 0; i < messages.size(); ++i) {

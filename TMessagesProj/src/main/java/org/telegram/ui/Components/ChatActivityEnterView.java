@@ -5893,11 +5893,15 @@ public class ChatActivityEnterView extends FrameLayout implements
                         if (sendPopupWindow != null && sendPopupWindow.isShowing()) {
                             sendPopupWindow.dismiss();
                         }
-                        sendMessageInternal(sendWithoutSoundNax, 0, 0, 0, true);
-                        // NagramX (#remember-send-action): same wiring gap as the schedule row above. Guard
-                        // on !sendWithoutSoundNax like the ItemOptions row -- sendWithoutSoundNax true means
-                        // this row just requested a send WITH sound, not silently, so it must not arm SILENT.
-                        if (!sendWithoutSoundNax && canArmRememberedAction(RememberedSendAction.SILENT)) {
+                        // NagramX (#remember-send-action): this popup is built once and reused across opens,
+                        // so the outer sendWithoutSoundNax local (captured at build time) goes stale the
+                        // moment SilentMessageByDefault changes afterward -- re-read it here so the arm
+                        // decision below always matches the direction this click actually just sent, even
+                        // though the row's pre-existing label/icon (set at build time) can lag behind until
+                        // the popup is rebuilt. That label staleness is pre-existing and out of scope here.
+                        boolean sendWithoutSoundNaxNow = NaConfig.INSTANCE.getSilentMessageByDefault().Bool();
+                        sendMessageInternal(sendWithoutSoundNaxNow, 0, 0, 0, true);
+                        if (!sendWithoutSoundNaxNow && canArmRememberedAction(RememberedSendAction.SILENT)) {
                             RememberedSendAction.arm(currentAccount, RememberedSendAction.SILENT, dialog_id);
                             updateSendButtonArmedState();
                         }
