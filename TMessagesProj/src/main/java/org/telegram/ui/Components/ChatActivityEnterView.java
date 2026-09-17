@@ -5581,13 +5581,25 @@ public class ChatActivityEnterView extends FrameLayout implements
     // NagramX (#remember-send-action): one predicate per alternate send action, mirroring the
     // conditions the long-press popup already computes inline, so menu visibility, the badge and
     // tap-time repeat all read the same rule instead of three copies drifting apart.
+    //
+    // Shared first: none of the three actions apply outside the main chat composer -- Stories and
+    // the quick-replies/schedule-mode/ephemeral variants of this same view, and the forward-comment
+    // composer (isChat == false) all reuse ChatActivityEnterView but are out of scope for this
+    // feature, so every predicate below gates on this before its own rule.
+    private boolean isRememberSendActionContextEligible() {
+        return isChat && !isStories && parentFragment != null && !isInScheduleMode()
+                && parentFragment.getChatMode() != ChatActivity.MODE_QUICK_REPLIES
+                && !animatorEphemeralMessageVisibility.getValue();
+    }
+
     private boolean isSilentSendEligible() {
+        if (!isRememberSendActionContextEligible()) return false;
         boolean self = parentFragment != null && UserObject.isUserSelf(parentFragment.getCurrentUser());
         return !(self || slowModeTimer > 0 && !isInScheduleMode());
     }
 
     private boolean isScheduleEligible() {
-        return parentFragment != null && parentFragment.canScheduleMessage();
+        return isRememberSendActionContextEligible() && parentFragment.canScheduleMessage();
     }
 
     private boolean isSendWhenOnlineEligible() {
@@ -5600,7 +5612,9 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     // Re-checks the armed action against the chat you're in right now and the remember-toggle for
     // its type; disarms and reports NONE the moment either stops holding, so nothing here ever
-    // hands back a stale action to draw or to send.
+    // hands back a stale action to draw or to send. Also keeps the button's own description/badge in
+    // sync on that disarm -- this can run from onDraw (via drawArmedSendActionBadge), which is the
+    // only place some of these conditions (e.g. slow mode ticking down) get re-checked at all.
     private int getEligibleArmedSendAction() {
         int armed = RememberedSendAction.getArmedAction(currentAccount);
         if (armed == RememberedSendAction.NONE) return RememberedSendAction.NONE;
@@ -5616,14 +5630,16 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         if (!eligible) {
             RememberedSendAction.disarm(currentAccount);
+            applyArmedSendButtonState(RememberedSendAction.NONE);
             return RememberedSendAction.NONE;
         }
         return armed;
     }
 
-    private void updateSendButtonArmedState() {
+    // Sets the description/invalidate side effects only -- never recomputes eligibility itself, so
+    // getEligibleArmedSendAction's own disarm branch can call this without recursing back into itself.
+    private void applyArmedSendButtonState(int armed) {
         if (sendButton == null) return;
-        int armed = getEligibleArmedSendAction();
         int descRes;
         if (armed == RememberedSendAction.SILENT) {
             descRes = R.string.AccDescrSendSilentArmed;
@@ -5636,6 +5652,10 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         sendButton.setContentDescription(getString(descRes));
         sendButton.invalidate();
+    }
+
+    private void updateSendButtonArmedState() {
+        applyArmedSendButtonState(getEligibleArmedSendAction());
     }
 
     private final RectF armedBadgeBoundsRect = new RectF();
