@@ -12974,6 +12974,13 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     @Override
     public void updateColors() {
+        // NagramX (#remember-send-action): the cached badge icons hold a color filter baked in at
+        // creation -- a live theme flip doesn't recreate this view, so drop the cache here and let
+        // drawArmedSendActionBadge rebuild+retint it on the next draw instead of showing the old theme's colors.
+        java.util.Arrays.fill(armedBadgeIcons, null);
+        if (sendButton != null) {
+            sendButton.invalidate();
+        }
         if (messageEditText != null) {
             messageEditText.setHintColor(getThemedColor(Theme.key_chat_messagePanelHint));
         }
