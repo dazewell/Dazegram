@@ -29366,6 +29366,15 @@ public class ChatActivity extends BaseFragment implements
         isFullyVisible = true;
         super.onBecomeFullyVisible();
         clearCoveredNotificationsIfVisible();
+        // NagramX (#remember-send-action): reset on entering a different chat, not only when the chat that
+        // armed the action eventually gets destroyed -- that fragment often stays alive on the back stack
+        // (e.g. a mention/link/profile "Send message" push) long after the action should have cleared.
+        // MODE_DEFAULT-only and comparing dialog ids means a same-dialog subview (scheduled messages, a
+        // topic switch) never trips this.
+        if (chatMode == MODE_DEFAULT && getDialogId() != 0
+                && xyz.nextalone.nagram.NaConfig.INSTANCE.getRememberSendActionResetOnLeave().Bool()) {
+            xyz.nextalone.nagram.RememberedSendAction.clearIfDifferentDialog(currentAccount, getDialogId());
+        }
         // NagramX: #repost-spread. A repost-as-copy batch that finished acking during the forward-picker
         // close animation couldn't show its delete offer yet; now the chat is fully visible, resolve it
         // once. The guard inside re-validates (sources still present/deletable, no open dialog), so a

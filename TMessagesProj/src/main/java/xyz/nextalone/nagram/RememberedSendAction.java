@@ -57,6 +57,21 @@ public final class RememberedSendAction {
         }
     }
 
+    /**
+     * Called from ChatActivity.onBecomeFullyVisible when the "reset when you leave the chat" setting is
+     * on, so navigating into a different chat clears the slot right away. onFragmentDestroy alone is too
+     * late here -- opening another chat from a mention/link/profile "Send message" usually pushes the new
+     * ChatActivity on top of the back stack instead of destroying the one that armed the action, so that
+     * fragment can stay alive (and its slot armed) for a long time. Comparing against the dialog id of the
+     * chat now becoming visible instead catches present, replace and back-stack-pop alike, and leaves a
+     * same-dialog subview (scheduled messages, etc.) alone since its dialog id matches.
+     */
+    public static void clearIfDifferentDialog(int account, long enteringDialogId) {
+        if (getArmedAction(account) != NONE && getArmedDialogId(account) != enteringDialogId) {
+            disarm(account);
+        }
+    }
+
     /** Called from MessagesController.performLogout so a reused account slot doesn't inherit the departed account's armed action. */
     public static void clearAccountState(int account) {
         disarm(account);
