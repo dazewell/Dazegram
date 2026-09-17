@@ -333,13 +333,23 @@ nested or child orchestrator closure states.
 
 ## Self-cleanup for the ordinary one-session change
 
-An implementer session normally is not archived by another session. It still
-must leave a clean state: stop and verify every process it started, delete and
-verify every capture file, leave shared daemons alone, report the ledger in its
-handoff if there is one, and keep any isolated `GRADLE_USER_HOME` path available
-for later coordinator cleanup only if an app-managed archive actually happens.
-Do not stop ambient daemons or delete shared caches just to make the session look
-empty.
+An implementer session normally is **not** archived by another session, so
+anything whose cleanup is deferred to an archive is never cleaned at all. That
+session therefore owns its own teardown: stop and verify every process it
+started, delete and verify every capture file, leave shared daemons and the
+shared `%USERPROFILE%\.gradle` alone, and report the ledger in its handoff.
+
+**If it created an isolated `GRADLE_USER_HOME`, it deletes it itself** once its
+last build is done — applying the same safety checks as the archive path above
+(resolve the literal path, confirm it is the session's own isolated directory
+and not the shared or default home, run the exact-path process-use check, delete
+only that resolved path, never stop a shared daemon to force it through). An
+isolated home runs to several GB, so leaving one behind against an archive that
+will not happen is a real cost, not a tidy-up detail.
+
+If deletion fails or a process still holds it, report the exact path and error
+and leave it for manual recovery. Do not stop ambient daemons or delete shared
+caches just to make the session look empty.
 
 ## Coverage and upkeep
 

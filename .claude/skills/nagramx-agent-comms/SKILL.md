@@ -119,12 +119,17 @@ specified for it, or would turn one change into two.
 
 ### 4. One outstanding instruction per channel; a new one supersedes
 
-Send the next instruction only once the last is **observably complete** — a
-commit, a push, a PR state you can see. A new instruction on the same channel
-**replaces** the previous one; it does not queue behind it. Say so explicitly
-when you supersede.
+Send the next instruction only once the last is **observably complete**. For a
+session doing git work that means an artifact you can see — a commit, a push, a
+PR state. For a **subagent**, which produces none of those, the artifact is its
+returned report: read it before dispatching the next one, and treat a subagent
+that returned nothing usable as failed rather than re-dispatching the same
+objective at it.
 
-*Binds the coordinator.*
+A new instruction on the same channel **replaces** the previous one; it does not
+queue behind it. Say so explicitly when you supersede.
+
+*Binds the coordinator, and anyone running subagents.*
 
 ### 5. Acknowledge authorized work on receipt
 
