@@ -15,6 +15,7 @@ import tw.nekomimi.nekogram.config.cell.ConfigCellHeader;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextCheck;
 import tw.nekomimi.nekogram.settings.BaseNekoXSettingsActivity;
 import xyz.nextalone.nagram.NaConfig;
+import xyz.nextalone.nagram.RememberedSendAction;
 
 /**
  * Chat Settings -> Remembered send action. A master switch at the top turns the whole feature on
@@ -71,8 +72,18 @@ public class RememberedSendActionSettingsActivity extends BaseNekoXSettingsActiv
         // doesn't need the four rows re-inserted or their own state re-taught.
         updateChildRowsEnabled();
         cellGroup.callBackSettingsChanged = (key, newValue) -> {
+            boolean value = newValue instanceof Boolean && (Boolean) newValue;
             if (key.equals(masterRow.getKey())) {
                 updateChildRowsEnabled();
+                // NagramX (#remember-send-action): both long-press menus' own master handlers disarm
+                // the slot immediately on the off transition -- this page must match, or turning the
+                // master off here and back on before returning to the chat leaves the original armed
+                // action untouched and it replays as if nothing happened.
+                if (!value) {
+                    RememberedSendAction.disarm(currentAccount);
+                }
+            } else if (!value) {
+                disarmIfArmed(childActionForKey(key));
             }
         };
 
@@ -85,6 +96,24 @@ public class RememberedSendActionSettingsActivity extends BaseNekoXSettingsActiv
         sendWhenOnlineRow.setEnabled(on);
         scheduleRow.setEnabled(on);
         resetOnLeaveRow.setEnabled(on);
+    }
+
+    // NagramX (#remember-send-action): maps a child toggle's own key to the armed-action constant it
+    // governs, or NONE for a key that isn't one of the three action toggles (reset-on-leave doesn't
+    // arm anything itself).
+    private int childActionForKey(String key) {
+        if (key.equals(silentRow.getKey())) return RememberedSendAction.SILENT;
+        if (key.equals(sendWhenOnlineRow.getKey())) return RememberedSendAction.SEND_WHEN_ONLINE;
+        if (key.equals(scheduleRow.getKey())) return RememberedSendAction.SCHEDULE;
+        return RememberedSendAction.NONE;
+    }
+
+    // NagramX (#remember-send-action): only disarms when the currently armed action is the one whose
+    // toggle just got turned off -- turning off "silent" must not touch a currently armed "schedule".
+    private void disarmIfArmed(int action) {
+        if (action != RememberedSendAction.NONE && RememberedSendAction.getArmedAction(currentAccount) == action) {
+            RememberedSendAction.disarm(currentAccount);
+        }
     }
 
     @Override
