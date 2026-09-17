@@ -1998,8 +1998,10 @@ per-dialog state on "leaving the chat" fires too, even though the user never
 left. `#remember-send-action`'s reset-on-leave hook did exactly this: it
 disarmed the just-armed Schedule/SendWhenOnline action because the destroy
 hook lacked the `chatMode == MODE_DEFAULT` guard its sibling
-`onBecomeFullyVisible()` already carried (`:29369-29381` vs. the unguarded
-`:3816-3822` before the fix). Silent send never produces a `MODE_SCHEDULED`
+`onBecomeFullyVisible()` already carried (`:29369-29381`). The destroy hook
+is now guarded the same way, at `:3822-3824` (commit `272a7a6d0f` added the
+guard to what was previously an unconditional call at that same location).
+Silent send never produces a `MODE_SCHEDULED`
 message, so it never triggered the auto-navigation and was unaffected --
 which is what made the symptom look schedule/send-when-online-specific
 rather than a general destroy-hook gap.
