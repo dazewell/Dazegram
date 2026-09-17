@@ -5812,10 +5812,11 @@ public class ChatActivityEnterView extends FrameLayout implements
                             // NagramX (#remember-send-action): the master config is global, not scoped to
                             // this composer's account -- clear every account's slot, not just this one,
                             // or another account's armed action survives to resurrect once re-enabled.
-                            // This cached menu's own rows have never shown a checked/armed state (see the
-                            // codemap entry -- only the ItemOptions menu is wired that far), so there is
-                            // nothing here to visually clear beyond disarming the shared slot, which
-                            // repaints the Send button badge on its own.
+                            // This cached menu's own rows arm the slot (see their click handlers below) but
+                            // still never show a checked state or disarm on a repeat tap -- only the
+                            // ItemOptions menu is wired that far, a deliberate asymmetry (see the codemap
+                            // entry), not an oversight. So there is nothing here to visually clear beyond
+                            // disarming the shared slot, which repaints the Send button badge on its own.
                             RememberedSendAction.disarmAll();
                             updateSendButtonArmedState();
                         }
@@ -5851,6 +5852,16 @@ public class ChatActivityEnterView extends FrameLayout implements
                             @Override
                             public void didSelectDate(boolean notify, int scheduleDate, int scheduleRepeatPeriod) {
                                 sendMessageInternal(notify, scheduleDate, 0, 0, true);
+                                // NagramX (#remember-send-action): this cached popup's own action rows never
+                                // armed anything -- only the master toggle above was wired in. Now that the
+                                // master toggle lives in this same menu, a pick made here has to keep its
+                                // promise too. Gate at click time, same as the ItemOptions rows: the master/
+                                // config/context checks in canArmRememberedAction can change between build and
+                                // click for a popup that stays cached across opens.
+                                if (canArmRememberedAction(RememberedSendAction.SCHEDULE)) {
+                                    RememberedSendAction.arm(currentAccount, RememberedSendAction.SCHEDULE, dialog_id);
+                                    updateSendButtonArmedState();
+                                }
                             }
                         }, resourcesProvider);
                     });
@@ -5865,6 +5876,11 @@ public class ChatActivityEnterView extends FrameLayout implements
                                 sendPopupWindow.dismiss();
                             }
                             sendMessageInternal(true, 0x7FFFFFFE, 0, 0, true);
+                            // NagramX (#remember-send-action): same wiring gap as the schedule row above.
+                            if (canArmRememberedAction(RememberedSendAction.SEND_WHEN_ONLINE)) {
+                                RememberedSendAction.arm(currentAccount, RememberedSendAction.SEND_WHEN_ONLINE, dialog_id);
+                                updateSendButtonArmedState();
+                            }
                         });
                         sendPopupLayout.addView(sendWhenOnlineButton, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, DEFAULT_HEIGHT));
                     }
@@ -5878,6 +5894,13 @@ public class ChatActivityEnterView extends FrameLayout implements
                             sendPopupWindow.dismiss();
                         }
                         sendMessageInternal(sendWithoutSoundNax, 0, 0, 0, true);
+                        // NagramX (#remember-send-action): same wiring gap as the schedule row above. Guard
+                        // on !sendWithoutSoundNax like the ItemOptions row -- sendWithoutSoundNax true means
+                        // this row just requested a send WITH sound, not silently, so it must not arm SILENT.
+                        if (!sendWithoutSoundNax && canArmRememberedAction(RememberedSendAction.SILENT)) {
+                            RememberedSendAction.arm(currentAccount, RememberedSendAction.SILENT, dialog_id);
+                            updateSendButtonArmedState();
+                        }
                     });
                     sendPopupLayout.addView(sendWithoutSoundButton, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, DEFAULT_HEIGHT));
                 }

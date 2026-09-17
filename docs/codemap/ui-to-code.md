@@ -56,14 +56,46 @@ Stories or an empty-caption forward-in-progress, both edge cases relative to
 
 *(Updated 2026-09-17.)*
 
+### Both branches now arm all three per-action rows, not just `ItemOptions`
+
+`#remember-send-action`'s master switch is inserted into **both** branches of
+`onSendLongClick` (starts `ChatActivityEnterView.java:5759`) — the `ItemOptions`
+menu (built from `ItemOptions.makeOptions` at `:6158`) and the cached
+`sendPopupLayout` popup. The three per-action rows (schedule/send-when-online/
+silent) also now arm in **both** branches: the cached popup's three pre-existing
+buttons (`actionScheduleButton`, `sendWhenOnlineButton`, the plain
+send-without-sound row) originally only called `sendMessageInternal(...)`, with
+no `arm()` call at all — a scope decision from the feature's first round, on
+the reasoning that this popup was an edge case (Stories/empty-caption-forward
+only). That gap became a real defect once the master toggle started appearing
+in this same menu (round above): a user picking Schedule from here reasonably
+expects the pick to be remembered like the other menu, and it silently wasn't.
+Fixed by adding the identical `canArmRememberedAction(action)` +
+`RememberedSendAction.arm(...)` + `updateSendButtonArmedState()` sequence to
+each of the three cached-popup handlers, gated exactly like their `ItemOptions`
+counterparts (silent still guards on `!sendWithoutSoundNax` — the row can mean
+"send with sound").
+
+The two branches remain otherwise **not equivalent**: the cached popup's
+schedule handler still drops `scheduleRepeatPeriod` (passes `0`, pre-existing,
+out of scope) where `ItemOptions`'s passes it through, and the cached rows still
+have **no checked state and no tap-to-disarm** — arming from there is possible,
+but clearing an armed slot from that menu is only ever the master switch's
+`disarmAll()`, never a re-tap on the same row. That's a deliberate, stated
+asymmetry (adding checked state to a popup built once and reused across opens
+is real scope growth), not an oversight — see the comment at the master row's
+click handler.
+
+*(Updated 2026-09-19.)*
+
 ### The Remember master toggle is the one thing deliberately wired into both
 
 `#remember-send-action`'s master switch is inserted into **both** branches of
 `onSendLongClick` (starts `ChatActivityEnterView.java:5759`) — the `ItemOptions`
 menu (built from `ItemOptions.makeOptions` at `:6158`) and the cached
 `sendPopupLayout` popup — while the three per-action rows
-(schedule/send-when-online/silent) stay `ItemOptions`-only, per the section
-above. The two branches do **not** share one master-row implementation: the
+(schedule/send-when-online/silent) now arm in both branches too, per the
+section above. The two branches do **not** share one master-row implementation: the
 `ItemOptions` branch calls `createRememberMasterRow` (`:19299`), a helper built
 around `ItemOptions`/`MessageSendPreview` dismissal; the cached popup builds its
 own row directly off `createPopupSwitchRow` (`:5805`) and wires its own
