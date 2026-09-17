@@ -6145,7 +6145,10 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
                 sentFromPreview = System.currentTimeMillis();
                 final boolean shownDialog = sendMessageInternal(sendWithoutSoundNax, 0, 0, 0, true);
-                if (NaConfig.INSTANCE.getRememberSendActionSilent().Bool()) {
+                // NagramX: this row's actual behavior flips with the current silent-by-default setting --
+                // sendWithoutSoundNax true means the row just sent WITH sound, not silently, so only arm
+                // the remembered SILENT action on the tap that genuinely sent without sound.
+                if (!sendWithoutSoundNax && NaConfig.INSTANCE.getRememberSendActionSilent().Bool()) {
                     RememberedSendAction.arm(currentAccount, RememberedSendAction.SILENT, dialog_id);
                     updateSendButtonArmedState();
                 }
@@ -9216,7 +9219,10 @@ public class ChatActivityEnterView extends FrameLayout implements
                 if (armed == RememberedSendAction.SEND_WHEN_ONLINE) {
                     return sendMessageInternal(true, 0x7FFFFFFE, 0, 0, true);
                 } else if (armed == RememberedSendAction.SILENT) {
-                    return sendMessageInternal(NaConfig.INSTANCE.getSilentMessageByDefault().Bool(), 0, 0, 0, true);
+                    // NagramX: SILENT always means an actual silent send -- fixed notify=false, not a
+                    // fresh read of the current default, so the armed action can't drift into an audible
+                    // send if the user flips the default between arming it and repeating it.
+                    return sendMessageInternal(false, 0, 0, 0, true);
                 } else if (armed == RememberedSendAction.SCHEDULE) {
                     AlertsCreator.createScheduleDatePickerDialog(parentActivity, parentFragment.getDialogId(), new AlertsCreator.ScheduleDatePickerDelegate() {
                         @Override
