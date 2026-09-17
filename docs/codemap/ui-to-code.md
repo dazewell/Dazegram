@@ -41,12 +41,12 @@ never meant to change.
 
 `ChatActivityEnterView.onSendLongClick` (`ChatActivityEnterView.java:5740`)
 branches on `isStories || (empty text && a pending forward is attached)`
-(`ChatActivityEnterView.java:5745`). When true, it builds a cached
+(`ChatActivityEnterView.java:5752`). When true, it builds a cached
 `ActionBarPopupWindow`/`ActionBarMenuSubItem` popup (`sendPopupLayout`,
 built once and reused across long-presses). Everything else — ordinary typed
 text in an in-app chat, which is what most users hit — falls through to a
 second, completely separate menu built fresh every time from
-`ItemOptions`/`MessageSendPreview` (`ChatActivityEnterView.java:6136`
+`ItemOptions`/`MessageSendPreview` (`ChatActivityEnterView.java:6143`
 onward). The two duplicate the same three rows (schedule, send-when-online,
 silent) with near-identical eligibility conditions computed independently in
 each branch — a change to the ordinary composer's long-press menu only needs
@@ -54,17 +54,26 @@ the `ItemOptions` branch; the `ActionBarPopupWindow` branch only fires for
 Stories or an empty-caption forward-in-progress, both edge cases relative to
 "the composer's Send button" as most features describe it.
 
-*(Updated 2026-09-16.)*
+*(Updated 2026-09-17.)*
 
 ### The Remember master toggle is the one thing deliberately wired into both
 
-`#remember-send-action`'s master switch (`createRememberMasterRow`,
-`ChatActivityEnterView.java:19273`, shared code) is inserted into **both**
-branches above — the `ItemOptions` menu and the cached `sendPopupLayout`
-popup — while the three per-action rows (schedule/send-when-online/silent)
-stay `ItemOptions`-only, per the section above. This isn't an oversight of
-the split: the cached popup's own non-Stories case (empty-caption
-forward-in-progress) is `isChat == true`, so it's in scope for
+`#remember-send-action`'s master switch is inserted into **both** branches of
+`onSendLongClick` (starts `ChatActivityEnterView.java:5740`) — the `ItemOptions`
+menu (built from `ItemOptions.makeOptions` at `:6143`) and the cached
+`sendPopupLayout` popup — while the three per-action rows
+(schedule/send-when-online/silent) stay `ItemOptions`-only, per the section
+above. The two branches do **not** share one master-row implementation: the
+`ItemOptions` branch calls `createRememberMasterRow` (`:19280`), a helper built
+around `ItemOptions`/`MessageSendPreview` dismissal; the cached popup builds its
+own row directly off `createPopupSwitchRow` (`:5793`) and wires its own
+click/long-click handlers inline, because dismissing that popup is a plain
+`sendPopupWindow.dismiss()`, not the other branch's `messageSendPreview`
+teardown. Changing one branch's master-row behavior does not touch the other's
+code path.
+
+This isn't an oversight of the split: the cached popup's own non-Stories case
+(empty-caption forward-in-progress) is `isChat == true`, so it's in scope for
 `isRememberSendActionContextEligible()` the same as the `ItemOptions` case,
 and the armed slot/badge/repeat are process-wide state, not
 per-menu — a user could arm silent send from the `ItemOptions` menu in one
@@ -77,6 +86,7 @@ whether the row is added in both branches, with no separate Stories check
 needed.
 
 *(Updated 2026-09-17.)*
+
 
 ## Send on event card membership and collapse behavior
 
