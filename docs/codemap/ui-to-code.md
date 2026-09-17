@@ -39,14 +39,14 @@ never meant to change.
 
 ## The composer Send button has two long-press menus, not one
 
-`ChatActivityEnterView.onSendLongClick` (`ChatActivityEnterView.java:5679`)
+`ChatActivityEnterView.onSendLongClick` (`ChatActivityEnterView.java:5714`)
 branches on `isStories || (empty text && a pending forward is attached)`
-(`ChatActivityEnterView.java:5684`). When true, it builds a cached
+(`ChatActivityEnterView.java:5719`). When true, it builds a cached
 `ActionBarPopupWindow`/`ActionBarMenuSubItem` popup (`sendPopupLayout`,
 built once and reused across long-presses). Everything else — ordinary typed
 text in an in-app chat, which is what most users hit — falls through to a
 second, completely separate menu built fresh every time from
-`ItemOptions`/`MessageSendPreview` (`ChatActivityEnterView.java:6029`
+`ItemOptions`/`MessageSendPreview` (`ChatActivityEnterView.java:6064`
 onward). The two duplicate the same three rows (schedule, send-when-online,
 silent) with near-identical eligibility conditions computed independently in
 each branch — a change to the ordinary composer's long-press menu only needs
