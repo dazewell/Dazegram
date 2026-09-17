@@ -56,4 +56,9 @@ public final class RememberedSendAction {
             disarm(account);
         }
     }
+
+    /** Called from MessagesController.performLogout so a reused account slot doesn't inherit the departed account's armed action. */
+    public static void clearAccountState(int account) {
+        disarm(account);
+    }
 }
