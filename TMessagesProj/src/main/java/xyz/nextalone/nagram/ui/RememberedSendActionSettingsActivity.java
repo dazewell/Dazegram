@@ -10,6 +10,7 @@ import org.telegram.ui.Components.RecyclerListView;
 
 import tw.nekomimi.nekogram.config.CellGroup;
 import tw.nekomimi.nekogram.config.cell.AbstractConfigCell;
+import tw.nekomimi.nekogram.config.cell.ConfigCellDivider;
 import tw.nekomimi.nekogram.config.cell.ConfigCellHeader;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextCheck;
 import tw.nekomimi.nekogram.settings.BaseNekoXSettingsActivity;
@@ -44,6 +45,9 @@ public class RememberedSendActionSettingsActivity extends BaseNekoXSettingsActiv
     private final AbstractConfigCell scheduleRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getRememberSendActionSchedule(), null, getString(R.string.RememberSendActionSchedule)));
     private final AbstractConfigCell headerReset = cellGroup.appendCell(new ConfigCellHeader(""));
     private final AbstractConfigCell resetOnLeaveRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getRememberSendActionResetOnLeave(), getString(R.string.RememberSendActionResetOnLeaveNotice), getString(R.string.RememberSendActionResetOnLeave)));
+    // NagramX: CellGroup.needSetDivider() always peeks one row past the current one, so the last row
+    // in the group needs a divider appended after it or binding indexes off the end of the list.
+    private final AbstractConfigCell dividerReset = cellGroup.appendCell(new ConfigCellDivider());
 
     public RememberedSendActionSettingsActivity() {
         addRowsToMap(cellGroup);
