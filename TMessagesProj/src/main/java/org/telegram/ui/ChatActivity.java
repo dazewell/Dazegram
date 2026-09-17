@@ -47616,8 +47616,14 @@ public class ChatActivity extends BaseFragment implements
                         valueAnimator.setDuration(200);
                         patternAlphaAnimator.playTogether(valueAnimator);
                     }
-                    if (backgroundDrawable instanceof MotionBackgroundDrawable) {
-                        final MotionBackgroundDrawable currentBackgroundDrawable = (MotionBackgroundDrawable) backgroundDrawable;
+                    Drawable currentWallpaperDrawable = backgroundDrawable;
+                    if (currentWallpaperDrawable instanceof ChatBackgroundDrawable) {
+                        // NagramX: per-chat wallpapers are wrapped in ChatBackgroundDrawable, so unwrap
+                        // to reach the nested MotionBackgroundDrawable instead of skipping this fade.
+                        currentWallpaperDrawable = ((ChatBackgroundDrawable) currentWallpaperDrawable).getDrawable(false);
+                    }
+                    if (currentWallpaperDrawable instanceof MotionBackgroundDrawable) {
+                        final MotionBackgroundDrawable currentBackgroundDrawable = (MotionBackgroundDrawable) currentWallpaperDrawable;
                         currentBackgroundDrawable.setPatternAlpha(0f);
                         ValueAnimator valueAnimator = ValueAnimator.ofFloat(0f, 1f);
                         valueAnimator.addUpdateListener(animator -> currentBackgroundDrawable.setPatternAlpha((float) animator.getAnimatedValue()));
