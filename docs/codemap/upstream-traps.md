@@ -331,12 +331,52 @@ its own animation runnable every 16ms while active (`:372`).
 That makes MessageDrawable a second app-wide producer of
 `invalidateMotionBackground` events that are unrelated to the current chat
 wallpaper motion. ChatActivity therefore has to ignore producer-mismatch events
-for proxy recomposition (`ChatActivity.java:23831`) so those bubble-animation
+for proxy recomposition (`ChatActivity.java:23938`) so those bubble-animation
 ticks do not drive unnecessary wallpaper composite refreshes. ThemePreview's
 observer branch remains arg-agnostic (`ThemePreviewActivity.java:3599`), so the
 payload is safe for existing preview behavior.
 
-*(Established 2026-09-04.)*
+NagramX previously also set `postInvalidateParent` on the *wallpaper's own*
+`MotionBackgroundDrawable` (once from `ChatActivity.onUpdateBackgroundDrawable`,
+to keep the glass composite proxy following the wallpaper's pattern
+animation). That turned out to be the wrong hook: `postInvalidateParent` is a
+single field on a drawable that can be shared app-wide, so it can't be scoped
+to "only when blur/glass is enabled" — and the composite it feeds is consumed
+by the composer glass proxy even when blur is off, so gating on blur state
+would have left the proxy stale whenever blur was disabled while glass wasn't.
+Turning the flag on also meant every animating frame regenerated the gradient
+bitmap and posted this same global notification (`invalidateParent`,
+`Components/MotionBackgroundDrawable.java:360-363`), i.e. per-frame work and a
+cross-account notification for a purely visual proxy refresh. The fix removes
+that hook entirely; `ChatActivity.rotateMotionBackgroundDrawable`
+(`ChatActivity.java:27565`) now arms the glass-composite refresh directly
+after a genuine `switchToNextPosition()` call (detected by
+`posAnimationProgress` dropping from `1.0f` to below it, since a no-op call
+leaves it unchanged — `MotionBackgroundDrawable.java:273-274`).
+
+An earlier version of that replacement self-rearmed
+`refreshGlassComposite` while `posAnimationProgress < 1.0f`, i.e. progress-based.
+That was also wrong: lite mode, a backgrounded app, or the composite suppression
+`refreshGlassComposite` itself applies while paused can all hold the wallpaper's
+own animation callback back indefinitely, so `posAnimationProgress` never
+reaches `1.0f` and the self-rearm has no guaranteed terminating condition. The
+fragment now owns a wall-clock deadline instead — `glassCompositeRefreshUntilMs`
+— set by `scheduleGlassCompositeRefresh(long durationMs)`
+(`ChatActivity.java:52071`) via `Math.max(existing, now + durationMs)` so an
+overlapping fade cannot shorten an already-armed refresh window.
+`rotateMotionBackgroundDrawable` arms it for 500ms, the duration the no-arg
+`switchToNextPosition()` overload always runs at
+(`fastAnimation` stays `false`, `MotionBackgroundDrawable.java:773`); every
+current-chat wallpaper pattern-alpha/colour-filter fade animator
+(`ChatActivity.java:47619`, `48046`) arms it for its own 250ms. `refreshGlassComposite`
+(`ChatActivity.java:52096`) self-rearms one 30 fps frame callback at a time only
+while `SystemClock.elapsedRealtime()` is still before that deadline, and the
+paused/detached bail clears the deadline outright so nothing keeps rearming
+while the fragment is backgrounded.
+
+*(Established 2026-09-04; extended 2026-09-17 with the postInvalidateParent
+removal and its replacement mechanism; corrected 2026-09-17 to the wall-clock
+deadline after the progress-based self-rearm was found non-terminating.)*
 
 ## Forwarding aliases the source message's media object
 

@@ -19028,20 +19028,12 @@ public class ChatActivity extends BaseFragment implements
                 ((MotionBackgroundDrawable) drawable).setFastRenderAllowed();
             }
 
-            // NagramX: drive the glass-composite refresh (see refreshGlassComposite) from the drawable
-            // that actually animates. A per-chat wallpaper arrives wrapped in a ChatBackgroundDrawable,
-            // which the instanceof above misses, so unwrap it. Setting postInvalidateParent makes the
-            // wallpaper self-post invalidateMotionBackground on every animating frame, after the gradient
-            // is regenerated. Accepted side effects: the flag is sticky on a drawable shared app-wide
-            // (ThemePreviewActivity's handler sees extra posts during rotations) and the animation becomes
-            // self-driving via the 16ms re-post; both are behaviours upstream already runs for animated
-            // bubble gradients, and neither changes speed (progress is dt-proportional; the nested
-            // updateAnimation() returns at dt<=1, and it stops re-posting once posAnimationProgress hits 1).
-            Drawable wallpaperMotion = drawable instanceof ChatBackgroundDrawable
-                    ? ((ChatBackgroundDrawable) drawable).getDrawable(false) : drawable;
-            if (wallpaperMotion instanceof MotionBackgroundDrawable) {
-                ((MotionBackgroundDrawable) wallpaperMotion).setPostInvalidateParent(true);
-            }
+            // NagramX: the wallpaper used to get setPostInvalidateParent(true) here to drive the glass
+            // composite refresh (see refreshGlassComposite). That flag is sticky and shared app-wide
+            // (ThemePreviewActivity's handler, MessageDrawable's static bubble producer) and the composite
+            // it feeds is consumed even when blur/glass is disabled, so it can't be gated per feature —
+            // removing it here restores the upstream cached crossfade and its normal redraw cadence.
+            // rotateMotionBackgroundDrawable() now drives the composite refresh directly instead.
 
             final BlurredBackgroundSource source = wallpaperBitmapProvider.updateSourceFromBackgroundViewDrawable(drawable);
             final int statusBarColor = wallpaperBitmapProvider.getStatusBarColor(source);
@@ -27582,7 +27574,20 @@ public class ChatActivity extends BaseFragment implements
             wallpaper = ((ChatBackgroundDrawable) wallpaper).getDrawable(true);
         }
         if (wallpaper instanceof MotionBackgroundDrawable) {
-            ((MotionBackgroundDrawable) wallpaper).switchToNextPosition();
+            // NagramX: the wallpaper no longer self-posts invalidateMotionBackground (see
+            // onUpdateBackgroundDrawable), so drive the glass composite refresh from here instead.
+            // switchToNextPosition() is a no-op (see MotionBackgroundDrawable.java:274) whenever a switch
+            // is already in flight or lite mode disabled the background, and on a no-op it leaves
+            // posAnimationProgress exactly as it found it. So a genuine new cycle is only the case where
+            // progress was at 1.0f (previous cycle settled) and dropped below 1.0f after the call. The
+            // no-arg overload always runs fastAnimation=false, i.e. the 500ms branch
+            // (MotionBackgroundDrawable.java:773), so arm the coalesced refresh's deadline for that long.
+            MotionBackgroundDrawable motionWallpaper = (MotionBackgroundDrawable) wallpaper;
+            boolean wasSettled = motionWallpaper.getPosAnimationProgress() >= 1.0f;
+            motionWallpaper.switchToNextPosition();
+            if (wasSettled && motionWallpaper.getPosAnimationProgress() < 1.0f) {
+                scheduleGlassCompositeRefresh(500);
+            }
         }
         Drawable drawable = getThemedDrawable(Theme.key_drawable_msgOut);
         if (drawable instanceof MessageDrawable) {
@@ -47609,6 +47614,9 @@ public class ChatActivity extends BaseFragment implements
                         });
                         valueAnimator.setDuration(250);
                         patternAlphaAnimator.playTogether(valueAnimator);
+                        // NagramX: setPatternAlpha has no generation id the glass composite proxy can diff
+                        // against, so arm the coalesced refresh for this fade's own duration.
+                        scheduleGlassCompositeRefresh(250);
                     }
                     patternAlphaAnimator.start();
                 }
@@ -48028,6 +48036,14 @@ public class ChatActivity extends BaseFragment implements
                         });
                         patternIntensityAnimator.setDuration(250);
                         patternIntensityAnimator.start();
+                        // NagramX: same pattern-alpha fade as setupChatTheme's currentBackgroundDrawable
+                        // animator above; arm the coalesced refresh for its duration too. chatTheme.loadWallpaper
+                        // (EmojiThemes.java:515) always resolves this callback on the UI thread: the cached-hit
+                        // branch is wrapped in AndroidUtilities.runOnUIThread (ChatThemeController.java:457,552),
+                        // and the network-load branch fires through ImageReceiver's setDelegate, whose delegate
+                        // callbacks are always dispatched on the UI thread by ImageLoader - so no extra
+                        // runOnUIThread wrapping is needed here.
+                        scheduleGlassCompositeRefresh(250);
                     }
                 });
                 drawable = motionDrawable;
@@ -52022,18 +52038,42 @@ public class ChatActivity extends BaseFragment implements
     }
 
     // NagramX: a motion wallpaper (gradient + pattern) is composited into the glass proxy and the proxy
-    // only re-samples on a reprime, so it has to be refreshed whenever wallpaper content moves. The first
-    // invalidateMotionBackground in a burst arms one 30 fps frame callback and later arrivals while pending
-    // do not postpone it. The notification is emitted from MotionBackgroundDrawable.draw(), so refresh must
-    // stay deferred to a later UI turn: running it synchronously here would re-enter motion.draw() while its
-    // savedBounds/suppression scope is active. Recompose remains forced so alpha/colour-filter fades (no
-    // generation id) are followed. If paused/detached, it marks dirty and onResume runs one catch-up refresh.
+    // only re-samples on a reprime, so it has to be refreshed whenever wallpaper content moves. The
+    // wallpaper no longer self-posts invalidateMotionBackground per frame (see onUpdateBackgroundDrawable):
+    // that flag is sticky app-wide and the composite it drove is consumed even with blur/glass off, so it
+    // can't be gated. Every source that moves the wallpaper (a genuine switchToNextPosition rotate, or a
+    // pattern-alpha/colour-filter fade animator) arms a wall-clock deadline instead of relying on
+    // posAnimationProgress, which never reaches 1.0f while a background app suppresses the driving
+    // animation and would keep this self-rearming forever: glassCompositeRefreshUntilMs accumulates via
+    // Math.max so overlapping fades cannot shorten an already-armed one. refreshGlassComposite self-rearms
+    // one 30 fps frame callback at a time only while that deadline is still in the future, then stops.
+    // didReceivedNotification2 still schedules a plain one-shot on invalidateMotionBackground for the
+    // unrelated MessageDrawable bubble producer case (that one still sets its own postInvalidateParent and
+    // reposts every 16ms on its own), so a burst from it still coalesces to a single trailing refresh
+    // instead of one per notification. Recompose remains forced so alpha/colour-filter fades (no generation
+    // id) are followed. If paused/detached, it marks dirty, clears the deadline so nothing keeps rearming
+    // while backgrounded, and onResume runs one catch-up refresh.
     private static final int GLASS_COMPOSITE_REFRESH_FPS = 30;
     private boolean glassCompositeDirty;
     private boolean glassCompositeRefreshPending;
+    private long glassCompositeRefreshUntilMs;
     private final Runnable glassCompositeRefreshRunnable = this::refreshGlassComposite;
 
+    // NagramX: no-duration one-shot for producers (MessageDrawable's bubble gradient) that already repost
+    // on their own; this only needs to land a single trailing refresh, never a self-rearm.
     private void scheduleGlassCompositeRefresh() {
+        armGlassCompositeRefreshFrameCallback();
+    }
+
+    // NagramX: extends the coalesced-refresh deadline by durationMs from now, taking the later of the
+    // existing deadline and the new one so an overlapping fade (e.g. a rotate landing mid pattern-alpha
+    // fade) cannot cut the longer one short.
+    private void scheduleGlassCompositeRefresh(long durationMs) {
+        glassCompositeRefreshUntilMs = Math.max(glassCompositeRefreshUntilMs, SystemClock.elapsedRealtime() + durationMs);
+        armGlassCompositeRefreshFrameCallback();
+    }
+
+    private void armGlassCompositeRefreshFrameCallback() {
         if (glassCompositeRefreshPending) {
             return;
         }
@@ -52057,6 +52097,11 @@ public class ChatActivity extends BaseFragment implements
         glassCompositeRefreshPending = false;
         if (isPaused || contentView == null || !contentView.isAttachedToWindow()) {
             glassCompositeDirty = true;
+            // NagramX: drop the deadline instead of leaving it live. Nothing re-arms while backgrounded (see
+            // the class above this method), so a stale future deadline would only fire once more, unhelpfully,
+            // the moment onResume's catch-up refresh below reads it - clearing it here keeps that catch-up a
+            // single refresh, not a fresh self-rearm loop.
+            glassCompositeRefreshUntilMs = 0;
             return;
         }
         MotionBackgroundDrawable wallpaper = resolveCurrentMotionWallpaper();
@@ -52066,6 +52111,13 @@ public class ChatActivity extends BaseFragment implements
         if (wallpaperBitmapProvider.refreshMotionComposite(wallpaper)) {
             reprimeGlassRenderNodes();
             invalidateAllGlassAttachedViews();
+        }
+        // NagramX: self-rearm one 30 fps frame callback at a time for as long as the wall-clock deadline
+        // armed by a rotate or a pattern-alpha/colour-filter fade (see scheduleGlassCompositeRefresh) is
+        // still in the future, then stop. Re-arming here does not extend the deadline itself, only the
+        // duration overload does that, so this cannot outlive the fade/rotate that armed it.
+        if (glassCompositeRefreshUntilMs > SystemClock.elapsedRealtime()) {
+            armGlassCompositeRefreshFrameCallback();
         }
     }
 
