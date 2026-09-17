@@ -378,6 +378,40 @@ while the fragment is backgrounded.
 removal and its replacement mechanism; corrected 2026-09-17 to the wall-clock
 deadline after the progress-based self-rearm was found non-terminating.)*
 
+Device Perfetto on a real send later measured what that wall-clock deadline was
+actually buying: a genuine send-triggered rotate still drove 16 UI-thread
+`refreshMotionComposite` calls averaging 11.26ms each across the 524ms burst
+(the 30fps self-rearm loop above still recomposes every frame the deadline is
+open), against .052ms for an ordinary wallpaper draw — the deadline coalesces
+the *rearm*, not the *recompose*. The fix adds a second, narrower armer,
+`scheduleGlassCompositeRefreshSettleOnly(long)` (`ChatActivity.java:52097`),
+used only by the send-triggered rotate branch in `rotateMotionBackgroundDrawable`
+(`ChatActivity.java:27592`); it sets a new field, `glassCompositeSettleOnly`
+(`ChatActivity.java:52072`), alongside the same deadline accumulation. While
+that flag is set and the deadline is still ahead, `refreshGlassComposite`
+(`ChatActivity.java:52123`) skips `refreshMotionComposite` entirely and just
+re-arms the next frame callback, so the send's pill-capture window (capped at
+500ms by the caller) holds one shared bitmap instead of recomposing 16 times;
+the first check after the deadline passes still falls through to an
+unconditional composite, so the final frame is never skipped. Every *other*
+armer of the shared deadline — the normal `scheduleGlassCompositeRefresh(long)`
+overload used by pattern-alpha/colour-filter fades and by chat-theme re-prime
+(`ChatActivity.java:52088`), and the device-rotation config-change reprime in
+`onConfigurationChanged` which bypasses that overload and touches the deadline
+fields directly (`ChatActivity.java:33088-33095`) — clears the flag before
+arming, so a live fade or an orientation change can never get stuck behind a
+stale settle-only suppression left over from an earlier send. The no-arg
+one-shot overload (`ChatActivity.java:52079`, used by the foreign/bubble
+`MessageDrawable` producer notification) deliberately leaves the flag alone in
+either direction, so an unrelated bubble animation tick during a send's settle
+window can neither suppress nor unsuppress it. The flag is also cleared
+wherever the deadline itself is retired — the paused/detached bail and the
+point where `refreshGlassComposite`'s own rearm check decides not to continue —
+so a stale `true` can't survive past the window that set it.
+
+*(Extended 2026-09-17, `#glass-pattern-fix`, with the measured per-composite
+cost and the settle-only suppression mechanism.)*
+
 ## Forwarding aliases the source message's media object
 
 The forward path assigns the new local placeholder's media straight from the

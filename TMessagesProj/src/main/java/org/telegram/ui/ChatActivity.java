@@ -27586,7 +27586,10 @@ public class ChatActivity extends BaseFragment implements
             boolean wasSettled = motionWallpaper.getPosAnimationProgress() >= 1.0f;
             motionWallpaper.switchToNextPosition();
             if (wasSettled && motionWallpaper.getPosAnimationProgress() < 1.0f) {
-                scheduleGlassCompositeRefresh(500);
+                // NagramX: this is the genuine send-triggered rotate (see wasSettled above), so use the
+                // settle-only armer instead of the normal duration one - see its javadoc for the measured
+                // cost this avoids.
+                scheduleGlassCompositeRefreshSettleOnly(500);
             }
         }
         Drawable drawable = getThemedDrawable(Theme.key_drawable_msgOut);
@@ -33086,6 +33089,10 @@ public class ChatActivity extends BaseFragment implements
         AndroidUtilities.cancelRunOnUIThread(glassCompositeRefreshRunnable);
         AndroidUtilities.runOnUIThread(glassCompositeRefreshRunnable);
         glassCompositeRefreshPending = true;
+        // NagramX: this reprime bypasses scheduleGlassCompositeRefresh(long), so it has to clear
+        // settleOnly itself - otherwise a settle-only window still in flight from a send would make the
+        // forced reprime above skip recomposing on the new orientation.
+        glassCompositeSettleOnly = false;
         if (visibleDialog instanceof DatePickerDialog) {
             visibleDialog.dismiss();
         }
@@ -52057,18 +52064,38 @@ public class ChatActivity extends BaseFragment implements
     private boolean glassCompositeDirty;
     private boolean glassCompositeRefreshPending;
     private long glassCompositeRefreshUntilMs;
+    // NagramX: device Perfetto measured a genuine send-triggered rotate at 16 UI-thread composites
+    // averaging 11.26ms each inside a 524ms burst, against .052ms for an ordinary wallpaper draw. While
+    // this holds, refreshGlassComposite skips recomposing every frame and lets one composite land once
+    // the deadline below has passed (see refreshGlassComposite) - it never suppresses a fade/rotate's
+    // own deadline extension, only the recompose work in between.
+    private boolean glassCompositeSettleOnly;
     private final Runnable glassCompositeRefreshRunnable = this::refreshGlassComposite;
 
     // NagramX: no-duration one-shot for producers (MessageDrawable's bubble gradient) that already repost
-    // on their own; this only needs to land a single trailing refresh, never a self-rearm.
+    // on their own; this only needs to land a single trailing refresh, never a self-rearm. Deliberately
+    // does not touch glassCompositeSettleOnly - a foreign/bubble producer notification during a send's
+    // settle window must not unsuppress it.
     private void scheduleGlassCompositeRefresh() {
         armGlassCompositeRefreshFrameCallback();
     }
 
     // NagramX: extends the coalesced-refresh deadline by durationMs from now, taking the later of the
     // existing deadline and the new one so an overlapping fade (e.g. a rotate landing mid pattern-alpha
-    // fade) cannot cut the longer one short.
+    // fade) cannot cut the longer one short. This is the normal live-animation armer (pattern alpha/colour
+    // fades, theme re-prime), so it always clears settleOnly - only the send-triggered rotate path below
+    // sets it.
     private void scheduleGlassCompositeRefresh(long durationMs) {
+        glassCompositeSettleOnly = false;
+        glassCompositeRefreshUntilMs = Math.max(glassCompositeRefreshUntilMs, SystemClock.elapsedRealtime() + durationMs);
+        armGlassCompositeRefreshFrameCallback();
+    }
+
+    // NagramX: same deadline accumulation as scheduleGlassCompositeRefresh(long), but for the genuine
+    // send-triggered rotate only - sets settleOnly so refreshGlassComposite holds off recomposing every
+    // frame for this window and lands one composite once the deadline passes instead.
+    private void scheduleGlassCompositeRefreshSettleOnly(long durationMs) {
+        glassCompositeSettleOnly = true;
         glassCompositeRefreshUntilMs = Math.max(glassCompositeRefreshUntilMs, SystemClock.elapsedRealtime() + durationMs);
         armGlassCompositeRefreshFrameCallback();
     }
@@ -52102,10 +52129,20 @@ public class ChatActivity extends BaseFragment implements
             // the moment onResume's catch-up refresh below reads it - clearing it here keeps that catch-up a
             // single refresh, not a fresh self-rearm loop.
             glassCompositeRefreshUntilMs = 0;
+            glassCompositeSettleOnly = false;
             return;
         }
         MotionBackgroundDrawable wallpaper = resolveCurrentMotionWallpaper();
         if (wallpaper == null) {
+            return;
+        }
+        // NagramX: measured tradeoff (device Perfetto) - a send-triggered rotate cost 16 composites at
+        // ~11.26ms UI-thread each across a 524ms burst, vs .052ms for an ordinary wallpaper draw. While
+        // settleOnly holds and the deadline is still ahead, skip recomposing and just re-arm the next
+        // frame; the deadline is capped at <=500ms (see scheduleGlassCompositeRefreshSettleOnly), so this
+        // still falls through to the unconditional composite below once it passes.
+        if (glassCompositeSettleOnly && glassCompositeRefreshUntilMs > SystemClock.elapsedRealtime()) {
+            armGlassCompositeRefreshFrameCallback();
             return;
         }
         if (wallpaperBitmapProvider.refreshMotionComposite(wallpaper)) {
@@ -52118,6 +52155,10 @@ public class ChatActivity extends BaseFragment implements
         // duration overload does that, so this cannot outlive the fade/rotate that armed it.
         if (glassCompositeRefreshUntilMs > SystemClock.elapsedRealtime()) {
             armGlassCompositeRefreshFrameCallback();
+        } else {
+            // NagramX: deadline retired for good this cycle - drop the settle-only suppression with it so
+            // no stale flag survives to gate an unrelated later refresh.
+            glassCompositeSettleOnly = false;
         }
     }
 
