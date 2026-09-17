@@ -5738,6 +5738,13 @@ public class ChatActivityEnterView extends FrameLayout implements
     private LinearLayout rememberMasterRowCached;
     private Switch rememberMasterSwitchCached;
     private boolean onSendLongClick(View view) {
+        // NagramX smoke diagnostics (#remember-send-action): temporary, removed once a reachability
+        // smoke build confirms both onSendLongClick menu branches are hit as expected. Booleans only,
+        // never message/user content.
+        android.util.Log.e("NAX_SMOKE_remember-send-action", "onSendLongClick isStories=" + isStories
+                + " isRememberSendActionContextEligible=" + isRememberSendActionContextEligible()
+                + " rememberMaster=" + NaConfig.INSTANCE.getRememberSendActionMaster().Bool()
+                + " cachedPopupBuilt=" + (sendPopupLayout != null));
         if (isInScheduleMode() || parentFragment != null && parentFragment.getChatMode() == ChatActivity.MODE_QUICK_REPLIES || animatorEphemeralMessageVisibility.getValue()) {
             return false;
         }
