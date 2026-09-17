@@ -511,6 +511,16 @@
     <string name="ScheduleOnceUnavailable">View-once messages can\'t be scheduled</string>
     <string name="QuickScheduleButton">Quick Schedule Button</string>
     <string name="QuickScheduleButtonNotice">Keep calendar button visible when typing to quickly schedule more messages</string>
+    <string name="RememberedSendAction">Remembered send action</string>
+    <string name="RememberedSendActionNotice">Long-press Send and pick silent, send-when-online or schedule to repeat it on your next tap</string>
+    <string name="RememberSendActionSilent">Silent send</string>
+    <string name="RememberSendActionSendWhenOnline">Send when online</string>
+    <string name="RememberSendActionSchedule">Schedule</string>
+    <string name="RememberSendActionResetOnLeave">Reset when you leave the chat</string>
+    <string name="RememberSendActionResetOnLeaveNotice">Otherwise it carries over to the next chat you open</string>
+    <string name="AccDescrSendSilentArmed">Send, silent send armed</string>
+    <string name="AccDescrSendWhenOnlineArmed">Send, send when online armed</string>
+    <string name="AccDescrSendScheduleArmed">Send, schedule armed</string>
     <string name="InputTextSize">Message input text size</string>
     <string name="SendScheduledNowConfirm">Send the selected messages now?</string>
     <string name="Reschedule">Reschedule</string>

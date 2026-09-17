@@ -1425,6 +1425,32 @@ object NaConfig {
             ConfigItem.configTypeBool,
             false
         )
+    // NagramX (#remember-send-action): whether long-pressing Send and picking each alternate
+    // action arms it for the next plain tap. App-wide, not per-account and not per-chat.
+    val rememberSendActionSilent =
+        addConfig(
+            "RememberSendActionSilent",
+            ConfigItem.configTypeBool,
+            true
+        )
+    val rememberSendActionSendWhenOnline =
+        addConfig(
+            "RememberSendActionSendWhenOnline",
+            ConfigItem.configTypeBool,
+            true
+        )
+    val rememberSendActionSchedule =
+        addConfig(
+            "RememberSendActionSchedule",
+            ConfigItem.configTypeBool,
+            true
+        )
+    val rememberSendActionResetOnLeave =
+        addConfig(
+            "RememberSendActionResetOnLeave",
+            ConfigItem.configTypeBool,
+            true
+        )
     val composerToolbarLayout =
         addConfig(
             "ComposerToolbarLayout",
