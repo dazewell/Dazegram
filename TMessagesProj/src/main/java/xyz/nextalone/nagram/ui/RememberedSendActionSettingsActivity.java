@@ -97,6 +97,24 @@ public class RememberedSendActionSettingsActivity extends BaseNekoXSettingsActiv
         sendWhenOnlineRow.setEnabled(on);
         scheduleRow.setEnabled(on);
         resetOnLeaveRow.setEnabled(on);
+        // NagramX (#remember-send-action): ConfigCellTextCheck.setEnabled(boolean) only flips the flag
+        // -- the dimming itself lives in the two-arg overload that only onBindViewHolder calls, so an
+        // in-place master toggle left these four rows at full opacity while silently no-op'ing their
+        // taps until an unrelated adapter refresh happened to rebind them. Rebind explicitly instead of
+        // waiting for that.
+        if (listAdapter != null) {
+            notifyChildRowChanged(silentRow);
+            notifyChildRowChanged(sendWhenOnlineRow);
+            notifyChildRowChanged(scheduleRow);
+            notifyChildRowChanged(resetOnLeaveRow);
+        }
+    }
+
+    private void notifyChildRowChanged(AbstractConfigCell row) {
+        int index = cellGroup.rows.indexOf(row);
+        if (index >= 0) {
+            listAdapter.notifyItemChanged(index);
+        }
     }
 
     // NagramX (#remember-send-action): maps a child toggle's own key to the armed-action constant it
