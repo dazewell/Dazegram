@@ -27588,8 +27588,8 @@ public class ChatActivity extends BaseFragment implements
             if (wasSettled && motionWallpaper.getPosAnimationProgress() < 1.0f) {
                 // NagramX: this is the genuine send-triggered rotate (see wasSettled above), so use the
                 // settle-only armer instead of the normal duration one - see its javadoc for the measured
-                // cost this avoids.
-                scheduleGlassCompositeRefreshSettleOnly(500);
+                // cost this avoids and the hard ceiling it arms instead of an extending deadline.
+                scheduleGlassCompositeRefreshSettleOnly(GLASS_COMPOSITE_ROTATE_MS);
             }
         }
         Drawable drawable = getThemedDrawable(Theme.key_drawable_msgOut);
@@ -32221,10 +32221,19 @@ public class ChatActivity extends BaseFragment implements
     public void onResume() {
         super.onResume();
         // NagramX: a glass-composite refresh requested while backgrounded was deferred; run it now that
-        // the wallpaper may have rotated or its pattern arrived while we were paused.
+        // the wallpaper may have rotated or its pattern arrived while we were paused. isPaused is already
+        // false here (set by super.onResume() above), so refreshGlassComposite/scheduleGlassCompositeRefreshSettleOnly
+        // below won't hit the paused bail. If the resolved wallpaper is still mid-rotate, resume the
+        // settle ceiling instead of forcing an immediate composite that a live rotate would just redo
+        // moments later; otherwise catch up right away.
         if (glassCompositeDirty) {
             glassCompositeDirty = false;
-            refreshGlassComposite();
+            MotionBackgroundDrawable glassWallpaper = resolveCurrentMotionWallpaper();
+            if (glassWallpaper != null && glassWallpaper.getPosAnimationProgress() < 1.0f) {
+                scheduleGlassCompositeRefreshSettleOnly(GLASS_COMPOSITE_ROTATE_MS);
+            } else {
+                refreshGlassComposite();
+            }
         }
         // NagramX: re-cover a "require password" chat if backgrounding cleared its unlock, and drive the
         // cover's lifecycle so it auto-prompts fingerprint like the app lock
@@ -33089,10 +33098,10 @@ public class ChatActivity extends BaseFragment implements
         AndroidUtilities.cancelRunOnUIThread(glassCompositeRefreshRunnable);
         AndroidUtilities.runOnUIThread(glassCompositeRefreshRunnable);
         glassCompositeRefreshPending = true;
-        // NagramX: this reprime bypasses scheduleGlassCompositeRefresh(long), so it has to clear
-        // settleOnly itself - otherwise a settle-only window still in flight from a send would make the
-        // forced reprime above skip recomposing on the new orientation.
-        glassCompositeSettleOnly = false;
+        // NagramX: this reprime bypasses scheduleGlassCompositeRefresh(long), so it has to clear the
+        // settle ceiling itself - otherwise a settle-only window still in flight from a send would make
+        // the forced reprime above skip recomposing on the new orientation.
+        glassCompositeSettleUntilMs = 0;
         if (visibleDialog instanceof DatePickerDialog) {
             visibleDialog.dismiss();
         }
@@ -52058,24 +52067,31 @@ public class ChatActivity extends BaseFragment implements
     // unrelated MessageDrawable bubble producer case (that one still sets its own postInvalidateParent and
     // reposts every 16ms on its own), so a burst from it still coalesces to a single trailing refresh
     // instead of one per notification. Recompose remains forced so alpha/colour-filter fades (no generation
-    // id) are followed. If paused/detached, it marks dirty, clears the deadline so nothing keeps rearming
-    // while backgrounded, and onResume runs one catch-up refresh.
+    // id) are followed. If paused/detached, it marks dirty, clears the deadline and the settle ceiling
+    // below so nothing keeps rearming while backgrounded, and onResume resolves the wallpaper again
+    // before deciding whether to run a settle-only wait or an immediate catch-up refresh.
     private static final int GLASS_COMPOSITE_REFRESH_FPS = 30;
+    // NagramX: duration handed to the genuine send-triggered rotate's settle-only armer below.
+    private static final long GLASS_COMPOSITE_ROTATE_MS = 500;
     private boolean glassCompositeDirty;
     private boolean glassCompositeRefreshPending;
     private long glassCompositeRefreshUntilMs;
     // NagramX: device Perfetto measured a genuine send-triggered rotate at 16 UI-thread composites
-    // averaging 11.26ms each inside a 524ms burst, against .052ms for an ordinary wallpaper draw. While
-    // this holds, refreshGlassComposite skips recomposing every frame and lets one composite land once
-    // the deadline below has passed (see refreshGlassComposite) - it never suppresses a fade/rotate's
-    // own deadline extension, only the recompose work in between.
-    private boolean glassCompositeSettleOnly;
+    // averaging ~11ms each inside a burst that otherwise held the wallpaper's held pattern-fade pill up
+    // to 1s under severe jank (normally <=500ms), against .052ms for an ordinary wallpaper draw. While
+    // this is a non-zero hard ceiling (elapsedRealtime, 0 = none) and progress hasn't settled,
+    // refreshGlassComposite skips recomposing every frame and lets one composite land once either the
+    // rotate settles or the ceiling passes, whichever comes first (see refreshGlassComposite) - it never
+    // suppresses a fade/rotate's own live deadline extension, only the recompose work in between, and the
+    // ceiling guarantees this cannot self-rearm forever if a backgrounded rotate never reaches progress
+    // 1.0f.
+    private long glassCompositeSettleUntilMs;
     private final Runnable glassCompositeRefreshRunnable = this::refreshGlassComposite;
 
     // NagramX: no-duration one-shot for producers (MessageDrawable's bubble gradient) that already repost
     // on their own; this only needs to land a single trailing refresh, never a self-rearm. Deliberately
-    // does not touch glassCompositeSettleOnly - a foreign/bubble producer notification during a send's
-    // settle window must not unsuppress it.
+    // does not touch glassCompositeSettleUntilMs - a foreign/bubble producer notification during a send's
+    // settle window must not cut it short.
     private void scheduleGlassCompositeRefresh() {
         armGlassCompositeRefreshFrameCallback();
     }
@@ -52083,20 +52099,28 @@ public class ChatActivity extends BaseFragment implements
     // NagramX: extends the coalesced-refresh deadline by durationMs from now, taking the later of the
     // existing deadline and the new one so an overlapping fade (e.g. a rotate landing mid pattern-alpha
     // fade) cannot cut the longer one short. This is the normal live-animation armer (pattern alpha/colour
-    // fades, theme re-prime), so it always clears settleOnly - only the send-triggered rotate path below
-    // sets it.
+    // fades, theme re-prime), so it always clears the settle ceiling - a live deadline always wins over a
+    // settle-only one, and only the send-triggered rotate path below ever sets that ceiling.
     private void scheduleGlassCompositeRefresh(long durationMs) {
-        glassCompositeSettleOnly = false;
+        glassCompositeSettleUntilMs = 0;
         glassCompositeRefreshUntilMs = Math.max(glassCompositeRefreshUntilMs, SystemClock.elapsedRealtime() + durationMs);
         armGlassCompositeRefreshFrameCallback();
     }
 
-    // NagramX: same deadline accumulation as scheduleGlassCompositeRefresh(long), but for the genuine
-    // send-triggered rotate only - sets settleOnly so refreshGlassComposite holds off recomposing every
-    // frame for this window and lands one composite once the deadline passes instead.
+    // NagramX: for the genuine send-triggered rotate only. If a live deadline (pattern-alpha/colour fade,
+    // theme re-prime) is already armed, defer to it via the normal armer above instead of layering a
+    // second, separate ceiling on top - a live fade in flight always wins. Otherwise arm a hard,
+    // non-extending ceiling at now + durationMs * 2 (deliberately not Math.max - this is a ceiling, not an
+    // accumulating deadline) so refreshGlassComposite can hold off recomposing while the rotate is still
+    // short of settling, but never longer than that ceiling even if the rotate never reaches progress
+    // 1.0f (e.g. suppressed by a backgrounded app).
     private void scheduleGlassCompositeRefreshSettleOnly(long durationMs) {
-        glassCompositeSettleOnly = true;
-        glassCompositeRefreshUntilMs = Math.max(glassCompositeRefreshUntilMs, SystemClock.elapsedRealtime() + durationMs);
+        long now = SystemClock.elapsedRealtime();
+        if (glassCompositeRefreshUntilMs > now) {
+            scheduleGlassCompositeRefresh(durationMs);
+            return;
+        }
+        glassCompositeSettleUntilMs = now + durationMs * 2;
         armGlassCompositeRefreshFrameCallback();
     }
 
@@ -52124,26 +52148,37 @@ public class ChatActivity extends BaseFragment implements
         glassCompositeRefreshPending = false;
         if (isPaused || contentView == null || !contentView.isAttachedToWindow()) {
             glassCompositeDirty = true;
-            // NagramX: drop the deadline instead of leaving it live. Nothing re-arms while backgrounded (see
-            // the class above this method), so a stale future deadline would only fire once more, unhelpfully,
-            // the moment onResume's catch-up refresh below reads it - clearing it here keeps that catch-up a
-            // single refresh, not a fresh self-rearm loop.
+            // NagramX: drop both timestamps instead of leaving either live. Nothing re-arms while
+            // backgrounded (see the class above this method), so a stale future deadline/ceiling would
+            // only fire once more, unhelpfully, the moment onResume's catch-up refresh below reads it -
+            // clearing them here keeps that catch-up a single refresh, not a fresh self-rearm loop.
             glassCompositeRefreshUntilMs = 0;
-            glassCompositeSettleOnly = false;
+            glassCompositeSettleUntilMs = 0;
             return;
         }
         MotionBackgroundDrawable wallpaper = resolveCurrentMotionWallpaper();
         if (wallpaper == null) {
+            // NagramX: no motion wallpaper to composite - drop both timestamps too, same reasoning as the
+            // paused/detached branch above, otherwise a stale ceiling survives a wallpaper swap.
+            glassCompositeRefreshUntilMs = 0;
+            glassCompositeSettleUntilMs = 0;
             return;
         }
+        long now = SystemClock.elapsedRealtime();
         // NagramX: measured tradeoff (device Perfetto) - a send-triggered rotate cost 16 composites at
-        // ~11.26ms UI-thread each across a 524ms burst, vs .052ms for an ordinary wallpaper draw. While
-        // settleOnly holds and the deadline is still ahead, skip recomposing and just re-arm the next
-        // frame; the deadline is capped at <=500ms (see scheduleGlassCompositeRefreshSettleOnly), so this
-        // still falls through to the unconditional composite below once it passes.
-        if (glassCompositeSettleOnly && glassCompositeRefreshUntilMs > SystemClock.elapsedRealtime()) {
-            armGlassCompositeRefreshFrameCallback();
-            return;
+        // ~11ms UI-thread each, vs .052ms for an ordinary wallpaper draw, and that burst otherwise held
+        // the wallpaper's pattern-fade pill up under severe jank for as long as 1s (normally <=500ms).
+        // While the rotate hasn't settled (progress < 1.0f) and the hard ceiling below is still ahead,
+        // skip recomposing and just re-arm the next frame. The ceiling is a hard cutoff, not an
+        // extending deadline (see scheduleGlassCompositeRefreshSettleOnly), so this is never guaranteed a
+        // final settled-progress frame - once the ceiling passes it falls through to the unconditional
+        // composite below whatever the rotate's progress is.
+        if (glassCompositeSettleUntilMs != 0) {
+            if (wallpaper.getPosAnimationProgress() < 1.0f && now < glassCompositeSettleUntilMs) {
+                armGlassCompositeRefreshFrameCallback();
+                return;
+            }
+            glassCompositeSettleUntilMs = 0;
         }
         if (wallpaperBitmapProvider.refreshMotionComposite(wallpaper)) {
             reprimeGlassRenderNodes();
@@ -52155,10 +52190,6 @@ public class ChatActivity extends BaseFragment implements
         // duration overload does that, so this cannot outlive the fade/rotate that armed it.
         if (glassCompositeRefreshUntilMs > SystemClock.elapsedRealtime()) {
             armGlassCompositeRefreshFrameCallback();
-        } else {
-            // NagramX: deadline retired for good this cycle - drop the settle-only suppression with it so
-            // no stale flag survives to gate an unrelated later refresh.
-            glassCompositeSettleOnly = false;
         }
     }
 

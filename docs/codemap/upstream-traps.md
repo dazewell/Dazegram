@@ -380,37 +380,65 @@ deadline after the progress-based self-rearm was found non-terminating.)*
 
 Device Perfetto on a real send later measured what that wall-clock deadline was
 actually buying: a genuine send-triggered rotate still drove 16 UI-thread
-`refreshMotionComposite` calls averaging 11.26ms each across the 524ms burst
-(the 30fps self-rearm loop above still recomposes every frame the deadline is
-open), against .052ms for an ordinary wallpaper draw — the deadline coalesces
-the *rearm*, not the *recompose*. The fix adds a second, narrower armer,
-`scheduleGlassCompositeRefreshSettleOnly(long)` (`ChatActivity.java:52097`),
-used only by the send-triggered rotate branch in `rotateMotionBackgroundDrawable`
-(`ChatActivity.java:27592`); it sets a new field, `glassCompositeSettleOnly`
-(`ChatActivity.java:52072`), alongside the same deadline accumulation. While
-that flag is set and the deadline is still ahead, `refreshGlassComposite`
-(`ChatActivity.java:52123`) skips `refreshMotionComposite` entirely and just
-re-arms the next frame callback, so the send's pill-capture window (capped at
-500ms by the caller) holds one shared bitmap instead of recomposing 16 times;
-the first check after the deadline passes still falls through to an
-unconditional composite, so the final frame is never skipped. Every *other*
-armer of the shared deadline — the normal `scheduleGlassCompositeRefresh(long)`
-overload used by pattern-alpha/colour-filter fades and by chat-theme re-prime
-(`ChatActivity.java:52088`), and the device-rotation config-change reprime in
-`onConfigurationChanged` which bypasses that overload and touches the deadline
-fields directly (`ChatActivity.java:33088-33095`) — clears the flag before
-arming, so a live fade or an orientation change can never get stuck behind a
-stale settle-only suppression left over from an earlier send. The no-arg
-one-shot overload (`ChatActivity.java:52079`, used by the foreign/bubble
-`MessageDrawable` producer notification) deliberately leaves the flag alone in
-either direction, so an unrelated bubble animation tick during a send's settle
-window can neither suppress nor unsuppress it. The flag is also cleared
-wherever the deadline itself is retired — the paused/detached bail and the
-point where `refreshGlassComposite`'s own rearm check decides not to continue —
-so a stale `true` can't survive past the window that set it.
+`refreshMotionComposite` calls averaging ~11ms each (the 30fps self-rearm loop
+above still recomposes every frame the deadline is open), against .052ms for
+an ordinary wallpaper draw — the deadline coalesces the *rearm*, not the
+*recompose*. A first fix added a second, narrower armer gated by a sticky
+boolean (`glassCompositeSettleOnly`) that suppressed recomposing for as long
+as the same accumulating `Math.max` deadline stayed open. That was also wrong,
+for the same class of reason the progress-based self-rearm above was: a
+boolean has no notion of *how much longer*, so an overlapping live fade could
+extend the shared deadline the boolean was piggy-backing on and the send's
+"skip recomposing" window would silently extend with it — a held pattern-fade
+pill for up to 1s under severe jank instead of the intended <=500ms.
+
+The fix (round 1.5, `#glass-pattern-fix`) replaces the boolean with a
+dedicated hard-ceiling timestamp, `glassCompositeSettleUntilMs`
+(`ChatActivity.java:52088`; `0` = none), that is never `Math.max`-accumulated.
+`scheduleGlassCompositeRefreshSettleOnly(long durationMs)`
+(`ChatActivity.java:52117`) — used only by the send-triggered rotate branch in
+`rotateMotionBackgroundDrawable` (`ChatActivity.java:27592`, passing the
+`GLASS_COMPOSITE_ROTATE_MS = 500` constant at `ChatActivity.java:52075`) and by
+the `onResume` catch-up when the fragment resumes mid-rotate
+(`ChatActivity.java:32229-32234`) — first checks whether a live deadline
+(`glassCompositeRefreshUntilMs`) is already open; if so it defers entirely to
+the normal armer (`scheduleGlassCompositeRefresh(long)`,
+`ChatActivity.java:52104`) so a live fade always wins outright, never sharing a
+ceiling with the settle-only window. Otherwise it assigns
+`glassCompositeSettleUntilMs = now + durationMs * 2` — a one-shot ceiling, not
+an accumulating deadline — decoupling the send's settle budget from whatever
+the live deadline happens to be doing. In `refreshGlassComposite`
+(`ChatActivity.java:52147`), the settle branch (`ChatActivity.java:52176-52182`)
+holds off recomposing only while *both* `posAnimationProgress < 1.0f` **and**
+`SystemClock.elapsedRealtime()` is still short of that ceiling; either
+condition failing clears the timestamp and falls through to exactly one
+unconditional composite — so a rotate that settles early still lands promptly,
+and a rotate that never settles (backgrounded app, lite mode) is still bounded
+by the ceiling rather than riding whatever a concurrent fade extends the live
+deadline to. This is a hard cutoff, not a rearm-with-progress guarantee: the
+composite that lands when the ceiling fires is not guaranteed to be the
+rotate's fully-settled final frame.
+
+The normal live armer, `scheduleGlassCompositeRefresh(long)`
+(`ChatActivity.java:52104`, used by pattern-alpha/colour-filter fades and
+chat-theme re-prime), always clears `glassCompositeSettleUntilMs` to `0` before
+extending its own deadline, so a live fade can never get stuck behind a stale
+settle ceiling left over from an earlier send. The device-rotation config-change
+reprime in `onConfigurationChanged` bypasses that overload and clears the
+timestamp directly (`ChatActivity.java:33101-33104`) for the same reason. The
+no-arg one-shot overload (`ChatActivity.java:52095`, used by the foreign/bubble
+`MessageDrawable` producer notification) deliberately leaves the timestamp
+alone in either direction, so an unrelated bubble animation tick during a
+send's settle window can neither shorten nor extend it. The timestamp is also
+cleared wherever it would otherwise go stale — the paused/detached bail and the
+null-wallpaper bail in `refreshGlassComposite` (`ChatActivity.java:52149-52165`)
+— so a backgrounded ceiling can't survive to gate an unrelated later refresh.
 
 *(Extended 2026-09-17, `#glass-pattern-fix`, with the measured per-composite
-cost and the settle-only suppression mechanism.)*
+cost and the settle-only suppression mechanism; corrected 2026-09-17 round 1.5,
+`#glass-pattern-fix`, replacing the sticky boolean with a non-accumulating
+hard-ceiling timestamp after review found the boolean's window could silently
+extend past its intended budget alongside an overlapping live fade.)*
 
 ## Forwarding aliases the source message's media object
 
