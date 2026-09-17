@@ -5602,12 +5602,21 @@ public class ChatActivityEnterView extends FrameLayout implements
         return isRememberSendActionContextEligible() && parentFragment.canScheduleMessage();
     }
 
-    private boolean isSendWhenOnlineEligible() {
-        if (dialog_id <= 0 || !isScheduleEligible()) return false;
+    // The stale-status half of send-when-online eligibility, kept separate from context eligibility:
+    // menu row visibility needs this half alone (a bot or an already-online/recently-seen user can't
+    // meaningfully take the 0x7FFFFFFE sentinel in *any* composer, in or out of scope for this
+    // feature), while arming/checking/badging the remembered action additionally needs the composer
+    // to own that memory, via isSendWhenOnlineEligible() below.
+    private boolean isSendWhenOnlineStatusEligible() {
+        if (dialog_id <= 0) return false;
         boolean self = parentFragment != null && UserObject.isUserSelf(parentFragment.getCurrentUser());
         if (self) return false;
         TLRPC.User user = parentFragment.getCurrentUser();
         return user != null && !user.bot && !(user.status instanceof TLRPC.TL_userStatusEmpty) && !(user.status instanceof TLRPC.TL_userStatusOnline) && !(user.status instanceof TLRPC.TL_userStatusRecently) && !(user.status instanceof TLRPC.TL_userStatusLastMonth) && !(user.status instanceof TLRPC.TL_userStatusLastWeek);
+    }
+
+    private boolean isSendWhenOnlineEligible() {
+        return isScheduleEligible() && isSendWhenOnlineStatusEligible();
     }
 
     // Re-checks the armed action against the chat you're in right now and the remember-toggle for
@@ -5618,6 +5627,10 @@ public class ChatActivityEnterView extends FrameLayout implements
     private int getEligibleArmedSendAction() {
         int armed = RememberedSendAction.getArmedAction(currentAccount);
         if (armed == RememberedSendAction.NONE) return RememberedSendAction.NONE;
+        // NagramX (#remember-send-action): an out-of-scope composer (Stories, quick replies,
+        // schedule mode, forward-comment) doesn't own this memory -- report NONE without touching
+        // it, so switching into one of these modes never disarms what the main composer armed.
+        if (!isRememberSendActionContextEligible()) return RememberedSendAction.NONE;
         boolean eligible;
         if (armed == RememberedSendAction.SILENT) {
             eligible = isSilentSendEligible() && NaConfig.INSTANCE.getRememberSendActionSilent().Bool();
@@ -5661,8 +5674,8 @@ public class ChatActivityEnterView extends FrameLayout implements
     private final RectF armedBadgeBoundsRect = new RectF();
     private Paint armedBadgeBackgroundPaint;
     // NagramX (#remember-send-action): one drawable per armed type, tinted and sized once and reused
-    // across every onDraw -- this view instance dies with the enter view on theme/config change, which
-    // recreates it anyway, so there's no stale-tint case to guard against here.
+    // across every onDraw -- updateColors() clears this cache on a live theme flip (this view instance
+    // survives it), so drawArmedSendActionBadge always rebuilds+retints against the current theme.
     private final Drawable[] armedBadgeIcons = new Drawable[4];
 
     private Drawable getArmedBadgeIcon(int armed, int iconRes, int half) {
@@ -6064,10 +6077,15 @@ public class ChatActivityEnterView extends FrameLayout implements
         ItemOptions options = ItemOptions.makeOptions(this, resourcesProvider, sendButton);
 
         final boolean self = parentFragment != null && UserObject.isUserSelf(parentFragment.getCurrentUser());
-        boolean scheduleButtonValue = isScheduleEligible();
-        boolean sendWithoutSoundButtonValue = isSilentSendEligible();
+        // NagramX (#remember-send-action): dev-equivalent row visibility -- this menu is shared with
+        // composers this feature doesn't own (PopupNotificationActivity, business-link replies, etc.),
+        // so whether the schedule/silent rows show at all must not depend on isRememberSendActionContextEligible().
+        // Only the checked state, arm calls, badge and tap-repeat below are context-gated.
+        boolean scheduleButtonValue = parentFragment != null && parentFragment.canScheduleMessage();
+        boolean sendWithoutSoundButtonValue = !(self || slowModeTimer > 0 && !isInScheduleMode());
         // NagramX (#remember-send-action): read once per popup build, not per row -- getEligibleArmedSendAction()
-        // disarms a stale slot as a side effect, and we only want that to happen once here.
+        // disarms a stale slot as a side effect, and we only want that to happen once here. Already
+        // context-gated: it reports NONE outright in a composer this feature doesn't own.
         final int armedBeforeMenu = getEligibleArmedSendAction();
         if (scheduleButtonValue) {
             options.addChecked(armedBeforeMenu == RememberedSendAction.SCHEDULE, R.drawable.msg_calendar2, getString(self ? R.string.SetReminder : R.string.ScheduleMessage), () -> {
@@ -6085,7 +6103,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     @Override
                     public void didSelectDate(boolean notify, int scheduleDate, int scheduleRepeatPeriod) {
                         sendMessageInternal(notify, scheduleDate, scheduleRepeatPeriod, 0, true);
-                        if (NaConfig.INSTANCE.getRememberSendActionSchedule().Bool()) {
+                        if (isRememberSendActionContextEligible() && NaConfig.INSTANCE.getRememberSendActionSchedule().Bool()) {
                             RememberedSendAction.arm(currentAccount, RememberedSendAction.SCHEDULE, dialog_id);
                             updateSendButtonArmedState();
                         }
@@ -6097,10 +6115,11 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }, resourcesProvider);
             });
 
-            // NagramX: same stale-status predicate the cached long-press menu already gates on --
-            // without it, a bot or a now-online/recently-seen user could still submit the 0x7FFFFFFE
-            // sentinel here, which updateSendButtonArmedState() then immediately disarms.
-            if (isSendWhenOnlineEligible()) {
+            // NagramX: the centralized stale-status predicate for row visibility -- a bot or a
+            // now-online/recently-seen user can't meaningfully take the 0x7FFFFFFE sentinel in any
+            // composer, so this half is not context-gated either; only the checked state and arm call
+            // below need this composer to own the remembered action.
+            if (isSendWhenOnlineStatusEligible()) {
                 options.addChecked(armedBeforeMenu == RememberedSendAction.SEND_WHEN_ONLINE, R.drawable.msg_online, getString(R.string.SendWhenOnline), () -> {
                     if (armedBeforeMenu == RememberedSendAction.SEND_WHEN_ONLINE) {
                         RememberedSendAction.disarm(currentAccount);
@@ -6112,7 +6131,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                         return;
                     }
                     sendMessageInternal(true, 0x7FFFFFFE, 0, 0, true);
-                    if (NaConfig.INSTANCE.getRememberSendActionSendWhenOnline().Bool()) {
+                    if (isRememberSendActionContextEligible() && NaConfig.INSTANCE.getRememberSendActionSendWhenOnline().Bool()) {
                         RememberedSendAction.arm(currentAccount, RememberedSendAction.SEND_WHEN_ONLINE, dialog_id);
                         updateSendButtonArmedState();
                     }
@@ -6177,7 +6196,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 // NagramX: this row's actual behavior flips with the current silent-by-default setting --
                 // sendWithoutSoundNax true means the row just sent WITH sound, not silently, so only arm
                 // the remembered SILENT action on the tap that genuinely sent without sound.
-                if (!sendWithoutSoundNax && NaConfig.INSTANCE.getRememberSendActionSilent().Bool()) {
+                if (!sendWithoutSoundNax && isRememberSendActionContextEligible() && NaConfig.INSTANCE.getRememberSendActionSilent().Bool()) {
                     RememberedSendAction.arm(currentAccount, RememberedSendAction.SILENT, dialog_id);
                     updateSendButtonArmedState();
                 }
