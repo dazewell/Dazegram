@@ -19,7 +19,7 @@ import xyz.nextalone.nagram.RememberedSendAction;
 /**
  * Chat Settings -> Remembered send action. A master switch at the top turns the whole feature on
  * or off; four app-wide toggles below it cover whether long-pressing Send and picking silent /
- * send-when-online / schedule arms it for the next plain tap, one switch per action, plus whether
+ * send-when-online / schedule arms it for the next send, one switch per action, plus whether
  * the armed action resets when you leave the chat. All default enabled. Turning an action switch
  * off doesn't hide that row from the long-press menu or stop it sending normally -- it just stops
  * that pick from being remembered afterwards. Turning the master switch off disables (not hides)

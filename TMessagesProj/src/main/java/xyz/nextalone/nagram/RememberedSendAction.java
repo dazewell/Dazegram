@@ -6,7 +6,7 @@ import org.telegram.messenger.UserConfig;
  * One armed alternate send action per account, held in memory only -- never written to disk.
  *
  * <p>Long-pressing Send in the composer and picking silent / send-when-online / schedule arms
- * that action here; a following plain tap on Send repeats it instead of a normal send. Keyed by
+ * that action here; the following send repeats it instead of a normal send. Keyed by
  * account (never the selected account -- see ChatActivityEnterView, which always reads/writes
  * through currentAccount) and, within an account, by dialog id only, so switching between topics
  * of the same forum keeps the armed action. The dialog id is kept alongside it purely so

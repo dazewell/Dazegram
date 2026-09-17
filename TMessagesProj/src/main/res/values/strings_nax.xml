@@ -512,7 +512,7 @@
     <string name="QuickScheduleButton">Quick Schedule Button</string>
     <string name="QuickScheduleButtonNotice">Keep calendar button visible when typing to quickly schedule more messages</string>
     <string name="RememberedSendAction">Remembered send action</string>
-    <string name="RememberedSendActionNotice">Long-press Send and pick silent, send-when-online or schedule to repeat it on your next tap</string>
+    <string name="RememberedSendActionNotice">Long-press Send and pick silent, send-when-online or schedule to repeat it on your next send</string>
     <string name="RememberSendActionMaster">Remember</string>
     <string name="RememberSendActionOpenSettings">Open remembered send action settings</string>
     <string name="RememberSendActionSilent">Silent send</string>

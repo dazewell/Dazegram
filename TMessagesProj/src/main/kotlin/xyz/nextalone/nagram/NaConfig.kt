@@ -1436,7 +1436,7 @@ object NaConfig {
             true
         )
     // NagramX (#remember-send-action): whether long-pressing Send and picking each alternate
-    // action arms it for the next plain tap. App-wide, not per-account and not per-chat.
+    // action arms it for the next send. App-wide, not per-account and not per-chat.
     val rememberSendActionSilent =
         addConfig(
             "RememberSendActionSilent",
