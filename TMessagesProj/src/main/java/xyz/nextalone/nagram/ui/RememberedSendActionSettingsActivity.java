@@ -78,12 +78,13 @@ public class RememberedSendActionSettingsActivity extends BaseNekoXSettingsActiv
                 // NagramX (#remember-send-action): both long-press menus' own master handlers disarm
                 // the slot immediately on the off transition -- this page must match, or turning the
                 // master off here and back on before returning to the chat leaves the original armed
-                // action untouched and it replays as if nothing happened.
+                // action untouched and it replays as if nothing happened. The master config is global,
+                // not scoped to the currently viewed account, so every account's slot needs clearing.
                 if (!value) {
-                    RememberedSendAction.disarm(currentAccount);
+                    RememberedSendAction.disarmAll();
                 }
             } else if (!value) {
-                disarmIfArmed(childActionForKey(key));
+                RememberedSendAction.disarmAllIfArmed(childActionForKey(key));
             }
         };
 
@@ -106,14 +107,6 @@ public class RememberedSendActionSettingsActivity extends BaseNekoXSettingsActiv
         if (key.equals(sendWhenOnlineRow.getKey())) return RememberedSendAction.SEND_WHEN_ONLINE;
         if (key.equals(scheduleRow.getKey())) return RememberedSendAction.SCHEDULE;
         return RememberedSendAction.NONE;
-    }
-
-    // NagramX (#remember-send-action): only disarms when the currently armed action is the one whose
-    // toggle just got turned off -- turning off "silent" must not touch a currently armed "schedule".
-    private void disarmIfArmed(int action) {
-        if (action != RememberedSendAction.NONE && RememberedSendAction.getArmedAction(currentAccount) == action) {
-            RememberedSendAction.disarm(currentAccount);
-        }
     }
 
     @Override

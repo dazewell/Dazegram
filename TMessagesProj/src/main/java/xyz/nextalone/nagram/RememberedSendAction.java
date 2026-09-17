@@ -76,4 +76,26 @@ public final class RememberedSendAction {
     public static void clearAccountState(int account) {
         disarm(account);
     }
+
+    // NagramX (#remember-send-action): the master/child NaConfig toggles are global, not scoped to one
+    // account, so a settings-page or menu-master off transition must clear every account's slot -- not
+    // just the caller's currentAccount -- or a different account's armed action survives to resurrect
+    // once the toggle is turned back on.
+    public static void disarmAll() {
+        for (int account = 0; account < armedAction.length; account++) {
+            disarm(account);
+        }
+    }
+
+    /** Same as disarmAll, but only clears a slot currently holding the given action -- used when a
+     * single child remember-toggle (not the master) turns off, so an armed action of a different type
+     * on another account is left alone. */
+    public static void disarmAllIfArmed(int action) {
+        if (action == NONE) return;
+        for (int account = 0; account < armedAction.length; account++) {
+            if (armedAction[account] == action) {
+                disarm(account);
+            }
+        }
+    }
 }

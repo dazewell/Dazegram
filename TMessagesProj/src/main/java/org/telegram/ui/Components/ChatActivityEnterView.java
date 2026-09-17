@@ -5797,11 +5797,14 @@ public class ChatActivityEnterView extends FrameLayout implements
                         rememberMasterSwitchCached.setChecked(newValue, true);
                         applyRememberRowAccessibility(rememberMasterRowCached, rememberMasterSwitchCached);
                         if (!newValue) {
-                            // NagramX: this cached menu's own rows have never shown a checked/armed state
-                            // (see the codemap entry -- only the ItemOptions menu is wired that far), so
-                            // there is nothing here to visually clear beyond disarming the shared slot,
-                            // which repaints the Send button badge on its own.
-                            RememberedSendAction.disarm(currentAccount);
+                            // NagramX (#remember-send-action): the master config is global, not scoped to
+                            // this composer's account -- clear every account's slot, not just this one,
+                            // or another account's armed action survives to resurrect once re-enabled.
+                            // This cached menu's own rows have never shown a checked/armed state (see the
+                            // codemap entry -- only the ItemOptions menu is wired that far), so there is
+                            // nothing here to visually clear beyond disarming the shared slot, which
+                            // repaints the Send button badge on its own.
+                            RememberedSendAction.disarmAll();
                             updateSendButtonArmedState();
                         }
                     });
@@ -8530,6 +8533,10 @@ public class ChatActivityEnterView extends FrameLayout implements
         isPaused = false;
         // NagramX (#input-text-size): pick up a slider change made while this chat was backgrounded
         refreshInputTextSize();
+        // NagramX (#remember-send-action): pick up a settings-page disarm/master-toggle made while
+        // this chat was backgrounded -- getEligibleArmedSendAction() only re-runs from popup build,
+        // badge draw or tap handling, none of which fire on their own just from returning here.
+        checkSendButton(false);
         if (composerFormattingActions != null) {
             composerFormattingActions.refresh();
         }
@@ -19291,7 +19298,9 @@ public class ChatActivityEnterView extends FrameLayout implements
             sw.setChecked(newValue, true);
             applyRememberRowAccessibility(row, sw);
             if (!newValue) {
-                RememberedSendAction.disarm(currentAccount);
+                // NagramX (#remember-send-action): global config, not scoped to this composer's
+                // account -- clear every account's slot, matching the cached popup's own master handler.
+                RememberedSendAction.disarmAll();
                 updateSendButtonArmedState();
                 if (onMasterDisarmed != null) onMasterDisarmed.run();
             }
