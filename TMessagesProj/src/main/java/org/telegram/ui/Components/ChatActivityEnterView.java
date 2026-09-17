@@ -5640,6 +5640,21 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     private final RectF armedBadgeBoundsRect = new RectF();
     private Paint armedBadgeBackgroundPaint;
+    // NagramX (#remember-send-action): one drawable per armed type, tinted and sized once and reused
+    // across every onDraw -- this view instance dies with the enter view on theme/config change, which
+    // recreates it anyway, so there's no stale-tint case to guard against here.
+    private final Drawable[] armedBadgeIcons = new Drawable[4];
+
+    private Drawable getArmedBadgeIcon(int armed, int iconRes, int half) {
+        Drawable icon = armedBadgeIcons[armed];
+        if (icon == null) {
+            icon = ContextCompat.getDrawable(getContext(), iconRes).mutate();
+            icon.setColorFilter(getThemedColor(Theme.key_chat_messagePanelIcons), PorterDuff.Mode.SRC_IN);
+            armedBadgeIcons[armed] = icon;
+        }
+        icon.setBounds(-half, -half, half, half);
+        return icon;
+    }
 
     // NagramX (#remember-send-action): corner glyph on the composer's own Send button only -- reuses
     // getBounds() (already public on SendButton for ItemOptions.ScrimView) instead of duplicating the
@@ -5661,18 +5676,18 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (armedBadgeBackgroundPaint == null) {
             armedBadgeBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         }
-        float cx = armedBadgeBoundsRect.right;
-        float cy = armedBadgeBoundsRect.top;
         float badgeRadius = dp(8);
+        // NagramX: getBounds() hands back the button's own circle corner -- inset inward by the badge
+        // radius so the whole badge lands inside that circle instead of half of it drawing past the edge.
+        float cx = armedBadgeBoundsRect.right - badgeRadius;
+        float cy = armedBadgeBoundsRect.top + badgeRadius;
         armedBadgeBackgroundPaint.setColor(getThemedColor(Theme.key_chat_messagePanelBackground));
         canvas.drawCircle(cx, cy, badgeRadius, armedBadgeBackgroundPaint);
-        Drawable icon = ContextCompat.getDrawable(getContext(), iconRes);
-        if (icon == null) return;
-        icon = icon.mutate();
-        icon.setColorFilter(getThemedColor(Theme.key_chat_messagePanelIcons), PorterDuff.Mode.SRC_IN);
-        int half = dp(6);
-        icon.setBounds((int) (cx - half), (int) (cy - half), (int) (cx + half), (int) (cy + half));
+        Drawable icon = getArmedBadgeIcon(armed, iconRes, dp(6));
+        canvas.save();
+        canvas.translate(cx, cy);
         icon.draw(canvas);
+        canvas.restore();
     }
 
     private ActionBarMenuSubItem actionScheduleButton;
