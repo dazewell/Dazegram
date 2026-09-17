@@ -17,11 +17,14 @@ import tw.nekomimi.nekogram.settings.BaseNekoXSettingsActivity;
 import xyz.nextalone.nagram.NaConfig;
 
 /**
- * Chat Settings -> Remembered send action. Four app-wide toggles: whether long-pressing Send and
- * picking silent / send-when-online / schedule arms it for the next plain tap, one switch per
- * action, plus whether the armed action resets when you leave the chat. All default enabled.
- * Turning an action switch off doesn't hide that row from the long-press menu or stop it sending
- * normally -- it just stops that pick from being remembered afterwards.
+ * Chat Settings -> Remembered send action. A master switch at the top turns the whole feature on
+ * or off; four app-wide toggles below it cover whether long-pressing Send and picking silent /
+ * send-when-online / schedule arms it for the next plain tap, one switch per action, plus whether
+ * the armed action resets when you leave the chat. All default enabled. Turning an action switch
+ * off doesn't hide that row from the long-press menu or stop it sending normally -- it just stops
+ * that pick from being remembered afterwards. Turning the master switch off disables (not hides)
+ * the four rows below it, same as they read everywhere else the feature checks: master-off always
+ * wins over an individual toggle still being on.
  */
 public class RememberedSendActionSettingsActivity extends BaseNekoXSettingsActivity {
 
@@ -39,12 +42,13 @@ public class RememberedSendActionSettingsActivity extends BaseNekoXSettingsActiv
 
     private final CellGroup cellGroup = new CellGroup(this);
 
+    private final ConfigCellTextCheck masterRow = (ConfigCellTextCheck) cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getRememberSendActionMaster(), null, getString(R.string.RememberSendActionMaster)));
     private final AbstractConfigCell headerActions = cellGroup.appendCell(new ConfigCellHeader(getString(R.string.RememberedSendActionNotice)));
-    private final AbstractConfigCell silentRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getRememberSendActionSilent(), null, getString(R.string.RememberSendActionSilent)));
-    private final AbstractConfigCell sendWhenOnlineRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getRememberSendActionSendWhenOnline(), null, getString(R.string.RememberSendActionSendWhenOnline)));
-    private final AbstractConfigCell scheduleRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getRememberSendActionSchedule(), null, getString(R.string.RememberSendActionSchedule)));
+    private final ConfigCellTextCheck silentRow = (ConfigCellTextCheck) cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getRememberSendActionSilent(), null, getString(R.string.RememberSendActionSilent)));
+    private final ConfigCellTextCheck sendWhenOnlineRow = (ConfigCellTextCheck) cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getRememberSendActionSendWhenOnline(), null, getString(R.string.RememberSendActionSendWhenOnline)));
+    private final ConfigCellTextCheck scheduleRow = (ConfigCellTextCheck) cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getRememberSendActionSchedule(), null, getString(R.string.RememberSendActionSchedule)));
     private final AbstractConfigCell headerReset = cellGroup.appendCell(new ConfigCellHeader(""));
-    private final AbstractConfigCell resetOnLeaveRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getRememberSendActionResetOnLeave(), getString(R.string.RememberSendActionResetOnLeaveNotice), getString(R.string.RememberSendActionResetOnLeave)));
+    private final ConfigCellTextCheck resetOnLeaveRow = (ConfigCellTextCheck) cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getRememberSendActionResetOnLeave(), getString(R.string.RememberSendActionResetOnLeaveNotice), getString(R.string.RememberSendActionResetOnLeave)));
     // NagramX: CellGroup.needSetDivider() always peeks one row past the current one, so the last row
     // in the group needs a divider appended after it or binding indexes off the end of the list.
     private final AbstractConfigCell dividerReset = cellGroup.appendCell(new ConfigCellDivider());
@@ -62,7 +66,25 @@ public class RememberedSendActionSettingsActivity extends BaseNekoXSettingsActiv
 
         setupDefaultListeners();
 
+        // NagramX (#remember-send-action): reflect the master switch on the four rows it governs, both
+        // on first open and on every later toggle -- disabled, not removed, so re-enabling the master
+        // doesn't need the four rows re-inserted or their own state re-taught.
+        updateChildRowsEnabled();
+        cellGroup.callBackSettingsChanged = (key, newValue) -> {
+            if (key.equals(masterRow.getKey())) {
+                updateChildRowsEnabled();
+            }
+        };
+
         return superView;
+    }
+
+    private void updateChildRowsEnabled() {
+        boolean on = NaConfig.INSTANCE.getRememberSendActionMaster().Bool();
+        silentRow.setEnabled(on);
+        sendWhenOnlineRow.setEnabled(on);
+        scheduleRow.setEnabled(on);
+        resetOnLeaveRow.setEnabled(on);
     }
 
     @Override

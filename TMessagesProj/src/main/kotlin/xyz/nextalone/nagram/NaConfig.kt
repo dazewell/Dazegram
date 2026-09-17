@@ -1425,6 +1425,16 @@ object NaConfig {
             ConfigItem.configTypeBool,
             false
         )
+    // NagramX (#remember-send-action): master switch for the whole feature. Off both disarms
+    // whatever is currently remembered (read in getEligibleArmedSendAction) and disables the four
+    // toggles below on their settings page -- disabled, not hidden, so turning it back on doesn't
+    // require re-discovering four separate rows.
+    val rememberSendActionMaster =
+        addConfig(
+            "RememberSendActionMaster",
+            ConfigItem.configTypeBool,
+            true
+        )
     // NagramX (#remember-send-action): whether long-pressing Send and picking each alternate
     // action arms it for the next plain tap. App-wide, not per-account and not per-chat.
     val rememberSendActionSilent =
