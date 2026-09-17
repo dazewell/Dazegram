@@ -249,6 +249,7 @@ import tw.nekomimi.nekogram.utils.AlertUtil;
 import tw.nekomimi.nekogram.utils.AndroidUtil;
 import tw.nekomimi.nekogram.utils.StringUtils;
 import xyz.nextalone.nagram.NaConfig;
+import xyz.nextalone.nagram.RememberedSendAction;
 import xyz.nextalone.nagram.helper.RecordingLimitVibration;
 
 public class ChatActivityEnterView extends FrameLayout implements
@@ -628,6 +629,10 @@ public class ChatActivityEnterView extends FrameLayout implements
     private int sendButtonBackgroundColor;
     public MessageSendPreview messageSendPreview;
     private long sentFromPreview;
+    // NagramX (#remember-send-action): true only for the exact duration of the message-send-preview
+    // sheet's own plain-send tap, which calls the shared sendMessage() too -- keeps that control plain
+    // (per the approved spec) without it arming or repeating the remembered action.
+    private boolean sendingFromPreviewPlainButton;
     private ActionBarPopupWindow sendPopupWindow;
     private ActionBarPopupWindow.ActionBarPopupWindowLayout sendPopupLayout;
     private ActionBarPopupWindow cameraSelectionPopup; // nax
@@ -3812,6 +3817,14 @@ public class ChatActivityEnterView extends FrameLayout implements
                 super.setAlpha(alpha);
                 updateAttachButtonTranslationX();
             }
+
+            @Override
+            protected void onDraw(Canvas canvas) {
+                super.onDraw(canvas);
+                // NagramX (#remember-send-action): badge only in this composer-local subclass, never in the
+                // shared SendButton base class other consumers (edit "done" button, etc.) also use.
+                drawArmedSendActionBadge(canvas, this);
+            }
         };
         sendButton.setVisibility(INVISIBLE);
         sendButton.setContentDescription(getString(R.string.Send));
@@ -5565,6 +5578,103 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
     }
 
+    // NagramX (#remember-send-action): one predicate per alternate send action, mirroring the
+    // conditions the long-press popup already computes inline, so menu visibility, the badge and
+    // tap-time repeat all read the same rule instead of three copies drifting apart.
+    private boolean isSilentSendEligible() {
+        boolean self = parentFragment != null && UserObject.isUserSelf(parentFragment.getCurrentUser());
+        return !(self || slowModeTimer > 0 && !isInScheduleMode());
+    }
+
+    private boolean isScheduleEligible() {
+        return parentFragment != null && parentFragment.canScheduleMessage();
+    }
+
+    private boolean isSendWhenOnlineEligible() {
+        if (dialog_id <= 0 || !isScheduleEligible()) return false;
+        boolean self = parentFragment != null && UserObject.isUserSelf(parentFragment.getCurrentUser());
+        if (self) return false;
+        TLRPC.User user = parentFragment.getCurrentUser();
+        return user != null && !user.bot && !(user.status instanceof TLRPC.TL_userStatusEmpty) && !(user.status instanceof TLRPC.TL_userStatusOnline) && !(user.status instanceof TLRPC.TL_userStatusRecently) && !(user.status instanceof TLRPC.TL_userStatusLastMonth) && !(user.status instanceof TLRPC.TL_userStatusLastWeek);
+    }
+
+    // Re-checks the armed action against the chat you're in right now and the remember-toggle for
+    // its type; disarms and reports NONE the moment either stops holding, so nothing here ever
+    // hands back a stale action to draw or to send.
+    private int getEligibleArmedSendAction() {
+        int armed = RememberedSendAction.getArmedAction(currentAccount);
+        if (armed == RememberedSendAction.NONE) return RememberedSendAction.NONE;
+        boolean eligible;
+        if (armed == RememberedSendAction.SILENT) {
+            eligible = isSilentSendEligible() && NaConfig.INSTANCE.getRememberSendActionSilent().Bool();
+        } else if (armed == RememberedSendAction.SEND_WHEN_ONLINE) {
+            eligible = isSendWhenOnlineEligible() && NaConfig.INSTANCE.getRememberSendActionSendWhenOnline().Bool();
+        } else if (armed == RememberedSendAction.SCHEDULE) {
+            eligible = isScheduleEligible() && NaConfig.INSTANCE.getRememberSendActionSchedule().Bool();
+        } else {
+            eligible = false;
+        }
+        if (!eligible) {
+            RememberedSendAction.disarm(currentAccount);
+            return RememberedSendAction.NONE;
+        }
+        return armed;
+    }
+
+    private void updateSendButtonArmedState() {
+        if (sendButton == null) return;
+        int armed = getEligibleArmedSendAction();
+        int descRes;
+        if (armed == RememberedSendAction.SILENT) {
+            descRes = R.string.AccDescrSendSilentArmed;
+        } else if (armed == RememberedSendAction.SEND_WHEN_ONLINE) {
+            descRes = R.string.AccDescrSendWhenOnlineArmed;
+        } else if (armed == RememberedSendAction.SCHEDULE) {
+            descRes = R.string.AccDescrSendScheduleArmed;
+        } else {
+            descRes = R.string.Send;
+        }
+        sendButton.setContentDescription(getString(descRes));
+        sendButton.invalidate();
+    }
+
+    private final RectF armedBadgeBoundsRect = new RectF();
+    private Paint armedBadgeBackgroundPaint;
+
+    // NagramX (#remember-send-action): corner glyph on the composer's own Send button only -- reuses
+    // getBounds() (already public on SendButton for ItemOptions.ScrimView) instead of duplicating the
+    // button's animated geometry, and reuses the same three drawables the long-press menu already uses.
+    private void drawArmedSendActionBadge(Canvas canvas, SendButton button) {
+        int armed = getEligibleArmedSendAction();
+        int iconRes;
+        if (armed == RememberedSendAction.SILENT) {
+            iconRes = R.drawable.input_notify_off;
+        } else if (armed == RememberedSendAction.SEND_WHEN_ONLINE) {
+            iconRes = R.drawable.msg_online;
+        } else if (armed == RememberedSendAction.SCHEDULE) {
+            iconRes = R.drawable.msg_calendar2;
+        } else {
+            return;
+        }
+        button.getBounds(armedBadgeBoundsRect);
+        if (armedBadgeBoundsRect.isEmpty()) return;
+        if (armedBadgeBackgroundPaint == null) {
+            armedBadgeBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        }
+        float cx = armedBadgeBoundsRect.right;
+        float cy = armedBadgeBoundsRect.top;
+        float badgeRadius = dp(8);
+        armedBadgeBackgroundPaint.setColor(getThemedColor(Theme.key_chat_messagePanelBackground));
+        canvas.drawCircle(cx, cy, badgeRadius, armedBadgeBackgroundPaint);
+        Drawable icon = ContextCompat.getDrawable(getContext(), iconRes);
+        if (icon == null) return;
+        icon = icon.mutate();
+        icon.setColorFilter(getThemedColor(Theme.key_chat_messagePanelIcons), PorterDuff.Mode.SRC_IN);
+        int half = dp(6);
+        icon.setBounds((int) (cx - half), (int) (cy - half), (int) (cx + half), (int) (cy + half));
+        icon.draw(canvas);
+    }
+
     private ActionBarMenuSubItem actionScheduleButton;
     private boolean onSendLongClick(View view) {
         if (isInScheduleMode() || parentFragment != null && parentFragment.getChatMode() == ChatActivity.MODE_QUICK_REPLIES || animatorEphemeralMessageVisibility.getValue()) {
@@ -5895,7 +6005,13 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         messageSendPreview.setSendButton(sendButton, true, v -> {
             sentFromPreview = System.currentTimeMillis();
-            final boolean shownDialog = sendMessage();
+            sendingFromPreviewPlainButton = true;
+            final boolean shownDialog;
+            try {
+                shownDialog = sendMessage();
+            } finally {
+                sendingFromPreviewPlainButton = false;
+            }
             if (!containsSendMessage && messageSendPreview != null) {
                 messageSendPreview.dismiss(!shownDialog);
                 messageSendPreview = null;
@@ -5913,14 +6029,31 @@ public class ChatActivityEnterView extends FrameLayout implements
         ItemOptions options = ItemOptions.makeOptions(this, resourcesProvider, sendButton);
 
         final boolean self = parentFragment != null && UserObject.isUserSelf(parentFragment.getCurrentUser());
-        boolean scheduleButtonValue = parentFragment != null && parentFragment.canScheduleMessage();
-        boolean sendWithoutSoundButtonValue = !(self || slowModeTimer > 0 && !isInScheduleMode());
+        boolean scheduleButtonValue = isScheduleEligible();
+        boolean sendWithoutSoundButtonValue = isSilentSendEligible();
+        // NagramX (#remember-send-action): read once per popup build, not per row -- getEligibleArmedSendAction()
+        // disarms a stale slot as a side effect, and we only want that to happen once here.
+        final int armedBeforeMenu = getEligibleArmedSendAction();
         if (scheduleButtonValue) {
-            options.add(R.drawable.msg_calendar2, getString(self ? R.string.SetReminder : R.string.ScheduleMessage), () -> {
+            options.addChecked(armedBeforeMenu == RememberedSendAction.SCHEDULE, R.drawable.msg_calendar2, getString(self ? R.string.SetReminder : R.string.ScheduleMessage), () -> {
+                if (armedBeforeMenu == RememberedSendAction.SCHEDULE) {
+                    // tapping the already-armed row disarms it instead of scheduling again
+                    RememberedSendAction.disarm(currentAccount);
+                    updateSendButtonArmedState();
+                    if (messageSendPreview != null) {
+                        messageSendPreview.dismiss(false);
+                        messageSendPreview = null;
+                    }
+                    return;
+                }
                 AlertsCreator.createScheduleDatePickerDialog(parentActivity, parentFragment.getDialogId(), new AlertsCreator.ScheduleDatePickerDelegate() {
                     @Override
                     public void didSelectDate(boolean notify, int scheduleDate, int scheduleRepeatPeriod) {
                         sendMessageInternal(notify, scheduleDate, scheduleRepeatPeriod, 0, true);
+                        if (NaConfig.INSTANCE.getRememberSendActionSchedule().Bool()) {
+                            RememberedSendAction.arm(currentAccount, RememberedSendAction.SCHEDULE, dialog_id);
+                            updateSendButtonArmedState();
+                        }
                         if (messageSendPreview != null) {
                             messageSendPreview.dismissInstant();
                             messageSendPreview = null;
@@ -5930,8 +6063,21 @@ public class ChatActivityEnterView extends FrameLayout implements
             });
 
             if (!self && dialog_id > 0) {
-                options.add(R.drawable.msg_online, getString(R.string.SendWhenOnline), () -> {
+                options.addChecked(armedBeforeMenu == RememberedSendAction.SEND_WHEN_ONLINE, R.drawable.msg_online, getString(R.string.SendWhenOnline), () -> {
+                    if (armedBeforeMenu == RememberedSendAction.SEND_WHEN_ONLINE) {
+                        RememberedSendAction.disarm(currentAccount);
+                        updateSendButtonArmedState();
+                        if (messageSendPreview != null) {
+                            messageSendPreview.dismiss(false);
+                            messageSendPreview = null;
+                        }
+                        return;
+                    }
                     sendMessageInternal(true, 0x7FFFFFFE, 0, 0, true);
+                    if (NaConfig.INSTANCE.getRememberSendActionSendWhenOnline().Bool()) {
+                        RememberedSendAction.arm(currentAccount, RememberedSendAction.SEND_WHEN_ONLINE, dialog_id);
+                        updateSendButtonArmedState();
+                    }
                     if (messageSendPreview != null) {
                         messageSendPreview.dismiss(false);
                         messageSendPreview = null;
@@ -5972,9 +6118,22 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
 
         if (sendWithoutSoundButtonValue) {
-            options.add(sendWithoutSoundNax ? R.drawable.input_notify_on : R.drawable.input_notify_off, sendWithoutSoundNax ? getString(R.string.SendWithSound) : getString(R.string.SendWithoutSound), () -> {
+            options.addChecked(armedBeforeMenu == RememberedSendAction.SILENT, sendWithoutSoundNax ? R.drawable.input_notify_on : R.drawable.input_notify_off, sendWithoutSoundNax ? getString(R.string.SendWithSound) : getString(R.string.SendWithoutSound), () -> {
+                if (armedBeforeMenu == RememberedSendAction.SILENT) {
+                    RememberedSendAction.disarm(currentAccount);
+                    updateSendButtonArmedState();
+                    if (messageSendPreview != null) {
+                        messageSendPreview.dismiss(false);
+                        messageSendPreview = null;
+                    }
+                    return;
+                }
                 sentFromPreview = System.currentTimeMillis();
                 final boolean shownDialog = sendMessageInternal(sendWithoutSoundNax, 0, 0, 0, true);
+                if (NaConfig.INSTANCE.getRememberSendActionSilent().Bool()) {
+                    RememberedSendAction.arm(currentAccount, RememberedSendAction.SILENT, dialog_id);
+                    updateSendButtonArmedState();
+                }
                 if (!containsSendMessage && messageSendPreview != null) {
                     messageSendPreview.dismiss(!shownDialog);
                     messageSendPreview = null;
@@ -9035,6 +9194,24 @@ public class ChatActivityEnterView extends FrameLayout implements
             }, resourcesProvider);
             return true;
         } else {
+            // NagramX (#remember-send-action): repeat the last armed alternate action on a plain tap, unless
+            // this call is the preview sheet's own plain-send control, which stays plain by design.
+            if (!sendingFromPreviewPlainButton) {
+                int armed = getEligibleArmedSendAction();
+                if (armed == RememberedSendAction.SEND_WHEN_ONLINE) {
+                    return sendMessageInternal(true, 0x7FFFFFFE, 0, 0, true);
+                } else if (armed == RememberedSendAction.SILENT) {
+                    return sendMessageInternal(NaConfig.INSTANCE.getSilentMessageByDefault().Bool(), 0, 0, 0, true);
+                } else if (armed == RememberedSendAction.SCHEDULE) {
+                    AlertsCreator.createScheduleDatePickerDialog(parentActivity, parentFragment.getDialogId(), new AlertsCreator.ScheduleDatePickerDelegate() {
+                        @Override
+                        public void didSelectDate(boolean notify, int scheduleDate, int scheduleRepeatPeriod) {
+                            sendMessageInternal(notify, scheduleDate, scheduleRepeatPeriod, 0, true);
+                        }
+                    }, resourcesProvider);
+                    return true;
+                }
+            }
             return sendMessageInternal(!NaConfig.INSTANCE.getSilentMessageByDefault().Bool(), 0, 0, 0, true);
         }
     }
@@ -9745,6 +9922,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     public void checkSendButton(boolean animated) {
+        // NagramX (#remember-send-action): only synchronous checkpoint that fires on ordinary composer-state
+        // changes (dialog switch, slow mode expiring, self-chat, etc.) without a dedicated observer.
+        updateSendButtonArmedState();
         if (editingMessageObject != null || recordingAudioVideo || inputPrimarySuppressed) {
             // NagramX (#composer-padding): everything below is send-column work these two states skip, but
             // this is also the per-keystroke trigger that settles the emoji gutter, so keep that part.
