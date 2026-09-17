@@ -5751,22 +5751,11 @@ public class ChatActivityEnterView extends FrameLayout implements
     private LinearLayout rememberMasterRowCached;
     private Switch rememberMasterSwitchCached;
     private boolean onSendLongClick(View view) {
-        // NagramX smoke diagnostics (#remember-send-action): temporary, removed once a reachability
-        // smoke build confirms both onSendLongClick menu branches are hit as expected. Booleans only,
-        // never message/user content.
-        android.util.Log.e("NAX_SMOKE_remember-send-action", "onSendLongClick isStories=" + isStories
-                + " isRememberSendActionContextEligible=" + isRememberSendActionContextEligible()
-                + " rememberMaster=" + NaConfig.INSTANCE.getRememberSendActionMaster().Bool()
-                + " cachedPopupBuilt=" + (sendPopupLayout != null));
         if (isInScheduleMode() || parentFragment != null && parentFragment.getChatMode() == ChatActivity.MODE_QUICK_REPLIES || animatorEphemeralMessageVisibility.getValue()) {
             return false;
         }
         boolean sendWithoutSoundNax = NaConfig.INSTANCE.getSilentMessageByDefault().Bool();
         if (isStories || (messageEditText == null || TextUtils.isEmpty(messageEditText.getText())) && parentFragment != null && parentFragment.messagePreviewParams != null && parentFragment.messagePreviewParams.forwardMessages != null && parentFragment.messagePreviewParams.forwardMessages.messages != null && !parentFragment.messagePreviewParams.forwardMessages.messages.isEmpty()) {
-            // NagramX smoke diagnostics (#remember-send-action): explicit branch-taken marker -- the
-            // top-of-method log alone can't distinguish branches on a cold first call, since
-            // cachedPopupBuilt is false going into either one.
-            android.util.Log.e("NAX_SMOKE_remember-send-action", "onSendLongClick branch=CACHED_POPUP");
 
             boolean self = parentFragment != null && UserObject.isUserSelf(parentFragment.getCurrentUser());
 
@@ -6003,10 +5992,6 @@ public class ChatActivityEnterView extends FrameLayout implements
 
             return true;
         }
-
-        // NagramX smoke diagnostics (#remember-send-action): explicit branch-taken marker for the
-        // fresh ItemOptions/MessageSendPreview path -- see the CACHED_POPUP marker above.
-        android.util.Log.e("NAX_SMOKE_remember-send-action", "onSendLongClick branch=ITEM_OPTIONS");
 
         if (messageSendPreview != null) {
             messageSendPreview.dismiss(false);
