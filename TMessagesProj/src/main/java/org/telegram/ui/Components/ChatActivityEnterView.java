@@ -19310,6 +19310,11 @@ public class ChatActivityEnterView extends FrameLayout implements
     // not the icon/label/switch as three), plus a discoverable long-press action, since opening
     // settings from a long-press isn't otherwise exposed to accessibility services at all.
     private void applyRememberRowAccessibility(View row, Switch sw) {
+        // NagramX (#remember-send-action): the embedded Switch is otherwise its own accessibility
+        // node (Switch.onInitializeAccessibilityNodeInfo sets checkable/checked on it directly), so
+        // without this a screen reader would announce the row twice -- once for the delegate below,
+        // once for the child switch, and only the row-level node carries the long-press action.
+        sw.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         row.setAccessibilityDelegate(new View.AccessibilityDelegate() {
             @Override
             public void onInitializeAccessibilityNodeInfo(View host, AccessibilityNodeInfo info) {
