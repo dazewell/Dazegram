@@ -39,14 +39,14 @@ never meant to change.
 
 ## The composer Send button has two long-press menus, not one
 
-`ChatActivityEnterView.onSendLongClick` (`ChatActivityEnterView.java:5753`)
+`ChatActivityEnterView.onSendLongClick` (`ChatActivityEnterView.java:5759`)
 branches on `isStories || (empty text && a pending forward is attached)`
-(`ChatActivityEnterView.java:5758`). When true, it builds a cached
+(`ChatActivityEnterView.java:5764`). When true, it builds a cached
 `ActionBarPopupWindow`/`ActionBarMenuSubItem` popup (`sendPopupLayout`,
 built once and reused across long-presses). Everything else — ordinary typed
 text in an in-app chat, which is what most users hit — falls through to a
 second, completely separate menu built fresh every time from
-`ItemOptions`/`MessageSendPreview` (`ChatActivityEnterView.java:6152`
+`ItemOptions`/`MessageSendPreview` (`ChatActivityEnterView.java:6158`
 onward). The two duplicate the same three rows (schedule, send-when-online,
 silent) with near-identical eligibility conditions computed independently in
 each branch — a change to the ordinary composer's long-press menu only needs
@@ -59,14 +59,14 @@ Stories or an empty-caption forward-in-progress, both edge cases relative to
 ### The Remember master toggle is the one thing deliberately wired into both
 
 `#remember-send-action`'s master switch is inserted into **both** branches of
-`onSendLongClick` (starts `ChatActivityEnterView.java:5753`) — the `ItemOptions`
-menu (built from `ItemOptions.makeOptions` at `:6152`) and the cached
+`onSendLongClick` (starts `ChatActivityEnterView.java:5759`) — the `ItemOptions`
+menu (built from `ItemOptions.makeOptions` at `:6158`) and the cached
 `sendPopupLayout` popup — while the three per-action rows
 (schedule/send-when-online/silent) stay `ItemOptions`-only, per the section
 above. The two branches do **not** share one master-row implementation: the
-`ItemOptions` branch calls `createRememberMasterRow` (`:19293`), a helper built
+`ItemOptions` branch calls `createRememberMasterRow` (`:19299`), a helper built
 around `ItemOptions`/`MessageSendPreview` dismissal; the cached popup builds its
-own row directly off `createPopupSwitchRow` (`:5799`) and wires its own
+own row directly off `createPopupSwitchRow` (`:5805`) and wires its own
 click/long-click handlers inline, because dismissing that popup is a plain
 `sendPopupWindow.dismiss()`, not the other branch's `messageSendPreview`
 teardown. Changing one branch's master-row behavior does not touch the other's
