@@ -11,7 +11,6 @@ import org.telegram.ui.Components.RecyclerListView;
 import tw.nekomimi.nekogram.config.CellGroup;
 import tw.nekomimi.nekogram.config.cell.AbstractConfigCell;
 import tw.nekomimi.nekogram.config.cell.ConfigCellDivider;
-import tw.nekomimi.nekogram.config.cell.ConfigCellHeader;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextCheck;
 import tw.nekomimi.nekogram.settings.BaseNekoXSettingsActivity;
 import xyz.nextalone.nagram.NaConfig;
@@ -43,12 +42,10 @@ public class RememberedSendActionSettingsActivity extends BaseNekoXSettingsActiv
 
     private final CellGroup cellGroup = new CellGroup(this);
 
-    private final ConfigCellTextCheck masterRow = (ConfigCellTextCheck) cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getRememberSendActionMaster(), null, getString(R.string.RememberSendActionMaster)));
-    private final AbstractConfigCell headerActions = cellGroup.appendCell(new ConfigCellHeader(getString(R.string.RememberedSendActionNotice)));
+    private final ConfigCellTextCheck masterRow = (ConfigCellTextCheck) cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getRememberSendActionMaster(), getString(R.string.RememberedSendActionNotice), getString(R.string.RememberSendActionMaster)));
     private final ConfigCellTextCheck silentRow = (ConfigCellTextCheck) cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getRememberSendActionSilent(), null, getString(R.string.RememberSendActionSilent)));
     private final ConfigCellTextCheck sendWhenOnlineRow = (ConfigCellTextCheck) cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getRememberSendActionSendWhenOnline(), null, getString(R.string.RememberSendActionSendWhenOnline)));
     private final ConfigCellTextCheck scheduleRow = (ConfigCellTextCheck) cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getRememberSendActionSchedule(), null, getString(R.string.RememberSendActionSchedule)));
-    private final AbstractConfigCell headerReset = cellGroup.appendCell(new ConfigCellHeader(""));
     private final ConfigCellTextCheck resetOnLeaveRow = (ConfigCellTextCheck) cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getRememberSendActionResetOnLeave(), getString(R.string.RememberSendActionResetOnLeaveNotice), getString(R.string.RememberSendActionResetOnLeave)));
     // NagramX: CellGroup.needSetDivider() always peeks one row past the current one, so the last row
     // in the group needs a divider appended after it or binding indexes off the end of the list.
