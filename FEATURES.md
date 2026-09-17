@@ -120,7 +120,7 @@ The calendar icon is a one-tap schedule shortcut, instead of long-pressing Send.
 
 ### Remembered send action <!-- #remember-send-action -->
 
-Long-press Send and pick silent, send-when-online, or schedule; it repeats on your next plain tap, with a badge on Send showing which. Tap the checked option again to drop it. The same menu has a Remember switch up top, on by default: tap to turn the feature on or off without closing the menu, long-press to open Chat Settings → Remembered send action for the per-type and leave-chat-reset toggles.
+Long-press Send and pick silent, send-when-online, or schedule; it repeats on your next send, with a badge on Send showing which. Tap the checked option again to drop it. The same menu has a Remember switch up top, on by default: tap to turn the feature on or off without closing the menu, long-press to open Chat Settings → Remembered send action for the per-type and leave-chat-reset toggles.
 
 ### Double-tap edit keeps the caret on the tapped word <!-- #double-tap-edit-cursor -->
 

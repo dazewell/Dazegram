@@ -5632,6 +5632,12 @@ public class ChatActivityEnterView extends FrameLayout implements
         // schedule mode, forward-comment) doesn't own this memory -- report NONE without touching
         // it, so switching into one of these modes never disarms what the main composer armed.
         if (!isRememberSendActionContextEligible()) return RememberedSendAction.NONE;
+        // NagramX (#remember-send-action): the constructor calls checkSendButton() before setDialogId()
+        // runs, and currentAccount can still be whatever selectedAccount was at that point -- so this
+        // can run once with dialog_id still 0, on a different account's currentAccount, before this
+        // composer is actually bound to the chat it will end up showing. Report NONE without disarming,
+        // same as the context-eligibility early return above: this composer doesn't own that memory yet.
+        if (dialog_id == 0) return RememberedSendAction.NONE;
         boolean eligible;
         // NagramX (#remember-send-action): the master switch belongs here, not in
         // isRememberSendActionContextEligible() -- that predicate's non-disarming early return for
@@ -6307,8 +6313,8 @@ public class ChatActivityEnterView extends FrameLayout implements
                 sentFromPreview = System.currentTimeMillis();
                 final boolean shownDialog = sendMessageInternal(sendWithoutSoundNax, 0, 0, 0, true);
                 // NagramX: this row's actual behavior flips with the current silent-by-default setting --
-                // sendWithoutSoundNax true means the row just sent WITH sound, not silently, so only arm
-                // the remembered SILENT action on the tap that genuinely sent without sound.
+                // sendWithoutSoundNax true means the row just requested a send WITH sound, not silently,
+                // so only arm the remembered SILENT action for the row whose direction is silent.
                 if (!sendWithoutSoundNax && canArmRememberedAction(RememberedSendAction.SILENT)) {
                     RememberedSendAction.arm(currentAccount, RememberedSendAction.SILENT, dialog_id);
                     updateSendButtonArmedState();
