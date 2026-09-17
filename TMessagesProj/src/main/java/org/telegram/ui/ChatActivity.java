@@ -62,6 +62,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.os.Trace;
 import android.os.Vibrator;
 import android.provider.ContactsContract;
 import android.provider.MediaStore;
@@ -3816,6 +3817,9 @@ public class ChatActivity extends BaseFragment implements
         org.telegram.messenger.utils.Choreographer60FpsContent.getInstance().removeFrameCallbackOnce(glassCompositeRefreshRunnable);
         // NagramX: keep cancelling the Handler arm too — onConfigurationChanged still uses runOnUIThread.
         AndroidUtilities.cancelRunOnUIThread(glassCompositeRefreshRunnable);
+        // NagramX: temporary #glass-pattern-fix diagnostics - the frame callback above is being cancelled
+        // outright, so it will never reach refreshGlassComposite's own closing branch. Close here instead.
+        endGlassRotateWindowTrace();
         repostCopyDeleteBatch = null;
         repostCopyDeletePendingOffer = null;
         // NagramX: drop the chat-lock passcode cover if it never got unlocked
@@ -27586,6 +27590,13 @@ public class ChatActivity extends BaseFragment implements
             boolean wasSettled = motionWallpaper.getPosAnimationProgress() >= 1.0f;
             motionWallpaper.switchToNextPosition();
             if (wasSettled && motionWallpaper.getPosAnimationProgress() < 1.0f) {
+                // NagramX: temporary #glass-pattern-fix diagnostics - open the rotateWindow async section
+                // exactly once per genuine cycle. A repeat rotate landing before the previous window's
+                // refresh loop stopped must not open a second, unbalanced section.
+                if (!glassRotateWindowTraceOpen && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    glassRotateWindowTraceOpen = true;
+                    Trace.beginAsyncSection(NAX_SMOKE_TRACE_TAG + ":rotateWindow", 0);
+                }
                 scheduleGlassCompositeRefresh(500);
             }
         }
@@ -32448,6 +32459,10 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public void onPause() {
         super.onPause();
+        // NagramX: temporary #glass-pattern-fix diagnostics safety net - the pending frame callback still
+        // fires and closes this via refreshGlassComposite's own isPaused check, but close it here too in
+        // case no callback is currently armed.
+        endGlassRotateWindowTrace();
         repostCopyDeleteBatch = null;
         // NagramX: #repost-spread. A genuine pause is not the picker-close transition - drop any pending
         // delete offer so it never shows on a chat the user has left or backgrounded.
@@ -41502,6 +41517,15 @@ public class ChatActivity extends BaseFragment implements
                                         allAnimators.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
                                         allAnimators.setDuration(460);
 
+                                        // NagramX: temporary #glass-pattern-fix diagnostics - the forbidden
+                                        // competing producer this smoke cycle checks a plain text send never
+                                        // triggers (sticker/fromPreview only). Cookie is per fly-in instance so
+                                        // overlapping sends from a batch each get their own balanced pair.
+                                        final int naxSmokeFlyInTraceCookie = System.identityHashCode(messageCell);
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                            Trace.beginAsyncSection(NAX_SMOKE_TRACE_TAG + ":forbiddenPreviewFlyIn", naxSmokeFlyInTraceCookie);
+                                        }
+
                                         allAnimators.addListener(new AnimatorListenerAdapter() {
                                             @Override
                                             public void onAnimationEnd(Animator animation) {
@@ -41512,6 +41536,9 @@ public class ChatActivity extends BaseFragment implements
                                                 }
                                                 messageCell.setAlpha(1.0f);
                                                 messageCell.getTransitionParams().ignoreAlpha = false;
+                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                                    Trace.endAsyncSection(NAX_SMOKE_TRACE_TAG + ":forbiddenPreviewFlyIn", naxSmokeFlyInTraceCookie);
+                                                }
                                             }
                                         });
                                         allAnimators.start();
@@ -52015,11 +52042,16 @@ public class ChatActivity extends BaseFragment implements
     // showing the old capture. Both guards matter: glassBackgroundSourceRenderNode is null unless
     // FLAG_LIQUID_GLASS is on, and both are null below SDK 31 or with chat blur off.
     private void reprimeGlassRenderNodes() {
+        Trace.beginSection(NAX_SMOKE_TRACE_TAG + ":reprime");
+        try {
         if (glassBackgroundSourceRenderNode != null) {
             glassBackgroundSourceRenderNode.invalidateDisplayListForDrawables();
         }
         if (glassBackgroundSourceFrostedRenderNode != null) {
             glassBackgroundSourceFrostedRenderNode.invalidateDisplayListForDrawables();
+        }
+        } finally {
+            Trace.endSection();
         }
     }
 
@@ -52058,6 +52090,25 @@ public class ChatActivity extends BaseFragment implements
     private boolean glassCompositeRefreshPending;
     private long glassCompositeRefreshUntilMs;
     private final Runnable glassCompositeRefreshRunnable = this::refreshGlassComposite;
+
+    // NagramX: temporary diagnostics for the #glass-pattern-fix send-lag report, removed after capture.
+    private static final String NAX_SMOKE_TRACE_TAG = "NAX_SMOKE_glass-pattern-fix";
+    // NagramX: tracks whether the rotateWindow async trace section is currently open, so every closing
+    // path (self-rearm stops, pause/detach caught in refreshGlassComposite, onPause, onFragmentDestroy)
+    // can close it exactly once instead of guessing from glassCompositeRefreshUntilMs, which is also
+    // touched by non-rotate producers (see scheduleGlassCompositeRefresh()).
+    private boolean glassRotateWindowTraceOpen;
+
+    // NagramX: temporary #glass-pattern-fix diagnostics helper. Closes the rotateWindow async section
+    // exactly once, wherever the coalesced refresh loop this window opened for actually stops.
+    private void endGlassRotateWindowTrace() {
+        if (glassRotateWindowTraceOpen) {
+            glassRotateWindowTraceOpen = false;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                Trace.endAsyncSection(NAX_SMOKE_TRACE_TAG + ":rotateWindow", 0);
+            }
+        }
+    }
 
     // NagramX: no-duration one-shot for producers (MessageDrawable's bubble gradient) that already repost
     // on their own; this only needs to land a single trailing refresh, never a self-rearm.
@@ -52102,13 +52153,22 @@ public class ChatActivity extends BaseFragment implements
             // the moment onResume's catch-up refresh below reads it - clearing it here keeps that catch-up a
             // single refresh, not a fresh self-rearm loop.
             glassCompositeRefreshUntilMs = 0;
+            endGlassRotateWindowTrace();
             return;
         }
         MotionBackgroundDrawable wallpaper = resolveCurrentMotionWallpaper();
         if (wallpaper == null) {
+            endGlassRotateWindowTrace();
             return;
         }
-        if (wallpaperBitmapProvider.refreshMotionComposite(wallpaper)) {
+        boolean naxSmokeCompositeChanged;
+        Trace.beginSection(NAX_SMOKE_TRACE_TAG + ":composite");
+        try {
+            naxSmokeCompositeChanged = wallpaperBitmapProvider.refreshMotionComposite(wallpaper);
+        } finally {
+            Trace.endSection();
+        }
+        if (naxSmokeCompositeChanged) {
             reprimeGlassRenderNodes();
             invalidateAllGlassAttachedViews();
         }
@@ -52118,6 +52178,8 @@ public class ChatActivity extends BaseFragment implements
         // duration overload does that, so this cannot outlive the fade/rotate that armed it.
         if (glassCompositeRefreshUntilMs > SystemClock.elapsedRealtime()) {
             armGlassCompositeRefreshFrameCallback();
+        } else {
+            endGlassRotateWindowTrace();
         }
     }
 
@@ -52852,11 +52914,22 @@ public class ChatActivity extends BaseFragment implements
 
         if (BitwiseUtils.hasFlag(flags, BLUR_INVALIDATE_FLAG_POSITIONS)) {
             glassDrawablesPositionsCount = getMergedVisibleBlurredPositions(glassDrawablesPositionsMerged);
-            scrollableViewNoiseSuppressor.setupRenderNodes(glassDrawablesPositionsMerged, glassDrawablesPositionsCount);
+            Trace.beginSection(NAX_SMOKE_TRACE_TAG + ":glassNodes");
+            try {
+                scrollableViewNoiseSuppressor.setupRenderNodes(glassDrawablesPositionsMerged, glassDrawablesPositionsCount);
+            } finally {
+                Trace.endSection();
+            }
         }
 
         //if (BitwiseUtils.hasFlag(flags, BLUR_INVALIDATE_FLAG_POSITIONS | BLUR_INVALIDATE_FLAG_SCROLL)) {
-        final boolean hasChanges = scrollableViewNoiseSuppressor.invalidateResultRenderNodes(contentView::drawList, contentView.getWidth(), contentView.getHeight());
+        final boolean hasChanges;
+        Trace.beginSection(NAX_SMOKE_TRACE_TAG + ":glassNodes");
+        try {
+            hasChanges = scrollableViewNoiseSuppressor.invalidateResultRenderNodes(contentView::drawList, contentView.getWidth(), contentView.getHeight());
+        } finally {
+            Trace.endSection();
+        }
         if (hasChanges) {
             if (glassBackgroundSourceRenderNode != null) {
                 glassBackgroundSourceRenderNode.invalidateDisplayListForDrawables();

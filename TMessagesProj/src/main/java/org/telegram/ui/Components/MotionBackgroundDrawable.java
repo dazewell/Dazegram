@@ -19,6 +19,7 @@ import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.SystemClock;
+import android.os.Trace;
 import android.view.View;
 
 import androidx.core.graphics.ColorUtils;
@@ -40,6 +41,9 @@ import java.util.List;
 import java.util.Random;
 
 public class MotionBackgroundDrawable extends Drawable {
+
+    // NagramX: temporary diagnostics for the #glass-pattern-fix send-lag report, removed after capture.
+    private static final String NAX_SMOKE_TRACE_TAG = "NAX_SMOKE_glass-pattern-fix";
 
     private final static int ANIMATION_CACHE_BITMAPS_COUNT = 3;
 
@@ -511,6 +515,13 @@ public class MotionBackgroundDrawable extends Drawable {
 
     @Override
     public void draw(Canvas canvas) {
+        // NagramX: temporary #glass-pattern-fix diagnostics — only the real on-screen draw, never the
+        // off-screen glass-proxy composite (see suppressAnimationAdvance), is worth measuring here.
+        final boolean naxSmokeTraceThisDraw = !suppressAnimationAdvance;
+        if (naxSmokeTraceThisDraw) {
+            Trace.beginSection(NAX_SMOKE_TRACE_TAG + ":wallpaperDraw");
+        }
+        try {
         android.graphics.Rect bounds = getBounds();
         canvas.save();
 
@@ -663,6 +674,11 @@ public class MotionBackgroundDrawable extends Drawable {
             }
         }
         canvas.restore();
+        } finally {
+            if (naxSmokeTraceThisDraw) {
+                Trace.endSection();
+            }
+        }
 
         // NagramX: skip the animation advance when compositing the off-screen glass proxy — see
         // suppressAnimationAdvance. On the real on-screen draw this runs as upstream intends.
@@ -796,7 +812,12 @@ public class MotionBackgroundDrawable extends Drawable {
                 }
             }
             if (isNeedGenerateGradient) {
-                Utilities.generateGradient(currentBitmap, phase, progress, colors);
+                Trace.beginSection(NAX_SMOKE_TRACE_TAG + ":genGradient");
+                try {
+                    Utilities.generateGradient(currentBitmap, phase, progress, colors);
+                } finally {
+                    Trace.endSection();
+                }
             } else {
                 if (progress != 1f) {
                     float part = 1f / ANIMATION_CACHE_BITMAPS_COUNT;
