@@ -46,7 +46,7 @@ branches on `isStories || (empty text && a pending forward is attached)`
 built once and reused across long-presses). Everything else — ordinary typed
 text in an in-app chat, which is what most users hit — falls through to a
 second, completely separate menu built fresh every time from
-`ItemOptions`/`MessageSendPreview` (`ChatActivityEnterView.java:6181`
+`ItemOptions`/`MessageSendPreview` (`ChatActivityEnterView.java:6196`
 onward). The two duplicate the same three rows (schedule, send-when-online,
 silent) with near-identical eligibility conditions computed independently in
 each branch — a change to the ordinary composer's long-press menu only needs
@@ -60,7 +60,7 @@ Stories or an empty-caption forward-in-progress, both edge cases relative to
 
 `#remember-send-action`'s master switch is inserted into **both** branches of
 `onSendLongClick` (starts `ChatActivityEnterView.java:5759`) — the `ItemOptions`
-menu (built from `ItemOptions.makeOptions` at `:6181`) and the cached
+menu (built from `ItemOptions.makeOptions` at `:6196`) and the cached
 `sendPopupLayout` popup. The three per-action rows (schedule/send-when-online/
 silent) also now arm in **both** branches: the cached popup's three pre-existing
 buttons (`actionScheduleButton`, `sendWhenOnlineButton`, the plain
@@ -73,8 +73,11 @@ expects the pick to be remembered like the other menu, and it silently wasn't.
 Fixed by adding the identical `canArmRememberedAction(action)` +
 `RememberedSendAction.arm(...)` + `updateSendButtonArmedState()` sequence to
 each of the three cached-popup handlers, gated exactly like their `ItemOptions`
-counterparts (silent still guards on `!sendWithoutSoundNax` — the row can mean
-"send with sound").
+counterparts (silent re-reads `SilentMessageByDefault` live at click time, so its
+arm decision — and the row's label/icon, refreshed in the same on-open block as
+the master switch above — can't go stale against a config change made while
+this popup instance stays cached across opens; the "send with sound" direction
+means it must not arm SILENT).
 
 The two branches remain otherwise **not equivalent**: the cached popup's
 schedule handler still drops `scheduleRepeatPeriod` (passes `0`, pre-existing,
@@ -86,26 +89,26 @@ asymmetry (adding checked state to a popup built once and reused across opens
 is real scope growth), not an oversight — see the comment at the master row's
 click handler.
 
-*(Updated 2026-09-19.)*
+*(Updated 2026-09-17.)*
 
 ### The Remember master toggle is the one thing deliberately wired into both
 
 `#remember-send-action`'s master switch is inserted into **both** branches of
 `onSendLongClick` (starts `ChatActivityEnterView.java:5759`) — the `ItemOptions`
-menu (built from `ItemOptions.makeOptions` at `:6181`) and the cached
+menu (built from `ItemOptions.makeOptions` at `:6196`) and the cached
 `sendPopupLayout` popup — while the three per-action rows
 (schedule/send-when-online/silent) now arm in both branches too, per the
 section above. The two branches do **not** share one master-row implementation: the
-`ItemOptions` branch calls `createRememberMasterRow` (`:19322`), a helper built
+`ItemOptions` branch calls `createRememberMasterRow` (`:19337`), a helper built
 around `ItemOptions`/`MessageSendPreview` dismissal; the cached popup builds its
 own row directly off `createPopupSwitchRow` (`:5805`) and wires its own
 click/long-click handlers inline, because dismissing that popup is a plain
 `sendPopupWindow.dismiss()`, not the other branch's `messageSendPreview`
 teardown. Changing one branch's master-row behavior does not touch the other's
-code path. Arming itself is gated separately, at all three `arm()` call sites,
-by `canArmRememberedAction(action)` (right after `getEligibleArmedSendAction()`)
-so the master switch is enforced where the armed slot is written, not only
-where it's later read back.
+code path. Arming itself is gated separately, at all six `arm()` call sites
+(three rows per branch), by `canArmRememberedAction(action)` (right after
+`getEligibleArmedSendAction()`) so the master switch is enforced where the
+armed slot is written, not only where it's later read back.
 
 This isn't an oversight of the split: the cached popup's own non-Stories case
 (empty-caption forward-in-progress) is `isChat == true`, so it's in scope for

@@ -5751,6 +5751,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     private ActionBarMenuSubItem actionScheduleButton;
+    private ActionBarMenuSubItem sendWithoutSoundButton;
     // NagramX (#remember-send-action): cached master row/switch for the sendPopupLayout branch above --
     // built once like the rest of that popup, refreshed on every open (see the visibility-refresh block
     // right after this popup is built) since the config can change from the settings page in between.
@@ -5886,7 +5887,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     }
                 }
                 if (sendWithoutSoundButtonValue) {
-                    ActionBarMenuSubItem sendWithoutSoundButton = new ActionBarMenuSubItem(getContext(), !scheduleButtonValue, true, resourcesProvider);
+                    sendWithoutSoundButton = new ActionBarMenuSubItem(getContext(), !scheduleButtonValue, true, resourcesProvider);
                     sendWithoutSoundButton.setTextAndIcon(sendWithoutSoundNax ? getString(R.string.SendWithSound) : getString(R.string.SendWithoutSound), sendWithoutSoundNax ? R.drawable.input_notify_on : R.drawable.input_notify_off);
                     sendWithoutSoundButton.setMinimumWidth(dp(196));
                     sendWithoutSoundButton.setOnClickListener(v -> {
@@ -5895,10 +5896,11 @@ public class ChatActivityEnterView extends FrameLayout implements
                         }
                         // NagramX (#remember-send-action): this popup is built once and reused across opens,
                         // so the outer sendWithoutSoundNax local (captured at build time) goes stale the
-                        // moment SilentMessageByDefault changes afterward -- re-read it here so the arm
-                        // decision below always matches the direction this click actually just sent, even
-                        // though the row's pre-existing label/icon (set at build time) can lag behind until
-                        // the popup is rebuilt. That label staleness is pre-existing and out of scope here.
+                        // moment SilentMessageByDefault changes afterward -- re-read it here so the send and
+                        // the arm decision below always match each other and what this click actually just
+                        // sent. The row's label/icon are kept in sync too, in the on-open refresh block below
+                        // (see the rememberMasterSwitchCached refresh) rather than here, since a config change
+                        // while the popup is closed still needs to reach the label before the row is shown again.
                         boolean sendWithoutSoundNaxNow = NaConfig.INSTANCE.getSilentMessageByDefault().Bool();
                         sendMessageInternal(sendWithoutSoundNaxNow, 0, 0, 0, true);
                         if (!sendWithoutSoundNaxNow && canArmRememberedAction(RememberedSendAction.SILENT)) {
@@ -5997,6 +5999,15 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (rememberMasterSwitchCached != null) {
                 rememberMasterSwitchCached.setChecked(NaConfig.INSTANCE.getRememberSendActionMaster().Bool(), false);
                 applyRememberRowAccessibility(rememberMasterRowCached, rememberMasterSwitchCached);
+            }
+
+            // NagramX (#remember-send-action): same reasoning as the master switch above -- refresh this
+            // row's label/icon here too, or a SilentMessageByDefault change made while this popup was
+            // closed would leave the row showing the wrong direction the next time it's shown, even
+            // though the click handler itself already reads the config live.
+            if (sendWithoutSoundButton != null) {
+                boolean sendWithoutSoundNaxNow = NaConfig.INSTANCE.getSilentMessageByDefault().Bool();
+                sendWithoutSoundButton.setTextAndIcon(sendWithoutSoundNaxNow ? getString(R.string.SendWithSound) : getString(R.string.SendWithoutSound), sendWithoutSoundNaxNow ? R.drawable.input_notify_on : R.drawable.input_notify_off);
             }
 
             if (sendWhenOnlineButton != null) {
