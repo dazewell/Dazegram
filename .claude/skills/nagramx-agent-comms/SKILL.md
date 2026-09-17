@@ -1,748 +1,240 @@
 ---
 name: nagramx-agent-comms
-description: "Dazewell's protocol for how the NagramX agent sessions talk to each other — orchestrator to implementer, parent orchestrator to child orchestrator, and any coordinator watching any session it dispatched. Trigger it whenever one session sends an instruction to or receives a report from another, whenever a coordinator has to decide whether a dispatched session is working / finished / blocked / dead, before concluding an automated review is clean, and before nursing a slow session instead of restarting it. Binds nagramx-orchestrator (coordinator side) and nagramx-implementer (worker side); the parent/child-orchestrator control vocabulary in the orchestrator agent file is the richer instance of these same rules. Covers: observable state as the single authority, state-stamping every message, re-reading your own tree before reporting, standing authority so routine decisions don't cost a round trip, one-outstanding-instruction flow control with supersession, start-acks so a silent stall is caught in minutes not hours, terminal-review rules, mechanical liveness with restart-not-nudge, fresh-session handoff before degradation stalls a session, self-contained instructions that survive context compaction, and carrying a stalled session's outstanding authorized work into its replacement rather than losing it. It exists because on a full day of multi-session work more time was lost to coordination failure than to any bug."
+description: "Dazewell's protocol for the rare case where two NagramX sessions run at once — a nagramx-orchestrator coordinating a batch of independent changes, and the nagramx-implementer sessions it dispatched. Trigger it whenever one session sends an instruction to or receives a report from another, whenever a coordinator must decide whether a dispatched session is working / finished / blocked / dead, before concluding an automated review is clean, and before nursing a slow session instead of restarting it. Covers: observable state as the single authority, state-stamping every message, re-reading your own tree before reporting, one-outstanding-instruction flow control, start-acks so a silent stall surfaces in minutes, terminal-review rules, mechanical liveness with restart-not-nudge, self-contained briefs, and carrying a stalled session's authorized work into its replacement. It exists because on a full day of multi-session work more time was lost to coordination failure than to any bug — which is why the default is now one session per change and this file applies only when that default has been deliberately set aside."
 ---
 
 # NagramX cross-session communication protocol
 
-This is the **one normative copy** of how sessions in the NagramX workflow
-communicate. `CLAUDE.md`, the `nagramx-orchestrator` and `nagramx-implementer`
-agent files, and the other skills point here rather than restating the rules. If
-you find one of these rules duplicated and drifting in another file, fix it so
-only this file states it.
+## Read this first: you probably don't need this file
 
-It binds two roles. The **coordinator** — a `nagramx-orchestrator` (root or
-child) watching any session it dispatched. The **worker** — a
-`nagramx-implementer`, or a child orchestrator seen from its parent. Every rule
-below says which side it lands on; several land on both.
+**The default on this repo is one change, one branch, one session.** A single
+change runs start to finish in one `nagramx-implementer` session that uses
+subagents for recon, design and review. No cross-session messaging happens, and
+none of the rules below apply.
+
+This protocol exists for the two cases where that default is deliberately set
+aside — a `nagramx-orchestrator` running **two or more genuinely independent
+changes** concurrently, or landing a batch of approved PRs. If you are reaching
+for these rules during an ordinary change, the mistake is upstream: you split
+something that should have stayed in one session.
+
+That framing is the main lesson of the incident this file came from. The rules
+below are what remains genuinely necessary once the avoidable coordination was
+removed.
 
 ## Why this exists
 
 One orchestrator coordinated several implementer sessions and review subagents
-across a full day. The *code* was fine. The *coordination* was the dominant cost
-— more elapsed time went to communication failure than to any bug. These eight
-patterns actually happened; the rules are designed against them, not against
-imagined problems:
+across a full day. The *code* was fine. The **coordination** was the dominant
+cost — more elapsed time went to communication failure than to any bug. These
+patterns actually happened:
 
-1. **Silent stalls with authorized work outstanding.** A session finished a
-   turn, went idle, and never started work it had been explicitly told to do.
-   Worst cases were 90 minutes and 4.5 hours of zero progress, discovered only
-   because the coordinator checked `git log` independently. Nothing distinguished
-   "working" from "dead."
+1. **Silent stalls with authorized work outstanding.** A session finished a turn,
+   went idle, and never started work it had been explicitly told to do. Worst
+   cases were 90 minutes and 4.5 hours of zero progress, discovered only because
+   the coordinator checked `git log` independently. Nothing distinguished
+   "working" from "dead".
 2. **Crossed messages.** An instruction and a report passed each other in
-   flight, repeatedly. The worker answered a question already superseded, or sat
-   "blocked" on a decision it had already been given. At least four times.
+   flight, at least four times. The worker answered a question already
+   superseded, or sat blocked on a decision it had already been given.
 3. **Stale self-reports after compaction.** A session reported a state one or two
-   commits behind its own actual tree — flagging a finding it had already fixed,
-   reporting head `X` when the tree was at `X+2`, standing by for a build that had
-   already run and passed.
+   commits behind its own tree — flagging a finding it had already fixed,
+   reporting head `X` when the tree was at `X+2`.
 4. **Premature "clean" conclusions.** A session concluded a review had produced
-   no findings while another review run was still in flight; seven findings
-   landed two minutes later.
+   no findings while another run was still in flight; seven findings landed two
+   minutes later.
 5. **Context degradation as root cause.** The sessions that stalled worst were
-   the longest-running and most-compacted. Handing the work to a *fresh* session
+   the longest-running and most compacted. Handing the work to a *fresh* session
    with a self-contained brief restored normal function immediately, twice.
-6. **Round-trip cost for predictable decisions.** Many escalations asked for
-   rulings already implied by earlier ones. A pre-authorized decision taxonomy
-   measurably cut this.
-7. **Long instructions correlated with stalls.** Short, imperative,
-   self-contained instructions were acted on more reliably than long ones.
-   (Observed, not proven — but cheap to act on.)
-8. **The coordinator had to verify everything mechanically.** Reports were
-   unreliable enough that the working rule became *git state is authoritative,
-   session chatter is not* — every claim about heads, checks and threads was
-   confirmed with `git`/`gh` before it was acted on.
+6. **Long instructions correlated with stalls.** Short, imperative,
+   self-contained instructions were acted on more reliably. (Observed, not
+   proven — but cheap to act on.)
 
-## What established practice says, and where we differ
-
-The problem is old; the literature is worth reading before inventing.
-
-- **The Two Generals' Problem** ([Wikipedia](https://en.wikipedia.org/wiki/Two_Generals%27_Problem))
-  proves that two parties on an unreliable channel can *never* reach guaranteed
-  agreement by messages alone — acknowledgements can be lost as easily as the
-  messages they acknowledge. The honest consequence for us: **no message either
-  session sends can guarantee the other is alive and has acted.** A protocol that
-  pretends otherwise is lying. This is why liveness here is settled by *observing
-  shared state* (git), not by trusting an ack, and why a truly non-responding
-  session is a restart problem, not a messaging problem (Rule 7).
-- **Actor-model supervision** (Erlang/OTP
-  [supervision principles](https://www.erlang.org/doc/system/sup_princ.html),
-  the "let it crash" philosophy) puts recovery in a *supervisor* that restarts a
-  child rather than in the child healing itself. That maps directly: a
-  degraded or stalled session is not coaxed back to health — the coordinator, as
-  supervisor, restarts the work in a fresh session (Rules 7 and 8). Where we
-  differ: OTP restarts are automatic and instant; ours are a manual dispatch with
-  a hand-written brief, so the brief has to be self-contained (Rule 9).
-- **Liveness vs. readiness probes** (Kubernetes
-  [probes](https://kubernetes.io/docs/concepts/workloads/pods/probes/))
-  separate "is it alive" from "is it ready / making progress," and a failed
-  liveness probe *restarts* the container. We have two cheap external probes an
-  idle notification can't give us on its own: `get_session` (alive?) and git
-  state (progressing?). The start-ack in Rule 5 is our readiness signal; git
-  progress by the next wake is our liveness signal. Where we differ: an idle NagramX
-  session has **no autonomous wake-up** and the runtime enforces no timeout, so
-  the coordinator must run the probe itself — there is no kubelet.
-- **The Circuit Breaker** (Fowler,
-  [CircuitBreaker](https://martinfowler.com/bliki/CircuitBreaker.html), after
-  Nygard's *Release It!*) stops calling a failing dependency after a threshold
-  instead of hammering it forever. That is exactly the round cap on the review
-  loop (Rule 6) and the bounded probe-then-restart path on a stall (Rule 7): past
-  a bounded number of failed attempts you stop retrying and change tactic, rather
-  than looping.
-- **Idempotency, at-least-once delivery, and monotonic sequence stamps** (the
-  standard messaging toolkit; Lamport's
-  [logical clocks](https://en.wikipedia.org/wiki/Lamport_timestamp) are the
-  canonical monotonic stamp) say: assume a message may be delivered late,
-  duplicated, or out of order, and make each message carry enough state to detect
-  that. Our version is the head SHA carried in every message (Rule 1): a cheap,
-  already-monotonic stamp both sides can compare against ground truth. Where we
-  differ: we have no delivery runtime doing dedup for us, so the *recipient* does
-  the staleness check by hand.
-- **Published multi-agent orchestration practice** (Anthropic's
-  [*How we built our multi-agent research system*](https://www.anthropic.com/engineering/multi-agent-research-system))
-  reports the same failure modes from the other end of the same problem, which is
-  the strongest evidence these rules aren't local superstition. Its early agents
-  were "distracting each other with excessive updates" and "duplicate[d] work"
-  when the lead agent's delegation was vague — which is why it concludes each
-  subagent "needs an objective, an output format, guidance on the tools and
-  sources to use, and clear task boundaries," and that the best prompts are
-  "frameworks for collaboration that define the division of labor … and effort
-  budgets." That is Rule 9 and the fixed-block brief, reached independently. It
-  also names our root cause outright — "agents are stateful and errors compound …
-  minor system failures can be catastrophic" over a long-running process —
-  matching #5. Where we differ: their mitigation is *durable resume from
-  checkpoints* so a long agent "can't just restart from the beginning"; we have no
-  such runtime, so our answer to a degraded session is a **fresh** context with a
-  self-contained brief (Rules 7–8), not a resumed one. Two of its other
-  mitigations map cleanly onto our choices: its advice to **save results to
-  durable external memory rather than pass everything through context** *is* our
-  one principle — git is that external memory here, so a result is not real until
-  it is committed; and its **cap on concurrent subagents** targets coordinator
-  overload we did *not* observe (our failures were liveness and staleness, not too
-  many sessions at once), so we note the lever without spending a rule on it —
-  adding a rule against an unobserved problem is the over-design the trade-off
-  budget forbids.
-
-The one place the literature does **not** save us: none of it makes an idle,
-non-responding agent wake itself up or time itself out. Every automated-recovery
-pattern above assumes a runtime that re-invokes or restarts the worker. We have
-no such runtime for an idle session. That gap is not closed by any rule the two
-parties follow — it is closed only by the coordinator externally verifying and
-restarting. Rule 7 says exactly that, plainly, rather than pretending a cleverer
-handshake would fix it.
+The honest framing: these are **inherent** to splitting one piece of work across
+contexts that cannot see each other. Published practice agrees — Anthropic's own
+multi-agent write-up reports the same duplicate work and excessive-update
+failures, and states plainly that most coding tasks have fewer truly
+parallelisable parts than research, and that agents are not yet good at
+delegating to each other in real time. That is why the answer here was to stop
+splitting by default, not to write a better protocol.
 
 ## The one principle
 
 **Observable state is authoritative; session narrative is not.** Git commits, CI
-runs, and PR review threads are the shared truth both sides read and write. A
-message is a *pointer* into that state — useful for saying "look here now,"
-useless as a substitute for looking. Every rule below is an application of this
-one idea in one direction or the other.
+runs and PR review threads are the shared truth both sides read and write. A
+message is a *pointer* into that state — useful for saying "look here now",
+useless as a substitute for looking.
+
+The theory is worth knowing, because it bounds what any protocol can do. The
+**Two Generals' Problem** proves two parties on an unreliable channel can never
+guarantee agreement by messages alone: acknowledgements are lost as easily as
+the messages they acknowledge. So **no message either session sends can
+guarantee the other is alive and has acted.** A protocol that pretends otherwise
+is lying. Liveness here is settled by observing git, and a truly non-responding
+session is a restart problem, not a messaging problem.
+
+The rest is borrowed and named honestly: actor-model supervision (a supervisor
+restarts a child rather than the child healing itself), liveness-vs-readiness
+probes (alive is not the same as progressing), and the circuit breaker (past a
+bounded number of failed attempts, change tactic rather than loop). Where we
+differ from all of them: they assume a runtime that re-invokes the worker. **An
+idle session here has no autonomous wake-up and no enforced timeout.** The
+coordinator runs the probe itself; there is no kubelet.
 
 ## The rules
 
-Eleven rules. Each says which side it binds, how it is checked, and what it costs —
-because a rule that makes each exchange safe but triples the number of exchanges
-is a net loss, and one that can't be checked can't be enforced.
+### 1. Stamp every message with the state it was written against
 
-### 1. Stamp every message with the state it was written against — and honour the stamp you receive
+Put the head SHA you last observed on every instruction and every report —
+`@<short-sha> PR#<n>`. Expand to the full SHA when a check compares it against
+GitHub's `commit_id`.
 
-**Both sides.** End every cross-session instruction and every report with the
-head SHA it was written against — `@<short-sha>`, plus the PR number where one
-exists (`@a1b2c3d PR#207`). For a report it is the tree you are describing
-(`git rev-parse --short HEAD` in your worktree at send time); for an instruction
-it is the tree the coordinator last observed for that session. The short SHA is
-the human-facing form; whenever a rule compares it to a full 40-char SHA — such
-as GitHub's review `commit_id` in Rule 6 — expand it (`git rev-parse HEAD`) or
-prefix-match, since a git short SHA is an unambiguous prefix of the full one and a
-literal short-vs-full equality never holds.
+**Honour the stamp you receive.** When a message reaches you stamped behind a
+tree you can already see, treat it as possibly superseded: re-read first, and
+read an instruction asking for work you have already done as *already satisfied*,
+not as a repeat. Compare against the PR head or the head you last observed for
+**that session** — never against your own coordinator worktree, which is a
+different branch and would make every worker report look stale.
 
-On receipt, compare the stamp against **the state that message is about — which
-is not always your own tree.** A worker receiving an instruction compares `@X` to
-its own worktree `HEAD`, since the instruction is about its branch. A coordinator
-receiving a report compares `@X` to the **PR head, or the head it last observed
-for that session** — never to its own `coord-<slug>` worktree, which is a
-different branch and would make every worker report look stale. **If the stamp is
-behind the state it should match (`@X` while that state is already at `@Y ≠ X`),
-treat the message's factual claims as possibly superseded** — re-read git/PR
-before acting, and read an instruction that references work you have already done
-as *already satisfied*, not as a request to repeat it.
+*Binds both sides. Costs one line per message. Catches the crossed-message
+failure, which happened at least four times in one day.*
 
-Be honest about what this stamp does and does not do. The head SHA is **not** a
-per-message sequence number: it detects staleness only *across a state change*.
-Two instructions or two reports sent while the tree sits at the same `@X` carry
-the same stamp, so it cannot order them. That residual is closed not by a nonce
-but by the rules that already exist: Rule 4 forbids two live instructions
-coexisting on one channel, so a same-head pair only arises as an explicit
-`supersedes my @X:` (which carries its own order); and two reports at the same
-head are idempotent — they describe the same tree the coordinator re-reads anyway.
-A per-channel sequence would buy ordering for a case those rules already cover, at
-the cost of a counter on every message — deliberately not worth it here.
+### 2. Re-read your own tree before every report
 
-**The structured parent/child control vocabulary is exempt from the raw SHA
-stamp** — `RUNNING` / `WAITING_HUMAN` / `BLOCKED_PARENT` / `HANDBACK_POSTED` /
-`CLOSED` / `ABORTED` and the rest in the orchestrator file. Those are not
-freeform claims about a tree, and their freshness does not rest on a stamp. The
-*terminal* transitions are monotonic — you cannot reach `CLOSED` before
-`HANDBACK_POSTED`, or `RUNNING` twice — so an out-of-order one is self-evidently
-stale. The *recurring informational* ones (`WAITING_HUMAN`, `BLOCKED_PARENT`) are
-**not** monotonic and could otherwise arrive late and be mistaken for current;
-what protects them is the rule that the coordinator **resolves every ambiguous
-control state mechanically via `get_session` + git before acting on it**, never
-from the message alone (the idle-decision table already mandates exactly this).
-So a stale recurring control message cannot be acted on as current — the
-mechanical re-check catches it — which is why the stamp buys nothing here. Two
-explicit acceptance rules make that concrete, so no per-channel sequence number is
-needed: the **absorbing** terminal states are `CLOSED` and `ABORTED` — once a
-channel has sent one, a later control message on it is rejected outright as stale,
-not acted on. `HANDBACK_POSTED` is **not** absorbing — it is intermediate, and the
-`HANDBACK_POSTED → CLOSED` transition that follows a child's archival is the
-expected next step, not a stale message; only a control message that would move
-*backward* from where the channel already is (a second `RUNNING`, a `GO` after
-`CLOSED`) is rejected. A recurring `WAITING_HUMAN` / `BLOCKED_PARENT` is
-treated as current **only after** the coordinator confirms via `get_session` that
-the child is still in that state. The coordinator never acts on such a message's
-content directly; it re-derives the state and acts on that (the one principle),
-which is exactly why a late duplicate is harmless. Stamp freeform instructions and
-reports; let each control message be checked against these rules instead.
+After a compaction your memory of your own state drifts. Immediately before
+reporting, run `git log --oneline -5`, `git rev-parse HEAD`, the CI run pinned to
+that SHA, and the unresolved-thread count — and report those. **If a claim would
+not survive a reader running the same command, drop it.**
 
-- *Checked:* a freeform message either carries a `@<sha>` or it does not; the
-  recipient's check is one `git rev-parse HEAD`. A control message is checked
-  against its lifecycle order (terminal states) or the mandatory `get_session` +
-  git re-verification before acting (recurring states).
-- *Cost:* one `git rev-parse` per message. Negligible.
-- *Kills:* crossed messages that span a state change (#2) — the same-head case is
-  Rule 4's — and gives a stale self-report (#3) a detectable signature.
-
-### 2. Re-read your own tree before every report; report only what you just observed
-
-**Worker.** Immediately before you report — and *after* any context compaction —
-run the read, don't trust memory: `git log --oneline -5`, `git rev-parse HEAD`,
-the CI run pinned to *that* SHA (or its `path-ignored / not applicable` status,
-when the diff is doc/agent/skill-only and no run fires — that is a valid report
-value, not a missing one), and the unresolved-thread count. Report those values.
-**If a claim in your report would not survive a reader running the same
-command, it does not go in the report.** "I fixed that finding" is memory; the
-commit that fixed it, present at the head you just stamped, is evidence.
-
-- *Checked:* the report's SHA / CI / thread claims must equal what the commands
-  return — the coordinator re-runs them anyway (#8), so a divergence is visible;
-  a CI value of `path-ignored` is checkable against `ci.yml`'s path filters.
-- *Cost:* about four read-only commands per report. Cheap.
-- *Kills:* stale self-reports (#3), and premature "clean" on the reporter's side
-  (#4).
+*Binds the worker. Costs four commands.*
 
 ### 3. Decide inside your lane; escalate only the enumerated crossings
 
-**Worker.** A decision the brief already granted you, or one already implied by
-an earlier ruling, is yours — make it, report it, do not spend a round trip
-asking. Escalate **only** the crossings the implementer file enumerates: a change
-of hook point agreed in round 1, a change to the config or storage surface, a
-change to user-visible behaviour that was specified for you, or a split into a
-second branch. "Already implied by a prior ruling" is never a new question.
+A decision already implied by an earlier ruling is not a new question — do not
+spend a round trip on it. The worker escalates only when a fix would change the
+agreed hook point, the config or storage surface, user-visible behaviour that was
+specified for it, or would turn one change into two.
 
-This enumerated list is the **leaf implementer's** authority. A **child
-orchestrator** acting as a worker uses its own model instead — the orchestrator
-delegation rules plus `BLOCKED_PARENT` for what only its parent can unblock — not
-this list; the principle is identical (decide in lane, escalate only the defined
-crossings), the crossings differ.
+*Binds both. Cuts the round trips that dominated the bad day.*
 
-- *Checked:* an escalation should map to one of the enumerated crossings; a round
-  trip for anything else is a protocol miss the coordinator can name.
-- *Cost:* the risk of a wrong autonomous call, bounded by the short enumerated
-  list. Net positive against the round-trip tax.
-- *Kills:* round-trip cost for predictable decisions (#6).
+### 4. One outstanding instruction per channel; a new one supersedes
 
-### 4. One outstanding instruction per channel; a new one supersedes, it does not queue
+Send the next instruction only once the last is **observably complete** — a
+commit, a push, a PR state you can see. A new instruction on the same channel
+**replaces** the previous one; it does not queue behind it. Say so explicitly
+when you supersede.
 
-**Coordinator.** Send the next instruction to a given session only after the
-previous one is **observably complete**. For a session that produces git output,
-that is a new commit, push, or PR state change. For a **read-only session (scout,
-UX, architect) that never commits, its completion report or control transition**
-(e.g. `HANDBACK_POSTED`) *is* its observable output — treat that as the release,
-or you deadlock a session that has nothing to commit. A start-ack (Rule 5) is
-different from a completion report: the ack is sent *before* the work and proves
-only that the worker is alive and holds the instruction, so it is **not** a
-licence to send the next one, because the acked work has only just begun and a
-second instruction would race it. The one exception is the **dispatch
-handshake**: a child orchestrator sends `RUNNING` and then *deliberately pauses*
-for the parent's `GO`, so here the parent **must** answer the ack — `GO` releases
-that initial dispatch from its verification pause, it is not a second live
-instruction racing the first. If circumstances change before the
-previous instruction lands, do **not** stack a second live instruction — send one
-that explicitly supersedes: `supersedes my @X: <new imperative>`. The recipient
-drops the older one (Rule 1 makes the older one detectably behind anyway).
+*Binds the coordinator.*
 
-dazewell's instinct was "one outstanding request at a time." Adopt its *intent*
-— never two live instructions racing on one channel — but via supersession, not a
-hard block, because a hard "block until reply" idles a session that could have
-proceeded. This serializes **one pair**, never the fleet: other sessions keep
-running in parallel.
+### 5. Acknowledge authorized work on receipt
 
-- *Checked:* at most one not-yet-completed instruction outstanding per pair at any
-  time — a start-ack does not clear it; observable completion (a commit/push/PR
-  change, or a read-only session's completion report) or a supersede does.
-- *Cost:* a channel can sit briefly idle between the previous instruction landing
-  and the next send. Accepted, because the alternative — a crossed pair — costs
-  far more than the idle does.
-- *Kills:* crossed messages (#2).
+When you are told to proceed, reply with one line — `starting <thing> @<sha>` —
+then start. **Silence after an authorization is indistinguishable from a dead
+session**, and that ambiguity cost hours. The ack is what closes it, and it is
+what turns a 4.5-hour invisible stall into a five-minute visible one.
 
-### 5. Acknowledge authorized work on receipt; then it is a commitment
-
-**Worker.** When you are told to proceed with specific work, reply with a
-one-line start-ack before you begin — what you are starting and the SHA you start
-from: `starting <thing> @<sha>`. Then start. This is the readiness signal the
-leaf channel otherwise lacks: it currently reports only on completion, so an
-authorization that is silently dropped looks identical to one being worked.
-
-A **child orchestrator's** `RUNNING <unit-slug>`, sent once after its preflight,
-is this same readiness signal on the parent channel. Like the other control
-messages it carries no SHA (Rule 1's carve-out): its freshness comes from the
-lifecycle state, not a stamp. So "start-ack" is `starting … @<sha>` from a leaf
-implementer and `RUNNING <unit-slug>` from a child orchestrator — one rule, two
-channel-appropriate forms.
-
-**Coordinator.** An authorization with **neither a start-ack nor observable git
-progress by the next idle notification** is a suspected stall — go to Rule 7. Do
-not wait hours to find out; the whole point is to catch #1 in minutes.
-
-- *Checked:* is there an ack, or is there a commit/push, by the next wake?
-- *Cost:* one line from the worker — and the highest-value line in the set,
-  because it converts a multi-hour silent stall (#1) into a few-minute one. If you
-  are ever trimming this protocol for length, cut something else: this is the
-  missing working-vs-dead signal, not ceremony.
-- *Kills:* silent stalls with authorized work outstanding (#1).
+*Binds the worker. Costs one line.*
 
 ### 6. A review is not "clean" until it is terminal
 
-**Both sides**, worker first. Never conclude an automated review produced no
-findings while it is non-terminal for the current head SHA. **"No findings yet"
-is not "no findings."** The terminal check is mechanical and specific: on the
-reviews endpoint there is a review **from the Copilot reviewer bot** — match its
-login case-insensitively on a wildcard, since it appears as
-`copilot-pull-request-reviewer[bot]` on the reviews endpoint and `Copilot` on the
-comments endpoint — carrying a `submitted_at`, **and whose `commit_id` is the head
-SHA you stamped** (compare *full* SHAs — GitHub returns the 40-char `commit_id`,
-so expand your short stamp with `git rev-parse HEAD` or prefix-match; a literal
-short-vs-full `==` never holds). A review with an older `commit_id`, or from a
-human or architect rather than the bot, does **not** satisfy it: an older-commit
-review pre-dates your latest push and reintroduces the very staleness this rule
-exists to stop. Do **not** test `state == "SUBMITTED"` — the API never returns
-that; a submitted review's `state` is `COMMENTED`, `APPROVED`, or
-`CHANGES_REQUESTED`, so key off `submitted_at`.
+The automated reviewer re-fires on every push and posts a minute or two after
+one, so **an empty result read too early is not a clean review.** Note the review
+count as a baseline first, then wait against a deadline, synchronously — a
+session-attached process dies when the session goes idle.
 
-Before you read findings at all, **enumerate every check-run pinned to the head
-SHA and wait for all of them to reach a terminal state, then read the comments
-endpoint once.** The reviewer can have more than one run in flight for the same
-head, and a review posts its inline comments over a short window; concluding from
-a single completed run while another is still `in_progress` is exactly how a
-"clean" call gets made two minutes before the remaining findings land (#4). All
-runs terminal *first*, comments *after* — never the other way round.
+Login gotcha: the *reviews* endpoint lists the bot as
+`copilot-pull-request-reviewer[bot]`, the *comments* endpoint lists it as
+`Copilot`. An exact-match filter on either silently returns zero on the other.
+Match case-insensitively on a wildcard.
 
-If the bounded wait deadline from `nagramx-workflow` step 9 elapses first,
-conclude **pending / no-run — never clean**: an absent or still-running review is
-reported as exactly that, so nothing downstream mistakes it for a pass.
+Bound the loop: act only on **Important or above**, and cap at **two**
+review-driven push cycles. If Important-or-above findings remain after the
+second, stop and report — more churn usually means the design needs revisiting,
+which is a report, not a patch.
 
-- *Checked:* a bot review with `submitted_at` set and a `commit_id` matching the
-  full head SHA (prefix-expanded from the stamp) exists before "clean" is said,
-  and every check-run pinned to that head SHA has reached a terminal state before
-  the comments endpoint is read; otherwise the report says pending / no-run.
-- *Cost:* the bounded wait that step 9 already mandates. No new cost.
-- *Kills:* premature "clean" conclusions (#4).
+*Binds both. This is the circuit breaker.*
 
-### 7. Establish liveness mechanically; restart a non-responding session, do not nurse it
+### 7. Establish liveness mechanically; restart a non-responding session
 
-**Coordinator.** Distinguish working / finished / blocked / dead only from idle
-notifications + `get_session` + git state — never from narrative, and never by
-inferring from silence. The authority for the exact sequence is the
-**idle-decision table** in the orchestrator file; the child-orchestrator control
-vocabulary (`RUNNING` / `WAITING_HUMAN` / `BLOCKED_PARENT` / `HANDBACK_POSTED` /
-`CLOSED` / `ABORTED` …) is its richer instance for that channel. On a suspected
-stall (Rule 5), follow that table's own path — **one** status probe, then a
-`get_session` + session-tail diagnostic on the next unchanged wake, then escalate
-on a second unchanged wake — do **not** invent a shorter "one probe then dead"
-sequence, and **never archive a live-but-unresponsive child**. The table already
-forbids both; this rule points at it rather than contradicting it.
+Act on notifications, **never a polling loop**. Metadata alone cannot distinguish
+a child that is working from one that has died, so resolve every ambiguous state
+mechanically:
 
-When that path ends in a genuinely dead session, **no message either party sends
-can rescue it.** That is the Two Generals' consequence, not a gap to patch with a
-better handshake. So the coordinator verifies externally via git and hands the
-remaining work to a *fresh* session (Rule 8). But not before a **safe ownership
-handoff**: stop the old session by exact identity and confirm its worktree is
-released, per the process-lifecycle skill's stop-and-verify contract, so a fresh
-session and a still-live degraded one can never write the same branch or PR —
-that collision duplicates commits and races processes. A stalled session's
-*uncommitted* edits that were never pushed are unrecoverable; account for that
-loss honestly rather than assuming a new worktree inherits them.
+```powershell
+# alive?
+get_session <id>
+# progressing?
+git -C <worktree> status; git -C <worktree> log <base>..HEAD --oneline
+```
 
-- *Checked:* the probe/diagnostic/escalate counts match the idle-decision table,
-  not a private shorter rule; no restart is dispatched until the old session is
-  confirmed stopped and its worktree released.
-- *Cost:* a discarded session plus one fresh dispatch — trivial against a 90-minute
-  or 4.5-hour stall.
-- *Kills:* silent stalls (#1) and the mechanical-verification burden (#8), and it
-  states the honest limit plainly.
+If it genuinely shows no progress, send **exactly one** status probe. If the next
+wake still shows no change, do a single `get_session` plus session-tail read as a
+diagnostic. If a second wake still shows nothing, **stop probing and restart the
+work in a fresh session** with a self-contained brief.
 
-### 8. Prefer a fresh session to a degraded one; hand off *before* the stall
+**Do not nurse a stalled session and do not archive a live-but-unresponsive
+one.** No message rescues a session that has stopped responding — the coordinator
+verifies externally and replaces it. That is the honest limit of this whole file.
 
-**Coordinator.** Context degradation is the root cause (#5), and a self-contained
-brief to a fresh session restored function every time it was tried. Hand the
-remaining work to a fresh session — brief rebuilt from the template, everything
-restated per Rule 9 — on **either mechanical trigger**: a self-report that git
-contradicted (a stale report caught by Rule 2), or a *second* suspected stall on
-the same session. (A session visibly re-deriving ground it already covered is a
-*softer, judgement-based* hint pointing the same way — act on it if you notice
-it, but it is deliberately **not** one of the mechanical triggers, because
-spotting it means reading the narrative this protocol otherwise distrusts.) Don't
-wait for the full stall; the brief is a template you already hold, so re-dispatch
-is cheap.
+*Binds the coordinator.*
 
-Before the replacement is dispatched, perform the same **safe ownership handoff**
-as Rule 7: stop the old session by exact identity, confirm its worktree is
-released (process-lifecycle), and account for any uncommitted diff — pushed if the
-old session can still reach it, or recorded as lost if it cannot. A merely
-degraded but still-live session can otherwise write the same branch concurrently;
-never let the fresh session and the old one both hold it.
+### 8. Prefer a fresh session to a degraded one — before the stall
 
-- *Checked:* the two mechanical triggers are observable events; the third hint is
-  explicitly not one. No restart dispatches until the old session is confirmed
-  stopped and its worktree released.
-- *Cost:* one re-dispatch, bounded because the brief already exists as a template.
-- *Kills:* context degradation as root cause (#5), pre-emptively.
+The sessions that failed worst were the longest-running and most compacted.
+Handing the work to a fresh session with a self-contained brief fixed it
+immediately, both times. So hand off **before** the stall, not after: when a
+session has been corrected twice on the same problem, or has compacted more than
+once and started repeating itself, its remaining context is mostly failed
+approaches and the next attempt inherits all of them.
+
+*Binds both. A fresh context is cheap; an afternoon is not.*
 
 ### 9. Every instruction is self-contained
 
-**Coordinator.** Write instructions a session that has lost *all* conversational
-history can still execute: the imperative action, the SHA/PR it applies to, and
-the authority to do it. If understanding an instruction requires remembering this
-conversation, it is void after compaction — rewrite it until it is not. Prefer
-short and imperative over long and narrative: long instructions correlated with
-stalls (#7), and a fresh-session handoff (Rule 8) is only cheap if the brief was
-self-contained to begin with. The Phase-3 brief template in the orchestrator file
-is the worked example — a fixed block plus verbatim specialist reports, precisely
-so no `file:line` survives only in a memory that compaction will drop.
+A dispatched session cannot see the conversation that produced it. Paste
+specialist findings **verbatim** — prose gets compressed and the first casualty
+is the `file:line` citation that stops an implementer hooking the wrong place.
+State the objective, the output format, the tools and sources to use, and the
+boundaries. A vague delegation comes back as a summary nobody can act on.
 
-- *Checked:* would it survive with zero history? If not, it is not done.
-- *Cost:* a few restated lines per instruction — far cheaper than the re-explain
-  round trip it prevents.
-- *Kills:* long-instruction stalls (#7); hardens the fresh-session handoff (#5).
+Short and imperative beats long and complete. If the brief has grown past what a
+reader will act on, that is a signal the work should not have been split.
 
-### 10. Specify the required property, not the mechanism; contest a prescription before building it
+*Binds the coordinator.*
 
-Every rule above binds a *worker* failure mode. This one binds the coordinator's,
-and it was the most expensive pattern of the reference day — a cost not in the
-original eight because the original eight were the worker's.
+### 10. Specify the required property, not the mechanism
 
-**Coordinator.** State *what must be true* — the property the change has to hold
-and the constraints it must respect — not the specific code that achieves it. The
-session at the call site can see the real API, the real row lifecycle, the real
-predicate; you are working from a memory of them, and memory is what compaction
-degrades. When you do name a mechanism, name it as *an example of* the property,
-never as the requirement itself.
+State what must be true, not how to achieve it. When an instruction *does* name a
+specific mechanism and the call site contradicts it, **contest it before building
+it**: reply with the `file:line` and the property the mechanism fails, then
+propose one that works. Do not build the wrong thing and report the failure
+afterwards.
 
-**Worker.** A prescribed mechanism is not binding when the call site contradicts
-it. Before you build it, check it against the code in front of you; if it is
-wrong, **contest it with `file:line` evidence and the property it fails to
-satisfy, then propose the mechanism that does** — do not build the wrong one and
-report the failure afterwards. This is Rule 3's escalation obligation pointed at
-*instructions*, exactly as Rule 2's re-read obligation is pointed at *reports*.
+*Binds both.*
 
-The pattern this kills, drawn from real prescriptions the call site caught before
-a line was written — the property each one should have stated is in italics:
+### 11. Authorized work outlives the session authorized to do it
 
-- A **join key** prescribed on a column that the confirmed-row path rewrites, so
-  the correlation goes blind precisely in the case it exists for. *Correlate the
-  flushed row with its confirmation* — by whatever key survives the rewrite.
-- A state prescribed to stay **non-terminal until a confirmation resolved**, where
-  the confirmation API exposes no cancel signal, so the hold would strand
-  permanently. *Never send twice* — not "hold open," which was unbuildable here.
-- A **durability ordering** prescribed in terms that contradicted a constraint the
-  same coordinator had already imposed (no synchronous UI-thread write): a
-  mechanism at war with a standing property.
-- A **host precondition** prescribed as a loose predicate (`x != null`) where a
-  precise one existed (`canShow…`), shipping a regression the tighter predicate
-  would have caught. *Act only where the action is valid.*
-- A storage fact ruled to **mean handoff** ("the row is in table T") when a crash
-  mid-write leaves that same row present but still held, so the rule would auto-act
-  on an abandoned row. *Act only after ownership actually transferred* — which that
-  storage fact does not establish (the notification-before-DB-write trap the review
-  skill cites is the same shape).
+Before you archive or replace a session, **discharge everything it was
+authorized to do**. For each item: cite the commit that covers it, record why it
+is explicitly declined, supersede it explicitly, **or transfer it** — write it
+into the successor's brief and verify it arrived. Transfer discharges *that
+session*, not the item; do not report a transfer as completion.
 
-In every one the fix was identical: the coordinator names the property and the
-constraints; the worker, reading the call site, picks the mechanism and contests a
-wrong prescription *first*.
+A zero git diff is **not** an empty authorization ledger. A replacement session
+holds inherited obligations from the moment it starts, so "it never reported and
+its worktree is clean" is not evidence that it owed nothing. Those are the
+obligations easiest to drop and least recoverable once the session is archived —
+archiving is exactly the moment an undischarged authorization becomes permanent.
 
-- *Checked:* a contested prescription cites `file:line` and the property it
-  violates *before* an alternative is built — not a post-hoc "that didn't work";
-  and an instruction that prescribes a mechanism with no stated property is
-  under-specified and can be sent back for the property.
-- *Cost:* occasionally one clarifying exchange when a property is under-specified.
-  Against it: an implementation round plus a build saved for every wrong mechanism
-  not built — the reference day's tally was at least five.
-- *Kills:* the coordinator's costliest recurring failure — prescribing a mechanism
-  the call site already knew was wrong.
+**One authorization is never transferable: a merge approval.** It is closed per
+PR when the session ends — each PR it merged as `landed`, each it did not as
+`superseded` — and never written into a successor's brief. A replacement re-asks
+dazewell for any still-unmerged PR rather than inheriting his approval.
 
-### 11. Authorized work outlives the session that was authorized to do it
-
-Rules 1–10 protect **messages** — a stamp, an ack, a supersession, a restart.
-None of them protect the **set of open commitments** a session was carrying when
-it stalled. A session and the work it was told to do do not share a lifetime:
-the session can die mid-instruction while the obligation survives, and nothing
-above says who is responsible for remembering it.
-
-**Coordinator.** A stall, an archive, or a replacement session must never
-silently drop something you already authorized but the dead session had not yet
-started. Keep the outstanding-authorization list somewhere that survives the
-session dying, not only in that session's own conversational memory — the same
-distrust Rule 8 already applies to a degraded session's self-reports. When you
-write a replacement brief (Rule 9's self-contained template), the fixed block's
-**`Outstanding authorizations (gG.vN)` field** carries every authorization the dead
-session had not yet landed, or an explicit `<none>` — not only the branch state
-and whatever new task prompted the replacement — an urgent new task does not
-retire an old one nobody did. Before you call a scope complete, or
-before you archive the session that held it, **verify against the branch, not
-against the last report**: diff what was authorized against what the commits
-actually contain, the same own-tree re-read Rule 2 already requires, run here by
-the coordinator against a tree that is not its own. **That diff is available
-only when the dead session had a committed branch — a leaf implementer.** A
-child orchestrator's `coord-<slug>` branch is never committed, so there is
-nothing to diff; source its replacement's field from the last control snapshot
-its parent accepted, and carry the honest gap below rather than implying a diff
-happened. The two cases are spelled out in the brief template's field.
-
-**"Somewhere that survives the session dying" names a concrete channel, not a
-vague aspiration — and it differs by role, because a root and a child report to
-different recipients:**
-
-- **A root orchestrator's durable channel is its own session transcript with
-  dazewell.** The app preserves a session's history independent of its process
-  being responsive (`archive_session` explicitly "preserves the session history
-  so the user can restore it later"), so a transcript line is not lost the way a
-  conversational *memory* is — dazewell, or whoever picks up the replacement,
-  can read back through it even after the session stalls. Restate a versioned
-  `Outstanding authorizations (gG.vN): …` line (below) whenever the list changes,
-  so it stays findable without scrolling the whole history — **in the same turn
-  that changes it, not in a later reply.** Deferring it to the next reply leaves
-  open precisely the window this rule exists to close: authorize, stall, and no
-  snapshot of that authorization ever reaches the durable channel. Write the
-  line before you end the turn in which you issued or accepted the
-  authorization. (An authorization you *dispatched* has a second durable copy in
-  the child session's own kickoff prompt, which the app preserves; the snapshot
-  is the only record of one you accepted but have not dispatched yet, which is
-  why it cannot wait for a later turn.)
-- **A child orchestrator's durable channel is its structured control messages
-  to its parent** (below) — the parent does not read the child's transcript, it
-  reads control messages and git, so the transcript argument above does not
-  carry over to that channel.
-
-**Both channels need the same fix for the same reason: the recurring control
-vocabulary is explicitly exempt from Rule 1's SHA stamp and can arrive
-out of order (Rule 1), so a plain restated list is ambiguous about which
-version is newest if two arrive out of sequence.** Carry your own local,
-monotonically increasing counter on the list itself —
-`Outstanding authorizations (g1.v3): …`. **Increment `v` on any change to the
-rendered list, without exception**: an item added, an item closed, an item
-re-pointed at a replacement when you transfer it on behalf of a stalled
-descendant, one entry leaving a
-multi-item list, or the list becoming `<none>`. Read that as the general rule
-and the list as examples, not as an exhaustive set — the question is only
-whether the rendered list differs from the one you last sent, and a change that
-touches a single entry counts exactly as much as the list emptying. Send an
-unchanged list at the version you last used; never re-send changed content at an
-old version, which is the one move that makes the recipient discard a snapshot
-it needed. The recipient (dazewell reading back through a transcript, or a
-parent reading control messages) adopts a snapshot only if it orders strictly
-after the last one it accepted; an equal or earlier one arriving late is
-discarded as stale, never used to overwrite a newer state. This is cheap: the
-coordinator already knows how many times it has touched its own list, so the
-counter costs nothing to maintain and closes the reordering gap without
-reopening Rule 1's deliberate decision not to sequence-stamp the rest of the
-control vocabulary.
-
-**`v` alone is not enough across a replacement, which is why the token carries a
-generation `g` as well, compared first.** The counter is inherited by a
-successor (below), so predecessor and successor draw from the same number line —
-and the predecessor's last messages can still be in flight when the successor
-starts. A predecessor that reached `v7` before dying, whose `v7` was delayed past
-the replacement, would otherwise be *accepted over* a successor sitting at `v6`,
-overwriting live state with a dead session's list. Order snapshots by
-**`g` first, then `v`**: `g` is incremented exactly once per replacement, by the
-coordinator writing the replacement brief, and the successor then reports that
-brief's token verbatim rather than bumping it again — one increment point, so the
-generation a session announces always matches the handoff token it was given.
-Because the successor's `g` is thereby above the predecessor's while `v` is
-inherited, any message from a superseded session is strictly earlier no
-matter how high its `v` climbed, and no in-flight straggler can win. A parent
-additionally **fences the predecessor's channel**: from the moment it dispatches
-a replacement it accepts no further snapshot from the session it replaced,
-whatever that snapshot claims. The fence is the primary defence and costs
-nothing — the parent created the replacement, so it knows exactly when the
-predecessor stopped being authoritative — and `g` is the backstop that makes a
-stale snapshot self-evidently stale to a reader who is not the dispatcher,
-including a human reading it in a transcript.
-
-**The counter belongs to the unit, not to the session.** A replacement
-coordinator does not restart at `v0` — it inherits the version its brief's
-`Outstanding authorizations (gG.vN)` field carries and continues from there, so
-its first change to the list is `v(N+1)`, under the `g` its brief already
-carried.
-Restarting at zero would make every
-snapshot the replacement sends compare as stale against the dead session's last
-one and be discarded by exactly the recipient that needs it — including the
-`<none>` that says the work is finally done. A genuinely new unit, with no prior
-session, starts at `Outstanding authorizations (g1.v0): <none>`; that is the
-only place `v0` is correct.
-
-**This rule recurses onto a child orchestrator, which is a coordinator for its
-own dispatched sessions and binds the same way — with one honest limit.** A
-child orchestrator's `coord-<slug>` branch is deliberately never committed or
-pushed (see *Dispatching a child orchestrator* in the orchestrator file), so
-unlike a leaf implementer's branch there is no git state a parent can diff
-against to reconstruct a dead child's outstanding authorizations toward *its
-own* descendants. Two consequences, not one workaround:
-
-- **The clean-exit path is closed by a precondition, not a diff.** A child
-  orchestrator may not send `CLOSED` while it still holds an open authorization
-  toward one of its own descendants: every one must be **closed on the item's
-  ledger — landed, declined, or superseded — before `CLOSED` goes out**, exactly
-  as archiving a leaf session requires it above. **Transfer is deliberately not
-  available here**, because a session cannot transfer its way out of its own
-  clean exit: writing an item into a successor brief means either dispatching a
-  successor, which is then an unarchived direct child and breaks `CLOSED`'s other
-  precondition, or relying on a successor the parent owns, which this child can
-  neither create nor verify before it must send `CLOSED`. Transfer belongs to the
-  coordinator that **archives or replaces** a session, not to the session
-  discharging itself — and that is the path where it is actually needed, since a
-  session exiting cleanly is by definition still alive and able to land, decline
-  or supersede whatever it holds. A live child that believes an item genuinely
-  should carry forward has two honest moves and does not need a third: **decline
-  it explicitly**, with the reason, which is a real disposition rather than an
-  evasion; or **escalate with `BLOCKED_PARENT`**, since the parent owns the
-  successor and can perform the transfer on the replacement path. This covers
-  every orderly
-  shutdown; it does nothing for a child that never gets to send `CLOSED`.
-- **A child that dies before reporting is an honest gap, not a solved one** —
-  the same limit Rules 7–8 already state for liveness in general, applied here
-  to authorizations specifically. The mitigation is cheap and partial, not a
-  fix: a child orchestrator states its current **versioned**
-  outstanding-authorizations snapshot in **every** control message it sends,
-  not only `CLOSED`, so the parent's last-observed, highest-versioned message
-  is the freshest available record if the child goes dark before its next one.
-  A child that dies between two control messages having authorized new
-  descendant work in that gap loses it exactly as a leaf session's uncommitted
-  edits are lost on a stall (Rule 7) — state that loss plainly rather than
-  implying a durable ledger exists where none does.
-
-This is not hypothetical: a five-item safety bundle was authorized, the session
-that held it stalled without starting the work and was archived, the
-replacement's brief carried the new urgent task but not the bundle, and the
-coordinator then treated the frozen surface as complete. Two of the five items
-were later re-reported as Critical — recovered only because an unrelated
-automated review happened to re-find them hours later. Luck is not a
-verification step, and the next stall may not be caught by one.
-
-- *Checked:* two ledgers, not one — conflating them is what makes a naive
-  version of this rule unsatisfiable. **The item's ledger** closes when the
-  authorization reaches exactly one of **landed** (cite the commit),
-  **declined** (a stated reason), or **superseded** (an explicit
-  `supersedes my @X` per Rule 4 — the older instruction's own completion, not a
-  form of carrying it forward). **The session's ledger** closes when every
-  authorization it held is either closed on the item's ledger *or* **transferred**:
-  written into a named successor brief's `Outstanding authorizations (gG.vN)` field,
-  at a stated version, verified present there before the archive. **Transfer is
-  performed by the coordinator archiving or replacing that session, never by the
-  session discharging itself** — a session cannot hand its obligations to a
-  successor it does not have, and letting it try is what deadlocks a clean exit
-  (see the child-orchestrator `CLOSED` precondition above). A session closing
-  itself while still alive uses landed, declined or superseded, which are always
-  available to it; transfer is the *stalled*-session path, run by the parent.
-  Transfer
-  discharges the *session*; it does not close the *item*, which stays open and is
-  tracked against the successor brief until it lands, is declined, or is
-  superseded there. Both ledgers are required, and neither substitutes for the
-  other: archiving a session with an untransferred, unclosed authorization is the
-  failure this rule exists to stop, and calling a scope complete because the
-  session that held it was archived is the same failure wearing a different hat.
-  An unstarted item in a stalled session is exactly the item that must be
-  transferred, so "transferred"
-  is the archive gate's normal pass for it — not an exception to the gate. A
-  snapshot version number is present on every restatement, increases on **any**
-  change to the rendered list — including a change that touches one entry of
-  a multi-item list — and is inherited by a replacement under an incremented
-  generation rather than reset; a recipient that adopts an equal-or-earlier
-  snapshot over one it already saw, or accepts anything from a session it has
-  already replaced, has not satisfied this check.
-- *Cost:* one running list per unit, kept alongside the brief template the
-  coordinator already maintains, one integer counter incremented on change and
-  inherited across a replacement, plus one diff-against-branch check at each
-  handoff and each archive. Cheap next to a
-  Critical that shipped because an item was never written down anywhere the
-  replacement session could see.
-- *Kills:* authorized work lost silently across a stall/archive/replacement — the
-  seam none of Rules 1–10 cover, because they protect messages, not the
-  commitments a dead session was carrying.
-
-**One authorization is deliberately non-transferable: a merge approval.** When
-dazewell approves merging one or more named PRs (the conditional authority in the
-orchestrator file), that approval is an authorization held by the session he gave
-it to, and the default carry semantics above — where an unstarted authorization
-is *transferred* into a replacement's `Outstanding authorizations (gG.vN)` field
-so it survives the session dying — is exactly the wrong behaviour for it. An
-approval is dazewell's judgement about specific PRs at a specific moment; those
-PRs can change, land, or go stale in the hours between the approving session
-stalling and a replacement starting, and a replacement that *inherited* the
-approval would merge on his say-so given to a session that no longer exists. So a
-merge approval is recorded on the item's ledger as **non-transferable**. How it
-*closes* depends on whether it was used: an approval the session **exercised**
-closes as **`landed`**, citing the squash commit, exactly like any other completed
-authorization; an approval that goes **unused** when its session ends (an orderly
-`CLOSED`, an archive, or a replacement) closes as **`superseded`**. When an
-approval names **several** PRs and only some were merged before the session ended,
-disposition is **per PR, not per approval**: record each named PR that landed as
-`landed` (with its squash commit) and each that did not as `superseded`, so the
-ledger never claims a whole batch landed when only part did — and a replacement
-re-asks for the leftover PRs specifically, since the merged ones no longer need
-approval. Either way it
-is **never written into a successor brief's `Outstanding authorizations (gG.vN)`
-field** — that is the non-transferable part, and it holds whether the approval was
-used or not. A replacement session holds no merge
-authority until it **re-asks dazewell and he re-approves against the current
-PRs** — which is a fresh authorization at the new generation, not a carried one.
-This is the single exception to "authorized work outlives the session"; it exists
-because for this one authorization, outliving the session is the hazard rather
-than the protection.
-
-## The honest limit, restated
-
-Rules 1–6, 9 and 10 make each exchange *safe and cheap*. They do not, and cannot,
-make an idle session resume on its own — nothing the two parties say to each other
-can, per the Two Generals' Problem. The only real answer to a session that has
-stopped responding is external: the coordinator sees the absence of git progress,
-declares it dead through the bounded probe/diagnostic/escalate path, stops it and
-releases its worktree, and restarts the work fresh (Rules 7–8). Build
-the protocol so that outcome is *cheap and early* — a start-ack turns a 4.5-hour
-silent stall into a few-minute one, and a self-contained brief makes the restart
-a re-dispatch rather than a re-investigation. That is the win available. Pretending
-a message could have woken the stalled session is the one thing this protocol
-refuses to do.
-
-**On session forking specifically** — the app offers a *Fork* on every message,
-and it is worth being clear that it does not change this. A fork is *self-service*:
-a session forks *itself*; there is no lever to fork a *child* from the coordinator,
-least of all a non-responding one, which is exactly the session that would need
-it. And a fork *copies* history, so it carries the same degraded, compacted
-context forward rather than shedding it — the opposite of the fresh brief that
-actually restores function. Fork's honest use is proactive, by a session still
-alive: branch off before risky, experimental work, or fork at an *earlier* event
-to drop accumulated context before it stalls you — a manual approximation of the
-checkpoint-resume the literature assumes, but available only while the session can
-still act. It does not close the dead-session gap. Nothing the two parties hold
-does.
+*Binds the coordinator.*
 
 ## Applying it while you build
 
-These rules bind the sessions that *do this work*, this one included. If you are
-extending or reviewing the protocol across sessions and find a rule unusable in
-practice — a stamp nobody can produce cheaply, a check that fires on healthy work
-— that is the most valuable finding you can report, not a detail to paper over.
-Report it against the rule number.
+If following these rules is taking real effort during an ordinary change, that
+is the signal to stop and collapse the work back into one session. The protocol
+is a cost you pay for concurrency — pay it only where the concurrency is real.
