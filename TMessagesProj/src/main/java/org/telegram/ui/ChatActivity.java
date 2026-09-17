@@ -3813,6 +3813,11 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
+        // NagramX (#remember-send-action): only clears the slot if it still belongs to this chat, and only
+        // when the user has "reset when you leave the chat" on -- otherwise it carries over to the next chat.
+        if (xyz.nextalone.nagram.NaConfig.INSTANCE.getRememberSendActionResetOnLeave().Bool()) {
+            xyz.nextalone.nagram.RememberedSendAction.clearIfDialog(currentAccount, getDialogId());
+        }
         org.telegram.messenger.utils.Choreographer60FpsContent.getInstance().removeFrameCallbackOnce(glassCompositeRefreshRunnable);
         // NagramX: keep cancelling the Handler arm too — onConfigurationChanged still uses runOnUIThread.
         AndroidUtilities.cancelRunOnUIThread(glassCompositeRefreshRunnable);
