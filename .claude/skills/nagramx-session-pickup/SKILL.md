@@ -44,9 +44,9 @@ says so:
 
 ```powershell
 $local = git rev-parse --abbrev-ref HEAD
-$pr = gh pr list --head $local --state all --json number,headRefName --jq '.[0]' | ConvertFrom-Json
+$pr = gh pr list --head $local --state all --json number,headRefName,state,mergedAt --jq '.[0]' | ConvertFrom-Json
 if (-not $pr) {
-  $pr = gh pr list --head ($local -replace '_','-') --state all --json number,headRefName --jq '.[0]' | ConvertFrom-Json
+  $pr = gh pr list --head ($local -replace '_','-') --state all --json number,headRefName,state,mergedAt --jq '.[0]' | ConvertFrom-Json
 }
 $branch = if ($pr) { $pr.headRefName }
           elseif ($u = (git rev-parse --abbrev-ref '@{u}' 2>$null)) { $u -replace '^origin/','' }
@@ -60,12 +60,19 @@ from a branch name this lookup is the only place it appears.
 **If `ls-remote` came back empty, the remote head is gone — which is not the
 same as there being no record.** A PR outlives its branch here: the repo
 auto-deletes the head ref on merge, and `refs/pull/<N>/head` keeps the range.
-So decide on both signals. **`$pr` exists but the ref is gone means the change
-already landed** — that is what auto-delete-on-merge does — so there is nothing
+So decide on both signals, and on `$pr.mergedAt` — a deleted ref means merged or
+abandoned, and those are opposite situations.
+
+**Merged** (`$pr.mergedAt` set): the change already landed and there is nothing
 to pick up. Do not reconstruct it. Say so, point at the PR, and ask dazewell
-what he actually wants: a follow-up is a new dated branch off `dev` reusing the
-same `#<slug>`, per `nagramx-branch-flow`, not a resumption of this one. (If he
-genuinely wants the old range, `refs/pull/<N>/head` still has it.)
+what he actually wants — a follow-up is a new dated branch off `dev` reusing the
+same `#<slug>`, per `nagramx-branch-flow`, not a resumption of this one.
+
+**Closed unmerged, ref deleted**: the change was abandoned, and that is a real
+pickup — but the branch is gone and reviving it is a decision, not a default.
+Report it and ask, naming the recovery:
+`git fetch origin "pull/$($pr.number)/head:<new-dated-branch>"` puts the range
+back on a fresh branch, which is where the work would continue.
 
 Only when `$pr` is empty *and* `ls-remote` is empty is the change genuinely
 local-only: skip the fetch and the `origin/$branch` reads below — they would
