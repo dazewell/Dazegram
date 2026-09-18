@@ -41,9 +41,9 @@ that owns a change end to end.
 dazewell starts by hand. Several declare edit capability and none were written
 with this fork's upstream-merge or minimal-footprint constraints in mind, so one
 let loose mid-change produces a diff the architect will reject. This includes the
-`quality-playbook` *skill*, whose broad triggers (`spec audit`, `Council of
-Three`, `fitness-to-purpose`, `coverage theater`) make it auto-discoverable —
-never invoke it as a step inside the pipeline.
+`quality-playbook` *skill*, whose broad triggers (`spec audit`,
+`Council of Three`, `fitness-to-purpose`, `coverage theater`) make it
+auto-discoverable — never invoke it as a step inside the pipeline.
 
 Leave those files byte-identical to upstream so they can be refreshed by
 re-download, and treat their tool-resolution warnings as expected.

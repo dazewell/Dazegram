@@ -346,8 +346,8 @@ workflow snapshots pinned source, merges into `dev`, aborts on conflict, runs
 `.github/sync/sync-guard.ps1`, then atomically pushes `dev`+`nbase` only if
 clean. Failures push nothing and ping `⚠️ … blocked … Finish on the PC`. Pins
 advance only by reviewed `.github/sync/pins.env`. `SYNC_TOKEN` with **Contents:
-write + Workflows: write** is required; no `GITHUB_TOKEN` fallback. `without
-'workflows' permission` means missing/under-scoped secret.
+write + Workflows: write** is required; no `GITHUB_TOKEN` fallback. A
+`without 'workflows' permission` error means a missing/under-scoped secret.
 
 If blocked, land on PC in three ordered steps. Do not collapse them; advancing
 pins before live `origin/nbase` moves guarantees red `sync-guard-check`.

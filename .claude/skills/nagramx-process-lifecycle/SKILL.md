@@ -290,8 +290,9 @@ archives only direct implementer children it created and recorded.
    - **App-managed child session** (`create_session`, `open_pr_session`,
      `open_issue_session`, or `fork_session`): after steps 1-5 pass, call
      `archive_session` exactly once as the final operation. It stops the CLI
-     process and removes the worktree as one unit. Never run `git worktree
-     remove`, `git worktree prune`, or delete the directory first. If
+     process and removes the worktree as one unit. Never run
+     `git worktree remove`, `git worktree prune`, or delete the directory
+     first. If
      `archive_session` fails or only partially removes the worktree, the failure
      is terminal: do not call it again, manually repair, prune, or force
      anything. Report the exact failure, process, and handle evidence, and leave
@@ -318,9 +319,9 @@ archives only direct implementer children it created and recorded.
      probe's own process. If any unexplained process references it, do not
      delete; report it and leave the cache for manual recovery.
    - Delete only the resolved literal directory path from the handback, without
-     wildcards, globs, or broad-root variables. Never use `Remove-Item
-     -Recurse` blindly; use a tool that confirms deletion or reports exact-path
-     failure evidence.
+     wildcards, globs, or broad-root variables. Never use a blind
+     `Remove-Item -Recurse`; use a tool that confirms deletion or reports
+     exact-path failure evidence.
    - Do not stop shared Gradle or Kotlin daemons to make deletion pass. If a
      daemon blocks it, leave the cache intact and report the block.
    - If cache deletion fails, report the exact path and error; do not retry
