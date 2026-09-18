@@ -1,198 +1,90 @@
 ---
 name: nagramx-process-lifecycle
-description: "Dazewell's rule for any process, daemon, or background command an agent starts on the NagramX fork — adb, logcat, Gradle daemons, dev servers, watchers, emulators, detached shells. Trigger it before running Start-Process, an async or detached shell, adb, gradlew, an emulator or other long-running command, and before archiving a child session. Binds every agent that can start a process and the orchestrator that archives sessions. Covers: recording the exact PID or native handle at start, stopping as soon as a process is no longer needed rather than at handoff, cleanup on success, failure, cancellation, timeout, exact-PID-only stopping (never by executable name), Windows PID-reuse-safe identity checks, ownership-aware daemon shutdown (never an unqualified adb kill-server, gradlew --stop or adb emu kill — only session-owned isolated instances), the process ledger format, and the pre-archive checklist gating worktree removal. It exists because a session archived while adb held its worktree open corrupted it."
+description: "Dazewell's rule for any process, daemon, or background command an agent starts on the NagramX fork: adb, logcat, Gradle daemons, dev servers, watchers, emulators, detached shells. Trigger it before Start-Process, an async or detached shell, adb, gradlew, an emulator or other long-running command, and before archiving a child session. Binds every agent that can start a process and any coordinator that archives its direct implementer children. Covers: recording the exact PID or native handle at start, stopping promptly, cleanup on success, failure, cancellation, timeout, exact-PID-only stopping, Windows PID-reuse-safe identity checks, ownership-aware daemon shutdown (never an unqualified adb kill-server, gradlew --stop or adb emu kill; only session-owned isolated instances), the process ledger format, and the pre-archive checklist. It exists because a session archived while adb held its worktree open corrupted it."
 ---
 
 # NagramX process & session lifecycle
 
-This is the **one normative copy** of the process-lifecycle contract for the
-NagramX fork's AI workflow. `CLAUDE.md`, `nagramx-workflow`, `nagramx-branch-flow`,
-and the `.github/agents/*.agent.md` role files point here rather than restating
-the rules — if you find the same rule duplicated in one of them, that's drift,
-fix it so only this file states it.
-
-## Why this exists
-
-An agent started `adb logcat` inside a session's worktree, the session was
-archived while `adb.exe` still held the worktree directory open, worktree
-cleanup partially completed, and the app was left with a session record whose
-directory no longer contained `.git`. Every later deletion attempt then failed
-with "not a git repository." Nothing in this repo's instructions said a
-long-running process must be tracked and stopped before its session goes away
-— this file is that missing rule.
-
-## Who this binds
-
-**Any agent that can start a long-running or background process is bound by
-the starter-side rules below**, not only the implementer. Today that's
-`nagramx-implementer` (Gradle, adb, dev servers) as the main case, but the rule
-is generic: `nagramx-scout`, `nagramx-ux`, and `nagramx-architect` are read-only
-and don't build or run the app, yet if a future recon step ever shells out to a
-long-running command, the same rules apply to it. `nagramx-orchestrator` owns
-the pre-archive verification side (below) for every child session it archives.
+Any session that starts a process follows the starter rules. A coordinator that
+archives a direct implementer child follows the checklist. Usually there is no
+archiver: one change, one branch, one implementer session, which cleans itself.
+(Earned by an `adb logcat` that held a worktree open during archival.)
 
 ## The contract
 
 1. **No untracked background process.** Before or immediately after starting
-   any long-running or background command — `Start-Process`, an async/detached
-   shell, a Gradle daemon, an emulator — record either the tool's native handle
-   (a `Process` object, an async shell's session id) or, if no handle exists,
-   the exact PID **plus image name and start time**. A process nobody recorded
-   cannot be verified gone before archival.
-2. **Prefer the handle.** Hold onto the `Process` object (or the tool's shell
-   handle) for as long as the process runs. A bare PID is only a fallback for
-   when no handle exists.
-3. **Stop it as soon as it's no longer needed** — not only at final handoff.
-   If a `logcat` tail or a dev server was only needed to check one thing, stop
-   it right after, don't let it ride to the end of the session.
-4. **Clean up on all four exit paths: success, failure, cancellation, and
-   timeout.** Use `try/finally` (or the equivalent guaranteed-cleanup construct
-   in whatever tool you're using) so a thrown error or a cancelled turn still
-   stops what you started. `try/finally` is **best-effort, not authoritative**
-   — see the turn-boundary rule and the orchestrator's pre-archive gate below,
-   which are the real backstop for cancellation or a session that dies outright.
-5. **Stop by exact identity only.** Use the recorded PID (or handle) to stop
-   the *specific* process you started. **Never** stop-by-name — no
-   `Stop-Process -Name`, no `taskkill /IM`, nothing that matches an executable
-   name rather than a specific PID — because that can kill another session's
-   process of the same name.
-6. **Verify termination, don't assume it.** After asking a process to stop,
-   wait for it with a **bounded** timeout (never an unbounded wait — a stuck
-   process must not hang the agent forever) and then check that the exact
-   identity is actually gone.
-7. **Windows reuses PIDs.** A PID number alone is not proof of identity once
-   time has passed since you recorded it. A later check (in a new turn, or by
-   a different actor working only from a ledger) must confirm **PID, image
-   name, and start time all match** the recorded identity before treating a
-   running process as "the one I started." A PID match alone, with a mismatched
-   image name or start time, is never a stop target — that's a different
-   process that happens to reuse the number.
-8. **Shut down only what you own — never a shared or default daemon.** Killing
-   a client process does not kill the daemon behind it, but a daemon is
-   frequently **shared across every session on the machine**, so an
-   unconditional shutdown of it is itself a cross-session hazard, not a fix
-   for one. Before shutting anything down, decide whether you own it in
-   isolation or are merely a guest on the shared instance:
-   - **adb.** Never run an unqualified `adb kill-server` — it can drop another
-     session's device connection. If your work genuinely needs to own a
-     server end-to-end (rare), start your own on a session-specific port
-     outside the ambient one, record that port as part of the identity, run
-     every client command against that same port, and stop only that owned
-     endpoint: `adb -P <recorded-port> kill-server`. The common case is using
-     the ambient/shared server through a plain client (`adb logcat`) — there,
-     do not stop the server at all; your responsibility is limited to
-     stopping your own client process and keeping its working directory and
-     logs outside the worktree (rule 9) so it cannot hold the tree open. If
-     more than one device may be attached (e.g. a phone reachable over
-     ADB-over-WiFi alongside anything else plugged in), pin the target
-     device's serial the same way as an emulator's below and address every
-     client command at it explicitly (`adb -s <recorded-serial> logcat`), so a
-     second device attaching mid-capture can't silently redirect it.
-   - **Gradle.** Prefer `--no-daemon` for a one-off invocation so there is no
-     daemon to leak in the first place. If you need warm-daemon speed for
-     iterative builds, point `GRADLE_USER_HOME` at a session-specific
-     directory outside the worktree so your daemon is isolated from the
-     shared/default registry, and stop only that isolated daemon with
-     `.\gradlew.bat --stop` run with that same `GRADLE_USER_HOME` set. **Never**
-     run a bare `.\gradlew.bat --stop` against the default `GRADLE_USER_HOME` —
-     another session may have a live daemon registered there, and stopping it
-     trades away someone else's warm build for nothing.
-   - **Emulator.** Record the emulator's serial (from `adb devices` right
-     after it boots) as part of its identity. Stop only that recorded serial:
-     `adb -s <recorded-serial> emu kill`. Never kill an emulator you did not
-     start, and never issue an unqualified `adb emu kill` that acts on
-     whichever emulator happens to be current.
-   - **Kotlin compile daemon.** A Gradle build that compiles Kotlin spawns a
-     separate long-lived `KotlinCompileDaemon` (typically
-     `--daemon-autoshutdownIdleSeconds=7200`, registered under
-     `%LOCALAPPDATA%\kotlin\daemon`). It is shared and it outlives the build
-     that started it by design, so it is **not** a leak and **not** yours to
-     stop. It survives `gradlew --stop`. Leave it alone; it idles out.
-   - **Isolated `GRADLE_USER_HOME` cache directory.** If you started a Gradle
-     build with a session-specific `GRADLE_USER_HOME` outside the worktree
-     for daemon isolation, the cache and daemon registry inside it are yours
-     to remove, but **only after** the session is archived. The cache is not
-     safe to delete while the session is running or while `archive_session`
-     may still reference it. Deletion happens in the orchestrator; record the
-     absolute path in your handback's `Isolated GRADLE_USER_HOME` field so
-     the orchestrator can clean it up after archive succeeds (see
-     step 8 of the lifecycle checklist for the exact validation and deletion
-     contract). Cleanup applies whenever an isolated home was used, regardless
-     of daemon mode (`--no-daemon` stops the single-use daemon but the ~2.8 GB
-     cache remains).
-9. **Keep long-running processes' working directory and logs outside the
-   session worktree.** Start them with a working directory such as `$env:TEMP`
-   and redirect any log output there too, not into the worktree. A process
-   rooted in the worktree is exactly what holds a directory handle open and
-   blocks its removal.
-10. **Tool-managed background commands are stopped through their returned
-    handle, never by hunting for a PID.** If you started something with this
-    environment's own async/background shell tooling (not a raw OS
-    `Start-Process`), stop it using that tool's own stop call against the
-    handle/session id it gave you at start time — don't go looking for its PID
-    externally.
-11. **Nothing long-running should survive a turn boundary unattended.** A
-    session-attached process dies when the session goes idle, but an
-    OS-level process started via `Start-Process` (or similar) does **not** —
-    that gap is exactly what caused the incident this file exists to prevent.
-    If a process must outlive one turn, re-verify it (identity-checked, per
-    rule 7) at the start of the next turn, or stop it. **An ADB/logcat
-    capture never falls into this multi-turn case at all** — per
-    `nagramx-workflow`'s ADB capture protocol, the single-turn contract
-    covers only the **logger/process and the raw capture artifact it
-    writes**: start logger → capture → stop → analyze → delete runs
-    synchronously in the foreground, inside a single turn, with a declared
-    wall-clock deadline and no `ask_user` (or other suspend point) in
-    between. The source probes the capture reads are a separate concern
-    entirely — they were planted by the implementer in an earlier commit,
-    well before this build exists, and their removal is a later commit of
-    its own; this rule governs only the ephemeral logger and its file, never
-    the source diagnostics. There is no sanctioned cross-turn exception for
-    the logger/artifact either; a capture that would need one is a protocol
-    bug, not a case to accommodate here.
-12. **An ephemeral capture file is a fourth cleanup obligation, not a side
-    effect of stopping the process.** When a process was started specifically
-    to write a file for later reading — most concretely an `adb logcat`
-    client redirected to a capture file for smoke-trace analysis — the file
-    itself needs cleanup on top of the process (rules 3–4): analyze it, then
-    delete it, immediately, in the same synchronous turn that ran the
-    capture — never held open across a turn boundary (rule 11). Verify the
-    deletion the same way you verify termination (rule 6) — confirm the file
-    no longer exists — and record that verification. Treat a failed deletion
-    exactly like `stop result: failed to stop`: a hard block on archival, not
-    a footnote. This is distinct from rule 9 (keep the working directory and
-    logs outside the worktree) — that rule is about *where* the file lives
-    while the process runs; this one is about making sure it doesn't outlive
-    its purpose at all, wherever it lives.
+   any long-running or background command, record the tool-native handle or,
+   if there is none, the exact PID plus image name, start time, and path/cwd.
+   In scope: `Start-Process`, async/detached shells, `adb`, `logcat`, Gradle,
+   emulators, dev servers, watchers, and anything similar.
+2. **Prefer the handle.** Keep the `Process` object or tool shell/session id for
+   as long as the process runs. A bare PID is only a fallback.
+3. **Stop it as soon as it is no longer needed.** Do not let a log tail, dev
+   server, watcher, or one-off build client ride to handoff.
+4. **Clean up on success, failure, cancellation, and timeout.** Use
+   `try`/`finally` or the tool equivalent. This is best-effort only; the
+   pre-archive checklist is the backstop for cancelled or dead sessions.
+5. **Stop by exact identity only.** Use the recorded handle or PID for the
+   specific process you started. Never stop by executable name: no
+   `Stop-Process -Name`, no `taskkill /IM`, and no broad image-name kill.
+6. **Verify termination with a bounded wait.** A stuck process must not hang the
+   agent forever. After the wait, prove the exact identity is gone.
+7. **Windows reuses PIDs.** Across turns, or when reading a ledger, PID alone is
+   never identity. PID, image name, and start time must all match before a live
+   process is treated as the one you started. A mismatch is a different process
+   and must not be stopped.
+8. **Shut down only what you own.** Shared or ambient daemons are not leaks and
+   are not yours to stop. Never run an unqualified `adb kill-server`, bare
+   `.\gradlew.bat --stop` against the default Gradle home, or unqualified
+   `adb emu kill`.
+   - **adb.** The common case is the ambient server plus a client such as
+     `adb logcat`; stop only your client. If you truly need an owned server,
+     start it on a session-specific port, record the port, use it for every
+     client command, and stop only it: `adb -P <recorded-port> kill-server`.
+     If more than one device may be attached, pin the target serial and use it
+     for every command: `adb -s <recorded-serial> logcat`.
+   - **Gradle.** Prefer `--no-daemon` for one-off builds. For warm-daemon
+     speed, set `GRADLE_USER_HOME` to a session-specific directory outside the
+     worktree, record it, and run `.\gradlew.bat --stop` only with that same
+     environment. The isolated cache is
+     about 2.8 GB and is deleted only after archival by the checklist below.
+   - **Emulator.** Record the emulator serial from `adb devices` after boot and
+     stop only that serial: `adb -s <recorded-serial> emu kill`.
+   - **Kotlin compile daemon.** `KotlinCompileDaemon` is shared, outlives the
+     build, survives `gradlew --stop`, and idles out. Leave it alone.
+9. **Keep long-running working directories and logs outside the worktree.** Use
+   a directory such as `$env:TEMP`. A process rooted in the worktree can hold
+   the directory open and block removal.
+10. **Stop tool-managed background commands through their returned handle.** If
+    the environment gave you an async shell id or native handle, use that tool's
+    stop call. Do not hunt for its PID.
+11. **Nothing long-running survives a turn boundary unattended.** Re-verify it
+    by PID, image, and start time at the next turn, or stop it. ADB/logcat
+    capture is never a multi-turn exception: start logger, capture, stop,
+    analyze, and delete in one synchronous foreground turn, with a declared
+    wall-clock deadline and no `ask_user` or other suspend point. Source probes
+    are separate commits and are not governed by this process rule.
+12. **A capture file is its own cleanup obligation.** If a process writes a file
+    for later reading, most concretely an `adb logcat` smoke trace, analyze it,
+    delete it in the same turn, verify the exact path is gone, and record that
+    verification. Failed or unverified deletion blocks archival exactly like a
+    failed process stop. The file still lives outside the worktree while it
+    exists.
 
-## Other sessions run concurrently — that is normal, and their processes are not yours
+## Other sessions are normal
 
-Several sessions, each in its own worktree, routinely run on this machine at the
-same time, and more than one of them may be building. **Seeing processes you did
-not start is the expected steady state, not evidence of a leak**, and it is never
-on its own a reason to clean anything up.
+Several sessions may run at once. Seeing processes you did not start is normal.
 
-Two rules follow, and they bind every role:
+- Scope cleanup sweeps to your own worktree. Broad listings such as every
+  `java.exe`, `Get-Process gradle`, or image-name matches are diagnostic only;
+  their rows are not findings and do not gate archival.
+- Attribute before acting. A process is yours only if it matches your ledger by
+  PID, image name, and start time. A command line naming a different worktree is
+  another session's. A shared daemon is ambient. An inaccessible command line or
+  executable path cannot be attributed to you, so leave it and report it.
+- When in doubt, leave it running and say so.
 
-1. **Scope every sweep to your own worktree path.** The residual sweep below is
-   deliberately filtered to one worktree. A broad listing — "every `java.exe` on
-   the machine", `Get-Process gradle`, anything matched on image name alone — is
-   **diagnostic only**. It is never a cleanup list, its rows are not findings,
-   and it must not gate an archive.
-2. **Attribute before you even consider acting.** A process is yours only if it
-   matches a row in your own ledger by PID **and** image name **and** start time
-   (rule 7). Anything else is someone else's or ambient. In particular:
-   - A command line naming a **different worktree** is another live session's.
-     Leave it strictly alone — it may be mid-build, and killing it destroys
-     work in another session that has no idea you exist.
-   - A **shared daemon** (rule 8) is ambient. Leave it.
-   - A process whose `CommandLine`/`ExecutablePath` is **inaccessible**
-     (permission boundary, another user or session context) cannot be attributed
-     to you, so by default it is **not yours**. Report it; never stop it on
-     suspicion.
-
-The discriminator that settles almost every case is the worktree path in the
-command line, so check that before anything else:
+Use this for diagnostic attribution, not as a kill list:
 
 ```powershell
 # Diagnostic only. Attribution, not a kill list.
@@ -205,16 +97,7 @@ Get-CimInstance Win32_Process |
     @{n='cmd'; e={ if ($_.CommandLine) { $_.CommandLine } else { '(inaccessible)' } }}
 ```
 
-**When in doubt, leave it running and say so.** A stray process that idles out on
-its own costs nothing. Killing another session's build costs someone their work
-and is unrecoverable — so the asymmetry always favours leaving it alone. "I found
-processes I could not attribute to this session, so I left them and am reporting
-them" is a correct, complete outcome, not a failure to finish the job.
-
-## The canonical example
-
-Based on dazewell's requested pattern, corrected for handle retention, bounded
-waits, and preserving the original failure instead of masking it in `finally`:
+## Canonical PowerShell pattern
 
 ```powershell
 $process = Start-Process adb -ArgumentList @('logcat') -PassThru -NoNewWindow -WorkingDirectory $env:TEMP
@@ -257,29 +140,12 @@ elseif ($cleanupError) {
 }
 ```
 
-Notes on this example:
-- `-WorkingDirectory $env:TEMP` keeps the process's directory handle off the
-  worktree.
-- `WaitForExit(30000)` is bounded — never call the parameterless
-  `WaitForExit()` here, it can hang forever on a stuck process. Verification
-  reads `$process.HasExited` on the **retained handle**, never a fresh
-  PID-presence lookup (e.g. `Get-Process -Id`) — a fresh lookup by number
-  alone is exactly what Windows PID reuse (rule 7) breaks.
-- `catch` captures the primary failure from the `try` block; `finally` does
-  the stop/wait/cleanup and captures its own failure separately, so a cleanup
-  problem never silently replaces or hides a real error from the work itself.
-  After `finally`, both are surfaced: if only cleanup failed, that becomes the
-  thrown error (session must not be archived); if the original work failed,
-  that's what propagates, with any cleanup failure logged alongside it rather
-  than swallowed.
-- No unconditional `adb kill-server` appears in this example — see rule 8.
-  Shutting down a daemon this process merely used, rather than one it started
-  and owns in isolation, is a cross-session hazard, not a fix.
-
-`try`/`finally` here is still **best-effort, not authoritative** — see rule 4
-and the turn-boundary rule (11): the orchestrator's pre-archive gate below is
-the real backstop when a turn is cancelled or the session dies outright before
-this block can run at all.
+Notes: `-WorkingDirectory $env:TEMP` keeps the process off the worktree.
+`WaitForExit(30000)` is bounded; never call parameterless `WaitForExit()`.
+Verification reads the retained handle, not a fresh PID lookup. Primary work
+errors and cleanup errors are preserved separately. Cleanup-only failure blocks
+archival. No unconditional `adb kill-server` appears because the ambient server
+is shared.
 
 ## Process ledger format
 
@@ -315,8 +181,8 @@ meant for later reading — most concretely an `adb-client`/`logcat` row backing
 a smoke-trace capture. A row of that kind reporting `n/a` when a capture file
 actually exists, or reporting `deleted & verified` without a timestamp, is
 malformed the same way a missing field is (rule 12). **This field is a claim,
-not proof** — it records what the starter believes it did, but the
-orchestrator-side pre-archive checklist below independently confirms the path
+not proof** — it records what the starter believes it did, but the pre-archive
+checklist below independently confirms the path
 is actually gone before archiving; a starter's `deleted & verified`
 disposition never substitutes for that independent check.
 
@@ -335,174 +201,56 @@ When a gradle-daemon process row exists in the ledger **and** you used an
 isolated home, the `owned resource` value in that row should record the same
 cache path for consistency with this field.
 
-
 **Tool-managed async/background shells go in this ledger too** — record their
 returned handle/session id under `identity` and their `stop result` from
 calling the tool's own stop function against that handle (rule 10), not a PID.
 
-## Starter-side responsibility (the agent that ran the process)
+## Starter responsibility
 
-If you started it, you own recording it and stopping it — don't leave it for
-the orchestrator to discover. Before you report your work done:
+If you started it, you own recording and stopping it. Before reporting done or
+letting the session go idle:
 
-- Every process or daemon you started is either stopped and verified gone
-  (using the ledger format above), explicitly still needed and called out as
-  such, or explicitly a shared/ambient resource you deliberately left running
-  because you don't own it (rule 8).
-- Any capture file a row's process wrote for later reading — most concretely
-  an `adb-client`/`logcat` row backing a smoke-trace capture — is analyzed,
-  then deleted, with that deletion verified before you report done (rule 12).
-  An undeleted or unverified capture artifact is a **hard archive block**,
-  the same as a `stop result: failed to stop` row.
-- Daemon-native shutdown ran **only** where you actually own the resource in
-  isolation, per rule 8 — never an unqualified `adb kill-server`,
-  `.\gradlew.bat --stop` against the default `GRADLE_USER_HOME`, or unscoped
+- Every process or daemon you started is stopped and verified gone, explicitly
+  still needed with a reason, or identified as a shared/ambient resource you do
+  not own.
+- Every capture artifact is analyzed, deleted, and verified gone. Undeleted or
+  unverified capture files are hard archive blocks.
+- Daemon shutdown ran only for isolated owned resources: never unqualified
+  `adb kill-server`, default-home `.\gradlew.bat --stop`, or unscoped
   `adb emu kill`.
-- Your handback includes the **process ledger** in the format above, always
-  present even when empty (`Processes: <none>`). This ledger is reported in
-  your handback message only — **never write it into a repository file.** A
-  missing ledger, a malformed row (missing a required field, including an
-  unresolved `capture artifact` disposition per rule 12), any row with
-  `stop result: failed to stop`, or any row still `not yet verified` is a
-  **hard archive block** — the orchestrator must treat it as if every process
-  might still be running and must not archive until it's resolved.
+- Your handback includes the process ledger and `Isolated GRADLE_USER_HOME`
+  field, always present even when empty. The ledger is reported in the handback
+  only; never write it into a repository file. A missing ledger, malformed row,
+  failed stop, unresolved capture disposition, or `not yet verified` row is a
+  hard archive block.
 
-## Orchestrator-side responsibility (pre-archive verification)
+## Pre-archive checklist for a direct implementer child
 
-The orchestrator owns the gate: **a child session is archived only after this
-checklist passes**, run from the main clone, not from inside the child's
-worktree (a check run from inside the very directory being verified can itself
-hold it open).
+Run this from the main clone, not inside the child worktree. A coordinator
+archives only direct implementer children it created and recorded.
 
-**Under nested orchestrators this gate is recursive and runs strictly
-leaf-to-root.** An orchestrator may itself be a child of another orchestrator,
-and it archives **only its own direct children** — never a grandchild.
-
-- **"Direct child" is mechanical, not just semantic:** a direct child is a
-  session whose `create_session` (or `open_pr_session` / `open_issue_session` /
-  `fork_session`) call **this orchestrator itself** made and whose returned
-  session id it recorded. If you can see a grandchild's id or worktree path only
-  because it appeared in a child's report, that grandchild is **not** yours to
-  archive; its own parent (your direct child) archives it. An orchestrator that
-  reaches past a child to archive a grandchild directly is a protocol violation.
-- **A direct child is one of two kinds, and they close differently.** A **leaf
-  implementer** has no `CLOSED` state: it posts its handback (PR + process
-  ledger), the parent runs the checklist below against that ledger, and the
-  parent archives it — the ordinary one-level path, unchanged by nesting. A
-  **child orchestrator** owns a subtree, so it closes *its* subtree first and
-  only then reports `CLOSED` upward. Do not require a `CLOSED` message from a
-  leaf implementer — it will never send one, and blocking on it would deadlock
-  its archival.
-- **Closure propagates upward as control messages, leaf-to-root — for the
-  orchestrator layers.** A **child orchestrator** reports `CLOSED` to its parent
-  **only** once *every* one of its own direct children is already archived (each
-  leaf implementer via the normal handback→verify→archive path above, and each
-  child orchestrator only after *it* reported `CLOSED` first) **and** its own
-  ledger / residual-sweep contract below passes clean. If it still holds any
-  descendant it could not safely archive — a blocked process, an unverified row,
-  a grandchild that reported `BLOCKED_ARCHIVE` — it reports **`BLOCKED_ARCHIVE`**
-  upward, never `CLOSED`. An ancestor must never archive across (skip past) a
-  descendant reporting `BLOCKED_ARCHIVE`, and a `CLOSED` at a higher level must
-  never paper over an unresolved `BLOCKED_ARCHIVE` below it.
-- **A child orchestrator's `CLOSED` carries its own process ledger** (in the
-  ledger format above, empty as `Processes: <none>`) plus its per-direct-child
-  archive results, so the parent can run this same checklist against it and
-  independently re-verify — exactly as it does against a leaf implementer's
-  handback ledger. `CLOSED` is not accepted bare: a `CLOSED` with no ledger is a
-  malformed report and a **hard block**, same as a missing implementer ledger.
-  This accounting rides in the control message itself — **do not** add a ledger
-  `kind:` for it; the ledger stays about OS processes only.
-- **The per-direct-child archive results are a structured record, not free
-  prose**, so the parent can mechanically match them against the direct-child
-  rule rather than reading intent out of a sentence. One record per direct
-  child, each stating at minimum:
-  - **session id** — the exact id this child recorded when it made the
-    `create_session` / `open_*_session` / `fork_session` call. This child made
-    that call, so it — not the parent — is what establishes the session is a
-    genuine *direct* child and not a grandchild seen second-hand; the id rides up
-    as the auditable record of that fact, not as something the parent
-    independently re-derives. The parent cannot mechanically prove provenance
-    here: it never made the call and has no registry of another session's
-    children to check the id against, so it takes this record on the child's
-    word — exactly as the whole leaf-to-root contract does. What the parent *does*
-    check mechanically is its **own** direct child (the session it created and
-    recorded): that this child is accounted for, its ledger is clean, and its
-    `CLOSED` — not `BLOCKED_ARCHIVE` — actually arrived. This is the same trust
-    the rest of the pipeline places in a leaf implementer's claims: Phase 4's
-    "every claim is unverified until you check it" governs the child
-    orchestrator's **own** verification of **its** subtree, not a re-verification
-    the parent performs on the child's behalf. There is no session-provenance
-    registry in this environment to cross-check an id against, so a fabricated or
-    stale record is a trust violation the protocol cannot mechanically detect —
-    the same class of limitation as trusting any subordinate's report.
-  - **kind** — `leaf implementer` or `child orchestrator`, since the two close
-    by different paths (a leaf via handback→verify→archive, a child orchestrator
-    only after its own `CLOSED`).
-  - **archive outcome** — `archived`, or `BLOCKED_ARCHIVE` with the reason (in
-    which case this orchestrator owes `BLOCKED_ARCHIVE` upward too, never
-    `CLOSED`).
-  - **lifecycle-check evidence that passed** — `ledger clean` and `sweep clean`
-    for that child, the concrete evidence the pre-archive checklist below
-    produced, not a bare assertion that it closed.
-  A `CLOSED` whose per-direct-child records omit any of these, or that asserts
-  closure without the matching evidence, is malformed and a **hard block**, the
-  same as a missing ledger.
-- **The residual sweep below is structurally blind to a live grandchild.** The
-  worktree-filtered `Get-CimInstance Win32_Process` query matches only processes
-  naming *this child's* worktree path; a live grandchild's processes name the
-  **grandchild's own** worktree, so they never appear in this child's sweep. A
-  clean sweep on a direct child is therefore **not** evidence that its whole
-  subtree is closed. Subtree closure is established **only** by that child's own
-  `CLOSED` message plus its reported per-direct-child archive results — never by
-  the sweep alone. Because the parent can neither see nor re-verify a grandchild
-  — it never created it and the sweep is blind to it — grandchild safety is
-  **not** the parent's to establish; it is the child's, and the child is barred
-  from ever sending `CLOSED` while it still holds an unarchived descendant (it
-  owes `BLOCKED_ARCHIVE` instead, which an ancestor must never archive across). A
-  truthful `CLOSED` is thus the parent's only evidence a grandchild closed, and
-  it is the protocol's honesty rule — the `BLOCKED_ARCHIVE`-not-`CLOSED`
-  obligation, not a parent-side registry the tools can't provide — that prevents
-  the orphan the sweep-blindness would otherwise allow.
-
-1. Read the direct child's process ledger from its report — a leaf implementer's
-   handback ledger, or a child orchestrator's ledger carried in its `CLOSED`
-   message. A missing ledger, a malformed row, a `stop result: failed to stop`,
-   an unverified row, or a `capture artifact` disposition (rule 12) that is
-   missing, unresolved, or asserted without a timestamp is a **hard block** —
-   do not archive, and treat every such item as "assume still running." This
-   "missing ledger blocks" rule
-   applies strictly to a session that **reached `RUNNING`** and so owed a
-   self-reported ledger. A session that **never reached `RUNNING`** owes none:
-   the pre-`RUNNING` / mis-dispatch cleanup paths in the orchestrator agent file
-   establish its ledger from the outside instead — a clean worktree-filtered
-   sweep on a zero-diff session that never reported *is* the `Processes: <none>`
-   evidence, a valid input to this checklist rather than a violation of this
-   rule. The strict block still governs every session that did reach `RUNNING`
-   and therefore did owe a ledger of its own.
+1. Read the direct child's process ledger from its handback. A missing ledger,
+   malformed row, `stop result: failed to stop`, unverified row, or missing,
+   unresolved, or timestamp-free `capture artifact` disposition is a **hard
+   block**. Treat every such item as still running. This strict rule applies to
+   any session that reached `RUNNING` and owed a ledger. A session that never
+   reached `RUNNING` owes none; for a pre-`RUNNING` mis-dispatch, a clean
+   zero-diff worktree-filtered sweep can be the `Processes: <none>` evidence.
 2. Stop any tool-managed background shell you dispatched for that session
-   through its own returned handle/session id — never by searching for a PID.
-3. **Re-verify every OS-level identity yourself, including rows the ledger
-   already marks stopped.** Don't take the starter's word for it: confirm PID
-   + image name + start time no longer match (rule 7), for each ledger row.
-   **For any row reporting a `capture artifact` disposition (rule 12),
-   independently confirm the file itself is actually gone** — don't take a
-   `deleted & verified` claim on trust. Check the exact literal path recorded
-   in the ledger: if it still exists, is inaccessible to check, or the path
-   is otherwise unverifiable, that is a **hard block** — do not archive.
-   Don't delete it yourself either: return cleanup to the owning session
-   rather than removing a file on its behalf, since deleting it yourself
-   would hide whether the starter's original claim was ever true.
-4. For a row that is still running: if it's a **shared/ambient daemon**
-   (default adb server, default Gradle daemon registry), do **not** stop it —
-   per rule 8 that's a cross-session hazard, not a fix, and stopping it here is
-   exactly as wrong as it would be for the starter. If it's a
-   **child-owned, isolated resource** (a server on a port only that child
-   recorded, an emulator serial only that child launched, a
-   session-specific `GRADLE_USER_HOME`) and only the child can address it,
-   **do not PID-hunt it yourself** — leave the session intact, send it back to
-   the starter to stop and re-verify, and re-run this checklist after.
-5. Do the **residual sweep**, run from outside the worktree (main clone), a
-   report/identity-confirmation step, never a kill list on its own:
+   through its returned handle/session id, never by PID search.
+3. Re-verify every OS-level identity yourself, including rows the ledger marks
+   stopped. Confirm PID, image name, and start time no longer match. For every
+   `capture artifact` path, independently confirm the exact literal path is
+   gone. If it exists, is inaccessible, or is otherwise unverifiable, that is a
+   hard block. Do not delete it yourself; return cleanup to the owning session
+   so its claim is not hidden.
+4. If a row is still running: shared/ambient daemons such as the default adb
+   server or default Gradle daemon registry are not stopped. If it is a
+   child-owned isolated resource that only the child can address, do not
+   PID-hunt it; leave the session intact, send it back to the starter, and
+   re-run this checklist after it stops and verifies the resource.
+5. Do the residual sweep, from outside the worktree. It is a report and
+   identity-confirmation step, never a kill list:
 
    ```powershell
    $worktree = (Resolve-Path $childWorktreePath).ProviderPath.TrimEnd('\')
@@ -528,108 +276,82 @@ and it archives **only its own direct children** — never a grandchild.
    } | Select-Object ProcessId, Name, CreationDate, ExecutablePath, CommandLine
    ```
 
-   Every row this returns must be explained — matched back to a ledger entry
-   and identity-confirmed, or investigated as a leak. **An unexplained result
-   blocks archival.** Note the scope carefully, because two different checks
-   are easy to conflate:
-   - **This query is worktree-filtered**, so a row here genuinely does touch
-     the tree you are about to remove. It is explained by matching a ledger
-     entry, or by being a **shared/ambient daemon** that merely references this
-     path (rule 8) — a daemon is still not yours to stop. Anything else here is
-     a leak and blocks the archive.
-   - **A broad machine-wide listing** (see "Other sessions run concurrently"
-     above) is where another live session's processes actually show up, since
-     they name *their* worktree and never match the filter here. That listing
-     is **diagnostic only**: its rows carry no blocking weight whatsoever, are
-     not leaks, are not yours to stop, and must not be promoted into findings.
-     Attribute them, report them, leave them running.
-
-   If anything found by the worktree-filtered query needs stopping, that still
-   goes through the exact-identity rule (rule 5) and the ownership rule
-   (rule 8) — never a blanket kill off this list. If `handle.exe`/`handle64.exe`
-   is already installed on the machine, you may also run it against the exact
-   worktree path for open-handle diagnostics; do not install new tooling just
-   to perform this check.
-6. **The final release step depends on who owns the worktree, and the two
-   paths must not be mixed:**
-   - **App-managed child session** (the normal case — a session created via
-     the app's session tooling, e.g. `create_session`): after 1–5 pass clean,
-     call the app's `archive_session` operation **exactly once**, as the
-     final operation. **Treat it as one-shot and destructive, not a
-     recoverable step** — it owns stopping the session's CLI process and
-     removing its worktree as one unit. **Never manually run
+   Every row must be explained: ledger-matched and identity-checked, or
+   investigated as a leak. An unexplained result blocks archival. This query is
+   worktree-filtered, so a row here touches the tree being removed. It may be a
+   ledgered process or a shared/ambient daemon that merely references the path;
+   anything else is a leak. A broad machine-wide listing is diagnostic only:
+   other sessions' rows are expected, are not leaks, carry no blocking weight,
+   and are not yours to stop. Anything stopped from this check still follows
+   exact identity and ownership rules. If `handle.exe` or `handle64.exe` is
+   already installed, you may run it against the exact worktree path; do not
+   install tooling just for this.
+6. The final release step depends on who owns the worktree; do not mix them:
+   - **App-managed child session** (`create_session`, `open_pr_session`,
+     `open_issue_session`, or `fork_session`): after steps 1-5 pass, call
+     `archive_session` exactly once as the final operation. It stops the CLI
+     process and removes the worktree as one unit. Never run
      `git worktree remove`, `git worktree prune`, or delete the directory
-     first** — a manual removal ahead of it is exactly the failure mode that
-     motivated this file: the app record is left pointing at a directory that
-     no longer has `.git`. If `archive_session` fails, or only partially
-     removes the worktree, **that failure is terminal, not retryable: do not
-     call it again, do not manually repair or prune it, and do not force
-     anything through** — report the exact failure/process/handle evidence
-     and leave the app session record intact for manual recovery.
-   - **Manually managed worktree** (not owned by an app session — e.g. one
-     you created yourself with `git worktree add` for a throwaway check):
-     after 1–5 pass clean, `git worktree remove`, run from outside the
-     worktree, **is** the final and authoritative release check. A sharing
-     violation or any other failure there blocks cleanup — do not force a
-     recursive delete or retry blindly. A worktree left partially removed
-     this way is reconciled from the main clone with `git worktree prune`;
-     that prune recovery path is for this manually managed case only, never
-     a substitute for `archive_session` on an app-managed child.
-7. Archive only after 1–6 all pass clean. If a missing ledger, a remaining or
-   unverified process, an unexplained residual-sweep/handle result, or a
-   removal/`archive_session` failure blocks any step: **do not archive.**
-   Report the exact `Id`, `Name`, `Path`, `StartTime`, and command line
-   (where available) and leave the session (or worktree) intact for manual
-   recovery.
+     first. If
+     `archive_session` fails or only partially removes the worktree, the failure
+     is terminal: do not call it again, manually repair, prune, or force
+     anything. Report the exact failure, process, and handle evidence, and leave
+     the app session record intact for manual recovery.
+   - **Manually managed worktree** (not owned by an app session): after steps
+     1-5 pass, `git worktree remove`, run from outside the worktree, is the
+     final release check. A sharing violation or other failure blocks cleanup;
+     do not force recursive delete or retry blindly. `git worktree prune`
+     recovery is only for this manual case, never a substitute for
+     `archive_session`.
+7. Archive only after all prior steps pass clean. If a missing ledger, remaining
+   or unverified process, unexplained sweep/handle result, capture artifact, or
+   removal/`archive_session` failure blocks any step, do not archive. Report the
+   exact `Id`, `Name`, `Path`, `StartTime`, and command line where available,
+   and leave the session or worktree intact.
 8. **Post-archive cache cleanup for isolated `GRADLE_USER_HOME` only.** After
    `archive_session` succeeds for a child that recorded an isolated
-   `GRADLE_USER_HOME` in its handback (the mandatory `Isolated GRADLE_USER_HOME`
-   field, separate from the process ledger), and **only then**, clean up that
-   session-specific cache directory:
-   - Confirm the path from the child's handback is child-owned (recorded by that
-     session, not another), outside the removed worktree, and not the
-     shared/default `%USERPROFILE%\.gradle` or another active session's home.
-   - Run an exact-path process-use check against that directory to confirm no
-     live process is reading it (exclude the probe's own process from the match
-     to avoid false positives). If any unexplained process references it, **do
-     not delete** — report the finding and leave the cache for manual
-     recovery.
-   - Delete only the resolved literal directory path (the exact path from the
-     handback), without wildcards, globs, or broad-root variables. Never use
-     `Remove-Item -Recurse` blindly; use a tool that confirms the deletion or
-     reports exact-path evidence when it fails.
-   - **Do not** stop shared Gradle or Kotlin daemons to make the deletion pass
-     — if a daemon blocks it, leave the cache intact and report the block.
+   `GRADLE_USER_HOME`, and only then, clean up that session-specific cache
+   directory:
+   - Confirm the path from the handback is child-owned, outside the removed
+     worktree, and not the shared/default `%USERPROFILE%\.gradle` or another
+     active session's home.
+   - Run an exact-path process-use check against that directory, excluding the
+     probe's own process. If any unexplained process references it, do not
+     delete; report it and leave the cache for manual recovery.
+   - Delete only the resolved literal directory path from the handback, without
+     wildcards, globs, or broad-root variables. Never use a blind
+     `Remove-Item -Recurse`; use a tool that confirms deletion or reports
+     exact-path failure evidence.
+   - Do not stop shared Gradle or Kotlin daemons to make deletion pass. If a
+     daemon blocks it, leave the cache intact and report the block.
    - If cache deletion fails, report the exact path and error; do not retry
      destructively.
-   - If the child's handback reads `Isolated GRADLE_USER_HOME: <none>`, no
-     cache cleanup is needed.
+   - If the handback says `Isolated GRADLE_USER_HOME: <none>`, no cache cleanup
+     is needed.
 
-## Coverage
+## Self-cleanup for the ordinary one-session change
 
-This contract applies to, at minimum: `adb` (client and server — see rule 8),
-`logcat`, Gradle daemons (`gradlew.bat`/`gradlew`), Android emulators, dev
-servers, file watchers, and any shell command run in this environment's
-detached/async mode. If it's long-running or backgrounded, it's in scope.
+An implementer session normally is **not** archived by another session, so
+anything whose cleanup is deferred to an archive is never cleaned at all. That
+session therefore owns its own teardown: stop and verify every process it
+started, delete and verify every capture file, leave shared daemons and the
+shared `%USERPROFILE%\.gradle` alone, and report the ledger in its handoff.
 
-## Scope note for judgement-only roles
+**If it created an isolated `GRADLE_USER_HOME`, it deletes it itself** once its
+last build is done — applying the same safety checks as the archive path above
+(resolve the literal path, confirm it is the session's own isolated directory
+and not the shared or default home, run the exact-path process-use check, delete
+only that resolved path, never stop a shared daemon to force it through). An
+isolated home runs to several GB, so leaving one behind against an archive that
+will not happen is a real cost, not a tidy-up detail.
 
-`nagramx-scout`, `nagramx-ux`, and `nagramx-architect` are read-only and don't
-normally start long-running processes, but if one of them ever does (a long
-search or inspection command), the starter-side rules above bind it the same
-way — there's no separate lighter version for those roles.
+If deletion fails or a process still holds it, report the exact path and error
+and leave it for manual recovery. Do not stop ambient daemons or delete shared
+caches just to make the session look empty.
 
-## Keeping this current
+## Coverage and upkeep
 
-This file is the single normative copy. `CLAUDE.md` points here for the
-routing rule, `nagramx-workflow` and `nagramx-branch-flow` point here at their
-own process-touching steps (the review-wait watcher, worktree removal) rather
-than restating any of this, and the `.github/agents/*.agent.md` role files add
-it to required reading and, where relevant, to their action sites — an
-orchestrator pre-archive check, an implementer starter-side note. When
-dazewell corrects this contract, edit it here first, then check that no other
-file has grown a duplicate copy of the rule that just changed.
-
-**Takes effect for new sessions only.** A session already running when this
-lands on `dev` was started before the roster/skill list was read and will not
-pick it up — restart the session after pulling to get this rule.
+Applies to `adb` clients and owned servers, `logcat`, Gradle, emulators, dev
+servers, watchers, and async/detached shells. Read-only roles are bound if they
+start one. When dazewell changes this, edit here first and remove duplicated
+drift. New sessions read it after pulling; running sessions may need restart.

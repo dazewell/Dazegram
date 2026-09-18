@@ -110,7 +110,7 @@ Be specific, not generic:
 Is this one focused change or several independent ones? If several, name each
 one, what it delivers on its own, and the order they should land in. Anything
 that would put two unrelated changes on one branch is a **recommended split** —
-name the pieces and the order, and let the orchestrator decide.
+name the pieces and the order, and let the agent that dispatched you decide.
 
 ## Your report
 
