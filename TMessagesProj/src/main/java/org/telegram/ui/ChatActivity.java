@@ -52115,16 +52115,13 @@ public class ChatActivity extends BaseFragment implements
     // buffer to keep the composite it replaces intact for exactly this. If paused/detached when it
     // fires, it marks dirty instead of compositing; onResume runs a fresh, non-blended catch-up.
     private static final long GLASS_COMPOSITE_CROSSFADE_MS = 200;
-    // NagramX: matches ChatListItemAnimator.DEFAULT_DURATION (250, ChatListItemAnimator.java:46), the
-    // message row's own add/move duration - the panel content driving the composite settles on that
-    // schedule, not the wallpaper's own 500ms rotate.
+    // NagramX: matches ChatListItemAnimator.DEFAULT_DURATION (250, ChatListItemAnimator.java:46) - the
+    // panel content's own add/move duration, not the wallpaper's 500ms rotate.
     private static final long GLASS_COMPOSITE_SEND_SETTLE_MS = 250;
-    // NagramX: the wallpaper's indeterminate-to-idle animation on the skeleton exit edge, and the
-    // orientation-change recompose, both settle on this schedule (MotionBackgroundDrawable.java:773).
+    // NagramX: skeleton exit-edge and orientation-change recompose settle on this (MotionBackgroundDrawable.java:773).
     private static final long GLASS_COMPOSITE_WALLPAPER_ANIMATION_MS = 500;
     private boolean glassCompositeDirty;
-    // NagramX: tracks the skeleton's indeterminate-rotate edge (see isSkeletonVisible) - skeleton loading
-    // holds a stale composite instead of live-updating it, so this only arms on the falling edge.
+    // NagramX: tracks the skeleton's indeterminate-rotate falling edge (see isSkeletonVisible).
     private boolean glassSkeletonWallpaperAnimating;
     private final Runnable glassCompositeSettleRunnable = this::onGlassCompositeSettle;
     // NagramX: the one field this mechanism owns beyond the small progress/previous-bitmap state
