@@ -65,6 +65,11 @@ public class WallpaperBitmapProvider {
     private boolean shiftPlainSource;
     private int backgroundTranslationY;
 
+    // NagramX: tracked here rather than read back off the sources, so setParentSize can report whether
+    // this call actually changed anything - ChatActivity cancels an in-flight glass composite crossfade
+    // on a real resize (matrix-safety) but must not cancel one on every identical-dims measure pass.
+    private int lastParentWidth = -1, lastParentHeight = -1, lastParentActionBarHeight = -1;
+
     private static final Rect tmpRect = new Rect();
 
     /**
@@ -77,6 +82,23 @@ public class WallpaperBitmapProvider {
         // the keyboard shift back to identity, so re-assert it.
         applyBackgroundTranslation();
         return changed;
+    }
+
+    /**
+     * The bitmap and cover matrix currently backing the composite source, read before a refresh replaces
+     * them. ChatActivity snapshots both right before calling refreshMotionComposite so its crossfade
+     * animator has a "previous frame" to blend from - once refreshMotionComposite returns, the composite
+     * source already points at the new bitmap and the old one is only reachable through this snapshot
+     * (composeInto's double buffer keeps its pixels intact rather than erasing them in place, see
+     * GlassCompositorBase). The returned Matrix is the source's own live instance, not a copy - the
+     * caller must copy it before this class's next call, which may mutate it in place.
+     */
+    public Bitmap getCompositeBitmap() {
+        return sourceBitmap.getBitmap();
+    }
+
+    public Matrix getCompositeMatrix() {
+        return sourceBitmap.getMatrix();
     }
 
     public BlurredBackgroundSource updateSourceFromBackgroundViewDrawable(
@@ -217,13 +239,22 @@ public class WallpaperBitmapProvider {
      * would otherwise draw its mesh 1:1 in the top-left corner until an unrelated relayout. Sizing both
      * unconditionally closes that for a bitmap-to-motion (plain) and a colour-to-motion (composite)
      * switch alike; the identical-dims early-return in setParentSize makes the redundant call free.
+     *
+     * Returns true when width, height or actionBarHeight actually changed from the previous call, so a
+     * caller can tell an identical-dims relayout pass (frequent) apart from a real resize (rare) - see
+     * ChatActivity's use of this to cancel an in-flight glass composite crossfade only on the latter.
      */
-    public void setParentSize(int width, int height, int actionBarHeight) {
+    public boolean setParentSize(int width, int height, int actionBarHeight) {
+        final boolean changed = width != lastParentWidth || height != lastParentHeight || actionBarHeight != lastParentActionBarHeight;
+        lastParentWidth = width;
+        lastParentHeight = height;
+        lastParentActionBarHeight = actionBarHeight;
         sourceBitmap.setParentSize(width, height, actionBarHeight);
         plainSourceBitmap.setParentSize(width, height, actionBarHeight);
         // NagramX: setParentSize rebuilds each source's cover matrix, dropping the keyboard shift back to
         // identity, so re-assert it on both (a no-op when the shift is 0).
         applyBackgroundTranslation();
+        return changed;
     }
 
     /**
