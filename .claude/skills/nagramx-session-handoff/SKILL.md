@@ -33,20 +33,26 @@ watching it.
 
 Do all four, even if the work is ugly.
 
-### 1. Commit and push what works
+### 1. Commit and push everything
 
-Commit whatever is coherent on its own, with the change's `#<slug>` tag, and
-push. Append-only — a new commit, never an amend.
+**Nothing belonging to this change stays uncommitted.** A pushed commit
+survives a worktree removal; a dirty tree does not, and a worktree gets removed
+without ceremony. So the question is never *whether* to commit a half-finished
+file, only how to label it. Append-only — new commits, never an amend.
 
-If nothing compiles, commit it anyway — say so in the subject in plain words
-(`stash partial <what>, does not compile yet #<slug>`), keeping the normal
-lowercase imperative form with no type prefix, per `AGENTS.md`. A pushed commit
-survives a worktree removal; a dirty tree does not. Never discard work to make
-the branch look tidy.
+Split it the obvious way: commit what stands on its own with the change's
+`#<slug>` tag, then commit the rest in one clearly-marked partial commit
+(`stash partial <what>, unfinished #<slug>`, or `... does not compile yet
+#<slug>` when that is the problem) — normal lowercase imperative form, no type
+prefix, per `AGENTS.md`. Then push, and confirm `git status --short` is empty
+before moving on. Never discard work to make the branch look tidy.
 
 ### 2. Make sure a PR exists
 
-If there is none, open one now — draft is fine. **The PR is where the handoff
+If there is none, open one now, **non-draft, into `dev`** — a draft gets no
+automated review, and review history is a large part of what the next session
+reconstructs. An unfinished change is not a reason to draft it; the handoff
+block below is what says it is unfinished. **The PR is where the handoff
 lives**: it is the one surface that outlives the session, reads from any
 machine, and is already bound to the branch.
 
@@ -103,6 +109,15 @@ retried.
 
 Keep it short. If half-done needs more than a few lines, the real problem is
 that the change is too big — say that instead.
+
+**Close the review threads before you stop.** `AGENTS.md` requires every review
+point to get a fix or an explicit reply, then a resolve — handing off does not
+suspend that, it makes it more urgent, because an unresolved thread the next
+session inherits has nobody attached to it. Reply to each open thread with
+either the fix or why it will not be changed (a finding you are deliberately
+leaving is a fine reply, and belongs in the handoff's half-done list too), then
+resolve it. Verify none are left, per the `reviewThreads` query in
+`nagramx-session-pickup`.
 
 Then tell dazewell the branch, the PR number and one line on what to open next.
 **Stop working.** Further commits invalidate the state you just stamped.

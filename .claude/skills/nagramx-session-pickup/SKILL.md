@@ -33,23 +33,61 @@ names the branch; fetch and switch to it. **Never** reconstruct from a `HEAD`
 you have not confirmed, and never switch a worktree that has uncommitted work
 belonging to a different change — resolve that first or use another worktree.
 
-With `HEAD` confirmed, and `<branch>` its name:
+With `HEAD` confirmed, resolve the name GitHub knows it by — **not** the local
+one. `_` and `-` are both valid locally and branch tooling may flatten `_` to
+`-` on push, so a literal local name can query a branch that does not exist
+there and come back empty, which reads exactly like "no PR, never built":
 
 ```powershell
+$branch = (git rev-parse --abbrev-ref '@{u}') -replace '^origin/',''
+```
+
+If there is no upstream, the branch was never pushed — there is no PR and no CI
+run to find, so say that rather than querying for them.
+
+```powershell
+git fetch origin dev                               # so the base below is current
 git --no-pager log --oneline origin/dev..HEAD      # what landed, and its #slug
 git --no-pager diff --stat origin/dev...HEAD       # the shape of the change
 git status --short                                 # uncommitted work the last session left
-gh pr list --head <branch> --state all             # is there a PR at all
-gh run list --branch <branch> --limit 5            # does it currently compile
+git --no-pager log --all --grep '#<slug>'          # related work on any other branch
+gh pr list --head $branch --state all              # is there a PR at all
 git --no-pager diff origin/dev...HEAD              # finally, the change itself
 ```
 
+**Does it compile?** `gh run list` alone does not answer that — it lists every
+workflow, so a green `Commit tag check` reads as a passing build. Filter to the
+gate and check it ran on *this* head:
+
+```powershell
+gh run list --branch $branch --workflow ci.yml --limit 5 `
+  --json headSha,conclusion,createdAt --jq '.[]|"\(.headSha[0:9]) \(.conclusion)"'
+git rev-parse --short=9 HEAD
+```
+
+A run on an older SHA says nothing about the current tree. **No run at all is
+not a pass**: `ci.yml` path-ignores doc, hook, agent and skill changes, so a
+doc-only branch legitimately has none. Report that as path-ignored — never as
+green, and never as broken.
+
 **Only if `gh pr list` found one**, read it — a branch abandoned without a
-handoff often has no PR, and these two commands are not runnable without one:
+handoff often has no PR, and these commands are not runnable without one:
 
 ```powershell
 gh pr view <n>                                     # the body, and any <!-- handoff --> block
 gh pr view <n> --comments                          # review findings and their dispositions
+```
+
+`--comments` shows the text but **not** whether a thread was resolved, and an
+unresolved finding is the thing you most need to see. Read the resolution state
+directly — the same `reviewThreads` query
+`.github/agents/nagramx-implementer.agent.md` already uses:
+
+```powershell
+$q = 'query { repository(owner:"dazewell",name:"Dazegram"){ pullRequest(number:<n>){
+  reviewThreads(first:100){ nodes { isResolved path line comments(first:1){ nodes { body } } } } } } }'
+gh api graphql -f query=$q --jq '.data.repository.pullRequest.reviewThreads.nodes[]
+  | select(.isResolved==false) | "\(.path):\(.line)"'
 ```
 
 With no PR, the local history and CI are the whole record. Say so in your
@@ -73,8 +111,10 @@ picking one — a contradiction usually means work happened after the handoff wa
 written, which is itself something dazewell needs to know.
 
 With no handoff at all, the commit messages and their `#<slug>` are your best
-record; `git log --grep '#<slug>'` finds any earlier related work, including
-fixes that landed on other branches.
+record; `git log --all --grep '#<slug>'` finds any earlier related work —
+`--all` matters, because without it the search only walks commits reachable
+from `HEAD` and misses fixes that live on other branches, which is the whole
+point of searching.
 
 ## 3. Honour the dead ends
 
@@ -101,9 +141,12 @@ If something settled looks genuinely wrong, raise it as a finding with
 silently shipping a variant of a rejected approach is the failure mode this
 whole process exists to prevent.
 
-**Equally, do not re-review the finished parts.** Resume where the work stopped.
-A fresh crop of Minor observations on already-reviewed code is a cost, not
-thoroughness.
+**Equally, do not re-review the finished parts** *during reconstruction*. A
+fresh crop of Minor observations on already-reviewed code is a cost, not
+thoroughness. This does not excuse the change from the whole-feature and
+craftsmanship passes `nagramx-workflow` step 5 requires on the **final** state —
+those read the accumulation, including how the inherited code and your new work
+interact, which is exactly what a resumed change is most likely to get wrong.
 
 ## 5. Confirm before you build
 
