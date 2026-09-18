@@ -2306,9 +2306,10 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         }
     }
 
-    // NagramX: flattens the title/header bubble into a square-cornered bar instead of hiding it
-    // (Material Design 3 chat header setting) - MD3 top app bars always keep a container behind
-    // the title, so we can't just skip the draw call the way doNotDrawGlassMenu does.
+    // NagramX: merges the back/title/menu bubbles into one full-width flat bar instead of hiding
+    // them (Material Design 3 chat header setting) - MD3 top app bars are a single edge-to-edge
+    // container behind everything, never per-element chrome, so we replace all three bubbles
+    // with one rather than just dropping the title bubble's background.
     public boolean doNotDrawGlassHeader;
     public boolean doNotDrawGlassMenu;
 
@@ -2360,21 +2361,26 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 right = rightDefault;
             }
 
+            if (doNotDrawGlassHeader) {
+                // NagramX: MD3 spec top app bars are one edge-to-edge flat surface behind the
+                // whole bar, not a per-element pill - stretch this bubble to cover the back button
+                // and menu/avatar too (drawn below, skipped in that case) instead of just the title.
+                left = 0;
+                right = getWidth();
+            }
             glassDrawable.setBounds(left, t, right, b);
             if (doNotDrawGlassHeader) {
-                // NagramX: MD3 spec top app bars always paint a container behind the title (never
-                // fully transparent) - square the pill into a flat bar instead of hiding it, so the
-                // title stays readable over the wallpaper. Left as-is (rounded) when the toggle is
-                // off, including mid-forum-search-animation radius set by the listener above.
                 glassDrawable.setRadius(0);
             }
             glassDrawable.draw(canvas);
         }
-        if (glassDrawableBack != null && hasBackButton) {
+        if (glassDrawableBack != null && hasBackButton && (!doNotDrawGlassHeader || glassOnlyBack)) {
+            // NagramX: glassOnlyBack skips the unified bar above entirely, so the back button
+            // still needs its own pill even with the MD3 toggle on, or it'd have no background.
             glassDrawableBack.setBounds(0, t, s + p * 2, b);
             glassDrawableBack.draw(canvas);
         }
-        if (glassDrawableMenu != null && (menuWidth > 0 || animatorAvatarContainerHasAvatar.getFloatValue() > 0) && !glassOnlyBack && !doNotDrawGlassMenu) {
+        if (glassDrawableMenu != null && (menuWidth > 0 || animatorAvatarContainerHasAvatar.getFloatValue() > 0) && !glassOnlyBack && !doNotDrawGlassMenu && !doNotDrawGlassHeader) {
             glassDrawableMenu.setBounds(getWidth() - Math.max(s, menuWidth) - p * 2, t, getWidth(), b);
             glassDrawableMenu.setAlpha(hasForcedMenuWidth || hasForcedMenuMinWidth || menuWidth == 0 ? (int) (255 * animatorAvatarContainerHasAvatar.getFloatValue()) : (int) (255 * animatorHasMenuItems.getFloatValue()));
             glassDrawableMenu.draw(canvas);
