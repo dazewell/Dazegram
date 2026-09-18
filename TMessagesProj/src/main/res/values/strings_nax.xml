@@ -513,6 +513,7 @@
     <string name="QuickScheduleButtonNotice">Keep calendar button visible when typing to quickly schedule more messages</string>
     <string name="RememberedSendAction">Remembered send action</string>
     <string name="RememberedSendActionNotice">Also available by long-pressing Send.</string>
+    <string name="RememberSendActionBehavior">Behavior</string>
     <string name="RememberSendActionMaster">Remember</string>
     <string name="RememberSendActionOpenSettings">Open remembered send action settings</string>
     <string name="RememberSendActionWhatGetsRemembered">What Gets Remembered</string>
