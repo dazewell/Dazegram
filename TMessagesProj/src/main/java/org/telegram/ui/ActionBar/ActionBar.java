@@ -2306,8 +2306,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         }
     }
 
-    // NagramX: opt-out for the title/header bubble only (Material Design 3 chat header setting).
-    // Kept separate from doNotDrawGlassMenu so the back and menu bubbles stay independent.
+    // NagramX: flattens the title/header bubble into a square-cornered bar instead of hiding it
+    // (Material Design 3 chat header setting) - MD3 top app bars always keep a container behind
+    // the title, so we can't just skip the draw call the way doNotDrawGlassMenu does.
     public boolean doNotDrawGlassHeader;
     public boolean doNotDrawGlassMenu;
 
@@ -2327,7 +2328,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         final int t = getHeight() - (getCurrentActionBarHeight() + s) / 2 - p;
         final int b = t + s + p * 2;
 
-        if (glassDrawable != null && !glassOnlyBack && !doNotDrawGlassHeader) { // NagramX: suppresses only the title bubble; back/menu bubbles unaffected
+        if (glassDrawable != null && !glassOnlyBack) {
             final int menuWidthWithPadding = menuWidth + ((hasForcedMenuWidth || hasForcedMenuMinWidth) ? (menuWidth > 0 ? p : 0) : (int) (p * animatorHasMenuItems.getFloatValue()));
             final int leftDefault = hasBackButton ? s + p : 0;
             final int avatarBubbleWidth = (int) (animatorAvatarContainerHasAvatar.getFloatValue() * (s + p));
@@ -2360,6 +2361,13 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             }
 
             glassDrawable.setBounds(left, t, right, b);
+            if (doNotDrawGlassHeader) {
+                // NagramX: MD3 spec top app bars always paint a container behind the title (never
+                // fully transparent) - square the pill into a flat bar instead of hiding it, so the
+                // title stays readable over the wallpaper. Left as-is (rounded) when the toggle is
+                // off, including mid-forum-search-animation radius set by the listener above.
+                glassDrawable.setRadius(0);
+            }
             glassDrawable.draw(canvas);
         }
         if (glassDrawableBack != null && hasBackButton) {
