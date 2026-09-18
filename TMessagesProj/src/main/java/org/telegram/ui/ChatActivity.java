@@ -19034,12 +19034,14 @@ public class ChatActivity extends BaseFragment implements
             }
 
             // NagramX: the wallpaper used to get setPostInvalidateParent(true) here to drive the glass
-            // composite refresh (see onGlassCompositeSettle). That flag is sticky and shared app-wide
-            // (ThemePreviewActivity's handler, MessageDrawable's static bubble producer) and the composite
-            // it feeds is consumed even when blur/glass is disabled, so it can't be gated per feature —
-            // removing it here restores the upstream cached crossfade and its normal redraw cadence.
+            // composite refresh. That flag is sticky and shared app-wide (ThemePreviewActivity's handler,
+            // MessageDrawable's static bubble producer) and consumed even when blur/glass is disabled, so
+            // it can't be gated per feature - removing it restores the upstream cached crossfade cadence.
             // rotateMotionBackgroundDrawable() now drives the composite refresh directly instead.
 
+            // NagramX: matrix-safety - a wallpaper swap mid-fade would blend the OLD wallpaper's snapshot
+            // under the NEW one's live composite, so cancel any in-flight blend before swapping the source.
+            cancelGlassCompositeCrossfade();
             final BlurredBackgroundSource source = wallpaperBitmapProvider.updateSourceFromBackgroundViewDrawable(drawable);
             final int statusBarColor = wallpaperBitmapProvider.getStatusBarColor(source);
             final float statusBarBrightness = AndroidUtilities.computePerceivedBrightness(statusBarColor);
