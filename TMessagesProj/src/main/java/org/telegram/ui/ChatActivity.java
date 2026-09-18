@@ -32479,11 +32479,10 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public void onPause() {
         super.onPause();
-        // NagramX: stop an in-flight glass composite blend the moment the chat backgrounds - nothing on
-        // screen to animate for. Deliberately leaves a still-pending settle runnable alone (see
-        // cancelGlassCompositeCrossfade/scheduleGlassCompositeCrossfade): letting it fire hits
-        // onGlassCompositeSettle's own isPaused bail, which marks dirty for onResume to catch up on,
-        // instead of the burst's queued composite being dropped outright.
+        // NagramX: cancel the pending settle runnable too, else a resume before its delay lets it fire
+        // paused-false, blending stale pixels; mark dirty so onResume redoes it.
+        AndroidUtilities.cancelRunOnUIThread(glassCompositeSettleRunnable);
+        glassCompositeDirty = true;
         cancelGlassCompositeCrossfade();
         repostCopyDeleteBatch = null;
         // NagramX: #repost-spread. A genuine pause is not the picker-close transition - drop any pending
