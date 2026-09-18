@@ -122,9 +122,16 @@ git --no-pager log --oneline origin/dev..HEAD
 ```
 
 A worktree abandoned weeks ago has an `origin/dev` to match, so comparing
-against it unrefreshed reports commits as local that landed long ago. Name
-anything you find in the question you ask. A terminal answer that silently
-abandoned the only copy of something is the worst outcome this protocol has.
+against it unrefreshed reports commits as local that landed long ago.
+
+`git status --short` only names the dirty paths — **read and settle them the
+same way the main path does** (below: `git --no-pager diff`, `--cached`, and
+each untracked file), and commit what is worth keeping *before* you report.
+These paths end in a question to dazewell, and the worktree may be removed on
+the strength of the answer, so leaving the work uncommitted here is leaving it
+nowhere. Name what you found in the question you ask. A terminal answer that
+silently abandoned the only copy of something is the worst outcome this protocol
+has.
 
 Only when `$pr` is empty *and* `ls-remote` is empty is the change genuinely
 local-only: skip the `origin/$branch` reads below — they would just fail — run
