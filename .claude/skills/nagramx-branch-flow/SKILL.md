@@ -242,12 +242,12 @@ condition below must hold; if any fails, hand back the PR URL and the decision.
 - **Not if the PR touches `.github/sync/**`**, which flips `sync-guard-check`
   red on every other open branch, or if a sync is in flight.
 
-Know the backstop's edge: ruleset `22861936` requires the `Every commit carries
-a` context with an **empty** bypass list, so not even an admin merge lands an
-untagged commit. That is the **only** part the platform enforces — the named
-approval, the fresh re-verify, the `--admin` ban and the sync exclusion are
-process-only. These bind because you follow them, not because GitHub stops you.
-The mechanical gate every merge passes is below.
+Know the backstop's edge: ruleset `22861936` requires the
+`Every commit carries a` context with an **empty** bypass list, so not even an
+admin merge lands an untagged commit. That is the **only** part the platform
+enforces — the named approval, the fresh re-verify, the `--admin` ban and the
+sync exclusion are process-only. These bind because you follow them, not
+because GitHub stops you. The mechanical gate every merge passes is below.
 
 Squash PRs. Settings on 2026-09-10: `allow_merge_commit: false`,
 `allow_squash_merge: true`, `delete_branch_on_merge: true`. GitHub makes one
