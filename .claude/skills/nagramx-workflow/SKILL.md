@@ -29,9 +29,9 @@ rounds. They report into your trace without flooding it, and none can commit.
 Give each an objective, an output format and explicit boundaries.
 
 Two or more **genuinely independent** changes at once — disjoint files, disjoint
-hooks, no ordering between them — is the one case for `nagramx-orchestrator`
-and parallel sessions. If they share a base file or a hook, they are not
-independent: run them one at a time in one session.
+hooks, no ordering between them — can run as parallel sessions dazewell starts
+himself. If they share a base file or a hook, they are not independent: run
+them one at a time in one session.
 
 ## The pipeline, in order
 
@@ -60,10 +60,8 @@ review: what state exists, who writes it, on which thread, what clears it, and
 which interleavings matter. Route it through round 1, or a **round 1.5** the
 moment the risky part surfaces mid-implementation, because **a design review
 conducted before the hard part existed has not reviewed the hard part.** Say
-that plainly rather than assuming round 1 covered it. (`#infinite-video`: round
-1 reviewed a plan in which the re-arm-on-rollover path did not yet exist, so the
-concurrency bug that dominated the change was never in front of a reviewer as a
-design question — only as isolated line fixes, one of which shipped.)
+that plainly rather than assuming round 1 covered it. (Earned by
+`#infinite-video`.)
 
 **State the trade-off budget in one line:** what may be spent for correctness —
 an extra query, a round trip, some memory, a slower rare path. Without an
@@ -155,11 +153,9 @@ user would actually miss and could not trivially recreate. Preservation
 machinery is the part that breaks: a clamp is one expression at a read site,
 while preserving an out-of-range value means tracking which values are legacy,
 keeping them distinguishable, and stopping every write path from laundering one
-into the other. When a delay slider's cap dropped from 300s to 30s,
-grandfathering already-armed triggers cost six times the code and three
-Criticals across three review rounds — all deleted once the real cost was
-stated and dazewell said he had never wanted it preserved. The replacement
-clamped at two boundaries: a net deletion of ~46 lines.
+into the other. (Earned by `#eventschedule`: grandfathering armed triggers past
+a cap change cost six times the code and three Criticals, then was deleted for a
+two-boundary clamp.)
 
 **Target the diffstat of a comparable feature.** `git show --stat <commit>` on
 the nearest equivalent: a handful of files, most of the diff in new code, only a
@@ -270,15 +266,14 @@ severity floor, the two-round cap, and thread resolution — are normative in
 
 **Request the verification build only once review has settled** — round 2 clean,
 any final-state pass clean, nothing Important or above outstanding. An APK
-requested earlier is stale the moment a later round finds a Critical, which is
-exactly what a build-then-review ordering produced once: dazewell installed and
-tested a build that three subsequent Critical findings invalidated.
+requested earlier is stale the moment a later round finds a Critical — a
+build-then-review ordering once had dazewell test a build three subsequent
+Criticals invalidated.
 
-**A UI-facing change earns a second, earlier build first — the smoke build.** A
-fully-reviewed feature has shipped unreachable before: every round read the diff
-and confirmed the control renders when its precondition holds; none could see
-that the precondition was never true on a device, because that is not a
-code-reading question. So for anything a user can see or tap, once it compiles,
+**A UI-facing change earns a second, earlier build first — the smoke build.**
+Review reads the diff; it cannot see whether a control's precondition is ever
+true on a device, which is how a fully-reviewed feature shipped unreachable
+(above). So for anything a user can see or tap, once it compiles,
 request a build and ask **one** question: does the control appear, and can you
 reach it? Not correctness, not edge cases — reachability only. Round 2 and any
 final-state pass run **after** that comes back positive; there is no point
@@ -316,9 +311,9 @@ independent cleanup checks and the evidence-grading labels are in
 ### 10. Land it
 
 Landing into `dev` is dazewell's decision by default. The merge procedure, and
-the narrow conditional authority under which a root `nagramx-orchestrator` may
-press the button, are normative in `nagramx-branch-flow` and the orchestrator
-agent file. **Never write "ready to merge"** — nothing in this pipeline
+the narrow conditional authority under which a session holding a named approval
+may press the button, are normative in `nagramx-branch-flow`. **Never write
+"ready to merge"** — nothing in this pipeline
 establishes it, because nobody ran the app. Say what you actually verified.
 
 ## Priorities: protect the irreplaceable thing first

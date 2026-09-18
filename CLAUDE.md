@@ -13,7 +13,6 @@ The process lives in `.claude/skills/`, loaded on demand:
 question answered rather than built), `nagramx-branch-flow` (where
 commits live and how they move), `nagramx-code-review` (what the review rounds
 check), `nagramx-process-lifecycle` (any process you start, and cleanup),
-`nagramx-agent-comms` (the rare case of two sessions running at once),
 `nagramx-session-handoff` (abandoning a session mid-change) and
 `nagramx-session-pickup` (continuing a branch someone else left).
 
@@ -30,10 +29,6 @@ Drive a change from the main conversation — it owns the branch and writes the
 code — and delegate the read-and-judge work to those subagents. That is the
 same shape as the Copilot CLI side, where `nagramx-implementer` is the agent
 that owns a change end to end.
-
-There is deliberately no orchestrator stub: a Claude Code subagent cannot create
-sessions, so the coordinating role is not expressible here. For the rare
-multi-change batch, coordinate from the main conversation.
 
 ## Imported audit agents are not part of the pipeline
 

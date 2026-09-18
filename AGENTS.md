@@ -121,7 +121,6 @@ length.
 | `.claude/skills/nagramx-branch-flow/SKILL.md` | Where commits live and how they move |
 | `.claude/skills/nagramx-code-review/SKILL.md` | What the review rounds check |
 | `.claude/skills/nagramx-process-lifecycle/SKILL.md` | Any process you start, and cleanup |
-| `.claude/skills/nagramx-agent-comms/SKILL.md` | The rare case of two sessions running at once |
 | `.claude/skills/nagramx-session-handoff/SKILL.md` | Abandoning a session mid-change, leaving state behind |
 | `.claude/skills/nagramx-session-pickup/SKILL.md` | Continuing a branch or PR someone else left |
 
@@ -129,6 +128,23 @@ length.
 `nagramx-workflow` for device probes and traced smoke cycles.
 `.github/instructions/*.instructions.md` attach automatically to the files they
 scope — upstream base files, fork-owned packages, and resources.
+
+### Context budget
+
+Process docs compete with the code for the window, so the carry is capped and
+the cap is checked when a doc changes — not the corpus total, which is
+irrelevant while files load on demand.
+
+- **Always-on** (`AGENTS.md` + `CLAUDE.md` + the running agent file): **≤ 40 KB**.
+  Today 35 KB.
+- **Typical change** (always-on + `nagramx-workflow`): **≤ 60 KB**. Today 55 KB.
+- Each skill body stays within Anthropic's 10–20 KB guidance. `nagramx-branch-flow`
+  (21 KB) and `nagramx-process-lifecycle` (20.5 KB) sit just over and are not to
+  grow; anything added to either buys its room by cutting.
+
+Over budget means cut, not append. Prefer a rule line over a retelling: an
+incident earns a rule, and the rule keeps only the incident's `#slug` so the
+history stays greppable without carrying the story.
 
 `FEATURES.md` is what already ships — check it before treating anything as new.
 `docs/codemap/` is the UI→code map, upstream traps and disproven hypotheses.

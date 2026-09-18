@@ -8,9 +8,7 @@ description: "Dazewell's rule for any process, daemon, or background command an 
 Any session that starts a process follows the starter rules. A coordinator that
 archives a direct implementer child follows the checklist. Usually there is no
 archiver: one change, one branch, one implementer session, which cleans itself.
-
-This exists because `adb logcat` once held a worktree open during archival and
-left the app with a broken session record.
+(Earned by an `adb logcat` that held a worktree open during archival.)
 
 ## The contract
 
@@ -183,8 +181,8 @@ meant for later reading — most concretely an `adb-client`/`logcat` row backing
 a smoke-trace capture. A row of that kind reporting `n/a` when a capture file
 actually exists, or reporting `deleted & verified` without a timestamp, is
 malformed the same way a missing field is (rule 12). **This field is a claim,
-not proof** — it records what the starter believes it did, but the
-orchestrator-side pre-archive checklist below independently confirms the path
+not proof** — it records what the starter believes it did, but the pre-archive
+checklist below independently confirms the path
 is actually gone before archiving; a starter's `deleted & verified`
 disposition never substitutes for that independent check.
 
@@ -229,8 +227,7 @@ letting the session go idle:
 ## Pre-archive checklist for a direct implementer child
 
 Run this from the main clone, not inside the child worktree. A coordinator
-archives only direct implementer children it created and recorded. There are no
-nested or child orchestrator closure states.
+archives only direct implementer children it created and recorded.
 
 1. Read the direct child's process ledger from its handback. A missing ledger,
    malformed row, `stop result: failed to stop`, unverified row, or missing,
