@@ -114,6 +114,7 @@ demand, so none of it costs context until you need it.
 | Skill | Owns |
 |---|---|
 | `.claude/skills/nagramx-workflow/SKILL.md` | What a change looks like, start to finish |
+| `.claude/skills/nagramx-investigation/SKILL.md` | A question answered rather than built |
 | `.claude/skills/nagramx-branch-flow/SKILL.md` | Where commits live and how they move |
 | `.claude/skills/nagramx-code-review/SKILL.md` | What the review rounds check |
 | `.claude/skills/nagramx-process-lifecycle/SKILL.md` | Any process you start, and cleanup |
