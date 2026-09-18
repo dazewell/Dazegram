@@ -57,10 +57,15 @@ git ls-remote --heads origin $branch               # empty means genuinely never
 **Keep `$pr.number`** — the PR reads further down need it, and if pickup started
 from a branch name this lookup is the only place it appears.
 
-**If `ls-remote` came back empty, the branch is local-only.** There is no PR, no
-CI run and no remote head, so skip the fetch and the `origin/$branch` reads
-below entirely — they would just fail — fetch `dev` alone for a comparison base,
-and say plainly in your confirmation that local history was the whole record.
+**If `ls-remote` came back empty, the remote head is gone — which is not the
+same as there being no record.** A PR outlives its branch here: the repo
+auto-deletes the head ref on merge, and `refs/pull/<N>/head` keeps the range.
+So decide on both signals. If `$pr` exists, read it and its review history
+exactly as below and note that the branch itself is gone. Only when `$pr` is
+empty *and* `ls-remote` is empty is the change genuinely local-only: skip the
+fetch and the `origin/$branch` reads below — they would just fail — fetch `dev`
+alone for a comparison base, and say plainly in your confirmation that local
+history was the whole record.
 
 Otherwise bind to the remote head, so you reconstruct the newest state rather
 than whatever the abandoned worktree happened to stop at — a session that died
