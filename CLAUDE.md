@@ -12,7 +12,9 @@ The process lives in `.claude/skills/`, loaded on demand:
 `nagramx-workflow` (what a change looks like), `nagramx-branch-flow` (where
 commits live and how they move), `nagramx-code-review` (what the review rounds
 check), `nagramx-process-lifecycle` (any process you start, and cleanup),
-`nagramx-agent-comms` (the rare case of two sessions running at once).
+`nagramx-agent-comms` (the rare case of two sessions running at once),
+`nagramx-session-handoff` (abandoning a session mid-change) and
+`nagramx-session-pickup` (continuing a branch someone else left).
 
 Invoke the skill for the job rather than working from memory.
 

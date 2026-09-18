@@ -118,6 +118,8 @@ demand, so none of it costs context until you need it.
 | `.claude/skills/nagramx-code-review/SKILL.md` | What the review rounds check |
 | `.claude/skills/nagramx-process-lifecycle/SKILL.md` | Any process you start, and cleanup |
 | `.claude/skills/nagramx-agent-comms/SKILL.md` | The rare case of two sessions running at once |
+| `.claude/skills/nagramx-session-handoff/SKILL.md` | Abandoning a session mid-change, leaving state behind |
+| `.claude/skills/nagramx-session-pickup/SKILL.md` | Continuing a branch or PR someone else left |
 
 `.claude/skills/nagramx-workflow/diagnostics.md` is loaded on demand from
 `nagramx-workflow` for device probes and traced smoke cycles.
