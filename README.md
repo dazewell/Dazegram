@@ -50,10 +50,10 @@ This README covers the highlights. The full list, with what each one does, is in
 <img src="docs/images/video-watching.png" alt="Two views of Dazegram's video message playback: the player panel under the chat title with its mute, loop, and speed controls, and captions burned into video playback matching the transcription bubble below it.">
 </p>
 
-**Appearance:** Stock Telegram gives you light, dark, and not much else. Extera Light and Extera Dark restyle the whole app rather than just an accent colour, and in both, the chat wallpaper's pattern shows straight through the composer's glass instead of stopping at the colour behind it. A separate pattern option tints that same wallpaper with your phone's live Material You accent colour instead of a fixed image. The Extera look is [exteraGram](https://github.com/exteraSquad/exteraGram)'s, by exteraSquad — only its palettes were rebuilt here, reverse-engineered rather than copied.
+**Appearance:** Stock Telegram gives you light, dark, and not much else. Extera Light and Extera Dark restyle the whole app rather than just an accent colour. A separate pattern option tints your chat wallpaper with your phone's live Material You accent colour instead of a fixed image. The Extera look is [exteraGram](https://github.com/exteraSquad/exteraGram)'s, by exteraSquad — only its palettes were rebuilt here, reverse-engineered rather than copied.
 
 <p align="center">
-<img src="docs/images/appearance.png" alt="Two views of Dazegram's Extera themes: the same staged chat rendered in Extera Light and in Extera Dark, each showing the composer's message field and button row with the chat wallpaper's pattern reading through their translucent glass.">
+<img src="docs/images/appearance.png" alt="Two views of Dazegram's Extera themes: the same staged chat rendered in Extera Light and in Extera Dark, each showing the composer's restyled message field and button row.">
 </p>
 
 **Everyday reliability:** Normal composing already saved your draft. Editing a message, scheduling one, and recording a round video didn't — now they do. Back out by accident, lock the app, or switch away mid-recording, and what you had is still waiting when you come back.
