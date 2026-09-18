@@ -530,15 +530,9 @@ public class ChatActivity extends BaseFragment implements
     private final @NonNull BlurredBackgroundDrawableViewFactory glassBackgroundDrawableFactoryFrosted;
 
     private final @NonNull BlurredBackgroundSourceWrapped navbarContentSourceWallpaper;
-    // NagramX: bare-wallpaper surfaces (drawn straight from the wrapper, no render node) take this plain
-    // gradient-only proxy; render-node surfaces (the composer pills) and the round-video recording
-    // backdrop (roundVideoBackgroundDrawableFactory) keep navbarContentSourceWallpaper, the pattern
-    // composite. The split is by source, not by size — the full rationale lives in WallpaperBitmapProvider.
-    private final @NonNull BlurredBackgroundSourceWrapped navbarContentSourceWallpaperPlain;
     private final @NonNull BlurredBackgroundDrawableViewFactory navbarContentDrawableFactory;
-    // NagramX: the round-video recording backdrop. Wraps navbarContentSourceWallpaper (the composite)
-    // directly, no render node — a full-screen near-opaque scrim that keeps the pattern (see the source
-    // comment above and roundVideoRecordBackground's creation).
+    // NagramX: the round-video recording backdrop. Wraps navbarContentSourceWallpaper directly, no render
+    // node — a full-screen near-opaque scrim.
     private final @NonNull BlurredBackgroundDrawableViewFactory roundVideoBackgroundDrawableFactory;
 
     private Dialog closeChatDialog;
@@ -3000,7 +2994,6 @@ public class ChatActivity extends BaseFragment implements
         super(args);
 
         navbarContentSourceWallpaper = new BlurredBackgroundSourceWrapped();
-        navbarContentSourceWallpaperPlain = new BlurredBackgroundSourceWrapped();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && SharedConfig.chatBlurEnabled()) {
             scrollableViewNoiseSuppressor = new DownscaleScrollableNoiseSuppressor();
 
@@ -3035,7 +3028,7 @@ public class ChatActivity extends BaseFragment implements
             glassBackgroundDrawableFactory = new BlurredBackgroundDrawableViewFactory(navbarContentSourceWallpaper);
             glassBackgroundDrawableFactoryFrosted = new BlurredBackgroundDrawableViewFactory(navbarContentSourceWallpaper);
         }
-        navbarContentDrawableFactory = new BlurredBackgroundDrawableViewFactory(navbarContentSourceWallpaperPlain);
+        navbarContentDrawableFactory = new BlurredBackgroundDrawableViewFactory(navbarContentSourceWallpaper);
         roundVideoBackgroundDrawableFactory = new BlurredBackgroundDrawableViewFactory(navbarContentSourceWallpaper);
         navbarContentDrawableFactory.setLinkedViewsRef(glassAttachedViews);
         roundVideoBackgroundDrawableFactory.setLinkedViewsRef(glassAttachedViews);
@@ -3822,9 +3815,6 @@ public class ChatActivity extends BaseFragment implements
         if (chatMode == MODE_DEFAULT && xyz.nextalone.nagram.NaConfig.INSTANCE.getRememberSendActionResetOnLeave().Bool()) {
             xyz.nextalone.nagram.RememberedSendAction.clearIfDialog(currentAccount, getDialogId());
         }
-        org.telegram.messenger.utils.Choreographer60FpsContent.getInstance().removeFrameCallbackOnce(glassCompositeRefreshRunnable);
-        // NagramX: keep cancelling the Handler arm too — onConfigurationChanged still uses runOnUIThread.
-        AndroidUtilities.cancelRunOnUIThread(glassCompositeRefreshRunnable);
         repostCopyDeleteBatch = null;
         repostCopyDeletePendingOffer = null;
         // NagramX: drop the chat-lock passcode cover if it never got unlocked
@@ -8566,7 +8556,6 @@ public class ChatActivity extends BaseFragment implements
                             }
                         };
                         container.chatActivity.navbarContentSourceWallpaper.setSource(navbarContentSourceWallpaper);
-                        container.chatActivity.navbarContentSourceWallpaperPlain.setSource(navbarContentSourceWallpaperPlain);
                         container.chatActivity.parentThemeDelegate = themeDelegate;
                         container.chatActivity.parentChatActivity = ChatActivity.this;
                         container.chatActivity.chatActivityDelegate = new ChatActivityDelegate() {
@@ -19037,21 +19026,6 @@ public class ChatActivity extends BaseFragment implements
                 ((MotionBackgroundDrawable) drawable).setFastRenderAllowed();
             }
 
-            // NagramX: drive the glass-composite refresh (see refreshGlassComposite) from the drawable
-            // that actually animates. A per-chat wallpaper arrives wrapped in a ChatBackgroundDrawable,
-            // which the instanceof above misses, so unwrap it. Setting postInvalidateParent makes the
-            // wallpaper self-post invalidateMotionBackground on every animating frame, after the gradient
-            // is regenerated. Accepted side effects: the flag is sticky on a drawable shared app-wide
-            // (ThemePreviewActivity's handler sees extra posts during rotations) and the animation becomes
-            // self-driving via the 16ms re-post; both are behaviours upstream already runs for animated
-            // bubble gradients, and neither changes speed (progress is dt-proportional; the nested
-            // updateAnimation() returns at dt<=1, and it stops re-posting once posAnimationProgress hits 1).
-            Drawable wallpaperMotion = drawable instanceof ChatBackgroundDrawable
-                    ? ((ChatBackgroundDrawable) drawable).getDrawable(false) : drawable;
-            if (wallpaperMotion instanceof MotionBackgroundDrawable) {
-                ((MotionBackgroundDrawable) wallpaperMotion).setPostInvalidateParent(true);
-            }
-
             final BlurredBackgroundSource source = wallpaperBitmapProvider.updateSourceFromBackgroundViewDrawable(drawable);
             final int statusBarColor = wallpaperBitmapProvider.getStatusBarColor(source);
             final float statusBarBrightness = AndroidUtilities.computePerceivedBrightness(statusBarColor);
@@ -19062,7 +19036,6 @@ public class ChatActivity extends BaseFragment implements
             shouldHaveLightNavigationBarIcons = navigationBarBrightness <= 0.9f;
 
             navbarContentSourceWallpaper.setSource(source);
-            navbarContentSourceWallpaperPlain.setSource(wallpaperBitmapProvider.getPlainSource());
             if (chatActivityFadeView != null) {
                 chatActivityFadeView.invalidate();
             }
@@ -23946,16 +23919,6 @@ public class ChatActivity extends BaseFragment implements
             if (messageEnterTransitionContainer != null) {
                 messageEnterTransitionContainer.invalidate();
             }
-            // NagramX: measured on 120 Hz with cancel+repost, one burst (64 arrivals) postponed to a single
-            // trailing refresh. Keep one outstanding frame callback instead: the first arrival arms a 30 fps
-            // one-shot and later arrivals while pending do not postpone it.
-            MotionBackgroundDrawable producer = args.length > 0 && args[0] instanceof MotionBackgroundDrawable
-                    ? (MotionBackgroundDrawable) args[0] : null;
-            MotionBackgroundDrawable currentWallpaper = resolveCurrentMotionWallpaper();
-            if (producer != null && currentWallpaper != null && producer != currentWallpaper) {
-                return;
-            }
-            scheduleGlassCompositeRefresh();
         } else if (id == NotificationCenter.loadingMessagesFailed) {
             if ((Integer) args[0] == classGuid && args[2] instanceof TLRPC.TL_error) {
                 TLRPC.TL_error e = (TLRPC.TL_error) args[2];
@@ -32230,12 +32193,6 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public void onResume() {
         super.onResume();
-        // NagramX: a glass-composite refresh requested while backgrounded was deferred; run it now that
-        // the wallpaper may have rotated or its pattern arrived while we were paused.
-        if (glassCompositeDirty) {
-            glassCompositeDirty = false;
-            refreshGlassComposite();
-        }
         // NagramX: re-cover a "require password" chat if backgrounding cleared its unlock, and drive the
         // cover's lifecycle so it auto-prompts fingerprint like the app lock
         showChatLockPasscodeView();
@@ -33091,14 +33048,6 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public void onConfigurationChanged(android.content.res.Configuration newConfig) {
         fixLayout();
-        // NagramX: rotation changes the display aspect the glass composite is sized to, but a settled
-        // wallpaper emits no motion notification, so the proxy would keep the old-orientation composite
-        // until an unrelated refresh fires. Post the coalesced refresh so it reallocates on the new
-        // dimensions once AndroidUtilities.displaySize has been updated (deferred by the post).
-        org.telegram.messenger.utils.Choreographer60FpsContent.getInstance().removeFrameCallbackOnce(glassCompositeRefreshRunnable);
-        AndroidUtilities.cancelRunOnUIThread(glassCompositeRefreshRunnable);
-        AndroidUtilities.runOnUIThread(glassCompositeRefreshRunnable);
-        glassCompositeRefreshPending = true;
         if (visibleDialog instanceof DatePickerDialog) {
             visibleDialog.dismiss();
         }
@@ -52026,65 +51975,15 @@ public class ChatActivity extends BaseFragment implements
     }
 
     // NagramX: the keyboard pans the wallpaper (backgroundTranslationY); the composer glass samples a
-    // separate composite proxy of it, so the proxy has to shift by the same amount or the pattern behind
-    // the composer sits still while the wallpaper slides under it. Push the shift onto the composite
-    // source's matrix and re-record the glass display lists so they re-read it (the shader matrix is
-    // baked in at record time). Wallpaper parallax adds a continuous sensor-driven offset this does not
-    // follow, so the pattern would drift while tilting if parallax were enabled — known and accepted.
-    // Any new setBackgroundTranslation call site must be paired with this: the two are kept in step only
-    // by adjacency, and if a future merge adds a third the pattern silently misaligns with nothing failing.
+    // separate proxy of it, so the proxy has to shift by the same amount or the wallpaper colour behind
+    // the composer sits still while the wallpaper slides under it. Push the shift onto the source's
+    // matrix and re-record the glass display lists so they re-read it (the shader matrix is baked in at
+    // record time). Wallpaper parallax adds a continuous sensor-driven offset this does not follow, so the
+    // proxy would drift while tilting if parallax were enabled — known and accepted.
     private void updateGlassBackgroundTranslation(int translationY) {
         wallpaperBitmapProvider.setBackgroundTranslationY(translationY);
         reprimeGlassRenderNodes();
         invalidateAllGlassAttachedViews();
-    }
-
-    // NagramX: a motion wallpaper (gradient + pattern) is composited into the glass proxy and the proxy
-    // only re-samples on a reprime, so it has to be refreshed whenever wallpaper content moves. The first
-    // invalidateMotionBackground in a burst arms one 30 fps frame callback and later arrivals while pending
-    // do not postpone it. The notification is emitted from MotionBackgroundDrawable.draw(), so refresh must
-    // stay deferred to a later UI turn: running it synchronously here would re-enter motion.draw() while its
-    // savedBounds/suppression scope is active. Recompose remains forced so alpha/colour-filter fades (no
-    // generation id) are followed. If paused/detached, it marks dirty and onResume runs one catch-up refresh.
-    private static final int GLASS_COMPOSITE_REFRESH_FPS = 30;
-    private boolean glassCompositeDirty;
-    private boolean glassCompositeRefreshPending;
-    private final Runnable glassCompositeRefreshRunnable = this::refreshGlassComposite;
-
-    private void scheduleGlassCompositeRefresh() {
-        if (glassCompositeRefreshPending) {
-            return;
-        }
-        glassCompositeRefreshPending = true;
-        org.telegram.messenger.utils.Choreographer60FpsContent.getInstance()
-                .addFrameCallbackOnce(glassCompositeRefreshRunnable, GLASS_COMPOSITE_REFRESH_FPS);
-    }
-
-    private MotionBackgroundDrawable resolveCurrentMotionWallpaper() {
-        if (contentView == null) {
-            return null;
-        }
-        Drawable wallpaper = contentView.getBackgroundImage();
-        if (wallpaper instanceof ChatBackgroundDrawable) {
-            wallpaper = ((ChatBackgroundDrawable) wallpaper).getDrawable(false);
-        }
-        return wallpaper instanceof MotionBackgroundDrawable ? (MotionBackgroundDrawable) wallpaper : null;
-    }
-
-    private void refreshGlassComposite() {
-        glassCompositeRefreshPending = false;
-        if (isPaused || contentView == null || !contentView.isAttachedToWindow()) {
-            glassCompositeDirty = true;
-            return;
-        }
-        MotionBackgroundDrawable wallpaper = resolveCurrentMotionWallpaper();
-        if (wallpaper == null) {
-            return;
-        }
-        if (wallpaperBitmapProvider.refreshMotionComposite(wallpaper)) {
-            reprimeGlassRenderNodes();
-            invalidateAllGlassAttachedViews();
-        }
     }
 
     private static final Rect clipBoundsRect = new Rect();

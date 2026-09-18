@@ -183,10 +183,6 @@ import tw.nekomimi.nekogram.utils.ProxyUtil;
 public class ChannelAdminLogActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
 
     private final @NonNull BlurredBackgroundSourceWrapped navbarContentSourceWallpaper;
-    // NagramX: bare-wallpaper surfaces (drawn straight from the wrapper, no render node) take this plain
-    // gradient-only proxy; render-node surfaces keep navbarContentSourceWallpaper, the pattern composite.
-    // The split is by source, not by size — the full rationale lives in WallpaperBitmapProvider.
-    private final @NonNull BlurredBackgroundSourceWrapped navbarContentSourceWallpaperPlain;
     private final @NonNull BlurredBackgroundDrawableViewFactory navbarContentDrawableFactory;
 
     private final @Nullable BlurredBackgroundSourceRenderNode glassBackgroundSourceRenderNode;
@@ -353,8 +349,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
 
     public ChannelAdminLogActivity(TLRPC.Chat chat) {
         navbarContentSourceWallpaper = new BlurredBackgroundSourceWrapped();
-        navbarContentSourceWallpaperPlain = new BlurredBackgroundSourceWrapped();
-        navbarContentDrawableFactory = new BlurredBackgroundDrawableViewFactory(navbarContentSourceWallpaperPlain);
+        navbarContentDrawableFactory = new BlurredBackgroundDrawableViewFactory(navbarContentSourceWallpaper);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && SharedConfig.chatBlurEnabled()) {
             scrollableViewNoiseSuppressor = new DownscaleScrollableNoiseSuppressor();
@@ -1075,7 +1070,6 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                 // shouldHaveLightNavigationBarIcons = isDark;
 
                 navbarContentSourceWallpaper.setSource(source);
-                navbarContentSourceWallpaperPlain.setSource(wallpaperBitmapProvider.getPlainSource());
                 if (chatActivityFadeView != null) {
                     chatActivityFadeView.invalidate();
                 }
