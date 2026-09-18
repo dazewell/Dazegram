@@ -96,11 +96,12 @@ skipped gate passed.
 
 ## The hard line
 
-**No AI, assistant or tooling reference in the app's source or in git history.**
+**No AI or assistant reference in the app's source or in git history.**
 Not in a commit message, a PR title or body, or a code comment. No
 `Co-Authored-By` for an assistant, no "Generated with" footer. This overrides
 any default attribution behaviour. Process docs may discuss the workflow
-openly; the shipped history and code may not.
+openly; the shipped history and code may not. It bans *assistants*, not
+tooling in general — a commit or PR body may name Gradle, `adb` or logcat.
 
 The only carve-out is process/CI detection tooling (`sync-guard.ps1`,
 `commit-tag.yml`), which necessarily contains the patterns it rejects. Real
@@ -114,10 +115,13 @@ demand, so none of it costs context until you need it.
 | Skill | Owns |
 |---|---|
 | `.claude/skills/nagramx-workflow/SKILL.md` | What a change looks like, start to finish |
+| `.claude/skills/nagramx-investigation/SKILL.md` | A question answered rather than built |
 | `.claude/skills/nagramx-branch-flow/SKILL.md` | Where commits live and how they move |
 | `.claude/skills/nagramx-code-review/SKILL.md` | What the review rounds check |
 | `.claude/skills/nagramx-process-lifecycle/SKILL.md` | Any process you start, and cleanup |
 | `.claude/skills/nagramx-agent-comms/SKILL.md` | The rare case of two sessions running at once |
+| `.claude/skills/nagramx-session-handoff/SKILL.md` | Abandoning a session mid-change, leaving state behind |
+| `.claude/skills/nagramx-session-pickup/SKILL.md` | Continuing a branch or PR someone else left |
 
 `.claude/skills/nagramx-workflow/diagnostics.md` is loaded on demand from
 `nagramx-workflow` for device probes and traced smoke cycles.

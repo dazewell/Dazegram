@@ -371,6 +371,18 @@ hazard the code beside it doesn't handle, means the *class* of the problem is
 harder than the size of the diff suggested. Escalate the model rather than
 grinding another round.
 
+**When restarting the piece is not enough, hand the whole change to a fresh
+session** — follow `nagramx-session-handoff`. Commit and push **everything
+belonging to the change**, unfinished or non-compiling parts included in a
+clearly-marked partial commit, make
+sure a PR exists, write the handoff into the **PR body** under its
+`<!-- handoff -->` marker with the dead ends recorded concretely, then stop:
+further commits invalidate the state you just stamped.
+
+**If you are the fresh session**, `nagramx-session-pickup` binds you instead —
+reconstruct from the branch, the PR body, CI and the review threads before
+touching anything, and confirm what you found before you build.
+
 **Stop and report when an optional slice is dominating the change** — repeated
 Critical/Important findings in the same slice, a new mechanism that serves only
 it, the slice reopening design rounds, or an extra device cycle driven by it.
