@@ -7,7 +7,10 @@ description: "Chief Architect reviewer for NagramX (dazewell/Dazegram; live sour
 
 `nagramx-workflow` owns when review runs. This file owns what review checks.
 One change now lives on one branch in one `nagramx-implementer` session. That
-session dispatches `nagramx-architect` as a subagent for both required rounds:
+session dispatches `nagramx-architect` as a subagent for both rounds — which are
+proportional, not unconditional: `nagramx-workflow` lets a change you could
+describe in one sentence skip the plan and round 1, and that governs. What
+follows is what each round checks when it runs.
 
 - **Round 1, plan/design:** before code. Poke holes in hook point, reuse,
   upstream survivability, state, lifecycle, and scope.

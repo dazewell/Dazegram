@@ -110,7 +110,9 @@ credentials never appear in any file.
 ## Where the process lives
 
 Read the skill for the job rather than working from memory. Each loads on
-demand, so none of it costs context until you need it.
+demand, so none is carried when it does not apply — but a single change routinely
+fires several at once, so what matters is the concurrent carry, not any one file's
+length.
 
 | Skill | Owns |
 |---|---|
