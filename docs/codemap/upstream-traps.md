@@ -2014,4 +2014,4 @@ Scheduled Messages hits the identical parent-below-child stack shape, so the
 guard covers both the auto-navigated and manually-opened cases with one
 condition.
 
-*(Established 2026-09-19, `#remember-send-action`.)*
+*(Established 2026-09-17, `#remember-send-action`.)*

@@ -5610,6 +5610,10 @@ public class ChatActivityEnterView extends FrameLayout implements
     // to own that memory, via isSendWhenOnlineEligible() below.
     private boolean isSendWhenOnlineStatusEligible() {
         if (dialog_id <= 0) return false;
+        // NagramX: both existing call sites already gate on parentFragment != null before reaching
+        // here, but PopupNotificationActivity builds this composer with a null fragment and assigns
+        // a positive dialog_id later, so the predicate must not rely on caller discipline to stay safe.
+        if (parentFragment == null) return false;
         boolean self = parentFragment != null && UserObject.isUserSelf(parentFragment.getCurrentUser());
         if (self) return false;
         TLRPC.User user = parentFragment.getCurrentUser();
