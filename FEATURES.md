@@ -300,7 +300,7 @@ You can apply a chat pattern over your live Material You color. Turn it off by o
 
 ### Material Design 3 chat header <!-- #material-design-3-chat-header -->
 
-N-Settings → General → Appearance → *Material Design 3 chat header* drops the glass bubble behind the chat and admin-log ActionBar title, leaving flat text on the background. Off by default.
+N-Settings → General → Appearance → *Material Design 3 chat header* drops the glass bubble behind the title in chats and Recent Actions, leaving flat text on the background. Off by default.
 
 ### Fixed app icon uses Default art on DazegramX <!-- #app-icon-fallback -->
 
