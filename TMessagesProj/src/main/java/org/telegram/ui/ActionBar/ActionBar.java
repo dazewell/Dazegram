@@ -226,6 +226,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         setClipChildren(false);
         glassMode = true;
         glassModeIsForum = isForum;
+        glassHeaderFlattened = false;
 
         glassDrawable = factory.create(this)
             .setColorProvider(colorProvider)
@@ -1239,7 +1240,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         alphaUpdate.addUpdateListener(anm -> {
             searchFieldVisibleAlpha = (float) anm.getAnimatedValue();
 
-            if (glassDrawable != null && glassModeIsForum) {
+            if (glassDrawable != null && glassModeIsForum && !doNotDrawGlassHeader) {
                 final float r1 = dp(23);
                 final float r2 = lerp(dp(18.33f), dp(23), searchFieldVisibleAlpha);
                 glassDrawable.setRadius(r2, r1, r1, r2);
@@ -2312,6 +2313,10 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     // with one rather than just dropping the title bubble's background.
     public boolean doNotDrawGlassHeader;
     public boolean doNotDrawGlassMenu;
+    // NagramX: caches whether the bar has already been flattened to radius 0, so dispatchDraw
+    // doesn't rebuild the drawable's render-node bound properties on every frame for a value
+    // that never changes once the toggle is on. Reset in setupGlass in case it's ever re-run.
+    private boolean glassHeaderFlattened;
 
     @Override
     protected void dispatchDraw(Canvas canvas) {
@@ -2369,8 +2374,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 right = getWidth();
             }
             glassDrawable.setBounds(left, t, right, b);
-            if (doNotDrawGlassHeader) {
+            if (doNotDrawGlassHeader && !glassHeaderFlattened) {
                 glassDrawable.setRadius(0);
+                glassHeaderFlattened = true;
             }
             glassDrawable.draw(canvas);
         }
