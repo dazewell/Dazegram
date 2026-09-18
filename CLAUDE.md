@@ -1,33 +1,63 @@
 # CLAUDE.md
 
-Guidance for working in this repository. These instructions override default behaviour — follow them. This file is read by multiple AI tools (Claude Code, GitHub Copilot); keep it tool-agnostic so it works the same everywhere.
+**Read [AGENTS.md](AGENTS.md) first.** It is the single source of truth for this
+repository's facts and rules, and it is shared by every tool. Nothing in it is
+repeated here.
 
-**Before starting any NagramX task, read [.claude/skills/nagramx-workflow/SKILL.md](.claude/skills/nagramx-workflow/SKILL.md) first** — in Claude Code, invoke it as the `nagramx-workflow` skill; in any other tool, just open and read the file. It's the source of truth for how we work here: what NagramX is, the reuse-first / minimal-footprint hook style (with concrete hook points and config systems), the two review rounds, the compile gate (and its fallback to `ci.yml` when no local toolchain is available), coding conventions, commit/history rules, the `FEATURES.md` catalog style (the repo-root `README.md` is just a stable pointer to it), on-device testing, and the dual-package CI. Don't duplicate its content back into this file.
+This file covers only what is specific to Claude Code.
 
-**When an investigation establishes a durable fact — a UI→code mapping, an upstream trap, or a disproven hypothesis — it goes into [docs/codemap/](docs/codemap/README.md) as part of the same change, not a follow-up.** `docs/codemap/README.md` is the source of truth for the three sections, the `file:line`-plus-date citation requirement, and the reader's obligation to re-verify a citation before relying on it; `nagramx-workflow` states the contribution rule once, in its `FEATURES.md`-entry step.
+## Skills
 
-**For anything about git topology** — starting/landing feature branches (always named `<YYYY-MM-DD>` + separator + `<slug>`, the date prefix mandatory, `_` or `-` between them both valid), syncing onto the base fork, the no-force-push rule (never `dev`/`base`; feature branches are append-only too — a review fix or follow-up is a new `#tag`ged commit, not an amend + force-push), tying a later fix back to a change via its `#tag`, proposing a feature upstream, or the phone-triggered sync-build-Telegram automation — read [.claude/skills/nagramx-branch-flow/SKILL.md](.claude/skills/nagramx-branch-flow/SKILL.md) (the `nagramx-branch-flow` skill). `nagramx-workflow` owns *what a change looks like*; `nagramx-branch-flow` owns *where commits live and how they move*. Merging a PR into `dev` is normally dazewell's; a root `nagramx-orchestrator` may do it only under the conditional, named-in-chat-approval authority defined in [.github/agents/nagramx-orchestrator.agent.md](.github/agents/nagramx-orchestrator.agent.md) (with the landing mechanics in `nagramx-branch-flow`) — no other agent merges.
+The process lives in `.claude/skills/`, loaded on demand:
+`nagramx-workflow` (what a change looks like), `nagramx-branch-flow` (where
+commits live and how they move), `nagramx-code-review` (what the review rounds
+check), `nagramx-process-lifecycle` (any process you start, and cleanup),
+`nagramx-agent-comms` (the rare case of two sessions running at once).
 
-**For reviewing a change** — the two review rounds `nagramx-workflow` calls out (plan review before coding, code review after it compiles — or after CI compiles it) — read [.claude/skills/nagramx-code-review/SKILL.md](.claude/skills/nagramx-code-review/SKILL.md) (the `nagramx-code-review` skill). It's the Chief Architect persona plus the Android-and-fork checklist (upstream-merge survivability, minimal-footprint hooks, reuse-first, lifecycle/threading/leak traps), severity calibration, and the reviewer's output format. `nagramx-workflow` says *when* to review; `nagramx-code-review` says *what the review checks*.
+Invoke the skill for the job rather than working from memory.
 
-**For any process, daemon, or background command an agent starts** — adb, logcat, Gradle daemons, dev servers, watchers, emulators, or a detached shell — and for the checklist that gates archiving a child session, read [.claude/skills/nagramx-process-lifecycle/SKILL.md](.claude/skills/nagramx-process-lifecycle/SKILL.md) (the `nagramx-process-lifecycle` skill). It's the single normative copy of the rule: record the exact PID or native handle, stop by exact identity only (never by executable name), clean up on success/failure/cancellation/timeout, and verify every tracked process is gone before a worktree is removed.
+## Subagents
 
-**For how the sessions talk to each other** — one session sending an instruction to or receiving a report from another, a coordinator deciding whether a session it dispatched is working / finished / blocked / dead, concluding an automated review is clean, or choosing to restart a stalled session rather than nurse it — read [.claude/skills/nagramx-agent-comms/SKILL.md](.claude/skills/nagramx-agent-comms/SKILL.md) (the `nagramx-agent-comms` skill). It's the single normative copy of the cross-session protocol: observable state (git, CI, PR threads) is authoritative and session narrative is not; state-stamp every message; re-read your own tree before reporting; one outstanding instruction per channel with supersession; start-ack authorized work so a silent stall shows in minutes; state requirements as properties and contest a wrong prescribed mechanism before building it; and the honest limit that no message rescues a session that has stopped responding — the coordinator verifies externally and restarts it. It binds `nagramx-orchestrator` (coordinator side) and `nagramx-implementer` (worker side); the parent/child-orchestrator control vocabulary in the orchestrator agent file is the richer instance of the same rules. `nagramx-workflow` owns *what a change looks like*; `nagramx-agent-comms` owns *how the sessions building it stay in sync*.
+`.claude/agents/` mirrors the specialists as thin stubs that read their
+`.github/agents/` counterpart and follow it, so there is one source of truth per
+role: `nagramx-scout` (read-only recon), `nagramx-ux` (behaviour and placement),
+`nagramx-architect` (both review rounds).
 
-**The team that runs this process** lives in [.github/agents/](.github/agents/) as Copilot CLI custom agents: `nagramx-orchestrator` coordinates a request end to end, delegating to `nagramx-scout` (read-only recon), `nagramx-ux` (behaviour/placement spec), `nagramx-architect` (the Chief Architect, both review rounds), and `nagramx-implementer` (writes the code in its own session and branch). `nagramx-orchestrator` sessions may also **nest**: a parent orchestrator can delegate a whole unit of work to a child orchestrator (dispatched as its own session), and that child then owns the unit's full pipeline and talks directly to dazewell for its own clarifications and handback rather than routing back through the parent — the parent becomes a pure supervisor for that unit. The agent file spells out when and how. The skills above stay the source of truth for the process itself — the agent files say *who does which part and how they're dispatched*, and point back here rather than restating it. Start a piece of work with `copilot --agent nagramx-orchestrator`, or by picking it from `/agent`. The roster is read once when a session starts, so a session that was already running when an agent file landed on `dev` will not see it — start a fresh session after pulling. Keep the agent files in sync when a rule here changes. For work on this repo these repo-local rules (this file, the skills, the agent files) override the global user-scope `orchestrate` skill, and nesting here follows NagramX's own protocol rather than the generic one; this override bars editing other tools' skill or agent definitions outside this repo, but does not touch dazewell's personal user-scope memory, which stays exempt per "Keep the docs current" below.
+Drive a change from the main conversation — it owns the branch and writes the
+code — and delegate the read-and-judge work to those subagents. That is the
+same shape as the Copilot CLI side, where `nagramx-implementer` is the agent
+that owns a change end to end.
 
-**Imported audit agents are not part of that team.** `.github/agents/` also holds third-party agents vendored from [awesome-copilot](https://github.com/github/awesome-copilot) — currently `quality-playbook` (whole-repo six-phase quality audit, backed by the vendored skill at [.github/skills/quality-playbook/](.github/skills/quality-playbook/)), `wg-code-sentinel` (security review), `sast-sca-security-analyzer` (CWE-mapped static analysis and dependency audit), and `tech-debt-remediation-plan` (prioritised debt backlog). They are **out-of-band tools dazewell invokes by hand** against the fork as a whole; they are never wired into the per-change pipeline, and `nagramx-architect` remains the only review gate a diff must pass. Do not auto-invoke them during a NagramX change — several declare edit capability and none were written with this fork's upstream-merge or minimal-footprint constraints in mind, so letting one loose mid-change is a good way to produce a diff the architect will reject. The same applies to the `quality-playbook` **skill** itself: it is auto-discoverable from `.github/skills/` and its description carries broad triggers (`spec audit`, `Council of Three`, `fitness-to-purpose`, `coverage theater`), so `nagramx-orchestrator` and `nagramx-implementer` — the two agents with an unrestricted tool set, and therefore the only two that can invoke a skill at all — must not invoke it as part of a change. It is a whole-repo sweep dazewell starts deliberately, never a step inside the pipeline. Their `tools:` front matter uses VS Code tool identifiers rather than Copilot CLI ones; leave the files byte-identical to upstream so they can be refreshed by re-download, and treat any tool-resolution warnings as expected.
+There is deliberately no orchestrator stub: a Claude Code subagent cannot create
+sessions, so the coordinating role is not expressible here. For the rare
+multi-change batch, coordinate from the main conversation.
 
-**In Claude Code** the four specialists are mirrored as subagents in [.claude/agents/](.claude/agents/), each a thin stub that reads its `.github/agents/` counterpart and follows it, so there is one source of truth per role rather than two copies to keep in step. There is deliberately **no** `nagramx-orchestrator` stub: a Claude Code custom subagent has no session-creation tools, so it cannot dispatch or own a delegated subtree regardless of nesting — the coordinating role simply isn't expressible there. In Claude Code, drive the process from the main conversation using the skills above and delegate to the specialists.
+## Imported audit agents are not part of the pipeline
 
-**The one hard line:** no AI mentions in git logs (commit messages, PR titles/bodies) or in the app's source (comments included) — no `Co-Authored-By`, no "Generated with" footers, no AI-flavored comments. This file, the skill, `README.md`, `FEATURES.md`, and the memory notes may describe the process openly; the history and code may not.
+`.github/agents/` also holds third-party agents vendored from
+[awesome-copilot](https://github.com/github/awesome-copilot) — `quality-playbook`
+(backed by `.github/skills/quality-playbook/`), `wg-code-sentinel`,
+`sast-sca-security-analyzer`, and `tech-debt-remediation-plan`.
 
-**Detection tooling exception:** Process and CI detection tooling (e.g. `sync-guard.ps1`, `commit-tag.yml`) may necessarily contain synthetic vendor/token fixtures and known-bad rejection patterns solely to detect and reject prohibited tokens — these are example strings used for pattern matching, not real secrets or real attribution. This carve-out applies *only* to process/CI detection tooling, never to app source, authored commits, PR descriptions, or normal documentation prose. Real credentials or real tokens must never appear in any repository file.
+**Do not invoke any of them during a change.** They are whole-repo sweeps
+dazewell starts by hand. Several declare edit capability and none were written
+with this fork's upstream-merge or minimal-footprint constraints in mind, so one
+let loose mid-change produces a diff the architect will reject. This includes the
+`quality-playbook` *skill*, whose broad triggers (`spec audit`, `Council of
+Three`, `fitness-to-purpose`, `coverage theater`) make it auto-discoverable —
+never invoke it as a step inside the pipeline.
 
-**Every GitHub review point is closed before handoff:** reply with the fix, or explicitly explain why it will not be changed, then resolve the review thread. Verify that no review threads remain unresolved.
-
-**Every commit carries a `#<slug>` tag** placed inline in the subject or body, so all commits for a change stay greppable (`git log --grep '#chatlock'`) after its short-lived branch is deleted — the feature slug for features, a category tag otherwise — the exempt set is exactly `#ci`, `#docs`, `#build`, `#chore`, `#infra`, `#deps`, `#test`, `#release`, `#slug`, `#tag`, `#chatlock`, plus any `*-fix` tag, and sync/build tooling uses `#infra`. A descriptive-sounding tag outside that set is treated as a feature slug and fails CI unless it is catalogued in `FEATURES.md`. Merge commits are exempt. A bare numeric hashtag such as a PR reference (`#204`) neither satisfies the required `#<slug>` tag nor is ever harvested as a feature slug — it's safe to include alongside a real change tag, but a commit whose only hashtag is a numeric one still fails as untagged, so it is not a substitute for one. Enforced by `.githooks/commit-msg` (run `git config core.hooksPath .githooks` once per clone) and the `commit-tag.yml` CI check. Details in the `nagramx-branch-flow` skill.
+Leave those files byte-identical to upstream so they can be refreshed by
+re-download, and treat their tool-resolution warnings as expected.
 
 ## Keep the docs current
 
-The skills, this file, and the persistent memory (`MEMORY.md` + its per-feature maps) are the source of truth for how we work. When a rule, convention, or workflow changes, update all of them in the same session the change is decided, not later. If a correction reveals an existing instruction is wrong or stale, fix it rather than leaving it.
+`AGENTS.md`, the skills, and the persistent memory (`MEMORY.md` and its
+per-feature maps) are the source of truth for how we work. When a rule changes,
+update them in the same session the change is decided. If a correction reveals an
+existing instruction is wrong or stale, fix it rather than leaving it.
+
+The bias is **subtraction**. These files are read in full on every session, and
+an instruction that gets lost in a long file is worse than no instruction. If an
+agent keeps breaking a rule that is written down, treat the file's length as the
+cause and cut something.
