@@ -31,7 +31,6 @@ public class CrossfadingMotionGlassSource extends BlurredBackgroundSourceWrapped
 
     private final Paint previousPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final Matrix previousMatrix = new Matrix();
-    private final Matrix matrixForDraw = new Matrix();
     private @Nullable Bitmap previousBitmap;
     private float crossfadeProgress = 1f;
 
@@ -69,10 +68,11 @@ public class CrossfadingMotionGlassSource extends BlurredBackgroundSourceWrapped
         }
 
         // Previous frame first, fully opaque - it is what was on screen a moment ago, so there is
-        // nothing to blend it against below it.
-        matrixForDraw.set(previousMatrix);
-        matrixForDraw.postTranslate(left, top);
-        previousPaint.getShader().setLocalMatrix(matrixForDraw);
+        // nothing to blend it against below it. No postTranslate(left, top): BlurredBackgroundSourceBitmap
+        // (the live source's actual draw path) sets its shader's local matrix from the bare cover matrix
+        // with no left/top offset folded in either, so matching that here - rather than the offset this
+        // class used to add on top - is what keeps the two layers registered at a non-zero left/top.
+        previousPaint.getShader().setLocalMatrix(previousMatrix);
         canvas.drawRect(left, top, right, bottom, previousPaint);
 
         // Live composite on top, ramping in. A RecordingCanvas (the glass render nodes' display lists
