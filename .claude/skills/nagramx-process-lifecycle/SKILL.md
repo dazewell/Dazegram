@@ -8,9 +8,7 @@ description: "Dazewell's rule for any process, daemon, or background command an 
 Any session that starts a process follows the starter rules. A coordinator that
 archives a direct implementer child follows the checklist. Usually there is no
 archiver: one change, one branch, one implementer session, which cleans itself.
-
-This exists because `adb logcat` once held a worktree open during archival and
-left the app with a broken session record.
+(Earned by an `adb logcat` that held a worktree open during archival.)
 
 ## The contract
 
@@ -183,8 +181,8 @@ meant for later reading — most concretely an `adb-client`/`logcat` row backing
 a smoke-trace capture. A row of that kind reporting `n/a` when a capture file
 actually exists, or reporting `deleted & verified` without a timestamp, is
 malformed the same way a missing field is (rule 12). **This field is a claim,
-not proof** — it records what the starter believes it did, but the
-orchestrator-side pre-archive checklist below independently confirms the path
+not proof** — it records what the starter believes it did, but the pre-archive
+checklist below independently confirms the path
 is actually gone before archiving; a starter's `deleted & verified`
 disposition never substitutes for that independent check.
 
@@ -229,8 +227,7 @@ letting the session go idle:
 ## Pre-archive checklist for a direct implementer child
 
 Run this from the main clone, not inside the child worktree. A coordinator
-archives only direct implementer children it created and recorded. There are no
-nested or child orchestrator closure states.
+archives only direct implementer children it created and recorded.
 
 1. Read the direct child's process ledger from its handback. A missing ledger,
    malformed row, `stop result: failed to stop`, unverified row, or missing,
@@ -293,8 +290,9 @@ nested or child orchestrator closure states.
    - **App-managed child session** (`create_session`, `open_pr_session`,
      `open_issue_session`, or `fork_session`): after steps 1-5 pass, call
      `archive_session` exactly once as the final operation. It stops the CLI
-     process and removes the worktree as one unit. Never run `git worktree
-     remove`, `git worktree prune`, or delete the directory first. If
+     process and removes the worktree as one unit. Never run
+     `git worktree remove`, `git worktree prune`, or delete the directory
+     first. If
      `archive_session` fails or only partially removes the worktree, the failure
      is terminal: do not call it again, manually repair, prune, or force
      anything. Report the exact failure, process, and handle evidence, and leave
@@ -321,9 +319,9 @@ nested or child orchestrator closure states.
      probe's own process. If any unexplained process references it, do not
      delete; report it and leave the cache for manual recovery.
    - Delete only the resolved literal directory path from the handback, without
-     wildcards, globs, or broad-root variables. Never use `Remove-Item
-     -Recurse` blindly; use a tool that confirms deletion or reports exact-path
-     failure evidence.
+     wildcards, globs, or broad-root variables. Never use a blind
+     `Remove-Item -Recurse`; use a tool that confirms deletion or reports
+     exact-path failure evidence.
    - Do not stop shared Gradle or Kotlin daemons to make deletion pass. If a
      daemon blocks it, leave the cache intact and report the block.
    - If cache deletion fails, report the exact path and error; do not retry

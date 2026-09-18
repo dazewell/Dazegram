@@ -13,7 +13,6 @@ The process lives in `.claude/skills/`, loaded on demand:
 question answered rather than built), `nagramx-branch-flow` (where
 commits live and how they move), `nagramx-code-review` (what the review rounds
 check), `nagramx-process-lifecycle` (any process you start, and cleanup),
-`nagramx-agent-comms` (the rare case of two sessions running at once),
 `nagramx-session-handoff` (abandoning a session mid-change) and
 `nagramx-session-pickup` (continuing a branch someone else left).
 
@@ -31,10 +30,6 @@ code — and delegate the read-and-judge work to those subagents. That is the
 same shape as the Copilot CLI side, where `nagramx-implementer` is the agent
 that owns a change end to end.
 
-There is deliberately no orchestrator stub: a Claude Code subagent cannot create
-sessions, so the coordinating role is not expressible here. For the rare
-multi-change batch, coordinate from the main conversation.
-
 ## Imported audit agents are not part of the pipeline
 
 `.github/agents/` also holds third-party agents vendored from
@@ -46,9 +41,9 @@ multi-change batch, coordinate from the main conversation.
 dazewell starts by hand. Several declare edit capability and none were written
 with this fork's upstream-merge or minimal-footprint constraints in mind, so one
 let loose mid-change produces a diff the architect will reject. This includes the
-`quality-playbook` *skill*, whose broad triggers (`spec audit`, `Council of
-Three`, `fitness-to-purpose`, `coverage theater`) make it auto-discoverable —
-never invoke it as a step inside the pipeline.
+`quality-playbook` *skill*, whose broad triggers (`spec audit`,
+`Council of Three`, `fitness-to-purpose`, `coverage theater`) make it
+auto-discoverable — never invoke it as a step inside the pipeline.
 
 Leave those files byte-identical to upstream so they can be refreshed by
 re-download, and treat their tool-resolution warnings as expected.

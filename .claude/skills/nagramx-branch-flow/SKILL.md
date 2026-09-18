@@ -1,14 +1,12 @@
 ---
 name: nagramx-branch-flow
-description: "Dazewell's git / integration / upstream-sync model for NagramX (dazewell/Dazegram; parent DrKLO/Telegram; NextAlone/Nagram proposal target; risin42/NagramX historical). Trigger for branches/worktrees, one change = one branch = one session, mandatory #tag, discoverability, upstream proposals, sync, ci.yml/staging.yml gates, <YYYY-MM-DD>_<slug> names, no force-push, follow-up commits, approved batch landing, and phone-triggered sync-build-Telegram automation. Companion to nagramx-workflow."
+description: "Dazewell's git / integration / upstream-sync model for NagramX (dazewell/Dazegram; parent DrKLO/Telegram; NextAlone/Nagram proposal target; risin42/NagramX historical). Trigger for branches/worktrees, one change = one branch = one session, mandatory #tag, discoverability, upstream proposals, sync, ci.yml/staging.yml gates, <YYYY-MM-DD>_<slug> names, no force-push, follow-up commits, merge authority, batch landing, and phone-triggered sync-build-Telegram automation. Companion to nagramx-workflow."
 ---
 
 # NagramX branch & integration flow
 
-Current model: **one change = one dated branch = one `nagramx-implementer`
-session**. It runs start to finish with subagents. `nagramx-orchestrator` is only
-for multiple independent changes or approved batch landing. No child
-orchestrators; no coordinator branches.
+Current model: **one change = one dated branch = one session**, running start to
+finish with subagents. No coordinator branches.
 
 ## Topology
 
@@ -195,8 +193,7 @@ Empty means dispatch is app-source equivalent; non-empty means merge `dev` first
 Report trigger/ref. A workflow that never ran is not a pass.
 
 Request behaviour verification only after review is clean. A UI-facing change
-also gets one earlier smoke build after compile, for reachability only. The
-implementer requests its builds/tests; orchestrators coordinate only batches.
+also gets one earlier smoke build after compile, for reachability only.
 
 Copilot review is automatic on non-draft PRs to `dev`. Do not request it:
 `gh pr edit <n> --add-reviewer @copilot` no-ops; posting
@@ -229,10 +226,28 @@ never `--force`. `dev`, `nbase`, and `base` are never force-pushed.
 
 ## Landing
 
-Default merge authority is dazewell. A root orchestrator may merge only under
-`.github/agents/nagramx-orchestrator.agent.md`'s named approval: approved PRs,
-gates re-verified, non-transferable, no `--admin`/`--auto`, `.github/sync/**`
-excluded. Implementers never merge.
+**Default merge authority is dazewell.** A session may press merge only under a
+named approval, and the holder is whichever session holds it — not a role. Every
+condition below must hold; if any fails, hand back the PR URL and the decision.
+
+- **Explicit in-session approval naming the PR.** A bare "go ahead" is not it.
+  Approval authorises **the button, never the evidence**: it waives no review,
+  no hard-line grep, no `#slug` check. It binds to the **reviewed head SHA** —
+  a later commit makes it stale, so re-verify and re-ask.
+- **Non-transferable.** Held by *this* session, closed per PR when it ends. A
+  successor re-asks for anything still unmerged.
+- **`--admin` and `--auto` are forbidden, always.** `--admin` forces past branch
+  protections and you hold the token that makes it available; `--auto` merges on
+  a future state you never verified.
+- **Not if the PR touches `.github/sync/**`**, which flips `sync-guard-check`
+  red on every other open branch, or if a sync is in flight.
+
+Know the backstop's edge: ruleset `22861936` requires the
+`Every commit carries a` context with an **empty** bypass list, so not even an
+admin merge lands an untagged commit. That is the **only** part the platform
+enforces — the named approval, the fresh re-verify, the `--admin` ban and the
+sync exclusion are process-only. These bind because you follow them, not
+because GitHub stops you. The mechanical gate every merge passes is below.
 
 Squash PRs. Settings on 2026-09-10: `allow_merge_commit: false`,
 `allow_squash_merge: true`, `delete_branch_on_merge: true`. GitHub makes one
@@ -282,13 +297,12 @@ filter client-side; repeated `--status` does not OR); no open pins PR; candidate
 Merge back-to-back so `staging.yml`'s `staging-dev` `cancel-in-progress: true`
 best-effort collapses uploads; cancelled runs are expected. Between merges, wait
 for `dev`'s post-merge `ci.yml` on the just-merged commit to finish `success`.
-After the batch, classify commits against live `.github/workflows/staging.yml`
-`paths-ignore` (illustrative: `**.md`, `.github/**`, `docs/**`, `.githooks/**`,
-not `.claude/**` except via `**.md`; not identical to `ci.yml`). Any non-ignored
-path requires successful `staging-dev` with `Upload staging` green on final SHA,
-or last non-ignored SHA if final merge was ignored. Record "no staging run
-expected" only after proving all commits ignored. Explicit `build-apk`/dispatch
-requires a matching successful run regardless.
+After the batch, confirm delivery: classify the merged commits against live
+`.github/workflows/staging.yml` `paths-ignore` (not identical to `ci.yml`'s),
+and if any path is non-ignored, require a successful `staging-dev` with
+`Upload staging` green on the final non-ignored SHA. Record "no staging run
+expected" only after proving every commit ignored. An explicit
+`build-apk`/dispatch needs its own successful run regardless.
 
 ### Rare local landing
 
@@ -332,8 +346,8 @@ workflow snapshots pinned source, merges into `dev`, aborts on conflict, runs
 `.github/sync/sync-guard.ps1`, then atomically pushes `dev`+`nbase` only if
 clean. Failures push nothing and ping `⚠️ … blocked … Finish on the PC`. Pins
 advance only by reviewed `.github/sync/pins.env`. `SYNC_TOKEN` with **Contents:
-write + Workflows: write** is required; no `GITHUB_TOKEN` fallback. `without
-'workflows' permission` means missing/under-scoped secret.
+write + Workflows: write** is required; no `GITHUB_TOKEN` fallback. A
+`without 'workflows' permission` error means a missing/under-scoped secret.
 
 If blocked, land on PC in three ordered steps. Do not collapse them; advancing
 pins before live `origin/nbase` moves guarantees red `sync-guard-check`.
