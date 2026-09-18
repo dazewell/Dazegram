@@ -52238,6 +52238,11 @@ public class ChatActivity extends BaseFragment implements
     // the new one are different dimensions - matrix-safety forbids blending across that, so recompose and
     // show the result outright instead of routing through the crossfade (see onConfigurationChanged).
     private void snapGlassCompositeForConfigChange() {
+        // NagramX: still a separate looper pass despite the zero delay - guard like onGlassCompositeSettle.
+        if (isPaused || contentView == null || !contentView.isAttachedToWindow()) {
+            glassCompositeDirty = true;
+            return;
+        }
         MotionBackgroundDrawable wallpaper = resolveCurrentMotionWallpaper();
         if (wallpaper != null && wallpaperBitmapProvider.refreshMotionComposite(wallpaper)) {
             reprimeGlassRenderNodes();
