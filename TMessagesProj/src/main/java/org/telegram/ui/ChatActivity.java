@@ -52094,10 +52094,14 @@ public class ChatActivity extends BaseFragment implements
     // animation and would keep this self-rearming forever: glassCompositeRefreshUntilMs accumulates via
     // Math.max so overlapping fades cannot shorten an already-armed one. refreshGlassComposite self-rearms
     // one 30 fps frame callback at a time only while that deadline is still in the future, then stops.
-    // didReceivedNotification2 still schedules a plain one-shot on invalidateMotionBackground for the
-    // unrelated MessageDrawable bubble producer case (that one still sets its own postInvalidateParent and
-    // reposts every 16ms on its own), so a burst from it still coalesces to a single trailing refresh
-    // instead of one per notification. Recompose remains forced so alpha/colour-filter fades (no generation
+    // didReceivedNotification2 also schedules a plain one-shot on invalidateMotionBackground, whose actual
+    // live poster is ChatBackgroundDrawable once a per-chat wallpaper's pattern bitmap decodes (that call
+    // carries no producer payload, so it is never filtered). MessageDrawable's static bubble drawable posts
+    // the same notification with itself as producer (it still sets its own postInvalidateParent and
+    // reposts every 16ms on its own), but didReceivedNotification2 filters that one out whenever a motion
+    // wallpaper is current, so it does not drive this path while a wallpaper is showing; either way a burst
+    // still coalesces to a single trailing refresh instead of one per notification. Recompose remains
+    // forced so alpha/colour-filter fades (no generation
     // id) are followed. If paused/detached, it marks dirty, clears the deadline and the send-suppress
     // window below so nothing keeps rearming while backgrounded, and onResume resolves the wallpaper again
     // before deciding whether to resume waiting on the still-live deadline or run an immediate catch-up
@@ -52134,10 +52138,15 @@ public class ChatActivity extends BaseFragment implements
     private long glassCompositeSuppressUntilMs;
     private final Runnable glassCompositeRefreshRunnable = this::refreshGlassComposite;
 
-    // NagramX: no-duration one-shot for producers (MessageDrawable's bubble gradient) that already repost
-    // on their own; this only needs to land a single trailing refresh, never a self-rearm. Deliberately
-    // does not touch glassCompositeSuppressUntilMs - a foreign/bubble producer notification during a
-    // send's suppression window must not cut it short.
+    // NagramX: no-duration one-shot. The live caller is ChatBackgroundDrawable's arg-less
+    // invalidateMotionBackground post once a per-chat wallpaper's pattern bitmap decodes
+    // (ChatBackgroundDrawable.java:120) - that only needs a single trailing refresh, never a self-rearm.
+    // MessageDrawable's bubble producer posts the same notification carrying itself as the payload, but
+    // didReceivedNotification2 filters that out whenever a motion wallpaper is current and the producer
+    // isn't it, so this overload isn't actually reached from the bubble producer while a wallpaper is
+    // showing - only when there is none to filter against, in which case there is nothing to composite
+    // anyway. Deliberately does not touch glassCompositeSuppressUntilMs even when it fires mid-send - it
+    // only re-arms the already-open window, it never cuts one short.
     private void scheduleGlassCompositeRefresh() {
         armGlassCompositeRefreshFrameCallback();
     }
