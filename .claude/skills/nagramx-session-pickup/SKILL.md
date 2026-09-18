@@ -108,16 +108,28 @@ back on a fresh branch, which is where the work would continue.
 
 **Both of those stop and ask — and neither may stop without reading the tree
 first.** They are the paths where the remote has nothing more to give, which is
-exactly when local-only work is all that is left and easiest to write off. Run
-`git status --short` and `git --no-pager log --oneline origin/dev..HEAD` before
-reporting, and name anything you find in the question you ask. A terminal answer
-that silently abandoned the only copy of something is the worst outcome this
-protocol has.
+exactly when local-only work is all that is left and easiest to write off. Get a
+current comparison base, then read:
+
+```powershell
+git fetch origin dev
+if ($LASTEXITCODE) { throw 'fetch failed - origin/dev may be weeks stale' }
+git status --short
+git --no-pager log --oneline origin/dev..HEAD
+```
+
+A worktree abandoned weeks ago has an `origin/dev` to match, so comparing
+against it unrefreshed reports commits as local that landed long ago. Name
+anything you find in the question you ask. A terminal answer that silently
+abandoned the only copy of something is the worst outcome this protocol has.
 
 Only when `$pr` is empty *and* `ls-remote` is empty is the change genuinely
-local-only: skip the `origin/$branch` reads below — they would just fail —
-`git fetch origin dev` for a comparison base, and say plainly in your
-confirmation that local history was the whole record.
+local-only: skip the `origin/$branch` reads below — they would just fail — run
+the same `git fetch origin dev` with the same exit check for a comparison base,
+and say plainly in your confirmation that local history was the whole record.
+**The dirty-tree step below still applies here**, minus the fast-forward: a
+local-only worktree is the case most likely to hold the only copy of something,
+so read, decide and commit before reconstructing anything.
 
 Otherwise bind to the remote head, so you reconstruct the newest state rather
 than whatever the abandoned worktree happened to stop at — a session that died

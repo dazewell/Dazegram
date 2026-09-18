@@ -51,6 +51,7 @@ auth or network failure leaves them nowhere but the worktree about to be
 removed:
 
 ```powershell
+$branch = git rev-parse --abbrev-ref HEAD
 git push origin HEAD:$branch
 if ($LASTEXITCODE) { throw 'push failed - the handoff is not durable yet' }
 git rev-parse HEAD; git ls-remote --heads origin $branch   # the two must match
