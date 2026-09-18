@@ -44,8 +44,19 @@ Split it the obvious way: commit what stands on its own with the change's
 `#<slug>` tag, then commit the rest in one clearly-marked partial commit
 (`stash partial <what>, unfinished #<slug>`, or `... does not compile yet
 #<slug>` when that is the problem) — normal lowercase imperative form, no type
-prefix, per `AGENTS.md`. Then push, and confirm `git status --short` is empty
-before moving on. Never discard work to make the branch look tidy.
+prefix, per `AGENTS.md`. Then push, and confirm **both** that
+`git status --short` is empty and that the push actually landed — a clean tree
+only means the commits left the index, not that they left the machine, and an
+auth or network failure leaves them nowhere but the worktree about to be
+removed:
+
+```powershell
+git push origin HEAD:$branch
+if ($LASTEXITCODE) { throw 'push failed - the handoff is not durable yet' }
+git rev-parse HEAD; git ls-remote --heads origin $branch   # the two must match
+```
+
+Never discard work to make the branch look tidy.
 
 ### 2. Make sure a PR exists
 
@@ -105,7 +116,7 @@ covers PR bodies like everything else.
 ### 4. Stamp it and stop
 
 The dead-ends section is **the part a fresh session cannot reconstruct**.
-Everything above it it rebuilds from the diff in a minute; a dead end it cannot
+Everything above it, it rebuilds from the diff in a minute; a dead end it cannot
 rebuild at all and will walk straight into. Give each a concrete reason —
 "thrashes on every re-bind", "stripped from release by `-assumenosideeffects`" —
 never "didn't work". A reasonless dead end reads as an untested idea and gets

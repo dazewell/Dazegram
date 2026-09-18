@@ -90,9 +90,12 @@ So decide on both signals, and on `$pr.mergedAt` — a deleted ref means merged 
 abandoned, and those are opposite situations.
 
 **Merged** (`$pr.mergedAt` set): the change already landed and there is nothing
-to pick up. Do not reconstruct it. Say so, point at the PR, and ask dazewell
-what he actually wants — a follow-up is a new dated branch off `dev` reusing the
-same `#<slug>`, per `nagramx-branch-flow`, not a resumption of this one.
+*on the branch* to pick up. Do not reconstruct it. But check the worktree before
+you close the question — a session can have left commits or uncommitted work on
+top of what merged, and that is the only copy of it. Say so, point at the PR,
+and ask dazewell what he actually wants — a follow-up is a new dated branch off
+`dev` reusing the same `#<slug>`, per `nagramx-branch-flow`, not a resumption of
+this one.
 
 **Not merged, ref gone** — closed unmerged, or still open with its head ref
 deleted: the change was abandoned, and that is a real pickup — but the branch is
@@ -102,6 +105,14 @@ falling through to the fetch below, which would just fail. Report it and ask,
 naming the recovery:
 `git fetch origin "pull/$($pr.number)/head:<new-dated-branch>"` puts the range
 back on a fresh branch, which is where the work would continue.
+
+**Both of those stop and ask — and neither may stop without reading the tree
+first.** They are the paths where the remote has nothing more to give, which is
+exactly when local-only work is all that is left and easiest to write off. Run
+`git status --short` and `git --no-pager log --oneline origin/dev..HEAD` before
+reporting, and name anything you find in the question you ask. A terminal answer
+that silently abandoned the only copy of something is the worst outcome this
+protocol has.
 
 Only when `$pr` is empty *and* `ls-remote` is empty is the change genuinely
 local-only: skip the `origin/$branch` reads below — they would just fail —
