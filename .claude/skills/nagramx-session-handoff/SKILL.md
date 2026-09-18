@@ -38,9 +38,11 @@ Do all four, even if the work is ugly.
 Commit whatever is coherent on its own, with the change's `#<slug>` tag, and
 push. Append-only — a new commit, never an amend.
 
-If nothing compiles, commit it anyway with `wip:` in the subject
-(`wip: <what> #<slug>`). A pushed commit survives a worktree removal; a dirty
-tree does not. Never discard work to make the branch look tidy.
+If nothing compiles, commit it anyway — say so in the subject in plain words
+(`stash partial <what>, does not compile yet #<slug>`), keeping the normal
+lowercase imperative form with no type prefix, per `AGENTS.md`. A pushed commit
+survives a worktree removal; a dirty tree does not. Never discard work to make
+the branch look tidy.
 
 ### 2. Make sure a PR exists
 

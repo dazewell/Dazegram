@@ -21,12 +21,21 @@ Do not skip ahead to the code. The order matters: shape first, then detail.
 git --no-pager log --oneline origin/dev..HEAD      # what landed, and its #slug
 git --no-pager diff --stat origin/dev...HEAD       # the shape of the change
 git status --short                                 # uncommitted work the last session left
-gh pr list --head <branch> --state all             # is there a PR, is it open, is it draft
-gh pr view <n>                                     # the body — and any <!-- handoff --> block
-gh pr view <n> --comments                          # review findings and their dispositions
+gh pr list --head <branch> --state all             # is there a PR at all
 gh run list --branch <branch> --limit 5            # does it currently compile
 git --no-pager diff origin/dev...HEAD              # finally, the change itself
 ```
+
+**Only if `gh pr list` found one**, read it — a branch abandoned without a
+handoff often has no PR, and these two commands are not runnable without one:
+
+```powershell
+gh pr view <n>                                     # the body, and any <!-- handoff --> block
+gh pr view <n> --comments                          # review findings and their dispositions
+```
+
+With no PR, the local history and CI are the whole record. Say so in your
+confirmation rather than leaving it ambiguous whether you looked.
 
 **Check `git status` early and deliberately.** A session that died badly may
 have left uncommitted work, and that work is invisible to every other command
