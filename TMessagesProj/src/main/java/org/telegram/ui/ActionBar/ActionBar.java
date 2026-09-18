@@ -226,6 +226,8 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         setClipChildren(false);
         glassMode = true;
         glassModeIsForum = isForum;
+        // NagramX: reset in case setupGlass is ever re-run, so a stale cached flatten from a
+        // previous drawable instance doesn't skip re-applying radius 0 to the new one.
         glassHeaderFlattened = false;
 
         glassDrawable = factory.create(this)
@@ -1241,6 +1243,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             searchFieldVisibleAlpha = (float) anm.getAnimatedValue();
 
             if (glassDrawable != null && glassModeIsForum && !doNotDrawGlassHeader) {
+                // NagramX: skip the forum squircle animation while the MD3 header toggle is on -
+                // the bar is a flat full-width rectangle with no corner to animate, and letting
+                // this run would restore rounded corners as the search field opens/closes.
                 final float r1 = dp(23);
                 final float r2 = lerp(dp(18.33f), dp(23), searchFieldVisibleAlpha);
                 glassDrawable.setRadius(r2, r1, r1, r2);
