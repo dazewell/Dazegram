@@ -1425,6 +1425,42 @@ object NaConfig {
             ConfigItem.configTypeBool,
             false
         )
+    // NagramX (#remember-send-action): master switch for the whole feature. Off both disarms
+    // whatever is currently remembered (read in getEligibleArmedSendAction) and disables the four
+    // toggles below on their settings page -- disabled, not hidden, so turning it back on doesn't
+    // require re-discovering four separate rows.
+    val rememberSendActionMaster =
+        addConfig(
+            "RememberSendActionMaster",
+            ConfigItem.configTypeBool,
+            true
+        )
+    // NagramX (#remember-send-action): whether long-pressing Send and picking each alternate
+    // action arms it for the next send. App-wide, not per-account and not per-chat.
+    val rememberSendActionSilent =
+        addConfig(
+            "RememberSendActionSilent",
+            ConfigItem.configTypeBool,
+            true
+        )
+    val rememberSendActionSendWhenOnline =
+        addConfig(
+            "RememberSendActionSendWhenOnline",
+            ConfigItem.configTypeBool,
+            true
+        )
+    val rememberSendActionSchedule =
+        addConfig(
+            "RememberSendActionSchedule",
+            ConfigItem.configTypeBool,
+            true
+        )
+    val rememberSendActionResetOnLeave =
+        addConfig(
+            "RememberSendActionResetOnLeave",
+            ConfigItem.configTypeBool,
+            true
+        )
     val composerToolbarLayout =
         addConfig(
             "ComposerToolbarLayout",

@@ -16433,6 +16433,9 @@ public class MessagesController extends BaseController implements NotificationCe
         // store generation via the clear above, so an async arm that outlived this logout is rejected
         // instead of re-persisting the departed account's trigger into the reused slot.
         com.radolyn.ayugram.eventschedule.EventScheduleController.onAccountLoggedOut(currentAccount);
+        // NagramX: the remembered send action is keyed by this slot too, so it must die with the
+        // account or the next login into this slot inherits a stranger's armed silent/schedule tap.
+        xyz.nextalone.nagram.RememberedSendAction.clearAccountState(currentAccount);
 
         boolean shouldHandle = true;
         ArrayList<NotificationCenter.NotificationCenterDelegate> observers = getNotificationCenter().getObservers(NotificationCenter.appDidLogout);

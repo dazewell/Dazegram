@@ -3813,6 +3813,15 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
+        // NagramX (#remember-send-action): only clears the slot if it still belongs to this chat, and only
+        // when the user has "reset when you leave the chat" on -- otherwise it carries over to the next chat.
+        // MODE_DEFAULT-only, matching onBecomeFullyVisible's guard below: every scheduled or send-when-online
+        // send auto-opens a same-dialog MODE_SCHEDULED ChatActivity (see the didReceiveNewMessages handler
+        // further down), and backing out of that subview destroys it -- without this guard that read as
+        // leaving the chat and disarmed the action the send itself had just armed.
+        if (chatMode == MODE_DEFAULT && xyz.nextalone.nagram.NaConfig.INSTANCE.getRememberSendActionResetOnLeave().Bool()) {
+            xyz.nextalone.nagram.RememberedSendAction.clearIfDialog(currentAccount, getDialogId());
+        }
         org.telegram.messenger.utils.Choreographer60FpsContent.getInstance().removeFrameCallbackOnce(glassCompositeRefreshRunnable);
         // NagramX: keep cancelling the Handler arm too — onConfigurationChanged still uses runOnUIThread.
         AndroidUtilities.cancelRunOnUIThread(glassCompositeRefreshRunnable);
@@ -29361,6 +29370,15 @@ public class ChatActivity extends BaseFragment implements
         isFullyVisible = true;
         super.onBecomeFullyVisible();
         clearCoveredNotificationsIfVisible();
+        // NagramX (#remember-send-action): reset on entering a different chat, not only when the chat that
+        // armed the action eventually gets destroyed -- that fragment often stays alive on the back stack
+        // (e.g. a mention/link/profile "Send message" push) long after the action should have cleared.
+        // MODE_DEFAULT-only and comparing dialog ids means a same-dialog subview (scheduled messages, a
+        // topic switch) never trips this.
+        if (chatMode == MODE_DEFAULT && getDialogId() != 0
+                && xyz.nextalone.nagram.NaConfig.INSTANCE.getRememberSendActionResetOnLeave().Bool()) {
+            xyz.nextalone.nagram.RememberedSendAction.clearIfDifferentDialog(currentAccount, getDialogId());
+        }
         // NagramX: #repost-spread. A repost-as-copy batch that finished acking during the forward-picker
         // close animation couldn't show its delete offer yet; now the chat is fully visible, resolve it
         // once. The guard inside re-validates (sources still present/deletable, no open dialog), so a

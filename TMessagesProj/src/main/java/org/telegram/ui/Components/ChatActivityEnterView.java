@@ -249,7 +249,9 @@ import tw.nekomimi.nekogram.utils.AlertUtil;
 import tw.nekomimi.nekogram.utils.AndroidUtil;
 import tw.nekomimi.nekogram.utils.StringUtils;
 import xyz.nextalone.nagram.NaConfig;
+import xyz.nextalone.nagram.RememberedSendAction;
 import xyz.nextalone.nagram.helper.RecordingLimitVibration;
+import xyz.nextalone.nagram.ui.RememberedSendActionSettingsActivity;
 
 public class ChatActivityEnterView extends FrameLayout implements
     NotificationCenter.NotificationCenterDelegate,
@@ -628,6 +630,10 @@ public class ChatActivityEnterView extends FrameLayout implements
     private int sendButtonBackgroundColor;
     public MessageSendPreview messageSendPreview;
     private long sentFromPreview;
+    // NagramX (#remember-send-action): true only for the exact duration of the message-send-preview
+    // sheet's own plain-send tap, which calls the shared sendMessage() too -- keeps that control plain
+    // (per the approved spec) without it arming or repeating the remembered action.
+    private boolean sendingFromPreviewPlainButton;
     private ActionBarPopupWindow sendPopupWindow;
     private ActionBarPopupWindow.ActionBarPopupWindowLayout sendPopupLayout;
     private ActionBarPopupWindow cameraSelectionPopup; // nax
@@ -3812,6 +3818,14 @@ public class ChatActivityEnterView extends FrameLayout implements
                 super.setAlpha(alpha);
                 updateAttachButtonTranslationX();
             }
+
+            @Override
+            protected void onDraw(Canvas canvas) {
+                super.onDraw(canvas);
+                // NagramX (#remember-send-action): badge only in this composer-local subclass, never in the
+                // shared SendButton base class other consumers (edit "done" button, etc.) also use.
+                drawArmedSendActionBadge(canvas, this);
+            }
         };
         sendButton.setVisibility(INVISIBLE);
         sendButton.setContentDescription(getString(R.string.Send));
@@ -5565,7 +5579,188 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
     }
 
+    // NagramX (#remember-send-action): one predicate per alternate send action, mirroring the
+    // conditions the long-press popup already computes inline, so menu visibility, the badge and
+    // tap-time repeat all read the same rule instead of three copies drifting apart.
+    //
+    // Shared first: none of the three actions apply outside the main chat composer -- Stories and
+    // the quick-replies/schedule-mode/ephemeral variants of this same view, and the forward-comment
+    // composer (isChat == false) all reuse ChatActivityEnterView but are out of scope for this
+    // feature, so every predicate below gates on this before its own rule.
+    private boolean isRememberSendActionContextEligible() {
+        return isChat && !isStories && parentFragment != null && !isInScheduleMode()
+                && parentFragment.getChatMode() != ChatActivity.MODE_QUICK_REPLIES
+                && !animatorEphemeralMessageVisibility.getValue();
+    }
+
+    private boolean isSilentSendEligible() {
+        if (!isRememberSendActionContextEligible()) return false;
+        boolean self = parentFragment != null && UserObject.isUserSelf(parentFragment.getCurrentUser());
+        return !(self || slowModeTimer > 0 && !isInScheduleMode());
+    }
+
+    private boolean isScheduleEligible() {
+        return isRememberSendActionContextEligible() && parentFragment.canScheduleMessage();
+    }
+
+    // The stale-status half of send-when-online eligibility, kept separate from context eligibility:
+    // menu row visibility needs this half alone (a bot or an already-online/recently-seen user can't
+    // meaningfully take the 0x7FFFFFFE sentinel in *any* composer, in or out of scope for this
+    // feature), while arming/checking/badging the remembered action additionally needs the composer
+    // to own that memory, via isSendWhenOnlineEligible() below.
+    private boolean isSendWhenOnlineStatusEligible() {
+        if (dialog_id <= 0) return false;
+        // NagramX: both existing call sites already gate on parentFragment != null before reaching
+        // here, but PopupNotificationActivity builds this composer with a null fragment and assigns
+        // a positive dialog_id later, so the predicate must not rely on caller discipline to stay safe.
+        if (parentFragment == null) return false;
+        boolean self = parentFragment != null && UserObject.isUserSelf(parentFragment.getCurrentUser());
+        if (self) return false;
+        TLRPC.User user = parentFragment.getCurrentUser();
+        return user != null && !user.bot && !(user.status instanceof TLRPC.TL_userStatusEmpty) && !(user.status instanceof TLRPC.TL_userStatusOnline) && !(user.status instanceof TLRPC.TL_userStatusRecently) && !(user.status instanceof TLRPC.TL_userStatusLastMonth) && !(user.status instanceof TLRPC.TL_userStatusLastWeek);
+    }
+
+    private boolean isSendWhenOnlineEligible() {
+        return isScheduleEligible() && isSendWhenOnlineStatusEligible();
+    }
+
+    // Re-checks the armed action against the chat you're in right now and the remember-toggle for
+    // its type; disarms and reports NONE the moment either stops holding, so nothing here ever
+    // hands back a stale action to draw or to send. Also keeps the button's own description/badge in
+    // sync on that disarm -- this can run from onDraw (via drawArmedSendActionBadge), which is the
+    // only place some of these conditions (e.g. slow mode ticking down) get re-checked at all.
+    private int getEligibleArmedSendAction() {
+        int armed = RememberedSendAction.getArmedAction(currentAccount);
+        if (armed == RememberedSendAction.NONE) return RememberedSendAction.NONE;
+        // NagramX (#remember-send-action): an out-of-scope composer (Stories, quick replies,
+        // schedule mode, forward-comment) doesn't own this memory -- report NONE without touching
+        // it, so switching into one of these modes never disarms what the main composer armed.
+        if (!isRememberSendActionContextEligible()) return RememberedSendAction.NONE;
+        // NagramX (#remember-send-action): the constructor calls checkSendButton() before setDialogId()
+        // runs, and currentAccount can still be whatever selectedAccount was at that point -- so this
+        // can run once with dialog_id still 0, on a different account's currentAccount, before this
+        // composer is actually bound to the chat it will end up showing. Report NONE without disarming,
+        // same as the context-eligibility early return above: this composer doesn't own that memory yet.
+        if (dialog_id == 0) return RememberedSendAction.NONE;
+        boolean eligible;
+        // NagramX (#remember-send-action): the master switch belongs here, not in
+        // isRememberSendActionContextEligible() -- that predicate's non-disarming early return for
+        // out-of-scope composers is load-bearing (see the comment above it), and folding the master
+        // switch into it would make switching into Stories/quick-replies/etc. with the master off
+        // report NONE without ever disarming, leaving a stale slot armed once you're back in scope.
+        if (!NaConfig.INSTANCE.getRememberSendActionMaster().Bool()) {
+            eligible = false;
+        } else if (armed == RememberedSendAction.SILENT) {
+            eligible = isSilentSendEligible() && NaConfig.INSTANCE.getRememberSendActionSilent().Bool();
+        } else if (armed == RememberedSendAction.SEND_WHEN_ONLINE) {
+            eligible = isSendWhenOnlineEligible() && NaConfig.INSTANCE.getRememberSendActionSendWhenOnline().Bool();
+        } else if (armed == RememberedSendAction.SCHEDULE) {
+            eligible = isScheduleEligible() && NaConfig.INSTANCE.getRememberSendActionSchedule().Bool();
+        } else {
+            eligible = false;
+        }
+        if (!eligible) {
+            RememberedSendAction.disarm(currentAccount);
+            applyArmedSendButtonState(RememberedSendAction.NONE);
+            return RememberedSendAction.NONE;
+        }
+        return armed;
+    }
+
+    // NagramX (#remember-send-action): the single condition every arm() call site gates on -- master,
+    // context eligibility, and the specific action's own remember-toggle. Without this at the write
+    // site, arming while master is off would be legal and only ever get undone as a side effect of the
+    // next getEligibleArmedSendAction() call (badge draw, popup reopen, etc.), not prevented outright.
+    private boolean canArmRememberedAction(int action) {
+        if (!NaConfig.INSTANCE.getRememberSendActionMaster().Bool()) return false;
+        if (!isRememberSendActionContextEligible()) return false;
+        if (action == RememberedSendAction.SILENT) return NaConfig.INSTANCE.getRememberSendActionSilent().Bool();
+        if (action == RememberedSendAction.SEND_WHEN_ONLINE) return NaConfig.INSTANCE.getRememberSendActionSendWhenOnline().Bool();
+        if (action == RememberedSendAction.SCHEDULE) return NaConfig.INSTANCE.getRememberSendActionSchedule().Bool();
+        return false;
+    }
+
+    // Sets the description/invalidate side effects only -- never recomputes eligibility itself, so
+    // getEligibleArmedSendAction's own disarm branch can call this without recursing back into itself.
+    private void applyArmedSendButtonState(int armed) {
+        if (sendButton == null) return;
+        int descRes;
+        if (armed == RememberedSendAction.SILENT) {
+            descRes = R.string.AccDescrSendSilentArmed;
+        } else if (armed == RememberedSendAction.SEND_WHEN_ONLINE) {
+            descRes = R.string.AccDescrSendWhenOnlineArmed;
+        } else if (armed == RememberedSendAction.SCHEDULE) {
+            descRes = R.string.AccDescrSendScheduleArmed;
+        } else {
+            descRes = R.string.Send;
+        }
+        sendButton.setContentDescription(getString(descRes));
+        sendButton.invalidate();
+    }
+
+    private void updateSendButtonArmedState() {
+        applyArmedSendButtonState(getEligibleArmedSendAction());
+    }
+
+    private final RectF armedBadgeBoundsRect = new RectF();
+    private Paint armedBadgeBackgroundPaint;
+    // NagramX (#remember-send-action): one drawable per armed type, tinted and sized once and reused
+    // across every onDraw -- updateColors() clears this cache on a live theme flip (this view instance
+    // survives it), so drawArmedSendActionBadge always rebuilds+retints against the current theme.
+    private final Drawable[] armedBadgeIcons = new Drawable[4];
+
+    private Drawable getArmedBadgeIcon(int armed, int iconRes, int half) {
+        Drawable icon = armedBadgeIcons[armed];
+        if (icon == null) {
+            icon = ContextCompat.getDrawable(getContext(), iconRes).mutate();
+            icon.setColorFilter(getThemedColor(Theme.key_chat_messagePanelIcons), PorterDuff.Mode.SRC_IN);
+            armedBadgeIcons[armed] = icon;
+        }
+        icon.setBounds(-half, -half, half, half);
+        return icon;
+    }
+
+    // NagramX (#remember-send-action): corner glyph on the composer's own Send button only -- reuses
+    // getBounds() (already public on SendButton for ItemOptions.ScrimView) instead of duplicating the
+    // button's animated geometry, and reuses the same three drawables the long-press menu already uses.
+    private void drawArmedSendActionBadge(Canvas canvas, SendButton button) {
+        int armed = getEligibleArmedSendAction();
+        int iconRes;
+        if (armed == RememberedSendAction.SILENT) {
+            iconRes = R.drawable.input_notify_off;
+        } else if (armed == RememberedSendAction.SEND_WHEN_ONLINE) {
+            iconRes = R.drawable.msg_online;
+        } else if (armed == RememberedSendAction.SCHEDULE) {
+            iconRes = R.drawable.msg_calendar2;
+        } else {
+            return;
+        }
+        button.getBounds(armedBadgeBoundsRect);
+        if (armedBadgeBoundsRect.isEmpty()) return;
+        if (armedBadgeBackgroundPaint == null) {
+            armedBadgeBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        }
+        float badgeRadius = dp(8);
+        // NagramX: getBounds() hands back the button's own circle corner -- inset inward by the badge
+        // radius so the whole badge lands inside that circle instead of half of it drawing past the edge.
+        float cx = armedBadgeBoundsRect.right - badgeRadius;
+        float cy = armedBadgeBoundsRect.top + badgeRadius;
+        armedBadgeBackgroundPaint.setColor(getThemedColor(Theme.key_chat_messagePanelBackground));
+        canvas.drawCircle(cx, cy, badgeRadius, armedBadgeBackgroundPaint);
+        Drawable icon = getArmedBadgeIcon(armed, iconRes, dp(6));
+        canvas.save();
+        canvas.translate(cx, cy);
+        icon.draw(canvas);
+        canvas.restore();
+    }
+
     private ActionBarMenuSubItem actionScheduleButton;
+    private ActionBarMenuSubItem sendWithoutSoundButton;
+    // NagramX (#remember-send-action): cached master row/switch for the sendPopupLayout branch above --
+    // built once like the rest of that popup, refreshed on every open (see the visibility-refresh block
+    // right after this popup is built) since the config can change from the settings page in between.
+    private LinearLayout rememberMasterRowCached;
+    private Switch rememberMasterSwitchCached;
     private boolean onSendLongClick(View view) {
         if (isInScheduleMode() || parentFragment != null && parentFragment.getChatMode() == ChatActivity.MODE_QUICK_REPLIES || animatorEphemeralMessageVisibility.getValue()) {
             return false;
@@ -5602,6 +5797,48 @@ public class ChatActivityEnterView extends FrameLayout implements
                 });
                 sendPopupLayout.setShownFromBottom(false);
 
+                // NagramX (#remember-send-action): this cached popup only fires for Stories (out of
+                // scope, isRememberSendActionContextEligible() already excludes it) or an empty-caption
+                // forward-in-progress (in scope, isChat == true) -- see the class comment above
+                // onSendLongClick and docs/codemap/ui-to-code.md. Whichever this instance is stays fixed
+                // for its whole lifetime (isStories never flips), so it's safe to gate row creation once
+                // here instead of re-checking on every open.
+                if (isRememberSendActionContextEligible()) {
+                    rememberMasterSwitchCached = new Switch(getContext(), resourcesProvider);
+                    rememberMasterSwitchCached.setColors(Theme.key_switchTrack, Theme.key_switchTrackChecked, Theme.key_windowBackgroundWhite, Theme.key_windowBackgroundWhite);
+                    rememberMasterSwitchCached.setChecked(NaConfig.INSTANCE.getRememberSendActionMaster().Bool(), false);
+                    rememberMasterRowCached = createPopupSwitchRow(R.drawable.msg_retry_solar, getString(R.string.RememberSendActionMaster), rememberMasterSwitchCached, true, 0);
+                    applyRememberRowAccessibility(rememberMasterRowCached, rememberMasterSwitchCached);
+                    rememberMasterRowCached.setOnClickListener(v -> {
+                        boolean newValue = NaConfig.INSTANCE.getRememberSendActionMaster().toggleConfigBool();
+                        rememberMasterSwitchCached.setChecked(newValue, true);
+                        applyRememberRowAccessibility(rememberMasterRowCached, rememberMasterSwitchCached);
+                        if (!newValue) {
+                            // NagramX (#remember-send-action): the master config is global, not scoped to
+                            // this composer's account -- clear every account's slot, not just this one,
+                            // or another account's armed action survives to resurrect once re-enabled.
+                            // This cached menu's own rows arm the slot (see their click handlers below) but
+                            // still never show a checked state or disarm on a repeat tap -- only the
+                            // ItemOptions menu is wired that far, a deliberate asymmetry (see the codemap
+                            // entry), not an oversight. So there is nothing here to visually clear beyond
+                            // disarming the shared slot, which repaints the Send button badge on its own.
+                            RememberedSendAction.disarmAll();
+                            updateSendButtonArmedState();
+                        }
+                    });
+                    rememberMasterRowCached.setOnLongClickListener(v -> {
+                        if (sendPopupWindow != null && sendPopupWindow.isShowing()) {
+                            sendPopupWindow.dismiss();
+                        }
+                        openRememberedSendActionSettings();
+                        return true;
+                    });
+                    sendPopupLayout.addView(rememberMasterRowCached, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48));
+                    ActionBarPopupWindow.GapView rememberGap = new ActionBarPopupWindow.GapView(getContext(), resourcesProvider);
+                    rememberGap.setTag(R.id.object_tag, 1);
+                    sendPopupLayout.addView(rememberGap, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 8));
+                }
+
                 boolean scheduleButtonValue = parentFragment != null && parentFragment.canScheduleMessage();
                 boolean sendWithoutSoundButtonValue = !(self || slowModeTimer > 0 && !isInScheduleMode());
                 if (scheduleButtonValue) {
@@ -5620,6 +5857,16 @@ public class ChatActivityEnterView extends FrameLayout implements
                             @Override
                             public void didSelectDate(boolean notify, int scheduleDate, int scheduleRepeatPeriod) {
                                 sendMessageInternal(notify, scheduleDate, 0, 0, true);
+                                // NagramX (#remember-send-action): this cached popup's own action rows never
+                                // armed anything -- only the master toggle above was wired in. Now that the
+                                // master toggle lives in this same menu, a pick made here has to keep its
+                                // promise too. Gate at click time, same as the ItemOptions rows: the master/
+                                // config/context checks in canArmRememberedAction can change between build and
+                                // click for a popup that stays cached across opens.
+                                if (canArmRememberedAction(RememberedSendAction.SCHEDULE)) {
+                                    RememberedSendAction.arm(currentAccount, RememberedSendAction.SCHEDULE, dialog_id);
+                                    updateSendButtonArmedState();
+                                }
                             }
                         }, resourcesProvider);
                     });
@@ -5634,19 +5881,36 @@ public class ChatActivityEnterView extends FrameLayout implements
                                 sendPopupWindow.dismiss();
                             }
                             sendMessageInternal(true, 0x7FFFFFFE, 0, 0, true);
+                            // NagramX (#remember-send-action): same wiring gap as the schedule row above.
+                            if (canArmRememberedAction(RememberedSendAction.SEND_WHEN_ONLINE)) {
+                                RememberedSendAction.arm(currentAccount, RememberedSendAction.SEND_WHEN_ONLINE, dialog_id);
+                                updateSendButtonArmedState();
+                            }
                         });
                         sendPopupLayout.addView(sendWhenOnlineButton, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, DEFAULT_HEIGHT));
                     }
                 }
                 if (sendWithoutSoundButtonValue) {
-                    ActionBarMenuSubItem sendWithoutSoundButton = new ActionBarMenuSubItem(getContext(), !scheduleButtonValue, true, resourcesProvider);
+                    sendWithoutSoundButton = new ActionBarMenuSubItem(getContext(), !scheduleButtonValue, true, resourcesProvider);
                     sendWithoutSoundButton.setTextAndIcon(sendWithoutSoundNax ? getString(R.string.SendWithSound) : getString(R.string.SendWithoutSound), sendWithoutSoundNax ? R.drawable.input_notify_on : R.drawable.input_notify_off);
                     sendWithoutSoundButton.setMinimumWidth(dp(196));
                     sendWithoutSoundButton.setOnClickListener(v -> {
                         if (sendPopupWindow != null && sendPopupWindow.isShowing()) {
                             sendPopupWindow.dismiss();
                         }
-                        sendMessageInternal(sendWithoutSoundNax, 0, 0, 0, true);
+                        // NagramX (#remember-send-action): this popup is built once and reused across opens,
+                        // so the outer sendWithoutSoundNax local (captured at build time) goes stale the
+                        // moment SilentMessageByDefault changes afterward -- re-read it here so the send and
+                        // the arm decision below always match each other and what this click actually just
+                        // sent. The row's label/icon are kept in sync too, in the on-open refresh block below
+                        // (see the rememberMasterSwitchCached refresh) rather than here, since a config change
+                        // while the popup is closed still needs to reach the label before the row is shown again.
+                        boolean sendWithoutSoundNaxNow = NaConfig.INSTANCE.getSilentMessageByDefault().Bool();
+                        sendMessageInternal(sendWithoutSoundNaxNow, 0, 0, 0, true);
+                        if (!sendWithoutSoundNaxNow && canArmRememberedAction(RememberedSendAction.SILENT)) {
+                            RememberedSendAction.arm(currentAccount, RememberedSendAction.SILENT, dialog_id);
+                            updateSendButtonArmedState();
+                        }
                     });
                     sendPopupLayout.addView(sendWithoutSoundButton, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, DEFAULT_HEIGHT));
                 }
@@ -5731,6 +5995,23 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
             if (actionScheduleButton != null) {
                 actionScheduleButton.setVisibility(voiceOnce ? View.GONE : View.VISIBLE);
+            }
+
+            // NagramX (#remember-send-action): re-read the config on every open -- this popup is built
+            // once and cached, so the switch's own checked state would otherwise go stale the moment the
+            // settings page (or the other menu's own master row) changes it.
+            if (rememberMasterSwitchCached != null) {
+                rememberMasterSwitchCached.setChecked(NaConfig.INSTANCE.getRememberSendActionMaster().Bool(), false);
+                applyRememberRowAccessibility(rememberMasterRowCached, rememberMasterSwitchCached);
+            }
+
+            // NagramX (#remember-send-action): same reasoning as the master switch above -- refresh this
+            // row's label/icon here too, or a SilentMessageByDefault change made while this popup was
+            // closed would leave the row showing the wrong direction the next time it's shown, even
+            // though the click handler itself already reads the config live.
+            if (sendWithoutSoundButton != null) {
+                boolean sendWithoutSoundNaxNow = NaConfig.INSTANCE.getSilentMessageByDefault().Bool();
+                sendWithoutSoundButton.setTextAndIcon(sendWithoutSoundNaxNow ? getString(R.string.SendWithSound) : getString(R.string.SendWithoutSound), sendWithoutSoundNaxNow ? R.drawable.input_notify_on : R.drawable.input_notify_off);
             }
 
             if (sendWhenOnlineButton != null) {
@@ -5895,7 +6176,13 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         messageSendPreview.setSendButton(sendButton, true, v -> {
             sentFromPreview = System.currentTimeMillis();
-            final boolean shownDialog = sendMessage();
+            sendingFromPreviewPlainButton = true;
+            final boolean shownDialog;
+            try {
+                shownDialog = sendMessage();
+            } finally {
+                sendingFromPreviewPlainButton = false;
+            }
             if (!containsSendMessage && messageSendPreview != null) {
                 messageSendPreview.dismiss(!shownDialog);
                 messageSendPreview = null;
@@ -5913,14 +6200,69 @@ public class ChatActivityEnterView extends FrameLayout implements
         ItemOptions options = ItemOptions.makeOptions(this, resourcesProvider, sendButton);
 
         final boolean self = parentFragment != null && UserObject.isUserSelf(parentFragment.getCurrentUser());
+        // NagramX (#remember-send-action): dev-equivalent row visibility -- this menu is shared with
+        // composers this feature doesn't own (PopupNotificationActivity, business-link replies, etc.),
+        // so whether the schedule/silent rows show at all must not depend on isRememberSendActionContextEligible().
+        // Only the checked state, arm calls, badge and tap-repeat below are context-gated.
         boolean scheduleButtonValue = parentFragment != null && parentFragment.canScheduleMessage();
         boolean sendWithoutSoundButtonValue = !(self || slowModeTimer > 0 && !isInScheduleMode());
+        // NagramX (#remember-send-action): read once per popup build for the rows' initial checked
+        // state -- getEligibleArmedSendAction() disarms a stale slot as a side effect, and we only
+        // want that specific disarm to happen once here. Already context-gated: it reports NONE
+        // outright in a composer this feature doesn't own. The click branches below deliberately do
+        // NOT reuse this captured value -- see the Remember row right below, which can flip the
+        // master switch (and so this method's answer) without dismissing the menu.
+        final int armedBeforeMenu = getEligibleArmedSendAction();
+
+        // NagramX (#remember-send-action): master toggle, kept above and separated (addGap) from the
+        // action rows it governs. Reuses createPopupSwitchRow, the video-recording long-press menu's
+        // own precedent for a non-dismissing switch row, instead of a new component. Always shown
+        // (never disabled) in an eligible context even when no action row below happens to be visible
+        // right now -- it's a global setting and its settings page must stay reachable regardless.
+        final ActionBarMenuSubItem[] scheduleRowRef = new ActionBarMenuSubItem[1];
+        final ActionBarMenuSubItem[] sendWhenOnlineRowRef = new ActionBarMenuSubItem[1];
+        final ActionBarMenuSubItem[] silentRowRef = new ActionBarMenuSubItem[1];
+        if (isRememberSendActionContextEligible()) {
+            options.addView(createRememberMasterRow(() -> {
+                // live-clear: master just went off inside this still-open menu -- the rows below were
+                // checked against armedBeforeMenu at build time and won't repaint themselves.
+                if (scheduleRowRef[0] != null) scheduleRowRef[0].setChecked(false);
+                if (sendWhenOnlineRowRef[0] != null) sendWhenOnlineRowRef[0].setChecked(false);
+                if (silentRowRef[0] != null) silentRowRef[0].setChecked(false);
+            }, () -> {
+                // NagramX (#remember-send-action): dismiss instantly, not the animated dismiss() the
+                // checked rows use elsewhere -- long-pressing this row is navigating away, not sending.
+                if (messageSendPreview != null) {
+                    messageSendPreview.dismissInstant();
+                    messageSendPreview = null;
+                }
+            }), LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48));
+            options.addGap();
+        }
+
         if (scheduleButtonValue) {
-            options.add(R.drawable.msg_calendar2, getString(self ? R.string.SetReminder : R.string.ScheduleMessage), () -> {
+            options.addChecked(armedBeforeMenu == RememberedSendAction.SCHEDULE, R.drawable.msg_calendar2, getString(self ? R.string.SetReminder : R.string.ScheduleMessage), () -> {
+                // NagramX (#remember-send-action): re-read fresh, not armedBeforeMenu -- the Remember
+                // row above can disarm the slot without dismissing this menu, and a captured value would
+                // then send this tap down the stale "disarm again" branch instead of arming this pick.
+                if (getEligibleArmedSendAction() == RememberedSendAction.SCHEDULE) {
+                    // tapping the already-armed row disarms it instead of scheduling again
+                    RememberedSendAction.disarm(currentAccount);
+                    updateSendButtonArmedState();
+                    if (messageSendPreview != null) {
+                        messageSendPreview.dismiss(false);
+                        messageSendPreview = null;
+                    }
+                    return;
+                }
                 AlertsCreator.createScheduleDatePickerDialog(parentActivity, parentFragment.getDialogId(), new AlertsCreator.ScheduleDatePickerDelegate() {
                     @Override
                     public void didSelectDate(boolean notify, int scheduleDate, int scheduleRepeatPeriod) {
                         sendMessageInternal(notify, scheduleDate, scheduleRepeatPeriod, 0, true);
+                        if (canArmRememberedAction(RememberedSendAction.SCHEDULE)) {
+                            RememberedSendAction.arm(currentAccount, RememberedSendAction.SCHEDULE, dialog_id);
+                            updateSendButtonArmedState();
+                        }
                         if (messageSendPreview != null) {
                             messageSendPreview.dismissInstant();
                             messageSendPreview = null;
@@ -5928,16 +6270,36 @@ public class ChatActivityEnterView extends FrameLayout implements
                     }
                 }, resourcesProvider);
             });
+            scheduleRowRef[0] = options.getLast();
 
-            if (!self && dialog_id > 0) {
-                options.add(R.drawable.msg_online, getString(R.string.SendWhenOnline), () -> {
+            // NagramX: the centralized stale-status predicate for row visibility -- a bot or a
+            // now-online/recently-seen user can't meaningfully take the 0x7FFFFFFE sentinel in any
+            // composer, so this half is not context-gated either; only the checked state and arm call
+            // below need this composer to own the remembered action.
+            if (isSendWhenOnlineStatusEligible()) {
+                options.addChecked(armedBeforeMenu == RememberedSendAction.SEND_WHEN_ONLINE, R.drawable.msg_online, getString(R.string.SendWhenOnline), () -> {
+                    // NagramX (#remember-send-action): re-read fresh -- see the schedule row above.
+                    if (getEligibleArmedSendAction() == RememberedSendAction.SEND_WHEN_ONLINE) {
+                        RememberedSendAction.disarm(currentAccount);
+                        updateSendButtonArmedState();
+                        if (messageSendPreview != null) {
+                            messageSendPreview.dismiss(false);
+                            messageSendPreview = null;
+                        }
+                        return;
+                    }
                     sendMessageInternal(true, 0x7FFFFFFE, 0, 0, true);
+                    if (canArmRememberedAction(RememberedSendAction.SEND_WHEN_ONLINE)) {
+                        RememberedSendAction.arm(currentAccount, RememberedSendAction.SEND_WHEN_ONLINE, dialog_id);
+                        updateSendButtonArmedState();
+                    }
                     if (messageSendPreview != null) {
                         messageSendPreview.dismiss(false);
                         messageSendPreview = null;
                     }
                 });
                 sendWhenOnlineButton = options.getLast();
+                sendWhenOnlineRowRef[0] = sendWhenOnlineButton;
             }
         }
 
@@ -5972,9 +6334,33 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
 
         if (sendWithoutSoundButtonValue) {
-            options.add(sendWithoutSoundNax ? R.drawable.input_notify_on : R.drawable.input_notify_off, sendWithoutSoundNax ? getString(R.string.SendWithSound) : getString(R.string.SendWithoutSound), () -> {
+            // NagramX: armedBeforeMenu == SILENT only ever means "the last tap actually sent without
+            // sound" (see the arm call below, gated the same way). If the default-silent setting flips
+            // after arming, this row's own direction flips too -- sendWithoutSoundNax true means tapping
+            // it now sends WITH sound, so it is no longer the armed row and must not take the disarm
+            // branch, which used to no-op instead of performing the send its own label promises.
+            final boolean thisRowIsArmedSilent = armedBeforeMenu == RememberedSendAction.SILENT && !sendWithoutSoundNax;
+            options.addChecked(thisRowIsArmedSilent, sendWithoutSoundNax ? R.drawable.input_notify_on : R.drawable.input_notify_off, sendWithoutSoundNax ? getString(R.string.SendWithSound) : getString(R.string.SendWithoutSound), () -> {
+                // NagramX (#remember-send-action): re-read fresh, same reason as the schedule/
+                // send-when-online rows above -- the Remember row can disarm without dismissing.
+                if (getEligibleArmedSendAction() == RememberedSendAction.SILENT && !sendWithoutSoundNax) {
+                    RememberedSendAction.disarm(currentAccount);
+                    updateSendButtonArmedState();
+                    if (messageSendPreview != null) {
+                        messageSendPreview.dismiss(false);
+                        messageSendPreview = null;
+                    }
+                    return;
+                }
                 sentFromPreview = System.currentTimeMillis();
                 final boolean shownDialog = sendMessageInternal(sendWithoutSoundNax, 0, 0, 0, true);
+                // NagramX: this row's actual behavior flips with the current silent-by-default setting --
+                // sendWithoutSoundNax true means the row just requested a send WITH sound, not silently,
+                // so only arm the remembered SILENT action for the row whose direction is silent.
+                if (!sendWithoutSoundNax && canArmRememberedAction(RememberedSendAction.SILENT)) {
+                    RememberedSendAction.arm(currentAccount, RememberedSendAction.SILENT, dialog_id);
+                    updateSendButtonArmedState();
+                }
                 if (!containsSendMessage && messageSendPreview != null) {
                     messageSendPreview.dismiss(!shownDialog);
                     messageSendPreview = null;
@@ -5984,6 +6370,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     AndroidUtilities.runOnUIThread(dismissSendPreview, 500);
                 }
             });
+            silentRowRef[0] = options.getLast();
         }
         if (messageEditText != null && messageEditText.getText().length() > 0) {
             if (containsMarkdown(messageEditText.getText())) {
@@ -8200,6 +8587,10 @@ public class ChatActivityEnterView extends FrameLayout implements
         isPaused = false;
         // NagramX (#input-text-size): pick up a slider change made while this chat was backgrounded
         refreshInputTextSize();
+        // NagramX (#remember-send-action): pick up a settings-page disarm/master-toggle made while
+        // this chat was backgrounded -- getEligibleArmedSendAction() only re-runs from popup build,
+        // badge draw or tap handling, none of which fire on their own just from returning here.
+        checkSendButton(false);
         if (composerFormattingActions != null) {
             composerFormattingActions.refresh();
         }
@@ -9035,6 +9426,27 @@ public class ChatActivityEnterView extends FrameLayout implements
             }, resourcesProvider);
             return true;
         } else {
+            // NagramX (#remember-send-action): repeat the last armed alternate action on a plain tap, unless
+            // this call is the preview sheet's own plain-send control, which stays plain by design.
+            if (!sendingFromPreviewPlainButton) {
+                int armed = getEligibleArmedSendAction();
+                if (armed == RememberedSendAction.SEND_WHEN_ONLINE) {
+                    return sendMessageInternal(true, 0x7FFFFFFE, 0, 0, true);
+                } else if (armed == RememberedSendAction.SILENT) {
+                    // NagramX: SILENT always means an actual silent send -- fixed notify=false, not a
+                    // fresh read of the current default, so the armed action can't drift into an audible
+                    // send if the user flips the default between arming it and repeating it.
+                    return sendMessageInternal(false, 0, 0, 0, true);
+                } else if (armed == RememberedSendAction.SCHEDULE) {
+                    AlertsCreator.createScheduleDatePickerDialog(parentActivity, parentFragment.getDialogId(), new AlertsCreator.ScheduleDatePickerDelegate() {
+                        @Override
+                        public void didSelectDate(boolean notify, int scheduleDate, int scheduleRepeatPeriod) {
+                            sendMessageInternal(notify, scheduleDate, scheduleRepeatPeriod, 0, true);
+                        }
+                    }, resourcesProvider);
+                    return true;
+                }
+            }
             return sendMessageInternal(!NaConfig.INSTANCE.getSilentMessageByDefault().Bool(), 0, 0, 0, true);
         }
     }
@@ -9745,6 +10157,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     public void checkSendButton(boolean animated) {
+        // NagramX (#remember-send-action): only synchronous checkpoint that fires on ordinary composer-state
+        // changes (dialog switch, slow mode expiring, self-chat, etc.) without a dedicated observer.
+        updateSendButtonArmedState();
         if (editingMessageObject != null || recordingAudioVideo || inputPrimarySuppressed) {
             // NagramX (#composer-padding): everything below is send-column work these two states skip, but
             // this is also the per-keystroke trigger that settles the emoji gutter, so keep that part.
@@ -12753,6 +13168,13 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     @Override
     public void updateColors() {
+        // NagramX (#remember-send-action): the cached badge icons hold a color filter baked in at
+        // creation -- a live theme flip doesn't recreate this view, so drop the cache here and let
+        // drawArmedSendActionBadge rebuild+retint it on the next draw instead of showing the old theme's colors.
+        java.util.Arrays.fill(armedBadgeIcons, null);
+        if (sendButton != null) {
+            sendButton.invalidate();
+        }
         if (messageEditText != null) {
             messageEditText.setHintColor(getThemedColor(Theme.key_chat_messagePanelHint));
         }
@@ -18864,13 +19286,24 @@ public class ChatActivityEnterView extends FrameLayout implements
     // NagramX: custom row so the label keeps ActionBarMenuSubItem's 43dp icon gap while taking leftover
     // width, with the switch in a fixed zone behind a divider
     private LinearLayout createPopupSwitchRow(int iconRes, CharSequence label, Switch sw, boolean enabled) {
+        return createPopupSwitchRow(iconRes, label, sw, enabled, 220);
+    }
+
+    // NagramX (#remember-send-action): overload taking an explicit minimum width -- the 220dp floor
+    // above is a camera-popup-shaped constant, not universal. A row dropped into ItemOptions (whose
+    // other rows are all MATCH_PARENT, sized off the widest label already present) doesn't want that
+    // floor forcing the whole menu wider than its own content, so callers outside the camera popup
+    // pass 0.
+    private LinearLayout createPopupSwitchRow(int iconRes, CharSequence label, Switch sw, boolean enabled, int minWidthDp) {
         boolean isRtl = LocaleController.isRTL;
         LinearLayout row = new LinearLayout(getContext());
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setLayoutDirection(isRtl ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
         row.setPadding(dp(isRtl ? 14 : 18), 0, dp(isRtl ? 18 : 14), 0);
-        row.setMinimumWidth(dp(220));
+        if (minWidthDp > 0) {
+            row.setMinimumWidth(dp(minWidthDp));
+        }
         if (enabled) {
             row.setBackground(Theme.createRadSelectorDrawable(Theme.getColor(Theme.key_dialogButtonSelector, resourcesProvider), 6, 6));
         } else {
@@ -18896,6 +19329,73 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         row.addView(sw, LayoutHelper.createLinear(38, 22, Gravity.CENTER_VERTICAL));
         return row;
+    }
+
+    // NagramX (#remember-send-action): the master "Remember" row shared by both long-press menus.
+    // Reuses createPopupSwitchRow -- the video-recording menu's own precedent for a non-dismissing
+    // switch row -- instead of a bespoke view. Tapping it flips the master config in place (the menu
+    // stays open); long-pressing it opens the settings page instead, same gesture split as every
+    // checked action row already uses for its own tap-vs-nothing-else contrast. onMasterDisarmed runs
+    // only on the off transition, so a caller with checked action rows in the same open menu can clear
+    // them without this method needing to know about them.
+    private LinearLayout createRememberMasterRow(Runnable onMasterDisarmed, Runnable dismissMenu) {
+        Switch sw = new Switch(getContext(), resourcesProvider);
+        sw.setColors(Theme.key_switchTrack, Theme.key_switchTrackChecked, Theme.key_windowBackgroundWhite, Theme.key_windowBackgroundWhite);
+        sw.setChecked(NaConfig.INSTANCE.getRememberSendActionMaster().Bool(), false);
+        // NagramX: msg_retry_solar over the raster msg_repeat -- it's already the "repeats" glyph this
+        // same menu uses one screen over (the infinite-video-message toggle above), tints cleanly like
+        // every other icon in this row style, and a raster asset wouldn't.
+        LinearLayout row = createPopupSwitchRow(R.drawable.msg_retry_solar, getString(R.string.RememberSendActionMaster), sw, true, 0);
+        applyRememberRowAccessibility(row, sw);
+        row.setOnClickListener(v -> {
+            boolean newValue = NaConfig.INSTANCE.getRememberSendActionMaster().toggleConfigBool();
+            sw.setChecked(newValue, true);
+            applyRememberRowAccessibility(row, sw);
+            if (!newValue) {
+                // NagramX (#remember-send-action): global config, not scoped to this composer's
+                // account -- clear every account's slot, matching the cached popup's own master handler.
+                RememberedSendAction.disarmAll();
+                updateSendButtonArmedState();
+                if (onMasterDisarmed != null) onMasterDisarmed.run();
+            }
+        });
+        row.setOnLongClickListener(v -> {
+            if (dismissMenu != null) dismissMenu.run();
+            openRememberedSendActionSettings();
+            return true;
+        });
+        return row;
+    }
+
+    // NagramX (#remember-send-action): the row is a bespoke LinearLayout, not a TextCheckCell, so it
+    // needs by hand what TextCheckCell.onInitializeAccessibilityNodeInfo already gives settings-page
+    // rows for free -- switch semantics on the row itself (so a screen reader announces one control,
+    // not the icon/label/switch as three), plus a discoverable long-press action, since opening
+    // settings from a long-press isn't otherwise exposed to accessibility services at all.
+    private void applyRememberRowAccessibility(View row, Switch sw) {
+        // NagramX (#remember-send-action): the embedded Switch is otherwise its own accessibility
+        // node (Switch.onInitializeAccessibilityNodeInfo sets checkable/checked on it directly), so
+        // without this a screen reader would announce the row twice -- once for the delegate below,
+        // once for the child switch, and only the row-level node carries the long-press action.
+        sw.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        row.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+            @Override
+            public void onInitializeAccessibilityNodeInfo(View host, AccessibilityNodeInfo info) {
+                super.onInitializeAccessibilityNodeInfo(host, info);
+                info.setClassName("android.widget.Switch");
+                info.setCheckable(true);
+                info.setChecked(sw.isChecked());
+                info.setContentDescription(getString(R.string.RememberSendActionMaster));
+                info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_LONG_CLICK, getString(R.string.RememberSendActionOpenSettings)));
+            }
+        });
+    }
+
+    // NagramX (#remember-send-action): reachable from both long-press menus' Remember row
+    // long-press. Callers dismiss their own menu/popup first -- this only presents the settings page.
+    private void openRememberedSendActionSettings() {
+        if (parentFragment == null) return;
+        parentFragment.presentFragment(new RememberedSendActionSettingsActivity());
     }
 
     private void showCameraSelectionPopup(View anchorView, Runnable onFrontSelected, Runnable onRearSelected) {

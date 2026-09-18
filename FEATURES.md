@@ -118,6 +118,10 @@ Light and dark theme each get their own slider (0–50%, default 25%) in the lay
 
 The calendar icon is a one-tap schedule shortcut, instead of long-pressing Send.
 
+### Remembered send action <!-- #remember-send-action -->
+
+Long-press Send and pick silent, send-when-online, or schedule; it repeats on your next send, with a badge on Send showing which. Tap the checked option again to drop it. The same menu has a Remember switch up top, on by default: tap to turn the feature on or off without closing the menu, long-press to open Chat Settings → Remembered send action for the per-type and leave-chat-reset toggles.
+
 ### Double-tap edit keeps the caret on the tapped word <!-- #double-tap-edit-cursor -->
 
 When a double-tap edit action opens a sent text message for editing, the cursor lands on the tapped word instead of the end of the field. It only applies to text messages, and falls back to the end if the mapped offset is stale or invalid. Captions and the long-press edit menu keep their current behavior.
