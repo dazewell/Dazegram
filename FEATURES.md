@@ -201,7 +201,7 @@ Select messages to *Pin all* (applies your pin choice to the whole selection) or
 
 ### Fullscreen message input <!-- #fullscreen-input -->
 
-Tap the expand button to grow the input between the chat header and the keyboard. Tap it again to return to normal height.
+Tap the outward chevrons to grow the input between the chat header and the keyboard. Tap the inward chevrons to return to normal height.
 
 <img height="260" alt="message input expanded to fill the space between the chat header and the keyboard, with a text formatting row along the bottom" src="docs/images/features/fullscreen-input-on.png" />
 
