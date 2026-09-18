@@ -288,7 +288,7 @@ branch-flow remains the source for ordinary PR merge mechanics.
 `100c3e1142a3a6681e139bfd73a1e7d05e87a249` during a human-attended
 ruleset transaction, and ruleset `22861936` was restored active afterward.
 The four build/sync workflows (`ci`, `staging`, `sync-upstream`, `sync-land`)
-remain disabled; `sync-guard-check` and `commit-tag` remain active. No app tree
+remain disabled; `sync-guard-check` and `process-rules` remain active. No app tree
 changed, so no release build is expected.
 
 **Pre-move window:** this pins PR is reviewed while live

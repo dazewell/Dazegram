@@ -28,7 +28,7 @@ Removed: `.github/integration-branches.txt`, `register-topic.yml`, `canary.yml`,
 ## Branch names
 
 Branch format is **`<YYYY-MM-DD>` + `_` or `-` + `<slug>`**, lowercase,
-date first, hyphens in slug:
+date first, hyphens in slug. `process-rules.yml` enforces it on every PR:
 
 ```
 2026-08-05_video-cc          2026-08-05-video-cc          2026-08-06_ci-tag-check
@@ -63,8 +63,8 @@ Feature commits use the feature slug. Exempt category tags are exactly `#ci`,
 `#tag`, `#chatlock`, plus any `*-fix`; sync/build tooling uses `#infra`. Anything
 else must appear in `FEATURES.md` as `<!-- #slug -->`.
 Merge commits are exempt. `.githooks/commit-msg` enforces locally after
-`git config core.hooksPath .githooks`; `.github/workflows/commit-tag.yml`
-enforces tags and catalogue. Harvest scans whole `base..head` and full bodies,
+`git config core.hooksPath .githooks`; `process-rules.yml` enforces branch
+format, tags, and catalogue. Harvest scans whole `base..head` and full bodies,
 so a wrong pushed tag is effectively immutable; a real entry or parked marker are
 costly escapes. Pick right first. `--no-verify` only in emergency.
 
@@ -180,7 +180,7 @@ gh pr create --base dev --head <YYYY-MM-DD>_<slug> --title "<title>" --body "<bo
 ```
 
 `ci.yml` compiles every PR push and is the no-local-tools gate; say so in the
-body. `commit-tag.yml` also runs. Prefer `build-apk`: it builds the PR merge ref
+body. `process-rules.yml` also runs. Prefer `build-apk`: it builds the PR merge ref
 (`dev` + branch), uploads a signed dual test build, and auto-removes itself.
 Manual `workflow_dispatch` builds branch head as-is; use only if label fails,
 after:
@@ -265,17 +265,31 @@ Stop unless `allow_squash_merge` is `true` and `squash_merge_commit_message` is
 `squash_merge_commit_title` is `PR_TITLE`, so PR title is permanent history.
 
 Merge-time gate:
-- Proceed only on `mergeStateStatus == CLEAN`, not `mergeable: MERGEABLE`. Poll
-  with deadline; `UNKNOWN`, `BEHIND`, `UNSTABLE`, `BLOCKED`, `DIRTY`, other
-  non-`CLEAN`, or timeout is stop-and-report. Never update/resolve while landing.
-- Re-read `headRefOid` every poll. Under approval it must equal the approved SHA;
-  a new commit aborts and reopens non-CI gates.
+- Poll `.github/scripts/test-merge-preflight.ps1` with a deadline. It requires an
+  open, non-draft PR into `dev`, the exact branch and approved SHA, `CLEAN`
+  merge state, and no unresolved review threads. Any failure or timeout is
+  stop-and-report. Never update/resolve while landing.
+- Re-read the PR head through that script every poll; a new commit aborts and
+  reopens non-CI gates.
+
+```powershell
+$deadline = (Get-Date).AddMinutes(10)
+do {
+  $LASTEXITCODE = 1
+  .\.github\scripts\test-merge-preflight.ps1 -Repository dazewell/Dazegram `
+    -PullRequest $n -ExpectedHead $approvedHead -ExpectedBranch $branch
+  if ($LASTEXITCODE -eq 0) { break }
+  if ($LASTEXITCODE -ne 1) { throw 'Merge preflight has a terminal blocker; re-review and re-approve before landing.' }
+  Start-Sleep -Seconds 15
+} while ((Get-Date) -lt $deadline)
+if ($LASTEXITCODE -ne 0) { throw 'Merge preflight did not become clean before the deadline.' }
+```
+
 - Current head needs `ci.yml` `success` for code, or if path-ignored, required
   `Every commit carries a` green. Classify by live `.github/workflows/ci.yml`;
   absence alone is ambiguous.
-- Re-verify same head: target `dev`, not draft, attribution greps clean,
-  missing-`#slug` query clean, all review threads resolved. Paginate
-  `reviewThreads`; `first:100` hides 101+.
+- Re-verify same head: attribution greps clean and the missing-`#slug` query
+  clean. The shared preflight script owns PR state and review-thread checks.
 - Merge with `gh pr merge <n> --squash --match-head-commit <headRefOid>`.
 - Pass neither `--body` nor `--subject`; either can override `COMMIT_MESSAGES` /
   `PR_TITLE` and land an untagged `dev` commit.

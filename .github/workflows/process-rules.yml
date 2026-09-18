@@ -1,9 +1,7 @@
-name: Commit tag check
+name: Process rules
 
-# Fail a PR if any authored (non-merge) commit lacks a #<slug> change tag, the
-# same tag the local .githooks/commit-msg hook enforces. Keeps every commit for
-# a change greppable by one token (git log --grep '#chatlock').
-
+# Validate machine-decidable repository process rules on every PR, including
+# documentation-only changes that ci.yml intentionally skips.
 on:
   pull_request:
     types: [opened, reopened, synchronize]
@@ -12,7 +10,21 @@ permissions:
   contents: read
 
 jobs:
-  check:
+  branch-name:
+    name: Branch name matches process format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Verify branch name
+        shell: pwsh
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          ./.github/scripts/test-branch-name.ps1 -SelfTest
+          ./.github/scripts/test-branch-name.ps1 -Branch $env:HEAD_REF
+
+  commit-tags:
     name: Every commit carries a #tag
     runs-on: ubuntu-latest
     steps:

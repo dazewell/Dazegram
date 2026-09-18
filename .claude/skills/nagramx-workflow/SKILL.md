@@ -251,7 +251,7 @@ there; never rebase a pushed branch. Details in `nagramx-branch-flow`.
 For a user-visible feature this is a standing step, not something to wait to be
 told: once the change is ready, **commit → push → open the PR**, so dazewell
 always has a route to a test build. Opening it and every later push triggers
-`ci.yml` (fast Java/Kotlin validation, no APK) and `commit-tag.yml`.
+`ci.yml` (fast Java/Kotlin validation, no APK) and `process-rules.yml`.
 
 The build dazewell tests must be **`dev` + the change**. To get it, apply the
 **`build-apk`** label to the PR: it builds the PR **merge ref** as the

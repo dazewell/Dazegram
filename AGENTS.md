@@ -80,12 +80,12 @@ skipped gate passed.
   any `*-fix` tag. Sync and build tooling uses `#infra`. Anything else is
   treated as a feature slug and fails CI unless catalogued in `FEATURES.md`. A
   bare numeric hashtag (`#204`) is never a tag. Enforced by `.githooks/commit-msg`
-  (`git config core.hooksPath .githooks`, once per clone) and `commit-tag.yml`.
+  (`git config core.hooksPath .githooks`, once per clone) and `process-rules.yml`.
 - **Append-only.** A review fix or follow-up is a **new commit** with its own
   `#tag`, never an amend plus force-push. Never force-push `dev`, `base`, or a
   feature branch.
-- Branches are `<YYYY-MM-DD>_<slug>`; the date prefix is mandatory and `-` is an
-  equally valid separator (branch tooling kebab-cases it).
+- Branches are `<YYYY-MM-DD>_<slug>`; the date prefix is mandatory and
+  `process-rules.yml` accepts `-` as an equally valid separator.
 - PRs target `dev`, are **not drafts**, and Copilot review is requested
   automatically by a repository ruleset — never request it by hand.
 - **Close every review point before handoff**: fix it, or reply explaining why
@@ -104,7 +104,7 @@ openly; the shipped history and code may not. It bans *assistants*, not
 tooling in general — a commit or PR body may name Gradle, `adb` or logcat.
 
 The only carve-out is process/CI detection tooling (`sync-guard.ps1`,
-`commit-tag.yml`), which necessarily contains the patterns it rejects. Real
+`process-rules.yml`), which necessarily contains the patterns it rejects. Real
 credentials never appear in any file.
 
 ## Where the process lives
