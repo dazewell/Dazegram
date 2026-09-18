@@ -110,14 +110,25 @@ retried.
 Keep it short. If half-done needs more than a few lines, the real problem is
 that the change is too big — say that instead.
 
-**Close the review threads before you stop.** `AGENTS.md` requires every review
-point to get a fix or an explicit reply, then a resolve — handing off does not
-suspend that, it makes it more urgent, because an unresolved thread the next
-session inherits has nobody attached to it. Reply to each open thread with
-either the fix or why it will not be changed (a finding you are deliberately
-leaving is a fine reply, and belongs in the handoff's half-done list too), then
-resolve it. Verify none are left, per the `reviewThreads` query in
-`nagramx-session-pickup`.
+**Close the review threads — after the last push, not before.** `AGENTS.md`
+requires every review point to get a fix or an explicit reply, then a resolve;
+handing off does not suspend that, it makes it more urgent, because a thread
+the next session inherits has nobody attached to it. Order matters: step 1
+pushed a new head, and the automated reviewer re-fires on every push, so
+resolving the threads you could see *before* that review lands leaves its new
+findings open behind a handoff that claims to be complete. Wait for the review
+on your final head to settle, then reply to each open thread with the fix or
+why it will not be changed — a finding you are deliberately leaving is a fine
+reply, and belongs in the half-done list too — and resolve it. Verify none are
+left, per the `reviewThreads` query in `nagramx-session-pickup`.
+
+**Stop every process you started, and say so in the handoff.** This is the one
+step where `nagramx-process-lifecycle` bites hardest: the worktree you are
+abandoning is about to be removed, and a logcat client, a Gradle daemon or an
+`adb` handle still holding it is exactly how a worktree got corrupted before.
+Run that skill's teardown — stop by exact identity, verify termination, delete
+any capture artifact — and put the resulting ledger line in the handoff, so the
+next session knows whether anything was left running rather than guessing.
 
 Then tell dazewell the branch, the PR number and one line on what to open next.
 **Stop working.** Further commits invalidate the state you just stamped.

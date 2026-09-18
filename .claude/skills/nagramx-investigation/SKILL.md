@@ -43,7 +43,8 @@ its result.
 Read `docs/codemap/` first — `ui-to-code.md`, `upstream-traps.md` and
 `dead-ends.md` exist precisely so a question is not re-investigated. Also check
 `FEATURES.md` for "does the fork already do this", and
-`git log --grep '#<slug>'` for prior work on the same feature.
+`git log --all --grep '#<slug>'` for prior work on the same feature — `--all`
+because the branch that did it was very likely deleted at merge.
 
 **Re-verify any citation before relying on it.** Line numbers drift and traps
 get fixed; `docs/codemap/README.md` makes this the reader's obligation. An entry
@@ -108,9 +109,11 @@ short claim, `file:line` citation you actually checked, and the date. That is a
 normal change and needs a branch, a `#docs` commit and a PR like anything else.
 
 Be proportionate. A question answered in two greps contributes nothing; a trace
-that killed three theories contributes the three dead ends. If the finding is
-durable but the codemap has no matching section, report it and leave it — do not
-invent a fourth section to fit one fact.
+that killed three theories contributes the three dead ends. A fact that does
+not fit one of the three sections is almost always not durable — it is a
+detail of this investigation. If you are convinced otherwise, report it to
+dazewell and let him decide where it lives; do not invent a fourth section to
+fit one fact, and do not quietly drop a fact you have just called durable.
 
 ## 6. Stop before it becomes an implementation
 

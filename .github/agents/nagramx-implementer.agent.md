@@ -372,7 +372,9 @@ harder than the size of the diff suggested. Escalate the model rather than
 grinding another round.
 
 **When restarting the piece is not enough, hand the whole change to a fresh
-session** — follow `nagramx-session-handoff`. Commit and push what works, make
+session** — follow `nagramx-session-handoff`. Commit and push **everything
+belonging to the change**, unfinished or non-compiling parts included in a
+clearly-marked partial commit, make
 sure a PR exists, write the handoff into the **PR body** under its
 `<!-- handoff -->` marker with the dead ends recorded concretely, then stop:
 further commits invalidate the state you just stamped.

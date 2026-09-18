@@ -34,24 +34,43 @@ you have not confirmed, and never switch a worktree that has uncommitted work
 belonging to a different change — resolve that first or use another worktree.
 
 With `HEAD` confirmed, resolve the name GitHub knows it by — **not** the local
-one. `_` and `-` are both valid locally and branch tooling may flatten `_` to
-`-` on push, so a literal local name can query a branch that does not exist
-there and come back empty, which reads exactly like "no PR, never built":
+one, and not the tracking ref either. Both can be absent or different: `_` and
+`-` are equally valid locally and branch tooling may flatten `_` to `-` on
+push, while this repo's own follow-up procedure pushes with
+`git push origin <branch>` and no `-u`, which leaves a live remote branch, PR
+and CI history behind **no tracking ref at all**. An unset `@{u}` therefore
+proves nothing. Ask GitHub instead, and only conclude "never pushed" when it
+says so:
 
 ```powershell
-$branch = (git rev-parse --abbrev-ref '@{u}') -replace '^origin/',''
+$local  = git rev-parse --abbrev-ref HEAD
+$branch = gh pr list --head $local --state all --json headRefName --jq '.[0].headRefName'
+if (-not $branch) {
+  $branch = gh pr list --head ($local -replace '_','-') --state all --json headRefName --jq '.[0].headRefName'
+}
+if (-not $branch) { $branch = (git rev-parse --abbrev-ref '@{u}' 2>$null) -replace '^origin/','' }
+if (-not $branch) { $branch = $local }
+git ls-remote --heads origin $branch               # empty means genuinely never pushed
 ```
 
-If there is no upstream, the branch was never pushed — there is no PR and no CI
-run to find, so say that rather than querying for them.
+Then bind to the remote head before reading anything, so you reconstruct the
+newest state rather than whatever the abandoned worktree happened to stop at —
+a session that died may be several commits behind its own branch:
 
 ```powershell
-git fetch origin dev                               # so the base below is current
+git fetch origin dev $branch
+git --no-pager log --oneline HEAD..origin/$branch  # commits on GitHub this worktree lacks
+```
+
+If that is non-empty, fast-forward onto it before continuing; if it has
+diverged, stop and report rather than quietly reconstructing a fork of the
+change.
+
+```powershell
 git --no-pager log --oneline origin/dev..HEAD      # what landed, and its #slug
 git --no-pager diff --stat origin/dev...HEAD       # the shape of the change
 git status --short                                 # uncommitted work the last session left
 git --no-pager log --all --grep '#<slug>'          # related work on any other branch
-gh pr list --head $branch --state all              # is there a PR at all
 git --no-pager diff origin/dev...HEAD              # finally, the change itself
 ```
 
@@ -70,7 +89,7 @@ not a pass**: `ci.yml` path-ignores doc, hook, agent and skill changes, so a
 doc-only branch legitimately has none. Report that as path-ignored — never as
 green, and never as broken.
 
-**Only if `gh pr list` found one**, read it — a branch abandoned without a
+**Only if a PR was found above**, read it — a branch abandoned without a
 handoff often has no PR, and these commands are not runnable without one:
 
 ```powershell
@@ -90,12 +109,22 @@ gh api graphql -f query=$q --jq '.data.repository.pullRequest.reviewThreads.node
   | select(.isResolved==false) | "\(.path):\(.line)"'
 ```
 
+`first:100` covers any PR here in practice, but it silently truncates rather
+than erroring, so on a long-running PR page it with the `pageInfo` cursor
+pattern in `nagramx-branch-flow` — an unresolved thread at 101 reads as a clean
+review.
+
 With no PR, the local history and CI are the whole record. Say so in your
 confirmation rather than leaving it ambiguous whether you looked.
 
-**Check `git status` early and deliberately.** A session that died badly may
-have left uncommitted work, and that work is invisible to every other command
-here. Decide explicitly whether to keep it, and say which you chose.
+**Check `git status` early and deliberately, and read what it found.** A
+session that died badly may have left uncommitted work, and that work is
+invisible to every other command here — `git status --short` names the paths
+but shows none of the content, and `git diff origin/dev...HEAD` excludes it
+entirely. It may be the only copy in existence, so read it before deciding:
+`git --no-pager diff` and `git --no-pager diff --cached` for tracked changes,
+and open each untracked path. Then decide explicitly whether to keep it, and
+say which you chose.
 
 Then read `AGENTS.md` and `nagramx-workflow`. You are mid-pipeline, not exempt
 from it — the compile gate, the review rounds and the `FEATURES.md` obligation
