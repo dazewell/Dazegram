@@ -60,19 +60,12 @@ from a branch name this lookup is the only place it appears.
 **If `ls-remote` came back empty, the remote head is gone — which is not the
 same as there being no record.** A PR outlives its branch here: the repo
 auto-deletes the head ref on merge, and `refs/pull/<N>/head` keeps the range.
-So decide on both signals. If `$pr` exists, its history is intact — but a
-deleted head ref means there is nothing to `git switch` to, so recover the
-range from the PR ref before doing anything else:
-
-```powershell
-git fetch origin dev "pull/$($pr.number)/head:$branch"
-git switch $branch
-```
-
-That restores a local branch at the reviewed head, and from there everything
-below runs normally except the `origin/$branch` comparison, which has no remote
-side — read the PR and its review history as usual and note that the branch
-itself is gone from GitHub.
+So decide on both signals. **`$pr` exists but the ref is gone means the change
+already landed** — that is what auto-delete-on-merge does — so there is nothing
+to pick up. Do not reconstruct it. Say so, point at the PR, and ask dazewell
+what he actually wants: a follow-up is a new dated branch off `dev` reusing the
+same `#<slug>`, per `nagramx-branch-flow`, not a resumption of this one. (If he
+genuinely wants the old range, `refs/pull/<N>/head` still has it.)
 
 Only when `$pr` is empty *and* `ls-remote` is empty is the change genuinely
 local-only: skip the fetch and the `origin/$branch` reads below — they would
