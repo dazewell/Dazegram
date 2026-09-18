@@ -22481,6 +22481,10 @@ public class ChatActivity extends BaseFragment implements
             if (contentView != null) {
                 wallpaper = contentView.getBackgroundImage();
             }
+            if (wallpaper instanceof ChatBackgroundDrawable) {
+                // NagramX: unwrap per-chat wallpapers, else this whole block silently skips them.
+                wallpaper = ((ChatBackgroundDrawable) wallpaper).getDrawable(false);
+            }
             if (wallpaper instanceof MotionBackgroundDrawable) {
                 MotionBackgroundDrawable motion = (MotionBackgroundDrawable) wallpaper;
                 if (((MotionBackgroundDrawable) wallpaper).isIndeterminateAnimation() != rotate) {
