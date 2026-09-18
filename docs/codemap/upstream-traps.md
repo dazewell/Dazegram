@@ -332,7 +332,7 @@ That makes MessageDrawable a second app-wide producer of
 `invalidateMotionBackground` events that are unrelated to the current chat
 wallpaper motion. `ChatActivity#didReceivedNotification2` therefore ignores a
 producer-carrying event whenever a motion wallpaper is current and the
-producer isn't it (`ChatActivity.java:23956-23959`) so those bubble-animation
+producer isn't it (`ChatActivity.java:23961-23966`) so those bubble-animation
 ticks do not drive unnecessary wallpaper composite refreshes; a null current
 wallpaper skips that check entirely, since there is nothing to protect. The
 notification's *other* poster, `ChatBackgroundDrawable`'s pattern-bitmap-decode
@@ -357,7 +357,7 @@ bitmap and posted this same global notification (`invalidateParent`,
 `Components/MotionBackgroundDrawable.java:360-363`), i.e. per-frame work and a
 cross-account notification for a purely visual proxy refresh. The fix removes
 that hook entirely; `ChatActivity#rotateMotionBackgroundDrawable`
-(`ChatActivity.java:27586`) now arms the glass-composite refresh directly
+(`ChatActivity.java:27591`) now arms the glass-composite refresh directly
 after a genuine `switchToNextPosition()` call (detected by
 `posAnimationProgress` dropping from `1.0f` to below it, since a no-op call
 leaves it unchanged — `MotionBackgroundDrawable.java:273-275`).
@@ -408,56 +408,73 @@ resolve colour by recursing an `instanceof BlurredBackgroundSourceWrapped`
 chain via `getSource()`, keep resolving through it exactly as before — a bare
 interface implementation would have silently broken that dispatch and made
 both getters return `0`. Its `draw()` paints a retained previous-composite
-snapshot at full alpha, then the live composite on top inside a
-`canvas.saveLayerAlpha` ramping from transparent to opaque; because the glass
-render nodes record `source.draw(...)` into a hardware `RecordingCanvas`
-(`BlurredBackgroundDrawableRenderNode.java:101`), this blend is a GPU
-alpha-composite of two already-rasterised layers, not a per-tick
-re-rasterization of either.
+snapshot at full alpha (using the snapshot's own matrix with no left/top
+translation folded in, matching `BlurredBackgroundSourceBitmap#draw`'s actual
+un-translated shader setup — `blur3/source/BlurredBackgroundSourceBitmap.java:57-67`
+computes a translated matrix but never applies it to the shader, so the two
+layers would otherwise misregister at a non-zero source offset), then the live
+composite on top inside a `canvas.saveLayerAlpha` ramping from transparent to
+opaque; because the glass render nodes record `source.draw(...)` into a
+hardware `RecordingCanvas` (`BlurredBackgroundDrawableRenderNode.java:101`),
+this blend is a GPU alpha-composite of two already-rasterised layers, not a
+per-tick re-rasterization of either.
 
 Every wallpaper-content-moved trigger — a genuine send rotate
-(`ChatActivity#rotateMotionBackgroundDrawable`, `ChatActivity.java:27612`),
+(`ChatActivity#rotateMotionBackgroundDrawable`, `ChatActivity.java:27617`),
 the skeleton loading exit edge (`ChatActivity#isSkeletonVisible`,
-`ChatActivity.java:22502`), the two pattern-alpha/colour-filter fades
+`ChatActivity.java:22507`), the two pattern-alpha/colour-filter fades
 (`ChatActivity#setupChatTheme` and `chatTheme.loadWallpaper`'s callback,
-`ChatActivity.java:47660`, `48095`), an unfiltered `invalidateMotionBackground`
-notification (`ChatActivity#didReceivedNotification2`, `ChatActivity.java:23962`)
+`ChatActivity.java:47668`, `48106`), an unfiltered `invalidateMotionBackground`
+notification (`ChatActivity#didReceivedNotification2`, `ChatActivity.java:23967`)
 — now calls `ChatActivity#scheduleGlassCompositeCrossfade(durationMs)`
-(`ChatActivity.java:52129`) exactly once. That cancels and reposts a single
+(`ChatActivity.java:52135`) exactly once. That cancels and reposts a single
 wall-clock-timed settle runnable, so a burst collapses to one trailing firing
 `durationMs` after the *last* call — never a refresh per call, and never
 gated on `posAnimationProgress`, which can stall indefinitely behind lite
 mode or a backgrounded app. `ChatActivity#onGlassCompositeSettle`
-(`ChatActivity.java:52149`) is what actually fires: it performs exactly one
+(`ChatActivity.java:52161`) is what actually fires: it performs exactly one
 `refreshMotionComposite` call and, on success, blends the result in over
 `GLASS_COMPOSITE_CROSSFADE_MS` (200ms) via
-`ChatActivity#startGlassCompositeCrossfade` (`ChatActivity.java:52187`), the
+`ChatActivity#startGlassCompositeCrossfade` (`ChatActivity.java:52193`), the
 one `ValueAnimator` this mechanism owns. If paused or detached when the
 settle runnable fires, it marks `glassCompositeDirty` instead of compositing;
-`ChatActivity#onResume` (`ChatActivity.java:32241`) runs one fresh,
-non-blended catch-up composite when it finds that flag set, since there is
+`ChatActivity#onResume` (`ChatActivity.java:32246`) runs one fresh,
+non-blended catch-up composite when it finds that flag set (calling
+`onGlassCompositeSettle(false)` directly, since `onPause` also marks it dirty
+unconditionally and cancels any pending settle runnable outright — otherwise a
+resume that lands before that runnable's delay expires would let it fire with
+`isPaused` already false, blending from whatever composite existed before
+backgrounding instead of catching the intended plain catch-up), since there is
 nothing meaningful to blend against after an unbounded background gap.
 
 Matrix-safety: a size, keyboard-pan, or orientation change mid-blend would
 keep blending two composites recorded at different geometry.
-`ChatActivity#cancelGlassCompositeCrossfade` (`ChatActivity.java:52222`) stops
+`ChatActivity#cancelGlassCompositeCrossfade` (`ChatActivity.java:52225`) stops
 the animator and snaps to whatever is currently live, called from
 `ChatActivity#updateGlassBackgroundTranslation` (keyboard pan,
-`ChatActivity.java:52083`), `onMeasure` only when
+`ChatActivity.java:52094`), `onMeasure` only when
 `WallpaperBitmapProvider#setParentSize` reports an actual dimension change
-(`ChatActivity.java:20081`), and `onPause`. It deliberately leaves a still-
-*pending* settle runnable alone in all of those cases — the runnable hasn't
-recomposited or started a blend yet, so nothing geometry-unsafe happens if it
-still fires later against whatever is live by then, and cancelling it outright
-(as `onFragmentDestroy` does, since nothing should touch a destroyed
-fragment's state) would instead silently drop a send burst's queued
-composite. Orientation change is stricter: `ChatActivity#onConfigurationChanged`
-(`ChatActivity.java:33111`) cancels the blend *and* posts
-`ChatActivity#snapGlassCompositeForConfigChange` (`ChatActivity.java:52234`),
-which recomposes and shows the result outright instead of routing through the
-crossfade at all, since the old- and new-orientation composites are different
-dimensions and blending across that would misalign the pattern for the fade's
-whole duration.
+(`ChatActivity.java:20082-20083`), and `onPause` (`ChatActivity.java:32484-32485`,
+cancelling the pending settle runnable outright too — fixed after review
+flagged that a resume landing before the runnable's delay expired let it fire
+with `isPaused` already false, blending stale pre-background pixels instead of
+hitting the settle handler's own bail). It deliberately leaves a still-
+*pending* settle runnable alone in all of those cases except `onPause` — the
+runnable hasn't recomposited or started a blend yet, so nothing geometry-unsafe
+happens if it still fires later against whatever is live by then, and
+cancelling it outright (as `onPause` and `onFragmentDestroy` both do, since
+neither has anything on screen worth blending toward) would otherwise
+either silently drop a send burst's queued composite or replay it against a
+backgrounded chat. Orientation change is stricter:
+`ChatActivity#onConfigurationChanged` (`ChatActivity.java:33115`) cancels the
+blend *and* posts `ChatActivity#snapGlassCompositeForConfigChange`
+(`ChatActivity.java:52237`), which recomposes and shows the result outright
+instead of routing through the crossfade at all, since the old- and
+new-orientation composites are different dimensions and blending across that
+would misalign the pattern for the fade's whole duration; it carries the same
+paused/detached guard as `onGlassCompositeSettle`, since it is posted with no
+delay but still runs on a separate looper pass that a pause or teardown can
+land in.
 
 One more race the double buffer creates that the mechanism above has to
 close: if a second settle fires while a blend from the first is still in
@@ -477,10 +494,14 @@ its `getDrawable(boolean prioritizeThumb)` getter
 (`ChatBackgroundDrawable.java:280`). Any `instanceof MotionBackgroundDrawable`
 check run directly over a resolved wallpaper therefore misses every per-chat
 wallpaper and has to unwrap through that getter first — done at each of this
-mechanism's three read sites: `ChatActivity#resolveCurrentMotionWallpaper`
-(`ChatActivity.java:52143-52145`), `ChatActivity#rotateMotionBackgroundDrawable`
-(`ChatActivity.java:27593-27594`), and the pattern-alpha fade armer in
-`ChatActivity#setupChatTheme` (`ChatActivity.java:47636-47638`).
+mechanism's four read sites: `ChatActivity#resolveCurrentMotionWallpaper`
+(`ChatActivity.java:52149-52150`), `ChatActivity#rotateMotionBackgroundDrawable`
+(`ChatActivity.java:27599-27600`), the pattern-alpha fade armer in
+`ChatActivity#setupChatTheme` (`ChatActivity.java:47641-47644`), and the
+skeleton loading exit-edge check in `ChatActivity#isSkeletonVisible`
+(`ChatActivity.java:22484-22486`) — the last of these was missed in the round
+5 pass and fixed after review flagged it, since without it the entire
+exit-edge settle silently never ran for any per-chat wallpaper.
 
 *(Established 2026-09-04 with the postInvalidateParent removal; extended and
 corrected several times 2026-09-17 through round 4, `#glass-pattern-fix`, with
