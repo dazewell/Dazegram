@@ -9,11 +9,16 @@ Some requests are questions, not changes: why does this happen, where does this
 live, is this feasible, what would it cost, did that change cause this. They
 produce an **answer**, and sometimes a `docs/codemap/` entry — not a diff.
 
-`nagramx-workflow` governs changes and does not fit here: there is no branch, no
-compile gate, no `FEATURES.md`, and nothing to review. `nagramx-scout` is recon
-*inside* a change; this is the standalone case. What is missing without this
-file is a stopping rule and an evidence standard — an investigation has neither
-by default, so it either never ends or ends in confident guesswork.
+`nagramx-workflow` governs changes and does not fit here: an investigation is
+not a branch-and-compile-gate shaped job, and most end with an answer and no
+diff at all. `nagramx-scout` is recon *inside* a change; this is the standalone
+case. What is missing without this file is a stopping rule and an evidence
+standard — an investigation has neither by default, so it either never ends or
+ends in confident guesswork.
+
+**If it does end in a `docs/codemap/` entry, that entry is an ordinary change**
+and takes the ordinary route: a dated branch, a `#docs` commit and a PR, per
+step 5. The investigation itself is not a change; what it writes down is.
 
 ## 1. Pin the question before reading anything
 

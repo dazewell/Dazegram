@@ -17,6 +17,24 @@ from weeks ago. That case is the harder one and the more common one.
 
 Do not skip ahead to the code. The order matters: shape first, then detail.
 
+**Bind the target before you read anything.** Every command below resolves
+against `HEAD`, so establish that `HEAD` *is* the change you were pointed at —
+otherwise you can reconstruct, and later modify, the wrong branch entirely. In a
+worktree sitting on something else, this is the whole failure.
+
+```powershell
+git rev-parse --abbrev-ref HEAD                    # what am I actually on
+```
+
+If that is not the target branch, resolve it before continuing. Given a branch
+name, `git switch <branch>` in this worktree, or work in the worktree that
+already holds it. Given only a PR number, `gh pr view <n> --json headRefName`
+names the branch; fetch and switch to it. **Never** reconstruct from a `HEAD`
+you have not confirmed, and never switch a worktree that has uncommitted work
+belonging to a different change — resolve that first or use another worktree.
+
+With `HEAD` confirmed, and `<branch>` its name:
+
 ```powershell
 git --no-pager log --oneline origin/dev..HEAD      # what landed, and its #slug
 git --no-pager diff --stat origin/dev...HEAD       # the shape of the change
