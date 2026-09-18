@@ -52,10 +52,19 @@ removed:
 
 ```powershell
 $branch = git rev-parse --abbrev-ref HEAD
+$remote = gh pr list --head $branch --json headRefName --jq '.[0].headRefName'
+if ($LASTEXITCODE) { throw 'PR lookup failed - do not guess the destination ref' }
+if ($remote) { $branch = $remote }    # push to the spelling the PR actually tracks
 git push origin HEAD:$branch
 if ($LASTEXITCODE) { throw 'push failed - the handoff is not durable yet' }
 git rev-parse HEAD; git ls-remote --heads origin $branch   # the two must match
 ```
+
+Push to the ref the **PR** tracks, not the local name. `_` and `-` are both
+valid after the date prefix and tooling may flatten one into the other, so a
+local `2026-01-02_slug` whose PR head is `2026-01-02-slug` would otherwise
+create a second branch, verify that one, and leave the PR — and therefore the
+handoff — pointing at the old commit.
 
 Never discard work to make the branch look tidy.
 

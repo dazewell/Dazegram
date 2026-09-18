@@ -46,8 +46,11 @@ says so:
 
 ```powershell
 $local = git rev-parse --abbrev-ref HEAD
-$alt   = $local -replace '^(\d{4}-\d{2}-\d{2})([_-])', { param($m)
-           $m.Groups[1].Value + $(if ($m.Groups[2].Value -eq '_') { '-' } else { '_' }) }
+$alt   = switch -Regex ($local) {                  # the other separator spelling
+           '^(\d{4}-\d{2}-\d{2})_' { $local -replace '^(\d{4}-\d{2}-\d{2})_', '$1-'; break }
+           '^(\d{4}-\d{2}-\d{2})-' { $local -replace '^(\d{4}-\d{2}-\d{2})-', '$1_'; break }
+           default                 { $local }
+         }
 function Find-Pr($head) {
   $out = gh pr list --head $head --state all --json number,headRefName,state,mergedAt --jq '.[0]'
   if ($LASTEXITCODE) { throw 'PR lookup failed - do not read empty as no PR' }
