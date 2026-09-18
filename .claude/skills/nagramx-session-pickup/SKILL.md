@@ -220,15 +220,13 @@ gh pr view $pr.number --comments                   # review findings and their d
 
 `--comments` shows the text but **not** whether a thread was resolved, and an
 unresolved finding is the thing you most need to see. Read the resolution state
-directly — the same `reviewThreads` query
-`.github/agents/nagramx-implementer.agent.md` already uses:
+through the shared pagination-safe script:
 
 ```powershell
-$q = 'query($endCursor:String) { repository(owner:"dazewell",name:"Dazegram"){ pullRequest(number:'+$pr.number+'){
-  reviewThreads(first:100, after:$endCursor){ pageInfo { hasNextPage endCursor }
-    nodes { isResolved path line comments(first:1){ nodes { body } } } } } } }'
-gh api graphql --paginate -f query=$q --jq '.data.repository.pullRequest.reviewThreads.nodes[]
-  | "\(if .isResolved then "resolved" else "OPEN" end) \(.path):\(.line)\n\(.comments.nodes[0].body)\n---"'
+.\.github\scripts\get-review-threads.ps1 -Repository dazewell/Dazegram -PullRequest $pr.number |
+  ConvertFrom-Json | ForEach-Object {
+    "$($(if ($_.isResolved) { 'resolved' } else { 'OPEN' })) $($_.path):$($_.line)`n$($_.comments.nodes[0].body)`n---"
+  }
 ```
 
 Print every thread, resolved ones included, with the comment text. An open
@@ -236,9 +234,8 @@ thread's location alone does not tell you what it found, and the resolved ones
 are the record of what has already been settled — the main defence against
 re-litigating it.
 
-`--paginate` only follows the cursor when the variable is named **`$endCursor`**
-and `pageInfo` is in the selection — any other name and it stops after the first
-page, so an unresolved thread at 101 reads as a clean review.
+The script follows every `reviewThreads` page; do not replace it with an
+unpaginated query, because an unresolved thread at 101 reads as a clean review.
 
 With no PR, the local history and CI are the whole record. Say so in your
 confirmation rather than leaving it ambiguous whether you looked.

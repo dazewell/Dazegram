@@ -16,7 +16,7 @@ name: Sync guard check
 #      is what catches a stale pin or an empty manifest that -SelfTestOnly alone
 #      would miss.
 #
-# No `paths-ignore`: this repo was bitten by commit-tag.yml sitting disabled for
+# No `paths-ignore`: this repo was bitten by the process-rules workflow sitting disabled for
 # weeks while every PR reported green — an absent or skipped check is
 # indistinguishable from a passing one.
 

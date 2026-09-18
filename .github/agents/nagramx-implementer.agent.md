@@ -277,9 +277,8 @@ loose PR comment. Verify none remain unresolved.
 gh api "repos/dazewell/Dazegram/pulls/$pr/comments/<comment-id>/replies" -F body=@"$env:TEMP\reply.md"
 
 # resolve. threadId is the PRRT_... node id, not the comment id
-$ids = 'query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){pullRequest(number:$p){reviewThreads(first:100){nodes{id isResolved}}}}}'
-$t = gh api graphql -f query=$ids -F o=dazewell -F n=Dazegram -F p=$pr | ConvertFrom-Json
-$t.data.repository.pullRequest.reviewThreads.nodes | Where-Object { -not $_.isResolved }
+.\.github\scripts\get-review-threads.ps1 -Repository dazewell/Dazegram -PullRequest $pr |
+  ConvertFrom-Json | Where-Object { -not $_.isResolved }
 
 $m = 'mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}'
 gh api graphql -f query=$m -F id=<PRRT_...>
