@@ -211,14 +211,14 @@ public final class ComposerButtons {
         iconScale("italic", 1.3521f);   // 12.58% ink, 54.20 x 58.40
         iconScale("spoiler", 1.3554f);  // 12.52% ink, 60.64 x 58.40
         iconScale("code", 1.1482f);     // 10.62% ink, 77.73 x 62.50 - held by the area floor
+        // The model value would be 1.2405, with 16.1% drawn ink area. Keep the previous 1.1343 scale
+        // instead: the accepted cost is 76.2% drawn ink width, below the 83.3% width target, and
+        // 13.45% drawn ink area, 0.5pp under the area floor. This button was changed to shorten the
+        // horizontal reach of the caps; scaling it to the model would make the glyph taller than
+        // before and spend that polish on size instead.
+        iconScale(EXPAND, 1.1343f);     // 10.46% ink, 67.19 x 73.44 - authored exception
         iconScale("mono", 1.1031f);     // 10.39% ink, 83.40 x 50.00 - held by the width cap
         iconScale(RICH, 1.2731f);       // 10.18% ink, 65.43 x 65.43
-        // The model value would be 1.2799, held by the height cap, with 16.0% drawn ink area. Keep the
-        // previous 1.1343 scale instead: the accepted cost is 69.1% drawn ink width, below the 83.3%
-        // width target, and 12.58% drawn ink area, 1.4pp under the area floor. This button was changed
-        // to shorten the horizontal reach of the caps; scaling it to the model would make the glyph
-        // taller than before and spend that polish on size instead.
-        iconScale(EXPAND, 1.1343f);     // 9.78% ink, 60.94 x 73.44 - authored exception
         iconScale("mention", 1.5519f);  // 9.55% ink, 45.90 x 45.90 - sparsest in the row
         // EMOJI is deliberately absent, so it renders at 1f. Its resting glyph is a Lottie composition
         // (frame 0 of R.raw.smile_to_keyboard, reached via setProgress(0)), whose ink bounding box is
