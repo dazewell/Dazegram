@@ -46,32 +46,39 @@ says so:
 
 ```powershell
 $local = git rev-parse --abbrev-ref HEAD
-$alt   = $local -replace '_','-'
-$pr = gh pr list --head $local --state all --json number,headRefName,state,mergedAt --jq '.[0]' | ConvertFrom-Json
-if (-not $?) { throw 'PR lookup failed - do not read empty as no PR' }
-if (-not $pr) {
-  $pr = gh pr list --head $alt --state all --json number,headRefName,state,mergedAt --jq '.[0]' | ConvertFrom-Json
-  if (-not $?) { throw 'PR lookup failed - do not read empty as no PR' }
+$alt   = $local -replace '^(\d{4}-\d{2}-\d{2})([_-])', { param($m)
+           $m.Groups[1].Value + $(if ($m.Groups[2].Value -eq '_') { '-' } else { '_' }) }
+function Find-Pr($head) {
+  $out = gh pr list --head $head --state all --json number,headRefName,state,mergedAt --jq '.[0]'
+  if ($LASTEXITCODE) { throw 'PR lookup failed - do not read empty as no PR' }
+  if ($out) { $out | ConvertFrom-Json }
 }
+$pr = Find-Pr $local
+if (-not $pr -and $alt -ne $local) { $pr = Find-Pr $alt }
 $branch = if ($pr) { $pr.headRefName }
           elseif ($u = (git rev-parse --abbrev-ref '@{u}' 2>$null)) { $u -replace '^origin/','' }
           else { $local }
 $ref = git ls-remote --heads origin $branch
-if (-not $?) { throw 'remote lookup failed - do not read empty as absent' }
+if ($LASTEXITCODE) { throw 'remote lookup failed - do not read empty as absent' }
 if (-not $ref -and $branch -ne $alt) {
   $ref = git ls-remote --heads origin $alt          # the other spelling
-  if (-not $?) { throw 'remote lookup failed - do not read empty as absent' }
+  if ($LASTEXITCODE) { throw 'remote lookup failed - do not read empty as absent' }
   if ($ref) { $branch = $alt }                      # bind to the one that exists
 }
 ```
 
 **An empty result is only meaningful if the lookup succeeded**, and only after
-both spellings have been tried — `_` and `-` are interchangeable locally and the
-push may have flattened one into the other. Rebind `$branch` to whichever
-spelling actually returned a ref; every `origin/$branch` read below fails
-otherwise. A network or auth failure returns nothing too, from either lookup,
-and reading that as "never pushed" or "no PR" sends pickup down the local-only
-path for a change that has a PR and a full review history.
+both spellings have been tried. `_` and `-` are interchangeable after the date
+prefix and the push may have flattened one into the other, so swap whichever
+separator is there rather than assuming the local name uses the underscore.
+Rebind `$branch` to the spelling that actually returned a ref; every
+`origin/$branch` read below fails otherwise.
+
+Check `$LASTEXITCODE`, not `$?`: a pipeline ending in `ConvertFrom-Json` reports
+the *parser's* success, so a failed `gh` call that printed nothing reads as a
+clean "no PR" — a guard that passes precisely in the case it exists to catch.
+That sends pickup down the local-only path for a change with a PR and a full
+review history.
 
 **Keep `$pr.number`** — the PR reads further down need it, and if pickup started
 from a branch name this lookup is the only place it appears.
@@ -107,23 +114,43 @@ may be several commits behind its own branch:
 
 ```powershell
 git fetch origin dev $branch
+if ($LASTEXITCODE) { throw 'fetch failed - every read below would be stale' }
 git status --short                                 # FIRST: anything uncommitted here?
 git --no-pager log --oneline HEAD..origin/$branch  # commits on GitHub this worktree lacks
 git --no-pager log --oneline origin/$branch..HEAD  # local commits GitHub does not have
 ```
 
-**Deal with the dirty tree before you move `HEAD`, not after.** Uncommitted work
-is the only copy in existence and a fast-forward is the fastest way to lose it —
-it will either refuse and leave you improvising, or, worse, tempt a `reset
---hard` that destroys it silently. `git status --short` above only names the
-paths; reading the *content* and deciding what to keep is its own step further
-down, and the fast-forward waits for it. Note that the fetch updated the
-remote-tracking ref without touching `HEAD`, so the reads below still describe
-the old tip until that merge runs — skipping it leaves you reading new commits
-and building on old ones.
+**Settle `HEAD` here, before any of the reads below.** Everything downstream —
+the diff, the CI result, the review threads — describes whatever `HEAD` points
+at, and the fetch above moved only the remote-tracking ref. Read them against a
+stale tip and you confirm, and then build on, a state you never inspected.
 
-Both ranges non-empty means the two have **diverged** — stop and report now,
-rather than quietly reconstructing a fork of the change.
+Two things have to happen first, in this order, and neither can be skipped:
+
+1. **Read the uncommitted work and decide.** It is the only copy in existence
+   and a fast-forward is the fastest way to lose it — it will either refuse and
+   leave you improvising, or, worse, tempt a `reset --hard` that destroys it
+   silently. `git status --short` names the paths but shows none of the content,
+   and `git diff origin/dev...HEAD` excludes it entirely, so read it: `git
+   --no-pager diff` and `git --no-pager diff --cached` for tracked changes, and
+   open each untracked path. Decide explicitly whether to keep it, **commit**
+   what you keep, and say what you chose. Prefer a commit over a stash — a stash
+   is invisible to every command below and is exactly how the only copy goes
+   missing; if you stash anyway, reapplying and verifying it is your obligation
+   before you confirm anything.
+2. **Then fast-forward.** Committing in step 1 moved `HEAD`, so re-read both
+   ranges rather than trusting the ones above. Both non-empty means the branch
+   has **diverged** — stop and report, rather than quietly reconstructing a fork
+   of the change.
+
+```powershell
+git --no-pager log --oneline HEAD..origin/$branch  # re-read: step 1 may have moved HEAD
+git --no-pager log --oneline origin/$branch..HEAD
+git merge --ff-only origin/$branch                 # only if the reverse range is empty
+```
+
+With `HEAD` settled, read the change:
+
 ```powershell
 git --no-pager log --oneline origin/dev..HEAD      # what landed, and its #slug
 git --no-pager diff --stat origin/dev...HEAD       # the shape of the change
@@ -182,19 +209,9 @@ page, so an unresolved thread at 101 reads as a clean review.
 With no PR, the local history and CI are the whole record. Say so in your
 confirmation rather than leaving it ambiguous whether you looked.
 
-**Read the uncommitted work — this is the step the fast-forward above waits
-on.** A session that died badly may have left work behind, and it is invisible
-to every other command here: `git status --short` names the paths but shows
-none of the content, and `git diff origin/dev...HEAD` excludes it entirely. It
-may be the only copy in existence, so read it before deciding: `git --no-pager
-diff` and `git --no-pager diff --cached` for tracked changes, and open each
-untracked path. Decide explicitly whether to keep it, commit or stash what you
-keep, and say which you chose. Only then move `HEAD`, if `HEAD..origin/$branch`
-was non-empty and the two had not diverged:
-
-```powershell
-git merge --ff-only origin/$branch
-```
+**The uncommitted work was read and settled above, before `HEAD` moved** — that
+is the one step out of order here on purpose, because it is the only one whose
+input a fast-forward can destroy.
 
 Then read `AGENTS.md` and `nagramx-workflow`. You are mid-pipeline, not exempt
 from it — the compile gate, the review rounds and the `FEATURES.md` obligation

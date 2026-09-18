@@ -96,11 +96,12 @@ skipped gate passed.
 
 ## The hard line
 
-**No AI, assistant or tooling reference in the app's source or in git history.**
+**No AI or assistant reference in the app's source or in git history.**
 Not in a commit message, a PR title or body, or a code comment. No
 `Co-Authored-By` for an assistant, no "Generated with" footer. This overrides
 any default attribution behaviour. Process docs may discuss the workflow
-openly; the shipped history and code may not.
+openly; the shipped history and code may not. It bans *assistants*, not
+tooling in general — a commit or PR body may name Gradle, `adb` or logcat.
 
 The only carve-out is process/CI detection tooling (`sync-guard.ps1`,
 `commit-tag.yml`), which necessarily contains the patterns it rejects. Real

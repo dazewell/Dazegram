@@ -99,16 +99,14 @@ Optionally add a one-line comment pointing at it (`Handed off — see the handof
 block in the description`) so watchers get a notification. The body stays
 authoritative.
 
-**No AI or assistant mention anywhere in it.** The hard line covers PR bodies
-and comments like everything else. It is about *assistants*, not tooling in
-general — naming `adb`, Gradle or a logcat capture in the line above is fine
-and necessary.
+**No AI or assistant mention anywhere in it.** The hard line in `AGENTS.md`
+covers PR bodies like everything else.
 
 ### 4. Stamp it and stop
 
-The dead-ends section is **the only part that matters**. Everything above it a
-fresh session reconstructs from the diff in a minute; a dead end it cannot
-reconstruct at all and will walk straight into. Give each a concrete reason —
+The dead-ends section is **the part a fresh session cannot reconstruct**.
+Everything above it it rebuilds from the diff in a minute; a dead end it cannot
+rebuild at all and will walk straight into. Give each a concrete reason —
 "thrashes on every re-bind", "stripped from release by `-assumenosideeffects`" —
 never "didn't work". A reasonless dead end reads as an untested idea and gets
 retried.
