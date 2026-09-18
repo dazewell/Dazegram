@@ -2306,6 +2306,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         }
     }
 
+    public boolean doNotDrawGlassHeader;
     public boolean doNotDrawGlassMenu;
 
     @Override
@@ -2324,7 +2325,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         final int t = getHeight() - (getCurrentActionBarHeight() + s) / 2 - p;
         final int b = t + s + p * 2;
 
-        if (glassDrawable != null && !glassOnlyBack) {
+        if (glassDrawable != null && !glassOnlyBack && !doNotDrawGlassHeader) {
             final int menuWidthWithPadding = menuWidth + ((hasForcedMenuWidth || hasForcedMenuMinWidth) ? (menuWidth > 0 ? p : 0) : (int) (p * animatorHasMenuItems.getFloatValue()));
             final int leftDefault = hasBackButton ? s + p : 0;
             final int avatarBubbleWidth = (int) (animatorAvatarContainerHasAvatar.getFloatValue() * (s + p));

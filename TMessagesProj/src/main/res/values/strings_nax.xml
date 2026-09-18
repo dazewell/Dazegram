@@ -330,6 +330,8 @@
     <string name="SliderStyle">Slider Style</string>
     <string name="StyleModern">Modern</string>
     <string name="StyleMaterialDesign3" translatable="false">Material Design 3</string>
+    <string name="MaterialDesign3ChatHeader">Material Design 3 chat header</string>
+    <string name="MaterialDesign3ChatHeaderDes">Remove chat header background</string>
     <string name="SaveDeletedExclusionMenu">Save Deleted</string>
     <string name="SaveDeletedExcluded">Exclude</string>
     <string name="MarkdownParser">Markdown Parser</string>

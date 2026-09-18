@@ -298,6 +298,10 @@ You can apply a chat pattern over your live Material You color. Turn it off by o
 
 <img height="260" alt="chat background pattern tinted with the current Material You accent color" src="docs/images/features/monet-pattern.png" />
 
+### Material Design 3 chat header <!-- #material-design-3-chat-header -->
+
+N-Settings → General → Appearance → *Material Design 3 chat header* drops the glass bubble behind the chat and admin-log ActionBar title, leaving flat text on the background. Off by default.
+
 ### Fixed app icon uses Default art on DazegramX <!-- #app-icon-fallback -->
 
 On DazegramX (Unofficial), the app's fixed system-level icon — the one Android shows in the app switcher and permission dialogs — is the same *Default* art as the Chat Settings → App Icon picker's Default option. Dazegram (Official) keeps its usual Blue icon. Picking a launcher icon under Chat Settings → App Icon works as before on both variants.

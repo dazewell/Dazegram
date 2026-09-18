@@ -913,6 +913,12 @@ object NaConfig {
             ConfigItem.configTypeInt,
             1 // 0: off; 1: always on; 2: settings only; 3: chats only
         )
+    val materialDesign3ChatHeader =
+        addConfig(
+            "MaterialDesign3ChatHeader",
+            ConfigItem.configTypeBool,
+            false // drops the glass bubble behind the chat/admin-log ActionBar, leaving flat text
+        )
     val hideArchive =
         addConfig(
             "HideArchive",
