@@ -325,16 +325,15 @@ instances (`:231`, `:251`), and consumes them as a shader source
 (`getBitmapShader` at `:256`) with bounds updates (`:286`) rather than drawing
 that drawable as the chat wallpaper. In the drawable implementation,
 `postInvalidateParent` posts the global `invalidateMotionBackground`
-notification (`Components/MotionBackgroundDrawable.java:363`) and self-reposts
-its own animation runnable every 16ms while active (`:372`).
+notification (`Components/MotionBackgroundDrawable.java:352`) and self-reposts
+its own animation runnable every 16ms while active (`:361`).
 
 That makes MessageDrawable a second app-wide producer of
 `invalidateMotionBackground` events that are unrelated to the current chat
-wallpaper motion. ChatActivity therefore has to ignore producer-mismatch events
-for proxy recomposition (`ChatActivity.java:23831`) so those bubble-animation
-ticks do not drive unnecessary wallpaper composite refreshes. ThemePreview's
-observer branch remains arg-agnostic (`ThemePreviewActivity.java:3599`), so the
-payload is safe for existing preview behavior.
+wallpaper motion — a bubble-animation tick and a real wallpaper-motion tick are
+indistinguishable by notification id alone. ThemePreview's observer branch
+remains arg-agnostic (`ThemePreviewActivity.java:3599`), so the payload is safe
+for existing preview behavior.
 
 *(Established 2026-09-04.)*
 

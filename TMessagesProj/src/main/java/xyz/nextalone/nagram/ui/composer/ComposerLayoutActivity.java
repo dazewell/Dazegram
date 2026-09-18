@@ -1520,11 +1520,11 @@ public class ComposerLayoutActivity extends BaseFragment {
          * still yields a usable source, so the capsule is never left unpainted. */
         private void attachGlass(Drawable wallpaper) {
             BlurredBackgroundSource source = wallpaperProvider.updateSourceFromBackgroundViewDrawable(wallpaper);
-            // NagramX: the motion-wallpaper proxy now carries the pattern, so the glass has to sample it at
-            // the preview's own aspect or the pattern reads as a stretched 1:1 fragment. Retain the source
-            // and feed it the preview cell's measured size; before the first measure (the setLayout-time
-            // attach) fall back to the screen aspect the compositor renders at, then onSizeChanged replaces
-            // it with the real, wide-and-shallow cell dimensions once they are known.
+            // NagramX: a bitmap-backed proxy (gradient mesh or blurred photo) has to sample at the
+            // preview's own aspect or it reads as a stretched 1:1 fragment. Retain the source and feed it
+            // the preview cell's measured size; before the first measure (the setLayout-time attach) fall
+            // back to the screen aspect, then onSizeChanged replaces it with the real, wide-and-shallow
+            // cell dimensions once they are known.
             if (source instanceof BlurredBackgroundSourceBitmap) {
                 glassSource = (BlurredBackgroundSourceBitmap) source;
                 int w = getMeasuredWidth();
@@ -1552,7 +1552,7 @@ public class ComposerLayoutActivity extends BaseFragment {
             super.onSizeChanged(w, h, oldw, oldh);
             // NagramX: attachGlass runs before the cell is measured, so the source starts sized to the
             // screen. Once the real preview dimensions arrive, re-point the source's centre-crop matrix at
-            // them and reprime the baked glass display lists, or the pattern samples as a full-screen
+            // them and reprime the baked glass display lists, or the wallpaper samples as a full-screen
             // fragment in this wide, shallow cell.
             if (glassSource != null && w > 0 && h > 0) {
                 glassSource.setParentSize(w, h, 0);
