@@ -43,33 +43,41 @@ proves nothing. Ask GitHub instead, and only conclude "never pushed" when it
 says so:
 
 ```powershell
-$local  = git rev-parse --abbrev-ref HEAD
-$branch = gh pr list --head $local --state all --json headRefName --jq '.[0].headRefName'
-if (-not $branch) {
-  $branch = gh pr list --head ($local -replace '_','-') --state all --json headRefName --jq '.[0].headRefName'
+$local = git rev-parse --abbrev-ref HEAD
+$pr = gh pr list --head $local --state all --json number,headRefName --jq '.[0]' | ConvertFrom-Json
+if (-not $pr) {
+  $pr = gh pr list --head ($local -replace '_','-') --state all --json number,headRefName --jq '.[0]' | ConvertFrom-Json
 }
-if (-not $branch) { $branch = (git rev-parse --abbrev-ref '@{u}' 2>$null) -replace '^origin/','' }
-if (-not $branch) { $branch = $local }
+$branch = if ($pr) { $pr.headRefName }
+          elseif ($u = (git rev-parse --abbrev-ref '@{u}' 2>$null)) { $u -replace '^origin/','' }
+          else { $local }
 git ls-remote --heads origin $branch               # empty means genuinely never pushed
 ```
 
-Then bind to the remote head before reading anything, so you reconstruct the
-newest state rather than whatever the abandoned worktree happened to stop at —
-a session that died may be several commits behind its own branch:
+**Keep `$pr.number`** — the PR reads further down need it, and if pickup started
+from a branch name this lookup is the only place it appears.
+
+Then bind to the remote head, so you reconstruct the newest state rather than
+whatever the abandoned worktree happened to stop at — a session that died may be
+several commits behind its own branch:
 
 ```powershell
 git fetch origin dev $branch
+git status --short                                 # FIRST: anything uncommitted here?
 git --no-pager log --oneline HEAD..origin/$branch  # commits on GitHub this worktree lacks
 ```
 
-If that is non-empty, fast-forward onto it before continuing; if it has
-diverged, stop and report rather than quietly reconstructing a fork of the
-change.
+**Deal with the dirty tree before you move `HEAD`, not after.** Uncommitted work
+is the only copy in existence and a fast-forward is the fastest way to lose it —
+it will either refuse and leave you improvising, or, worse, tempt a `reset
+--hard` that destroys it silently. So read it first (below), decide what to keep,
+and commit or stash it. Only then fast-forward, if `HEAD..origin/$branch` was
+non-empty. If the two have **diverged**, stop and report rather than quietly
+reconstructing a fork of the change.
 
 ```powershell
 git --no-pager log --oneline origin/dev..HEAD      # what landed, and its #slug
 git --no-pager diff --stat origin/dev...HEAD       # the shape of the change
-git status --short                                 # uncommitted work the last session left
 git --no-pager log --all --grep '#<slug>'          # related work on any other branch
 git --no-pager diff origin/dev...HEAD              # finally, the change itself
 ```
@@ -93,8 +101,8 @@ green, and never as broken.
 handoff often has no PR, and these commands are not runnable without one:
 
 ```powershell
-gh pr view <n>                                     # the body, and any <!-- handoff --> block
-gh pr view <n> --comments                          # review findings and their dispositions
+gh pr view $pr.number                              # the body, and any <!-- handoff --> block
+gh pr view $pr.number --comments                   # review findings and their dispositions
 ```
 
 `--comments` shows the text but **not** whether a thread was resolved, and an
@@ -103,28 +111,28 @@ directly — the same `reviewThreads` query
 `.github/agents/nagramx-implementer.agent.md` already uses:
 
 ```powershell
-$q = 'query { repository(owner:"dazewell",name:"Dazegram"){ pullRequest(number:<n>){
-  reviewThreads(first:100){ nodes { isResolved path line comments(first:1){ nodes { body } } } } } } }'
-gh api graphql -f query=$q --jq '.data.repository.pullRequest.reviewThreads.nodes[]
+$q = 'query($c:String) { repository(owner:"dazewell",name:"Dazegram"){ pullRequest(number:'+$pr.number+'){
+  reviewThreads(first:100, after:$c){ pageInfo { hasNextPage endCursor }
+    nodes { isResolved path line comments(first:1){ nodes { body } } } } } } }'
+gh api graphql --paginate -f query=$q --jq '.data.repository.pullRequest.reviewThreads.nodes[]
   | select(.isResolved==false) | "\(.path):\(.line)"'
 ```
 
-`first:100` covers any PR here in practice, but it silently truncates rather
-than erroring, so on a long-running PR page it with the `pageInfo` cursor
-pattern in `nagramx-branch-flow` — an unresolved thread at 101 reads as a clean
-review.
+`--paginate` needs the `pageInfo` cursor in the query to follow — without it
+the first 100 threads are silently all you get, and an unresolved thread at 101
+reads as a clean review.
 
 With no PR, the local history and CI are the whole record. Say so in your
 confirmation rather than leaving it ambiguous whether you looked.
 
-**Check `git status` early and deliberately, and read what it found.** A
-session that died badly may have left uncommitted work, and that work is
-invisible to every other command here — `git status --short` names the paths
-but shows none of the content, and `git diff origin/dev...HEAD` excludes it
-entirely. It may be the only copy in existence, so read it before deciding:
-`git --no-pager diff` and `git --no-pager diff --cached` for tracked changes,
-and open each untracked path. Then decide explicitly whether to keep it, and
-say which you chose.
+**Read the uncommitted work — this is the step the fast-forward above waits
+on.** A session that died badly may have left work behind, and it is invisible
+to every other command here: `git status --short` names the paths but shows
+none of the content, and `git diff origin/dev...HEAD` excludes it entirely. It
+may be the only copy in existence, so read it before deciding: `git --no-pager
+diff` and `git --no-pager diff --cached` for tracked changes, and open each
+untracked path. Decide explicitly whether to keep it, commit or stash what you
+keep, and say which you chose. Only then move `HEAD`.
 
 Then read `AGENTS.md` and `nagramx-workflow`. You are mid-pipeline, not exempt
 from it — the compile gate, the review rounds and the `FEATURES.md` obligation
