@@ -332,15 +332,15 @@ That makes MessageDrawable a second app-wide producer of
 `invalidateMotionBackground` events that are unrelated to the current chat
 wallpaper motion. `ChatActivity#didReceivedNotification2` therefore ignores a
 producer-carrying event whenever a motion wallpaper is current and the
-producer isn't it (`ChatActivity.java:23947-23948`) so those bubble-animation
+producer isn't it (`ChatActivity.java:23956-23959`) so those bubble-animation
 ticks do not drive unnecessary wallpaper composite refreshes; a null current
 wallpaper skips that check entirely, since there is nothing to protect. The
 notification's *other* poster, `ChatBackgroundDrawable`'s pattern-bitmap-decode
 callback (`ChatBackgroundDrawable.java:120`), posts with no payload at all, so
 it is never subject to that filter — it is the actual live consumer of
-`ChatActivity#scheduleGlassCompositeRefresh()`'s no-arg overload in the common
-case where a motion wallpaper is showing, not the MessageDrawable producer
-(see that overload below). ThemePreview's observer branch remains arg-agnostic
+`ChatActivity#scheduleGlassCompositeCrossfade(0)` in the common case where a
+motion wallpaper is showing, not the MessageDrawable producer (see the
+mechanism below). ThemePreview's observer branch remains arg-agnostic
 (`ThemePreviewActivity.java:3599`), so the payload is safe for existing preview
 behavior.
 
@@ -357,110 +357,118 @@ bitmap and posted this same global notification (`invalidateParent`,
 `Components/MotionBackgroundDrawable.java:360-363`), i.e. per-frame work and a
 cross-account notification for a purely visual proxy refresh. The fix removes
 that hook entirely; `ChatActivity#rotateMotionBackgroundDrawable`
-(`ChatActivity.java:27574`) now arms the glass-composite refresh directly
+(`ChatActivity.java:27586`) now arms the glass-composite refresh directly
 after a genuine `switchToNextPosition()` call (detected by
 `posAnimationProgress` dropping from `1.0f` to below it, since a no-op call
 leaves it unchanged — `MotionBackgroundDrawable.java:273-275`).
 
-An earlier version of that replacement self-rearmed
-`refreshGlassComposite` while `posAnimationProgress < 1.0f`, i.e. progress-based.
-That was also wrong: lite mode, a backgrounded app, or the composite suppression
-`refreshGlassComposite` itself applies while paused can all hold the wallpaper's
-own animation callback back indefinitely, so `posAnimationProgress` never
-reaches `1.0f` and the self-rearm has no guaranteed terminating condition. The
-fragment now owns a wall-clock deadline instead — `glassCompositeRefreshUntilMs`
-— set by `ChatActivity#scheduleGlassCompositeRefresh(long)`
-(`ChatActivity.java:52150`) via `Math.max(existing, now + durationMs)` so an
-overlapping fade cannot shorten an already-armed refresh window.
-`ChatActivity#rotateMotionBackgroundDrawable` arms it for 500ms, the duration the no-arg
-`switchToNextPosition()` overload always runs at
-(`fastAnimation` stays `false`, `MotionBackgroundDrawable.java:773`); every
-current-chat wallpaper pattern-alpha/colour-filter fade animator
-(`ChatActivity.java:47656`, `48093`) arms it for its own 250ms.
-`ChatActivity#refreshGlassComposite` (`ChatActivity.java:52192`) self-rearms
-one 30 fps frame callback at a time only
-while `SystemClock.elapsedRealtime()` is still before that deadline, and the
-paused/detached bail clears the deadline outright so nothing keeps rearming
-while the fragment is backgrounded.
+`GlassCompositorBase` (base of `MotionGlassCompositor`/`BitmapGlassCompositor`)
+re-rasterizes a software ARGB_8888 bitmap proxy (~432x768, ~1.3MB) on the UI
+thread every time it composes — Device Perfetto on a real send measured 16 of
+these `refreshMotionComposite` calls averaging ~11ms each during a single
+send-triggered rotate, against .052ms for an ordinary wallpaper draw. Three
+scheduler-only fixes in turn tried to bound how often that recompose ran (a
+fixed suppression window, a live-deadline self-rearm loop, a hard-ceiling
+timestamp gated on `posAnimationProgress`), and each traded one visible defect
+for another — lag during the burst, staleness after it, or (the last one) an
+abrupt single-frame bitmap swap when the suppressed composite finally caught
+up, since the single-buffer proxy erased its own pixels in place before a new
+one landed and nothing could blend from what was there a moment ago. Round 1.5
+architecture review concluded lag, staleness, and the swap-jump were one
+constraint, not three independent bugs, and replaced the scheduler outright
+with a double-buffered composite and a time-based crossfade blend.
 
-*(Established 2026-09-04; extended 2026-09-17 with the postInvalidateParent
-removal and its replacement mechanism; corrected 2026-09-17 to the wall-clock
-deadline after the progress-based self-rearm was found non-terminating.)*
+**Current mechanism (round 5, `#glass-pattern-fix`, snapshot-and-crossfade):**
 
-Device Perfetto on a real send later measured what that wall-clock deadline was
-actually buying: a genuine send-triggered rotate still drove 16 UI-thread
-`refreshMotionComposite` calls averaging ~11ms each (the 30fps self-rearm loop
-above still recomposes every frame the deadline is open), against .052ms for
-an ordinary wallpaper draw — the deadline coalesces the *rearm*, not the
-*recompose*. A first fix added a second, narrower armer gated by a sticky
-boolean (`glassCompositeSettleOnly`) that suppressed recomposing for as long
-as the same accumulating `Math.max` deadline stayed open; a second fix (round
-1.5) replaced that boolean with a hard-ceiling timestamp gated on
-`posAnimationProgress`. Both were replaced again (round 2, `#glass-pattern-fix`)
-after the on-device outcome: the panel content behind the send (unread/typing
-row updates) was delayed by up to a full second because the ceiling/progress
-test could ride a live fade's extended deadline, and reading
-`getPosAnimationProgress()` inside the suppression check tied a recompose
-decision to wallpaper animation state that has nothing to do with how long a
-send burst actually needs suppressing.
+`GlassCompositorBase#composeInto` holds two retained bitmap buffers instead of
+one and always draws the fresh composite into whichever buffer ISN'T
+currently live on the target `BlurredBackgroundSourceBitmap`, then flips the
+target onto it — the buffer that was live keeps its pixels intact (never
+erased in place) so a caller can read it via `target.getBitmap()`/`getMatrix()`
+immediately before triggering a refresh, and use it as a crossfade's
+"previous frame". Neither buffer is ever `Bitmap.recycle()`d, per the existing
+discipline (a baked glass display list or the crossfade's own shader may
+still reference one, and HWUI throws on a recycled bitmap); dropped buffers
+are just nulled and left to GC. `WallpaperBitmapProvider#getCompositeBitmap()`/
+`getCompositeMatrix()` expose that live bitmap+matrix, and `#setParentSize`
+now returns whether the parent's dimensions actually changed (new
+`lastParentWidth`/`lastParentHeight`/`lastParentActionBarHeight` fields), so
+`ChatActivity` can tell a real resize from the identical-dims layout pass
+every `onMeasure` triggers.
 
-The current mechanism is a fixed, non-extending, pure-wall-clock suppression
-window, `glassCompositeSuppressUntilMs` (`ChatActivity.java:52134`; `0` = none),
-armed only by `ChatActivity#scheduleGlassCompositeRefreshForSend(long)`
-(`ChatActivity.java:52163`) — called only from the send-triggered rotate branch
-in `ChatActivity#rotateMotionBackgroundDrawable` (`ChatActivity.java:27601`, passing the
-`GLASS_COMPOSITE_ROTATE_MS = 500` constant at `ChatActivity.java:52107`).
-It opens a `GLASS_COMPOSITE_SEND_SUPPRESS_MS = 250` window
-(`ChatActivity.java:52117`) from now only when the live deadline
-(`glassCompositeRefreshUntilMs`) is not already open — a live fade in flight
-already gets continuous recomposes, so there's nothing to suppress on top of
-it — `Math.max`-guarded against a still-open suppress window so a second rapid
-send cannot shorten one already in flight. The live deadline itself is always
-extended by `durationMs`, same as the normal armer. 250ms is deliberately not
-derived from the wallpaper's own 500ms rotate: it matches
-`ChatListItemAnimator.DEFAULT_DURATION` (250,
-`ChatListItemAnimator.java:46`), the message row's own add/move animation
-duration, since that is the panel content this fix exists to stop delaying.
-Multi-send safety: this only ever arms from a callsite gated on `wasSettled`
-(a genuine rotate just started), so a fresh 250ms window can only open at
-least one full rotate after the previous one did, never back-to-back on every
-send.
+`ChatActivity#navbarContentSourceWallpaper` (`ChatActivity.java:536`) is now a
+`CrossfadingMotionGlassSource` rather than a bare `BlurredBackgroundSourceWrapped`
+— a drop-in swap, since every composite consumer (the render nodes'
+`setUnderSource`, the round-video recording backdrop) already pointed at this
+one field and only needed its concrete type to change. It extends
+`BlurredBackgroundSourceWrapped` rather than implementing
+`BlurredBackgroundSource` directly specifically so
+`WallpaperBitmapProvider#getStatusBarColor`/`getNavigationBarColor`, which
+resolve colour by recursing an `instanceof BlurredBackgroundSourceWrapped`
+chain via `getSource()`, keep resolving through it exactly as before — a bare
+interface implementation would have silently broken that dispatch and made
+both getters return `0`. Its `draw()` paints a retained previous-composite
+snapshot at full alpha, then the live composite on top inside a
+`canvas.saveLayerAlpha` ramping from transparent to opaque; because the glass
+render nodes record `source.draw(...)` into a hardware `RecordingCanvas`
+(`BlurredBackgroundDrawableRenderNode.java:101`), this blend is a GPU
+alpha-composite of two already-rasterised layers, not a per-tick
+re-rasterization of either.
 
-In `ChatActivity#refreshGlassComposite` (`ChatActivity.java:52192`), the suppress branch
-(`ChatActivity.java:52221-52226`) is a pure clock check — `now <
-glassCompositeSuppressUntilMs` — with no `getPosAnimationProgress()` read at
-all; once the window passes it always falls through to the unconditional
-composite below, whatever the rotate's progress is. Accepted cost of the fixed
-250ms window: on the device profile above, that is roughly 7-8 of the
-measured ~11ms composites (≈85ms of self-rearm tail) that still land during
-the live deadline's remaining ~250ms after suppression lifts, rather than the
-full 16-composite burst — a smaller, bounded tail traded for the panel update
-landing within one 250ms window of the send instead of up to 1s late.
+Every wallpaper-content-moved trigger — a genuine send rotate
+(`ChatActivity#rotateMotionBackgroundDrawable`, `ChatActivity.java:27612`),
+the skeleton loading exit edge (`ChatActivity#isSkeletonVisible`,
+`ChatActivity.java:22502`), the two pattern-alpha/colour-filter fades
+(`ChatActivity#setupChatTheme` and `chatTheme.loadWallpaper`'s callback,
+`ChatActivity.java:47660`, `48095`), an unfiltered `invalidateMotionBackground`
+notification (`ChatActivity#didReceivedNotification2`, `ChatActivity.java:23962`)
+— now calls `ChatActivity#scheduleGlassCompositeCrossfade(durationMs)`
+(`ChatActivity.java:52129`) exactly once. That cancels and reposts a single
+wall-clock-timed settle runnable, so a burst collapses to one trailing firing
+`durationMs` after the *last* call — never a refresh per call, and never
+gated on `posAnimationProgress`, which can stall indefinitely behind lite
+mode or a backgrounded app. `ChatActivity#onGlassCompositeSettle`
+(`ChatActivity.java:52149`) is what actually fires: it performs exactly one
+`refreshMotionComposite` call and, on success, blends the result in over
+`GLASS_COMPOSITE_CROSSFADE_MS` (200ms) via
+`ChatActivity#startGlassCompositeCrossfade` (`ChatActivity.java:52187`), the
+one `ValueAnimator` this mechanism owns. If paused or detached when the
+settle runnable fires, it marks `glassCompositeDirty` instead of compositing;
+`ChatActivity#onResume` (`ChatActivity.java:32241`) runs one fresh,
+non-blended catch-up composite when it finds that flag set, since there is
+nothing meaningful to blend against after an unbounded background gap.
 
-The normal live armer, `ChatActivity#scheduleGlassCompositeRefresh(long)`
-(`ChatActivity.java:52150`, used by pattern-alpha/colour-filter fades,
-chat-theme re-prime, and the skeleton's own exit-edge refresh), always clears
-`glassCompositeSuppressUntilMs` to `0` before extending its own deadline, so a
-live fade can never get stuck behind a stale suppress window left over from an
-earlier send. The device-rotation config-change reprime in
-`ChatActivity#onConfigurationChanged` bypasses that overload and clears the
-timestamp directly (`ChatActivity.java:33115`) for the same reason. The
-`ChatActivity#onResume` dirty catch-up (`ChatActivity.java:32242`) also
-unconditionally clears the suppress timestamp — resuming from background never
-has a meaningful window to resume — then arms the plain frame callback if the
-live deadline is still ahead of now, or refreshes immediately otherwise; it no
-longer resolves the wallpaper or checks its animation state at all. The
-no-arg one-shot overload, `ChatActivity#scheduleGlassCompositeRefresh()`
-(`ChatActivity.java:52141`), deliberately leaves the suppress timestamp alone
-in either direction, so a trigger arriving during a send's suppression window
-can neither shorten nor extend it — including its actual live caller,
-`ChatBackgroundDrawable`'s arg-less pattern-decode post
-(`ChatBackgroundDrawable.java:120`, see the MessageDrawable section above for
-why the bubble-producer path is filtered out instead and does not reach this
-overload while a motion wallpaper is current). The timestamp is also
-cleared wherever it would otherwise go stale — the paused/detached bail and the
-null-wallpaper bail in `ChatActivity#refreshGlassComposite` (`ChatActivity.java:52194-52210`)
-— so a backgrounded suppression can't survive to gate an unrelated later refresh.
+Matrix-safety: a size, keyboard-pan, or orientation change mid-blend would
+keep blending two composites recorded at different geometry.
+`ChatActivity#cancelGlassCompositeCrossfade` (`ChatActivity.java:52222`) stops
+the animator and snaps to whatever is currently live, called from
+`ChatActivity#updateGlassBackgroundTranslation` (keyboard pan,
+`ChatActivity.java:52083`), `onMeasure` only when
+`WallpaperBitmapProvider#setParentSize` reports an actual dimension change
+(`ChatActivity.java:20081`), and `onPause`. It deliberately leaves a still-
+*pending* settle runnable alone in all of those cases — the runnable hasn't
+recomposited or started a blend yet, so nothing geometry-unsafe happens if it
+still fires later against whatever is live by then, and cancelling it outright
+(as `onFragmentDestroy` does, since nothing should touch a destroyed
+fragment's state) would instead silently drop a send burst's queued
+composite. Orientation change is stricter: `ChatActivity#onConfigurationChanged`
+(`ChatActivity.java:33111`) cancels the blend *and* posts
+`ChatActivity#snapGlassCompositeForConfigChange` (`ChatActivity.java:52234`),
+which recomposes and shows the result outright instead of routing through the
+crossfade at all, since the old- and new-orientation composites are different
+dimensions and blending across that would misalign the pattern for the fade's
+whole duration.
+
+One more race the double buffer creates that the mechanism above has to
+close: if a second settle fires while a blend from the first is still in
+flight (a rare overlapping-burst case, not the common single-trailing-firing
+case the settle runnable's cancel-and-repost already collapses), `composeInto`
+would reclaim the *other* buffer — which by then is exactly the bitmap the
+in-flight blend's shader still points at as its "previous frame" — and
+overwrite it mid-render. `onGlassCompositeSettle` closes this by calling
+`cancelGlassCompositeCrossfade()` before reading the previous bitmap or
+recomposing, ending any in-flight blend outright so the buffer it reclaims is
+never one a live shader still references.
 
 A per-chat wallpaper is constructed wrapped in `ChatBackgroundDrawable`
 (`ChatBackgroundDrawable.getOrCreate`, `ChatBackgroundDrawable.java:57`), not
@@ -469,69 +477,23 @@ its `getDrawable(boolean prioritizeThumb)` getter
 (`ChatBackgroundDrawable.java:280`). Any `instanceof MotionBackgroundDrawable`
 check run directly over a resolved wallpaper therefore misses every per-chat
 wallpaper and has to unwrap through that getter first — done at each of this
-fix's three read sites: `ChatActivity#resolveCurrentMotionWallpaper`
-(`ChatActivity.java:52186-52187`), `ChatActivity#rotateMotionBackgroundDrawable`
-(`ChatActivity.java:27582-27583`), and the pattern-alpha fade armer in
-`ChatActivity#setupChatTheme` (`ChatActivity.java:47631`).
+mechanism's three read sites: `ChatActivity#resolveCurrentMotionWallpaper`
+(`ChatActivity.java:52143-52145`), `ChatActivity#rotateMotionBackgroundDrawable`
+(`ChatActivity.java:27593-27594`), and the pattern-alpha fade armer in
+`ChatActivity#setupChatTheme` (`ChatActivity.java:47636-47638`).
 
-The skeleton's own rotation is a separate mechanism from the send-triggered
-rotate above: `ChatActivity#isSkeletonVisible` (`ChatActivity.java:22442`)
-drives `isIndeterminateAnimation` directly off `rotate` (loading state), not off
-`switchToNextPosition()`, so it never touches the live deadline or send-suppress
-window described above at all — the composite proxy held a stale, un-rotated
-composite through the entire loading skeleton with no mechanism to catch it up
-once loading finished. The fix edge-detects that same `rotate` flag with a
-dedicated boolean, `glassSkeletonWallpaperAnimating`
-(`ChatActivity.java:52124`), inside the existing `MotionBackgroundDrawable`
-block (`ChatActivity.java:22484-22491`), and arms one plain
-`scheduleGlassCompositeRefresh(GLASS_COMPOSITE_ROTATE_MS)` live-deadline call
-only on the falling edge (loading finished) — it never uses the send-suppress
-armer, since a skeleton exit is a normal live update, not a send. It
-deliberately does not arm on the rising edge or live-update while the skeleton
-is animating: a measured 11ms per composite at the 30fps self-rearm rate is
-the same cost the send-suppress window above exists to bound, and the
-skeleton's own indeterminate spin is not something a user is watching the
-wallpaper pattern move against. The `ChatActivity#onResume` dirty catch-up
-(`ChatActivity.java:32241`) no longer branches on `isIndeterminateAnimation()`
-at all (round 2, `#glass-pattern-fix`) — it is a pure live-deadline-vs-now
-check now, so the skeleton case falls out of that same generic check rather
-than needing its own carve-out.
-
-Separately, both current-chat pattern-alpha fade animators
-(`ChatActivity#setupChatTheme`'s `currentBackgroundDrawable` fade,
-`ChatActivity.java:47643-47649`, and the `patternIntensityAnimator` in
-`chatTheme.loadWallpaper`'s callback, `ChatActivity.java:48076-48081`) now add
-a terminal one-shot `scheduleGlassCompositeRefresh()` call in `onAnimationEnd`,
-right after the pattern alpha is snapped to its settled `1f` end value. Their
-existing 250ms live armer (`ChatActivity.java:47656`, `48093`) is a *duration*,
-not a guarantee the animator actually reaches its terminal callback within it —
-a backgrounded app can suppress the choreographer driving the fade, extending
-it well past 250ms, in which case the live deadline lapses before the fade's
-own settled frame ever lands. The terminal one-shot composites once more at
-the animator's actual end regardless of how long that took.
-
-*(Extended 2026-09-17, `#glass-pattern-fix`, with the measured per-composite
-cost and the settle-only suppression mechanism; corrected 2026-09-17 round 1.5,
-`#glass-pattern-fix`, replacing the sticky boolean with a non-accumulating
-hard-ceiling timestamp after review found the boolean's window could silently
-extend past its intended budget alongside an overlapping live fade; corrected
-2026-09-17, `#glass-pattern-fix`, with the `ChatBackgroundDrawable` unwrap
-fix and its citations after stale line numbers were found in review; extended
-2026-09-17 round 4, `#glass-pattern-fix`, with the skeleton's own indeterminate
-rotate settle-on-exit edge detect and the pattern-fade terminal one-shot;
-replaced 2026-09-17 round 2, `#glass-pattern-fix`, after on-device testing
-showed the settle/progress-gated ceiling above delayed the panel update by up
-to a full second — the mechanism is now a fixed 250ms send-only suppression
-window followed by the normal live rotate tail, with the skeleton falling edge
-folded into the plain live armer and the `onResume` catch-up reduced to a pure
-live-deadline-vs-now check; citations re-derived for all of the above after
-this replacement shifted line numbers; corrected 2026-09-17, `#glass-pattern-fix`,
-after final review found the no-arg overload's live consumer had been
-misattributed to the filtered-out `MessageDrawable` bubble producer instead of
-`ChatBackgroundDrawable`'s arg-less pattern-decode post, and that several
-own-method citations above had drifted again since the prior re-derivation —
-those now carry a stable `ChatActivity#symbol` alongside the current line so
-the next drift is easier to spot.)*
+*(Established 2026-09-04 with the postInvalidateParent removal; extended and
+corrected several times 2026-09-17 through round 4, `#glass-pattern-fix`, with
+a fixed-suppression-window scheduler, a live-deadline self-rearm loop, and a
+skeleton falling-edge detector, in that order, chasing the send-lag and
+panel-update-delay defects those iterations kept trading for each other;
+replaced entirely round 1.5/round 5, `#glass-pattern-fix`, after on-device
+testing of round 4's fix surfaced a fourth defect — the suppressed composite
+catching up as an abrupt, unblended single-frame bitmap "jump" — and
+architecture review concluded the underlying constraint could not be resolved
+by tuning a scheduler further; the double-buffered composite and time-based
+crossfade above is the replacement and deletes all prior scheduler state
+rather than layering on top of it.)*
 
 
 ## Forwarding aliases the source message's media object
