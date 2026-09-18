@@ -22481,6 +22481,14 @@ public class ChatActivity extends BaseFragment implements
                 } else if (rotate) {
                     motion.updateAnimation();
                 }
+                if (glassSkeletonWallpaperAnimating != rotate) {
+                    glassSkeletonWallpaperAnimating = rotate;
+                    // NagramX: glass deliberately holds a stale composite through skeleton loading (measured
+                    // 11ms*30fps UI cost to live-update); one settle refresh at exit is enough.
+                    if (!rotate) {
+                        scheduleGlassCompositeRefreshSettleOnly(GLASS_COMPOSITE_ROTATE_MS);
+                    }
+                }
             }
         }
         return visible || startMessageAppearTransitionMs != 0 && System.currentTimeMillis() - startMessageAppearTransitionMs <= SKELETON_DISAPPEAR_MS;
@@ -32223,13 +32231,14 @@ public class ChatActivity extends BaseFragment implements
         // NagramX: a glass-composite refresh requested while backgrounded was deferred; run it now that
         // the wallpaper may have rotated or its pattern arrived while we were paused. isPaused is already
         // false here (set by super.onResume() above), so refreshGlassComposite/scheduleGlassCompositeRefreshSettleOnly
-        // below won't hit the paused bail. If the resolved wallpaper is still mid-rotate, resume the
-        // settle ceiling instead of forcing an immediate composite that a live rotate would just redo
-        // moments later; otherwise catch up right away.
+        // below won't hit the paused bail. If the resolved wallpaper is still mid send-triggered rotate
+        // (not the skeleton's indeterminate one, which arms its own settle on exit - see
+        // isSkeletonVisible), resume the settle ceiling instead of forcing an immediate composite that a
+        // live rotate would just redo moments later; otherwise catch up right away.
         if (glassCompositeDirty) {
             glassCompositeDirty = false;
             MotionBackgroundDrawable glassWallpaper = resolveCurrentMotionWallpaper();
-            if (glassWallpaper != null && glassWallpaper.getPosAnimationProgress() < 1.0f) {
+            if (glassWallpaper != null && !glassWallpaper.isIndeterminateAnimation() && glassWallpaper.getPosAnimationProgress() < 1.0f) {
                 scheduleGlassCompositeRefreshSettleOnly(GLASS_COMPOSITE_ROTATE_MS);
             } else {
                 refreshGlassComposite();
@@ -47632,6 +47641,10 @@ public class ChatActivity extends BaseFragment implements
                             public void onAnimationEnd(Animator animation) {
                                 super.onAnimationEnd(animation);
                                 currentBackgroundDrawable.setPatternAlpha(1f);
+                                // NagramX: 250ms live armer above isn't a terminal-value guarantee (a
+                                // backgrounded app can suppress the driving choreographer), so land one more
+                                // composite at the settled end value.
+                                scheduleGlassCompositeRefresh();
                             }
                         });
                         valueAnimator.setDuration(250);
@@ -48055,6 +48068,16 @@ public class ChatActivity extends BaseFragment implements
                         patternIntensityAnimator.addUpdateListener(animator -> {
                             float value = (float) animator.getAnimatedValue();
                             motionDrawable.setPatternAlpha(value);
+                        });
+                        patternIntensityAnimator.addListener(new AnimatorListenerAdapter() {
+                            @Override
+                            public void onAnimationEnd(Animator animation) {
+                                super.onAnimationEnd(animation);
+                                motionDrawable.setPatternAlpha(1f);
+                                // NagramX: same terminal one-shot as setupChatTheme's currentBackgroundDrawable
+                                // fade above - the 250ms live armer below isn't a terminal-value guarantee.
+                                scheduleGlassCompositeRefresh();
+                            }
                         });
                         patternIntensityAnimator.setDuration(250);
                         patternIntensityAnimator.start();
@@ -52082,6 +52105,10 @@ public class ChatActivity extends BaseFragment implements
     private boolean glassCompositeDirty;
     private boolean glassCompositeRefreshPending;
     private long glassCompositeRefreshUntilMs;
+    // NagramX: tracks the skeleton's own indeterminate-rotate edge (see isSkeletonVisible), separate from
+    // glassCompositeRefreshUntilMs above - skeleton loading deliberately holds a stale glass composite
+    // instead of live-updating it, so this only arms a single settle refresh on the falling edge.
+    private boolean glassSkeletonWallpaperAnimating;
     // NagramX: device Perfetto measured a genuine send-triggered rotate at 16 UI-thread composites
     // averaging ~11ms each inside a burst that otherwise held the wallpaper's held pattern-fade pill up
     // to 1s under severe jank (normally <=500ms), against .052ms for an ordinary wallpaper draw. While

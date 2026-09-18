@@ -331,7 +331,7 @@ its own animation runnable every 16ms while active (`:372`).
 That makes MessageDrawable a second app-wide producer of
 `invalidateMotionBackground` events that are unrelated to the current chat
 wallpaper motion. ChatActivity therefore has to ignore producer-mismatch events
-for proxy recomposition (`ChatActivity.java:23938`) so those bubble-animation
+for proxy recomposition (`ChatActivity.java:23946`) so those bubble-animation
 ticks do not drive unnecessary wallpaper composite refreshes. ThemePreview's
 observer branch remains arg-agnostic (`ThemePreviewActivity.java:3599`), so the
 payload is safe for existing preview behavior.
@@ -349,7 +349,7 @@ bitmap and posted this same global notification (`invalidateParent`,
 `Components/MotionBackgroundDrawable.java:360-363`), i.e. per-frame work and a
 cross-account notification for a purely visual proxy refresh. The fix removes
 that hook entirely; `ChatActivity.rotateMotionBackgroundDrawable`
-(`ChatActivity.java:27565`) now arms the glass-composite refresh directly
+(`ChatActivity.java:27573`) now arms the glass-composite refresh directly
 after a genuine `switchToNextPosition()` call (detected by
 `posAnimationProgress` dropping from `1.0f` to below it, since a no-op call
 leaves it unchanged — `MotionBackgroundDrawable.java:273-274`).
@@ -362,14 +362,14 @@ own animation callback back indefinitely, so `posAnimationProgress` never
 reaches `1.0f` and the self-rearm has no guaranteed terminating condition. The
 fragment now owns a wall-clock deadline instead — `glassCompositeRefreshUntilMs`
 — set by `scheduleGlassCompositeRefresh(long durationMs)`
-(`ChatActivity.java:52110`) via `Math.max(existing, now + durationMs)` so an
+(`ChatActivity.java:52137`) via `Math.max(existing, now + durationMs)` so an
 overlapping fade cannot shorten an already-armed refresh window.
 `rotateMotionBackgroundDrawable` arms it for 500ms, the duration the no-arg
 `switchToNextPosition()` overload always runs at
 (`fastAnimation` stays `false`, `MotionBackgroundDrawable.java:773`); every
 current-chat wallpaper pattern-alpha/colour-filter fade animator
-(`ChatActivity.java:47641`, `48068`) arms it for its own 250ms. `refreshGlassComposite`
-(`ChatActivity.java:52153`) self-rearms one 30 fps frame callback at a time only
+(`ChatActivity.java:47654`, `48091`) arms it for its own 250ms. `refreshGlassComposite`
+(`ChatActivity.java:52180`) self-rearms one 30 fps frame callback at a time only
 while `SystemClock.elapsedRealtime()` is still before that deadline, and the
 paused/detached bail clears the deadline outright so nothing keeps rearming
 while the fragment is backgrounded.
@@ -394,21 +394,21 @@ pill for up to 1s under severe jank instead of the intended <=500ms.
 
 The fix (round 1.5, `#glass-pattern-fix`) replaces the boolean with a
 dedicated hard-ceiling timestamp, `glassCompositeSettleUntilMs`
-(`ChatActivity.java:52094`; `0` = none), that is never `Math.max`-accumulated.
+(`ChatActivity.java:52121`; `0` = none), that is never `Math.max`-accumulated.
 `scheduleGlassCompositeRefreshSettleOnly(long durationMs)`
-(`ChatActivity.java:52123`) — used only by the send-triggered rotate branch in
-`rotateMotionBackgroundDrawable` (`ChatActivity.java:27592`, passing the
-`GLASS_COMPOSITE_ROTATE_MS = 500` constant at `ChatActivity.java:52081`) and by
+(`ChatActivity.java:52150`) — used only by the send-triggered rotate branch in
+`rotateMotionBackgroundDrawable` (`ChatActivity.java:27600`, passing the
+`GLASS_COMPOSITE_ROTATE_MS = 500` constant at `ChatActivity.java:52104`) and by
 the `onResume` catch-up when the fragment resumes mid-rotate
-(`ChatActivity.java:32233`) — first checks whether a live deadline
+(`ChatActivity.java:32242`) — first checks whether a live deadline
 (`glassCompositeRefreshUntilMs`) is already open; if so it defers entirely to
 the normal armer (`scheduleGlassCompositeRefresh(long)`,
-`ChatActivity.java:52110`) so a live fade always wins outright, never sharing a
+`ChatActivity.java:52137`) so a live fade always wins outright, never sharing a
 ceiling with the settle-only window. Otherwise it assigns
 `glassCompositeSettleUntilMs = now + durationMs * 2` — a one-shot ceiling, not
 an accumulating deadline — decoupling the send's settle budget from whatever
 the live deadline happens to be doing. In `refreshGlassComposite`
-(`ChatActivity.java:52153`), the settle branch (`ChatActivity.java:52182-52188`)
+(`ChatActivity.java:52180`), the settle branch (`ChatActivity.java:52208-52214`)
 holds off recomposing only while *both* `posAnimationProgress < 1.0f` **and**
 `SystemClock.elapsedRealtime()` is still short of that ceiling; either
 condition failing clears the timestamp and falls through to exactly one
@@ -420,18 +420,18 @@ composite that lands when the ceiling fires is not guaranteed to be the
 rotate's fully-settled final frame.
 
 The normal live armer, `scheduleGlassCompositeRefresh(long)`
-(`ChatActivity.java:52110`, used by pattern-alpha/colour-filter fades and
+(`ChatActivity.java:52137`, used by pattern-alpha/colour-filter fades and
 chat-theme re-prime), always clears `glassCompositeSettleUntilMs` to `0` before
 extending its own deadline, so a live fade can never get stuck behind a stale
 settle ceiling left over from an earlier send. The device-rotation config-change
 reprime in `onConfigurationChanged` bypasses that overload and clears the
-timestamp directly (`ChatActivity.java:33101-33104`) for the same reason. The
-no-arg one-shot overload (`ChatActivity.java:52101`, used by the foreign/bubble
+timestamp directly (`ChatActivity.java:33110-33113`) for the same reason. The
+no-arg one-shot overload (`ChatActivity.java:52128`, used by the foreign/bubble
 `MessageDrawable` producer notification) deliberately leaves the timestamp
 alone in either direction, so an unrelated bubble animation tick during a
 send's settle window can neither shorten nor extend it. The timestamp is also
 cleared wherever it would otherwise go stale — the paused/detached bail and the
-null-wallpaper bail in `refreshGlassComposite` (`ChatActivity.java:52155-52171`)
+null-wallpaper bail in `refreshGlassComposite` (`ChatActivity.java:52182-52198`)
 — so a backgrounded ceiling can't survive to gate an unrelated later refresh.
 
 A per-chat wallpaper is constructed wrapped in `ChatBackgroundDrawable`
@@ -442,9 +442,43 @@ its `getDrawable(boolean prioritizeThumb)` getter
 check run directly over a resolved wallpaper therefore misses every per-chat
 wallpaper and has to unwrap through that getter first — done at each of this
 fix's three read sites: `resolveCurrentMotionWallpaper`
-(`ChatActivity.java:52147-52148`), `rotateMotionBackgroundDrawable`
-(`ChatActivity.java:27573-27574`), and the pattern-alpha fade armer in
-`setupChatTheme` (`ChatActivity.java:47620-47623`).
+(`ChatActivity.java:52174-52175`), `rotateMotionBackgroundDrawable`
+(`ChatActivity.java:27581-27582`), and the pattern-alpha fade armer in
+`setupChatTheme` (`ChatActivity.java:47629-47632`).
+
+The skeleton's own rotation is a separate mechanism from the send-triggered
+rotate above: `isSkeletonVisible` (`ChatActivity.java:22442`) drives
+`isIndeterminateAnimation` directly off `rotate` (loading state), not off
+`switchToNextPosition()`, so it never touches the wall-clock deadline or hard
+ceiling described above at all — the composite proxy held a stale, un-rotated
+composite through the entire loading skeleton with no mechanism to catch it up
+once loading finished. The fix edge-detects that same `rotate` flag with a
+dedicated boolean, `glassSkeletonWallpaperAnimating`
+(`ChatActivity.java:52111`), inside the existing `MotionBackgroundDrawable`
+block (`ChatActivity.java:22484-22491`), and arms one
+`scheduleGlassCompositeRefreshSettleOnly(GLASS_COMPOSITE_ROTATE_MS)` call only
+on the falling edge (loading finished). It deliberately does not arm on the
+rising edge or live-update while the skeleton is animating: a measured 11ms
+per composite at the 30fps self-rearm rate is the same cost the send-rotate
+settle-only path above exists to avoid, and the skeleton's own indeterminate
+spin is not something a user is watching the wallpaper pattern move against.
+The `onResume` dirty catch-up (`ChatActivity.java:32241`) now also skips its
+settle-only armer for an `isIndeterminateAnimation()` wallpaper, since that
+state means a skeleton is (or was) driving the rotation itself and the falling
+edge above already owns arming the catch-up refresh for it.
+
+Separately, both current-chat pattern-alpha fade animators
+(`setupChatTheme`'s `currentBackgroundDrawable` fade,
+`ChatActivity.java:47643-47647`, and the `patternIntensityAnimator` in
+`chatTheme.loadWallpaper`'s callback, `ChatActivity.java:48076-48079`) now add
+a terminal one-shot `scheduleGlassCompositeRefresh()` call in `onAnimationEnd`,
+right after the pattern alpha is snapped to its settled `1f` end value. Their
+existing 250ms live armer (`ChatActivity.java:47654`, `48091`) is a *duration*,
+not a guarantee the animator actually reaches its terminal callback within it —
+a backgrounded app can suppress the choreographer driving the fade, extending
+it well past 250ms, in which case the live deadline lapses before the fade's
+own settled frame ever lands. The terminal one-shot composites once more at
+the animator's actual end regardless of how long that took.
 
 *(Extended 2026-09-17, `#glass-pattern-fix`, with the measured per-composite
 cost and the settle-only suppression mechanism; corrected 2026-09-17 round 1.5,
@@ -452,7 +486,11 @@ cost and the settle-only suppression mechanism; corrected 2026-09-17 round 1.5,
 hard-ceiling timestamp after review found the boolean's window could silently
 extend past its intended budget alongside an overlapping live fade; corrected
 2026-09-17, `#glass-pattern-fix`, with the `ChatBackgroundDrawable` unwrap
-fix and its citations after stale line numbers were found in review.)*
+fix and its citations after stale line numbers were found in review; extended
+2026-09-17 round 4, `#glass-pattern-fix`, with the skeleton's own indeterminate
+rotate settle-on-exit edge detect and the pattern-fade terminal one-shot, and
+citations re-derived for all of the above after these insertions shifted line
+numbers.)*
 
 ## Forwarding aliases the source message's media object
 
