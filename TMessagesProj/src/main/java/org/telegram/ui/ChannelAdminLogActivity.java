@@ -1169,7 +1169,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
         contentView.setOccupyStatusBar(!AndroidUtilities.isTablet());
         contentView.setBackgroundImage(Theme.getCachedWallpaper(), Theme.isWallpaperMotion());
         actionBar.setupGlass(glassBackgroundDrawableFactory, BlurredBackgroundProviderImpl.topPanelChatActivity(resourceProvider));
-        actionBar.doNotDrawGlassHeader = xyz.nextalone.nagram.NaConfig.INSTANCE.getMaterialDesign3ChatHeader().Bool();
+        actionBar.doNotDrawGlassHeader = xyz.nextalone.nagram.NaConfig.INSTANCE.getMaterialDesign3ChatHeader().Bool(); // NagramX: Material Design 3 chat header opt-in, scoped to Recent Actions
         emptyViewContainer = new FrameLayout(context);
         emptyViewContainer.setVisibility(View.INVISIBLE);
         contentView.addView(emptyViewContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER));

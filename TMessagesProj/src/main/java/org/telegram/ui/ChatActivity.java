@@ -5383,7 +5383,7 @@ public class ChatActivity extends BaseFragment implements
         contentView.setOccupyStatusBar(!inBubbleMode && !isInsideContainer && !inPreviewMode);
 
         actionBar.setupGlass(glassBackgroundDrawableFactory, BlurredBackgroundProviderImpl.topPanelChatActivity(currentAccount, themeDelegate), ChatObject.isForum(currentChat));
-        actionBar.doNotDrawGlassHeader = NaConfig.INSTANCE.getMaterialDesign3ChatHeader().Bool();
+        actionBar.doNotDrawGlassHeader = NaConfig.INSTANCE.getMaterialDesign3ChatHeader().Bool(); // NagramX: Material Design 3 chat header opt-in, read when the chat ActionBar view is rebuilt
         actionBar.setChatAvatarContainer(avatarContainer);
         avatarContainer.setActionBar(actionBar);
 
