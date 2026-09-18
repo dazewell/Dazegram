@@ -47654,6 +47654,10 @@ public class ChatActivity extends BaseFragment implements
                             public void onAnimationEnd(Animator animation) {
                                 super.onAnimationEnd(animation);
                                 currentBackgroundDrawable.setPatternAlpha(1f);
+                                // NagramX: this animator can stall under jank while the settle's plain
+                                // Handler post still fires on schedule, landing a partial-alpha composite
+                                // with nothing left to catch it up - queue one more zero-delay settle here.
+                                scheduleGlassCompositeCrossfade(0);
                             }
                         });
                         valueAnimator.setDuration(250);
@@ -48085,6 +48089,9 @@ public class ChatActivity extends BaseFragment implements
                             public void onAnimationEnd(Animator animation) {
                                 super.onAnimationEnd(animation);
                                 motionDrawable.setPatternAlpha(1f);
+                                // NagramX: same jank gap as setupChatTheme's fade above - queue one more
+                                // zero-delay settle once this animator actually reaches its terminal frame.
+                                scheduleGlassCompositeCrossfade(0);
                             }
                         });
                         patternIntensityAnimator.setDuration(250);
