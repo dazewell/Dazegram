@@ -49,9 +49,10 @@ before moving on. Never discard work to make the branch look tidy.
 
 ### 2. Make sure a PR exists
 
-If there is none, open one now, **non-draft, into `dev`** — a draft gets no
-automated review, and review history is a large part of what the next session
-reconstructs. An unfinished change is not a reason to draft it; the handoff
+If there is none, open one now, **non-draft, into `dev`**; if one exists as a
+draft, mark it ready (`gh pr ready <n>`). A draft gets no automated review, and
+review history is a large part of what the next session reconstructs. An
+unfinished change is not a reason to draft it; the handoff
 block below is what says it is unfinished. **The PR is where the handoff
 lives**: it is the one surface that outlives the session, reads from any
 machine, and is already bound to the branch.
@@ -66,7 +67,10 @@ session see. Append this block to the end of the body, under its marker:
 <!-- handoff -->
 ## Handoff — <YYYY-MM-DD>
 
-**State:** `<branch>` @ `<short-sha>`. Compiles: yes / no / not tried.
+**State:** `<branch>` @ `<short-sha>`. Compiles: yes / no / not tried /
+path-ignored (no gate ran).
+
+**Left running:** <nothing, or what was not stopped and its exact id.>
 
 **Done.** <Finished and review-clean. One line each.>
 
@@ -95,8 +99,10 @@ Optionally add a one-line comment pointing at it (`Handed off — see the handof
 block in the description`) so watchers get a notification. The body stays
 authoritative.
 
-**No AI or tooling mention anywhere in it.** The hard line covers PR bodies and
-comments like everything else.
+**No AI or assistant mention anywhere in it.** The hard line covers PR bodies
+and comments like everything else. It is about *assistants*, not tooling in
+general — naming `adb`, Gradle or a logcat capture in the line above is fine
+and necessary.
 
 ### 4. Stamp it and stop
 
@@ -127,8 +133,14 @@ step where `nagramx-process-lifecycle` bites hardest: the worktree you are
 abandoning is about to be removed, and a logcat client, a Gradle daemon or an
 `adb` handle still holding it is exactly how a worktree got corrupted before.
 Run that skill's teardown — stop by exact identity, verify termination, delete
-any capture artifact — and put the resulting ledger line in the handoff, so the
-next session knows whether anything was left running rather than guessing.
+any capture artifact — and record the outcome in the **Left running** field, so
+the next session knows rather than guessing.
+
+**If a finding needs code, you are not stopping yet.** Fixing it means another
+commit and another push, which invalidates the sha you just wrote and re-fires
+the reviewer. Go back to step 1, then refresh the handoff block — sha, state,
+half-done — before stopping. The last thing written must describe the last thing
+pushed.
 
 Then tell dazewell the branch, the PR number and one line on what to open next.
 **Stop working.** Further commits invalidate the state you just stamped.

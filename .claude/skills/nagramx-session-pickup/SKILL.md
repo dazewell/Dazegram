@@ -28,10 +28,12 @@ git rev-parse --abbrev-ref HEAD                    # what am I actually on
 
 If that is not the target branch, resolve it before continuing. Given a branch
 name, `git switch <branch>` in this worktree, or work in the worktree that
-already holds it. Given only a PR number, `gh pr view <n> --json headRefName`
-names the branch; fetch and switch to it. **Never** reconstruct from a `HEAD`
-you have not confirmed, and never switch a worktree that has uncommitted work
-belonging to a different change — resolve that first or use another worktree.
+already holds it. Given only a PR number, resolve its state *before* trying to
+switch — `gh pr view <n> --json headRefName,state,mergedAt` — because a merged
+or closed PR usually has no branch left to switch to, and the block below says
+what to do in each case. **Never** reconstruct from a `HEAD` you have not
+confirmed, and never switch a worktree that has uncommitted work belonging to a
+different change — resolve that first or use another worktree.
 
 With `HEAD` confirmed, resolve the name GitHub knows it by — **not** the local
 one, and not the tracking ref either. Both can be absent or different: `_` and
@@ -51,8 +53,18 @@ if (-not $pr) {
 $branch = if ($pr) { $pr.headRefName }
           elseif ($u = (git rev-parse --abbrev-ref '@{u}' 2>$null)) { $u -replace '^origin/','' }
           else { $local }
-git ls-remote --heads origin $branch               # empty means genuinely never pushed
+git ls-remote --heads origin $branch
+if (-not $?) { throw 'remote lookup failed - do not read empty as absent' }
+if (-not (git ls-remote --heads origin $branch)) {
+  git ls-remote --heads origin ($local -replace '_','-')   # the other spelling
+}
 ```
+
+**An empty result is only meaningful if the lookup succeeded**, and only after
+both spellings have been tried — `_` and `-` are interchangeable locally and the
+push may have flattened one into the other. A network or auth failure also
+returns nothing, and reading that as "never pushed" sends pickup down the
+local-only path for a change that has a PR and a full review history.
 
 **Keep `$pr.number`** — the PR reads further down need it, and if pickup started
 from a branch name this lookup is the only place it appears.
@@ -75,8 +87,8 @@ Report it and ask, naming the recovery:
 back on a fresh branch, which is where the work would continue.
 
 Only when `$pr` is empty *and* `ls-remote` is empty is the change genuinely
-local-only: skip the fetch and the `origin/$branch` reads below — they would
-just fail — fetch `dev` alone for a comparison base, and say plainly in your
+local-only: skip the `origin/$branch` reads below — they would just fail —
+`git fetch origin dev` for a comparison base, and say plainly in your
 confirmation that local history was the whole record.
 
 Otherwise bind to the remote head, so you reconstruct the newest state rather
@@ -87,15 +99,24 @@ may be several commits behind its own branch:
 git fetch origin dev $branch
 git status --short                                 # FIRST: anything uncommitted here?
 git --no-pager log --oneline HEAD..origin/$branch  # commits on GitHub this worktree lacks
+git --no-pager log --oneline origin/$branch..HEAD  # local commits GitHub does not have
 ```
 
 **Deal with the dirty tree before you move `HEAD`, not after.** Uncommitted work
 is the only copy in existence and a fast-forward is the fastest way to lose it —
 it will either refuse and leave you improvising, or, worse, tempt a `reset
 --hard` that destroys it silently. So read it first (below), decide what to keep,
-and commit or stash it. Only then fast-forward, if `HEAD..origin/$branch` was
-non-empty. If the two have **diverged**, stop and report rather than quietly
-reconstructing a fork of the change.
+and commit or stash it.
+
+Only then move `HEAD`. Both ranges non-empty means the two have **diverged** —
+stop and report rather than quietly reconstructing a fork of the change. If only
+the first is non-empty, fast-forward, and note that the fetch above updated the
+remote-tracking ref without touching `HEAD`, so skipping this leaves you reading
+new commits and building on old ones:
+
+```powershell
+git merge --ff-only origin/$branch
+```
 
 ```powershell
 git --no-pager log --oneline origin/dev..HEAD      # what landed, and its #slug
@@ -115,9 +136,12 @@ git rev-parse --short=9 HEAD
 ```
 
 A run on an older SHA says nothing about the current tree. **No run at all is
-not a pass**: `ci.yml` path-ignores doc, hook, agent and skill changes, so a
-doc-only branch legitimately has none. Report that as path-ignored — never as
-green, and never as broken.
+not a pass**, and it has two causes that need opposite answers: `ci.yml`
+path-ignores doc, hook, agent and skill changes, so a doc-only branch
+legitimately has none — but an event can also be dropped. Check the diff against
+the workflow's `paths-ignore` before deciding. Every changed path ignored means
+path-ignored; anything else means the gate is **missing**, which is a stop, not
+a pass. Never report either as green.
 
 **Only if a PR was found above**, read it — a branch abandoned without a
 handoff often has no PR, and these commands are not runnable without one:

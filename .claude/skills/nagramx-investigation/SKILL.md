@@ -18,7 +18,7 @@ ends in confident guesswork.
 
 **If it does end in a `docs/codemap/` entry, that entry is an ordinary change**
 and takes the ordinary route: a dated branch, a `#docs` commit and a PR, per
-step 5. The investigation itself is not a change; what it writes down is.
+step 6. The investigation itself is not a change; what it writes down is.
 
 ## 1. Pin the question before reading anything
 
