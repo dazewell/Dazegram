@@ -3817,9 +3817,8 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
-        // NagramX: full teardown, unlike cancelGlassCompositeCrossfade's other call sites - nothing should
-        // touch this fragment's state after destroy, so stop the pending settle runnable outright too
-        // instead of leaving it to fire (harmlessly, but pointlessly) against a torn-down fragment.
+        // NagramX: full teardown - nothing should touch this fragment's state after destroy, so stop the
+        // pending settle runnable outright too, unlike cancelGlassCompositeCrossfade's other call sites.
         AndroidUtilities.cancelRunOnUIThread(glassCompositeSettleRunnable);
         cancelGlassCompositeCrossfade();
         repostCopyDeleteBatch = null;
