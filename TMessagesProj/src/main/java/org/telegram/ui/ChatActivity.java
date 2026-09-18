@@ -27611,9 +27611,9 @@ public class ChatActivity extends BaseFragment implements
             motionWallpaper.switchToNextPosition();
             if (wasSettled && motionWallpaper.getPosAnimationProgress() < 1.0f) {
                 // NagramX: this is the genuine send-triggered rotate (see wasSettled above). See
-                // GLASS_COMPOSITE_SEND_SETTLE_MS's javadoc for the measured recompose cost this settle
-                // delay avoids paying per-frame during the burst, and startGlassCompositeCrossfade for how
-                // the eventual single recompose is blended in instead of swapped in on one frame.
+                // GLASS_COMPOSITE_CROSSFADE_MS's javadoc for the recompose cost this settle delay avoids
+                // paying per-frame, and startGlassCompositeCrossfade for how the eventual single recompose
+                // is blended in instead of swapped in on one frame.
                 scheduleGlassCompositeCrossfade(GLASS_COMPOSITE_SEND_SETTLE_MS);
             }
         }
@@ -52102,14 +52102,12 @@ public class ChatActivity extends BaseFragment implements
     // invalidateMotionBackground notification) calls scheduleGlassCompositeCrossfade(durationMs) once.
     // That cancels and reposts one wall-clock-timed settle runnable, so a burst (rapid sends, a
     // 64-arrival notification burst) collapses to a single trailing firing durationMs after the LAST
-    // call instead of one recompose per call - Perfetto measured a send-triggered rotate at 16 UI-thread
-    // composites averaging ~11ms each under the old always-recompose behaviour (vs .052ms for an
-    // ordinary wallpaper draw), holding the pattern-fade pill under jank for up to 1s. The settle
+    // call - Perfetto measured a send-triggered rotate at 16 UI-thread composites averaging ~11ms each
+    // under the old always-recompose behaviour (vs .052ms for an ordinary wallpaper draw). The settle
     // runnable performs exactly one refreshMotionComposite call and blends the result in over
-    // GLASS_COMPOSITE_CROSSFADE_MS via the ValueAnimator below instead of swapping the bitmap in on one
-    // frame - GlassCompositorBase's double buffer keeps the composite it replaces intact for exactly
-    // this. If paused/detached when it fires, it marks dirty instead of compositing; onResume runs a
-    // fresh, non-blended catch-up composite.
+    // GLASS_COMPOSITE_CROSSFADE_MS via the ValueAnimator below, using GlassCompositorBase's double
+    // buffer to keep the composite it replaces intact for exactly this. If paused/detached when it
+    // fires, it marks dirty instead of compositing; onResume runs a fresh, non-blended catch-up.
     private static final long GLASS_COMPOSITE_CROSSFADE_MS = 200;
     // NagramX: matches ChatListItemAnimator.DEFAULT_DURATION (250, ChatListItemAnimator.java:46), the
     // message row's own add/move duration - the panel content driving the composite settles on that
@@ -52216,14 +52214,11 @@ public class ChatActivity extends BaseFragment implements
         glassCompositeCrossfadeAnimator.start();
     }
 
-    // NagramX: stops an in-flight blend (ValueAnimator + previous-bitmap snapshot) and snaps to whatever
-    // the live composite currently is - the matrix-safety call sites (setParentSize resize,
-    // updateGlassBackgroundTranslation, onConfigurationChanged) and onPause/theme-switch all need exactly
-    // this. Deliberately leaves a still-pending settle runnable alone: it hasn't recomposited or started a
-    // blend yet, so there is nothing geometry-unsafe about letting it still fire later against whatever is
-    // live by then - cancelling it here would silently drop a send burst's queued composite instead of
-    // just letting it land. onFragmentDestroy is the one caller that also needs the runnable stopped
-    // outright (nothing should touch this fragment's state after destroy) and cancels it itself.
+    // NagramX: stops an in-flight blend and snaps to whatever the live composite currently is - the
+    // matrix-safety call sites and onPause/theme-switch all need exactly this. Deliberately leaves a
+    // still-pending settle runnable alone: it hasn't recomposited yet, so nothing geometry-unsafe happens
+    // if it fires later - cancelling it would silently drop a send burst's queued composite. Only
+    // onFragmentDestroy also stops the runnable outright, since nothing touches a destroyed fragment.
     private void cancelGlassCompositeCrossfade() {
         final ValueAnimator animator = glassCompositeCrossfadeAnimator;
         glassCompositeCrossfadeAnimator = null;
