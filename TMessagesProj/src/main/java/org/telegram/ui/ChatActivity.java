@@ -3820,6 +3820,7 @@ public class ChatActivity extends BaseFragment implements
         // NagramX: full teardown - nothing should touch this fragment's state after destroy, so stop the
         // pending settle runnable outright too, unlike cancelGlassCompositeCrossfade's other call sites.
         AndroidUtilities.cancelRunOnUIThread(glassCompositeSettleRunnable);
+        AndroidUtilities.cancelRunOnUIThread(glassCompositeConfigSnapRunnable);
         cancelGlassCompositeCrossfade();
         repostCopyDeleteBatch = null;
         repostCopyDeletePendingOffer = null;
@@ -32482,6 +32483,7 @@ public class ChatActivity extends BaseFragment implements
         // NagramX: cancel the pending settle runnable too, else a resume before its delay lets it fire
         // paused-false, blending stale pixels; mark dirty so onResume redoes it.
         AndroidUtilities.cancelRunOnUIThread(glassCompositeSettleRunnable);
+        AndroidUtilities.cancelRunOnUIThread(glassCompositeConfigSnapRunnable);
         glassCompositeDirty = true;
         cancelGlassCompositeCrossfade();
         repostCopyDeleteBatch = null;
@@ -33122,7 +33124,10 @@ public class ChatActivity extends BaseFragment implements
         // the fade's whole duration. Post rather than call directly so it runs once AndroidUtilities.displaySize
         // has actually been updated to the new orientation.
         cancelGlassCompositeCrossfade();
-        AndroidUtilities.runOnUIThread(this::snapGlassCompositeForConfigChange);
+        // NagramX: cancel-and-repost the stable runnable (not a fresh reference) so a double
+        // config-change coalesces to one snap instead of stacking two.
+        AndroidUtilities.cancelRunOnUIThread(glassCompositeConfigSnapRunnable);
+        AndroidUtilities.runOnUIThread(glassCompositeConfigSnapRunnable);
         if (visibleDialog instanceof DatePickerDialog) {
             visibleDialog.dismiss();
         }
@@ -52087,10 +52092,9 @@ public class ChatActivity extends BaseFragment implements
     // separate composite proxy of it, so the proxy has to shift by the same amount or the pattern behind
     // the composer sits still while the wallpaper slides under it. Push the shift onto the composite
     // source's matrix and re-record the glass display lists so they re-read it (the shader matrix is
-    // baked in at record time). Wallpaper parallax adds a continuous sensor-driven offset this does not
-    // follow, so the pattern would drift while tilting if parallax were enabled — known and accepted.
-    // Any new setBackgroundTranslation call site must be paired with this: the two are kept in step only
-    // by adjacency, and if a future merge adds a third the pattern silently misaligns with nothing failing.
+    // baked in at record time). Parallax adds a continuous sensor-driven offset this doesn't follow, so
+    // the pattern drifts while tilting if parallax is enabled - known and accepted. Any new
+    // setBackgroundTranslation call site must be paired with this by adjacency, or the pattern misaligns.
     private void updateGlassBackgroundTranslation(int translationY) {
         wallpaperBitmapProvider.setBackgroundTranslationY(translationY);
         // NagramX: matrix-safety - a keyboard pan shifts the matrix the crossfade's previous snapshot was
@@ -52115,15 +52119,18 @@ public class ChatActivity extends BaseFragment implements
     // buffer to keep the composite it replaces intact for exactly this. If paused/detached when it
     // fires, it marks dirty instead of compositing; onResume runs a fresh, non-blended catch-up.
     private static final long GLASS_COMPOSITE_CROSSFADE_MS = 200;
-    // NagramX: matches ChatListItemAnimator.DEFAULT_DURATION (250, ChatListItemAnimator.java:46) - the
-    // panel content's own add/move duration, not the wallpaper's 500ms rotate.
-    private static final long GLASS_COMPOSITE_SEND_SETTLE_MS = 250;
-    // NagramX: skeleton exit-edge and orientation-change recompose settle on this (MotionBackgroundDrawable.java:773).
+    // NagramX: MotionBackgroundDrawable's rotate advances progress over 500ms (MotionBackgroundDrawable.java:773) -
+    // settle at that plus one frame of margin so the refresh reliably lands after it settles.
+    private static final long GLASS_COMPOSITE_SEND_SETTLE_MS = 550;
+    // NagramX: only the skeleton exit edge uses this - config changes recompose immediately instead.
     private static final long GLASS_COMPOSITE_WALLPAPER_ANIMATION_MS = 500;
     private boolean glassCompositeDirty;
     // NagramX: tracks the skeleton's indeterminate-rotate falling edge (see isSkeletonVisible).
     private boolean glassSkeletonWallpaperAnimating;
     private final Runnable glassCompositeSettleRunnable = this::onGlassCompositeSettle;
+    // NagramX: stable so onConfigurationChanged can cancel-and-repost this exact instance (a fresh
+    // method reference can't be cancelled), and onPause/onFragmentDestroy can drop it.
+    private final Runnable glassCompositeConfigSnapRunnable = this::snapGlassCompositeForConfigChange;
     // NagramX: the one field this mechanism owns beyond the small progress/previous-bitmap state
     // CrossfadingMotionGlassSource itself holds. Null whenever no blend is in flight.
     private @Nullable ValueAnimator glassCompositeCrossfadeAnimator;
@@ -52240,6 +52247,9 @@ public class ChatActivity extends BaseFragment implements
             glassCompositeDirty = true;
             return;
         }
+        // NagramX: a due settle/fade could otherwise overwrite the buffer a live blend still points at -
+        // end any in-flight blend first (matrix-safety).
+        cancelGlassCompositeCrossfade();
         MotionBackgroundDrawable wallpaper = resolveCurrentMotionWallpaper();
         if (wallpaper != null && wallpaperBitmapProvider.refreshMotionComposite(wallpaper)) {
             reprimeGlassRenderNodes();
