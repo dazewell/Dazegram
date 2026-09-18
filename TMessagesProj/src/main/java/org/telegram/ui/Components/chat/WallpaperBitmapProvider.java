@@ -27,7 +27,6 @@ public class WallpaperBitmapProvider {
     // sourceColor rather than reused: sourceColor holds a colour wallpaper's fill, this holds a motion
     // wallpaper's flat black, and one field cannot carry both without cross-writing them on a switch.
     private final BlurredBackgroundSourceColor blackSourceColor = new BlurredBackgroundSourceColor();
-    private BlurredBackgroundSource source;
 
     // NagramX: the keyboard pans the wallpaper vertically (SizeNotifierFrameLayout adds
     // backgroundTranslationY to the wallpaper's draw y). The glass proxy is a separate bitmap sampled
@@ -65,7 +64,6 @@ public class WallpaperBitmapProvider {
         if (drawable instanceof ColorDrawable) {
             final int color = ((ColorDrawable) drawable).getColor();
             sourceColor.setColor(color);
-            source = sourceColor;
             return sourceColor;
         }
 
@@ -75,16 +73,14 @@ public class WallpaperBitmapProvider {
             // no pattern, so a low-res proxy upscales invisibly.
             if (motionDrawable.getIntensity() < 0) {
                 blackSourceColor.setColor(Color.BLACK);
-                source = blackSourceColor;
-            } else {
-                // NagramX: setBitmap here aliases the drawable's live mesh on purpose. getBitmap() returns
-                // currentBitmap, allocated once in the drawable's init and thereafter mutated in place by
-                // generateGradient, so the source animates for free. A defensive Bitmap copy here would
-                // silently freeze the gradient.
-                sourceBitmap.setBitmap(motionDrawable.getBitmap());
-                source = sourceBitmap;
+                return blackSourceColor;
             }
-            return source;
+            // NagramX: setBitmap here aliases the drawable's live mesh on purpose. getBitmap() returns
+            // currentBitmap, allocated once in the drawable's init and thereafter mutated in place by
+            // generateGradient, so the source animates for free. A defensive Bitmap copy here would
+            // silently freeze the gradient.
+            sourceBitmap.setBitmap(motionDrawable.getBitmap());
+            return sourceBitmap;
         }
 
         if (drawable instanceof BitmapDrawable) {
@@ -95,7 +91,6 @@ public class WallpaperBitmapProvider {
             // proxy instead.
             final Bitmap blurred = blurredFromBitmap.get(bitmapDrawable.getBitmap());
             sourceBitmap.setBitmap(blurred);
-            source = sourceBitmap;
             // NagramX: this is a bare-wallpaper bitmap, so it must track the keyboard pan
             // (SizeNotifierFrameLayout pans the wallpaper by backgroundTranslationY).
             shiftSource = true;
@@ -117,7 +112,6 @@ public class WallpaperBitmapProvider {
             sourceBitmap.setBitmap(blurredFromBitmap.get(sourceBitmap.getBitmap()));
         }
 
-        source = sourceBitmap;
         return sourceBitmap;
     }
 

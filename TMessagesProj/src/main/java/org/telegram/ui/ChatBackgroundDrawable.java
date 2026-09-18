@@ -114,9 +114,10 @@ public class ChatBackgroundDrawable extends Drawable {
                     parent.invalidate();
                 }
                 // NagramX: setPatternBitmap posts no invalidation of its own and parent.invalidate() only
-                // redraws the wallpaper view, never re-consulting the glass wallpaper proxy — so the composer
-                // glass would stay gradient-only until the next send. Post invalidateMotionBackground so the
-                // glass composite refresh picks the pattern up once it has decoded.
+                // redraws this wallpaper view. Cells drawing the same MotionBackgroundDrawable instance
+                // (chat list rows, the message-enter transition container) don't observe it directly, so
+                // post invalidateMotionBackground to have them repaint once the pattern has decoded — see
+                // ChatActivity#didReceivedNotification2.
                 NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.invalidateMotionBackground);
             });
         } else {
