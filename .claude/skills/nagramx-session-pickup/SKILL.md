@@ -57,9 +57,14 @@ git ls-remote --heads origin $branch               # empty means genuinely never
 **Keep `$pr.number`** — the PR reads further down need it, and if pickup started
 from a branch name this lookup is the only place it appears.
 
-Then bind to the remote head, so you reconstruct the newest state rather than
-whatever the abandoned worktree happened to stop at — a session that died may be
-several commits behind its own branch:
+**If `ls-remote` came back empty, the branch is local-only.** There is no PR, no
+CI run and no remote head, so skip the fetch and the `origin/$branch` reads
+below entirely — they would just fail — fetch `dev` alone for a comparison base,
+and say plainly in your confirmation that local history was the whole record.
+
+Otherwise bind to the remote head, so you reconstruct the newest state rather
+than whatever the abandoned worktree happened to stop at — a session that died
+may be several commits behind its own branch:
 
 ```powershell
 git fetch origin dev $branch
@@ -111,16 +116,16 @@ directly — the same `reviewThreads` query
 `.github/agents/nagramx-implementer.agent.md` already uses:
 
 ```powershell
-$q = 'query($c:String) { repository(owner:"dazewell",name:"Dazegram"){ pullRequest(number:'+$pr.number+'){
-  reviewThreads(first:100, after:$c){ pageInfo { hasNextPage endCursor }
+$q = 'query($endCursor:String) { repository(owner:"dazewell",name:"Dazegram"){ pullRequest(number:'+$pr.number+'){
+  reviewThreads(first:100, after:$endCursor){ pageInfo { hasNextPage endCursor }
     nodes { isResolved path line comments(first:1){ nodes { body } } } } } } }'
 gh api graphql --paginate -f query=$q --jq '.data.repository.pullRequest.reviewThreads.nodes[]
   | select(.isResolved==false) | "\(.path):\(.line)"'
 ```
 
-`--paginate` needs the `pageInfo` cursor in the query to follow — without it
-the first 100 threads are silently all you get, and an unresolved thread at 101
-reads as a clean review.
+`--paginate` only follows the cursor when the variable is named **`$endCursor`**
+and `pageInfo` is in the selection — any other name and it stops after the first
+page, so an unresolved thread at 101 reads as a clean review.
 
 With no PR, the local history and CI are the whole record. Say so in your
 confirmation rather than leaving it ambiguous whether you looked.
