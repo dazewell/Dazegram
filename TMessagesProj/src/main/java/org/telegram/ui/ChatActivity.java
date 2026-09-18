@@ -32252,7 +32252,7 @@ public class ChatActivity extends BaseFragment implements
         // call directly (isPaused is already false here, set by super.onResume() above).
         if (glassCompositeDirty) {
             glassCompositeDirty = false;
-            onGlassCompositeSettle();
+            onGlassCompositeSettle(false);
         }
         // NagramX: re-cover a "require password" chat if backgrounding cleared its unlock, and drive the
         // cover's lifecycle so it auto-prompts fingerprint like the app lock
@@ -52150,10 +52150,14 @@ public class ChatActivity extends BaseFragment implements
     }
 
     private void onGlassCompositeSettle() {
+        onGlassCompositeSettle(true);
+    }
+
+    // NagramX: blend=false is onResume's catch-up - after an unbounded background gap there's no
+    // meaningful previous frame (staleness/matrix mismatch unknown), so recompose and show it outright.
+    private void onGlassCompositeSettle(boolean blend) {
         if (isPaused || contentView == null || !contentView.isAttachedToWindow()) {
-            // NagramX: nothing re-arms while backgrounded, so mark dirty and let onResume run a fresh
-            // catch-up composite instead of trying to resume a wall-clock wait that has no meaning after
-            // an unbounded background gap.
+            // NagramX: nothing re-arms while backgrounded, so mark dirty and let onResume catch up.
             glassCompositeDirty = true;
             return;
         }
@@ -52163,30 +52167,26 @@ public class ChatActivity extends BaseFragment implements
         }
         // NagramX: a fade still in flight has its "previous" snapshot's bitmap set as one of
         // GlassCompositorBase's two buffers - composeInto below reclaims whichever buffer ISN'T the one
-        // currently live on target, which after one compose cycle is exactly that snapshot's backing
-        // bitmap. Reusing it while CrossfadingMotionGlassSource's shader still points at it would corrupt
-        // an on-screen blend mid-draw, so end that fade outright first (snap to its live buffer) rather
-        // than let two overlapping settle events - a rare double-burst, not the common single-trailing-
-        // firing case scheduleGlassCompositeCrossfade's coalescing already handles - race on the buffer.
+        // currently live, i.e. exactly that snapshot's backing bitmap. End the fade outright first (snap
+        // to its live buffer) rather than let overlapping settles race on the buffer mid-blend.
         cancelGlassCompositeCrossfade();
-        // NagramX: read the composite's current bitmap+matrix before refreshMotionComposite replaces
-        // them - this is the crossfade's "previous frame". The matrix is the source's own live instance,
-        // so copy it now; refreshMotionComposite may mutate or replace it in the same call.
-        final Bitmap previousBitmap = wallpaperBitmapProvider.getCompositeBitmap();
+        // NagramX: read bitmap+matrix before refreshMotionComposite replaces them - the crossfade's
+        // "previous frame". Copy the matrix now since refreshMotionComposite may mutate it in place.
+        final Bitmap previousBitmap = blend ? wallpaperBitmapProvider.getCompositeBitmap() : null;
         final Matrix previousMatrix = previousBitmap == null ? null : new Matrix(wallpaperBitmapProvider.getCompositeMatrix());
         if (!wallpaperBitmapProvider.refreshMotionComposite(wallpaper)) {
             return;
         }
         reprimeGlassRenderNodes();
         invalidateAllGlassAttachedViews();
-        startGlassCompositeCrossfade(previousBitmap, previousMatrix);
+        if (blend) {
+            startGlassCompositeCrossfade(previousBitmap, previousMatrix);
+        }
     }
 
     // NagramX: blends the just-replaced composite (previousBitmap/previousMatrix, or null when there is
-    // nothing to blend from - e.g. the very first composite) into the fresh one over
-    // GLASS_COMPOSITE_CROSSFADE_MS instead of showing the fresh one outright. Each tick only sets the
-    // crossfade progress and reprimes - no refreshMotionComposite call, so the tick itself never pays the
-    // ~11ms recompose cost this mechanism exists to avoid.
+    // nothing to blend from) into the fresh one over GLASS_COMPOSITE_CROSSFADE_MS instead of showing it
+    // outright. Each tick only sets the crossfade progress and reprimes - no refreshMotionComposite call.
     private void startGlassCompositeCrossfade(@Nullable Bitmap previousBitmap, @Nullable Matrix previousMatrix) {
         cancelGlassCompositeCrossfade();
         if (previousBitmap == null || previousBitmap.isRecycled()) {
