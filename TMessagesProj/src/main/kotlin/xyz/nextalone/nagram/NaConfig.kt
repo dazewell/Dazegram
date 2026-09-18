@@ -917,7 +917,7 @@ object NaConfig {
         addConfig(
             "MaterialDesign3ChatHeader",
             ConfigItem.configTypeBool,
-            false // drops the glass bubble behind the chat/admin-log ActionBar, leaving flat text
+            false // merges the chat/admin-log ActionBar's back/title/menu bubbles into one flat bar
         )
     val hideArchive =
         addConfig(
