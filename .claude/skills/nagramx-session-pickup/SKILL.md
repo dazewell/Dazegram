@@ -41,8 +41,11 @@ one, and not the tracking ref either. Both can be absent or different: `_` and
 push, while this repo's own follow-up procedure pushes with
 `git push origin <branch>` and no `-u`, which leaves a live remote branch, PR
 and CI history behind **no tracking ref at all**. An unset `@{u}` therefore
-proves nothing. Ask GitHub instead, and only conclude "never pushed" when it
-says so:
+proves nothing — and a set one proves no more, since a worktree can track
+`origin/dev` or some unrelated ref and fast-forwarding against that would
+reconstruct the wrong branch entirely. So it is never a source here. Ask GitHub
+instead, fall back to the local name and its alternate spelling, and only
+conclude "never pushed" when GitHub says so:
 
 ```powershell
 $local = git rev-parse --abbrev-ref HEAD
@@ -58,9 +61,7 @@ function Find-Pr($head) {
 }
 $pr = Find-Pr $local
 if (-not $pr -and $alt -ne $local) { $pr = Find-Pr $alt }
-$branch = if ($pr) { $pr.headRefName }
-          elseif ($u = (git rev-parse --abbrev-ref '@{u}' 2>$null)) { $u -replace '^origin/','' }
-          else { $local }
+$branch = if ($pr) { $pr.headRefName } else { $local }
 $ref = git ls-remote --heads origin $branch
 if ($LASTEXITCODE) { throw 'remote lookup failed - do not read empty as absent' }
 if (-not $ref -and $branch -ne $alt) {

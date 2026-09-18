@@ -52,7 +52,7 @@ removed:
 
 ```powershell
 $branch = git rev-parse --abbrev-ref HEAD
-$remote = gh pr list --head $branch --json headRefName --jq '.[0].headRefName'
+$remote = gh pr list --head $branch --json headRefName --jq '.[0].headRefName // empty'
 if ($LASTEXITCODE) { throw 'PR lookup failed - do not guess the destination ref' }
 if ($remote) { $branch = $remote }    # push to the spelling the PR actually tracks
 git push origin HEAD:$branch
