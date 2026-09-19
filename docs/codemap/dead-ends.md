@@ -940,3 +940,32 @@ The next reader will look at `:3918`, see the same apparent inversion, and be
 tempted to "fix" it for held rows. Don't — the path is unreachable for them.
 
 *(Established 2026-09-11, #ghost-hold. Citations re-verified 2026-09-12.)*
+
+## "The centered title pill's `min(widthDefault, ...)` clamp squeezes its padding for long names"
+
+Disproven. The clamp at `ActionBar.java:2358` reads as if a long title pushes the
+pill into `widthDefault` and the padding term gets squeezed back out, so the pill
+looks self-limiting and a padding constant looks free to raise. It never binds.
+Two independent reservations cap the text far below that ceiling first:
+
+- `avatarContainer` is added with 52dp margins either side
+  (`ChatActivity.java:4964`), so the container measures at about `W - 104dp` --
+  which is also exactly `widthDefault` (`ActionBar.java:2332`).
+- Inside it, centered glass mode reserves the two side bubbles again,
+  `availableWidth = width - 2 * dp(58)` (`ChatAvatarContainer.java:895`), and the
+  lines are then measured at `availableWidth - dp(10)`
+  (`ChatAvatarContainer.java:915,920`).
+
+So the text ceiling is about `W - 230dp` against a pill ceiling of `W - 104dp`:
+roughly 54dp of slack left over even at the widest padding this fork has shipped.
+`ActionBar.checkAvatarContainerWidth()`'s own `getMeasuredWidth() - dp(116)` cap
+(`ActionBar.java:2241`) is looser still and equally non-binding.
+
+The consequence that matters: **the pill's padding is flat at every name length.**
+What looks adaptive on screen is the title's gradient fade once it hits its own
+ceiling, not the bubble giving room back. Anything that wants length-dependent
+padding has to compute it, and needs the real ceiling to normalise against --
+which is why `getCenteredContentCap()` records it in `onMeasure` rather than
+recomputing it at draw time.
+
+*(Established 2026-09-19, #title-pill-fix.)*
