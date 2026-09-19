@@ -2872,7 +2872,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         int padding = dp(7.5f);
         emojiButton.setPadding(padding, padding, padding, padding);
         emojiButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.SRC_IN));
-        emojiButton.setBackground(Theme.createInsetRoundRectDrawable(getThemedColor(Theme.key_listSelector), dp(19), dp(1), dp(3)));
+        emojiButton.setBackground(composerPanelPillSelector());
         emojiButton.setOnClickListener(v -> {
             if (adjustPanLayoutHelper != null && adjustPanLayoutHelper.animationInProgress()) {
                 return;
@@ -2917,7 +2917,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         deleteRichDraftButton.setScaleType(ImageView.ScaleType.CENTER);
         deleteRichDraftButton.setImageResource(R.drawable.menu_delete_old);
         deleteRichDraftButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.SRC_IN));
-        deleteRichDraftButton.setBackground(Theme.createInsetRoundRectDrawable(getThemedColor(Theme.key_listSelector), dp(19), dp(1), dp(3)));
+        deleteRichDraftButton.setBackground(composerPanelPillSelector());
         deleteRichDraftButton.setVisibility(View.GONE);
         deleteRichDraftButton.setContentDescription(getString(R.string.ArticleDeleteDraft));
         deleteRichDraftButton.setOnClickListener(v -> {
@@ -2977,7 +2977,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     // NagramX: keep this wrapped bitmap in the same 24dp visual box as configurable icons.
                     xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyPanelIconBox(notifyButton, R.drawable.input_notify_on);
                 }
-                notifyButton.setBackgroundDrawable(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
+                notifyButton.setBackgroundDrawable(composerPanelSelector());
                 notifyButton.setVisibility(canWriteToChannel && (delegate == null || !delegate.hasScheduledMessages()) ? VISIBLE : GONE);
                 int composerContextSize = composerToolbarEnabled ? xyz.nextalone.nagram.ui.ComposerToolbarLayout.buttonSize() : DEFAULT_HEIGHT;
                 attachLayout.addView(notifyButton, LayoutHelper.createLinear(composerContextSize, composerContextSize));
@@ -3019,7 +3019,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             // icon theme, so attach gets the vector asset the opt-in Solar theme already ships instead
             // of the full-bleed raster msg_input_attach2 (see SolarIcons.kt) - legacy layout keeps it.
             attachButton.setImageResource(composerToolbarEnabled ? R.drawable.ayu_input_attach : R.drawable.msg_input_attach2);
-            attachButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
+            attachButton.setBackground(composerPanelSelector());
             if (composerToolbarEnabled) {
                 // NagramX: attach holds the trailing edge - it is the one always reached for, so it stays put
                 // while everything beside it comes and goes
@@ -3041,7 +3041,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         aiButton.setImageDrawable(aiButtonIcon = new AiButtonDrawable(context));
         aiButton.setScaleType(ImageView.ScaleType.CENTER);
         aiButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
-        aiButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector), Theme.RIPPLE_MASK_CIRCLE_20DP, dp(16)));
+        aiButton.setBackground(composerPanelCompactSelector());
         if (composerToolbarEnabled) {
             composerToolbar.addConfigurable(xyz.nextalone.nagram.ui.composer.ComposerButtons.AI, aiButton);
         } else {
@@ -3112,7 +3112,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         richButton.setImageResource(R.drawable.iv_fullscreen);
         richButton.setScaleType(ImageView.ScaleType.CENTER);
         richButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
-        richButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector), Theme.RIPPLE_MASK_CIRCLE_20DP, dp(16)));
+        richButton.setBackground(composerPanelCompactSelector());
         if (composerToolbarEnabled) {
             composerToolbar.addConfigurable(xyz.nextalone.nagram.ui.composer.ComposerButtons.RICH, richButton);
         } else {
@@ -3130,7 +3130,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             expandInputButton = new ImageView(context);
             expandInputButton.setScaleType(ImageView.ScaleType.CENTER);
             updateExpandInputButtonColor();
-            expandInputButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector), Theme.RIPPLE_MASK_CIRCLE_20DP, dp(16)));
+            expandInputButton.setBackground(composerPanelCompactSelector());
             // NagramX: fullscreen expand stays in the pinned trailing group beside attach rather than the
             // scrolling one - it gets used far more than the article editor, so it must never scroll out of reach
             composerToolbar.addConfigurable(xyz.nextalone.nagram.ui.composer.ComposerButtons.EXPAND, expandInputButton);
@@ -4049,7 +4049,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         scheduledButton.setVisibility(GONE);
         scheduledButton.setContentDescription(getString(R.string.ScheduledMessages));
         scheduledButton.setScaleType(ImageView.ScaleType.CENTER);
-        scheduledButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
+        scheduledButton.setBackground(composerPanelSelector());
         if (composerToolbarEnabled) {
             composerToolbar.addConfigurable(xyz.nextalone.nagram.ui.composer.ComposerButtons.SCHEDULE, scheduledButton);
         } else {
@@ -4118,7 +4118,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (composerToolbarEnabled) {
             xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyPanelIconBox(giftButton);
         }
-        giftButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
+        giftButton.setBackground(composerPanelSelector());
         int composerContextSize = composerToolbarEnabled ? xyz.nextalone.nagram.ui.ComposerToolbarLayout.buttonSize() : DEFAULT_HEIGHT;
         attachLayout.addView(giftButton, 0, LayoutHelper.createFrame(composerContextSize, composerContextSize, Gravity.CENTER_VERTICAL | Gravity.RIGHT));
         giftButton.setOnClickListener(v -> {
@@ -4170,7 +4170,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         suggestButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
         suggestButton.setImageResource(R.drawable.input_suggest_paid_24);
-        suggestButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
+        suggestButton.setBackground(composerPanelSelector());
         if (isLiveComment && !composerToolbarEnabled) {
             suggestButton.setTranslationX(dp(42));
             textFieldContainer.addView(suggestButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.BOTTOM | Gravity.RIGHT, 0, 0, 6 + DEFAULT_HEIGHT, 0));
@@ -4267,7 +4267,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (composerToolbarEnabled) {
             xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyPanelIconBox(botButton);
         }
-        botButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
+        botButton.setBackground(composerPanelSelector());
         botButton.setVisibility(GONE);
         AndroidUtilities.updateViewVisibilityAnimated(botButton, false, 0.1f, false);
         int composerContextSize = composerToolbarEnabled ? xyz.nextalone.nagram.ui.ComposerToolbarLayout.buttonSize() : DEFAULT_HEIGHT;
@@ -13225,10 +13225,10 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         updateAudioVideoSendButtonColor();
         emojiButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.SRC_IN));
-        emojiButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
+        emojiButton.setBackground(composerPanelSelector());
         updateExpandInputButtonColor();
         deleteRichDraftButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.SRC_IN));
-        deleteRichDraftButton.setBackground(Theme.createInsetRoundRectDrawable(getThemedColor(Theme.key_listSelector), dp(19), dp(1), dp(3)));
+        deleteRichDraftButton.setBackground(composerPanelPillSelector());
         if (composerFormattingActions != null) {
             composerFormattingActions.updateColors();
         }
@@ -13257,6 +13257,42 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (expandInputButton != null) {
             expandInputButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.SRC_IN));
         }
+    }
+
+    /**
+     * NagramX: one press ripple for every button the composer panel hosts, sized by the panel to the
+     * tightest cell its icon-spacing slider can pack to, so that slider's bottom step puts two
+     * neighbouring circles edge to edge instead of leaving a gap the user cannot close. Upstream gave
+     * these buttons two different fixed radii (20dp and 16dp) and neither followed the panel's scale.
+     * Off the panel nothing changes - the enter view is built without it in a few places, and there
+     * the button keeps the shape upstream drew.
+     */
+    private Drawable composerPanelSelector() {
+        int color = getThemedColor(Theme.key_listSelector);
+        return composerToolbarEnabled
+                ? xyz.nextalone.nagram.ui.ComposerToolbarLayout.panelSelector(color)
+                : Theme.createSelectorDrawable(color);
+    }
+
+    /** As {@link #composerPanelSelector()}, for the two buttons whose off-panel shape is the inset pill. */
+    private Drawable composerPanelPillSelector() {
+        int color = getThemedColor(Theme.key_listSelector);
+        return composerToolbarEnabled
+                ? xyz.nextalone.nagram.ui.ComposerToolbarLayout.panelSelector(color)
+                : Theme.createInsetRoundRectDrawable(color, dp(19), dp(1), dp(3));
+    }
+
+    /**
+     * As {@link #composerPanelSelector()}, for the fork's own buttons, whose off-panel circle is the
+     * smaller 16dp one rather than upstream's 20dp. They are visible off the panel too - a business
+     * link editor builds this view without one - so the fallback has to be their own radius, not the
+     * majority's.
+     */
+    private Drawable composerPanelCompactSelector() {
+        int color = getThemedColor(Theme.key_listSelector);
+        return composerToolbarEnabled
+                ? xyz.nextalone.nagram.ui.ComposerToolbarLayout.panelSelector(color)
+                : Theme.createSelectorDrawable(color, Theme.RIPPLE_MASK_CIRCLE_20DP, dp(16));
     }
 
     private void updateRecordedDeleteIconColors() {

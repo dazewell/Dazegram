@@ -6,6 +6,7 @@ import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Rect;
+import android.graphics.drawable.Drawable;
 import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -21,6 +22,7 @@ import android.widget.LinearLayout;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
+import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RLottieImageView;
@@ -58,16 +60,20 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * and the row clips its children, so every button's background and ripple would come out sliced
      * flat top and bottom.
      */
-    private static final int SPACING_MIN = 85;
+    private static final int SPACING_MIN = 75;
     private static final int SPACING_MAX = 100;
     /**
-     * Smallest cell the row will draw, before the glyph is even considered. Telegram's own send/mic
-     * circle is 44dp and Material's minimum target is 48dp; below 40dp the press ripple starts
-     * painting over the neighbouring glyph, because every one of these buttons uses
-     * Theme.createSelectorDrawable, which on API 23+ is an unbounded RippleDrawable with a fixed
-     * dp(20) radius that does not shrink with the view, and the slots do not clip their children.
+     * Smallest cell the row will draw, before packing is considered. Two terms, and neither one is a
+     * taste number: an absolute floor that stops a small row shrinking its targets away entirely, and
+     * the widest glyph the cell has to hold, read from the icon table so that measuring a sparser
+     * glyph than today's widest moves this floor with it instead of starving that glyph.
+     *
+     * <p>The press ripple is sized off this rather than the other way round - see
+     * {@link #panelSelector(int)} - so the tightest packing the row will accept is exactly the point
+     * where two neighbouring ripple circles meet. A fixed ripple radius used to set this floor
+     * instead, which left the circles a good 9dp apart at the tightest step and further still as the
+     * toolbar was scaled up, because the radius was in raw dp and the cell was not.
      */
-    private static final int MIN_CELL_BASE = 40;
     private static final int MIN_CELL_FLOOR = 36;
     private static final int ICON_GLYPH = 24;
     private static final int GLASS_INSET = 4;
@@ -418,17 +424,37 @@ public final class ComposerToolbarLayout extends FrameLayout {
     }
 
     /**
-     * Smallest cell allowed at a given row scale. Two terms: a proportional one that keeps the touch
-     * target and its fixed-radius ripple sane as the row shrinks, and an absolute one that stops the
-     * proportional term following a small row all the way down.
+     * Smallest cell allowed at a given row scale. The absolute floor keeps a small row's targets
+     * usable; the glyph term keeps the cell able to hold what it draws, and is read from the icon
+     * table rather than typed here so that measuring a sparser glyph than today's widest moves this
+     * floor with it instead of starving that glyph.
      */
     private static int minCellDp(float scale) {
-        int floor = Math.max(MIN_CELL_FLOOR, Math.round(MIN_CELL_BASE * scale));
-        // The glyph the cell has to hold is the real constraint, and it is read from the icon table
-        // rather than typed here so that measuring a sparser glyph than today's widest moves this
-        // floor with it instead of starving that glyph.
         int widestGlyph = (int) Math.ceil(ICON_GLYPH * ComposerButtons.maxIconScale() * scale);
-        return Math.max(floor, widestGlyph);
+        return Math.max(MIN_CELL_FLOOR, widestGlyph);
+    }
+
+    /**
+     * The press selector every button in this row wears, with its circle sized to the tightest cell
+     * the row can reach at the current scale. That is what makes the packing slider's bottom step
+     * mean something a user can see: at that step the cell is exactly this circle, so two circles
+     * meet edge to edge, and every looser step opens a visible gap between them.
+     *
+     * <p>Sized off {@link #minCellDp(float)} rather than a dp constant on purpose. The radius has to
+     * track the toolbar scale - it did not before, so scaling the row up left the circles further and
+     * further inside their cells - and it has to track the glyph floor, since that floor is what the
+     * tightest cell actually lands on.
+     *
+     * <p>Reads the live scale at construction, like {@link #buttonSize()}, and inherits that method's
+     * lifecycle assumption: closing the settings screen fires reloadInterface, which rebuilds the
+     * chats LaunchActivity owns. BubbleActivity keeps its own actionBarLayout and does not observe
+     * that event, so a bubble chat open across the change keeps its old geometry until it is
+     * recreated. That gap is older than this method - buttonSize() has always had it - and is not
+     * made worse by sizing the circle the same way.
+     */
+    public static Drawable panelSelector(int color) {
+        return Theme.createSelectorDrawable(color, Theme.RIPPLE_MASK_CIRCLE_20DP,
+                AndroidUtilities.dp(minCellDp(scale()) / 2f));
     }
 
     /**
