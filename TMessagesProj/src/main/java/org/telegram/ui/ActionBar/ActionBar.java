@@ -2338,9 +2338,11 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 // ("online" -> "last seen recently") grows or shrinks the width with animation.
                 // NagramX: padding runs from padMax at little content down to padMin at the ceiling
                 // the centred group was measured against, so the widest titles draw the width they
-                // drew before this and everything shorter gains room. The drawable insets itself
-                // dp(6) a side (setPadding above) against a dp(23) radius, so those two read as 30dp
-                // and 16dp of visible padding.
+                // drew before this and shorter ones gain room. That endpoint holds while the cap is
+                // at least padMax - padMin; below that drop clamps to the cap itself and even the
+                // widest content stays a little wider than it used to be. The drawable insets itself
+                // dp(6) a side (setPadding above) against a dp(23) radius, so padMax and padMin read
+                // as 30dp and 16dp of visible padding.
                 //
                 // Fourth power rather than a straight ramp: the ceiling is narrow enough that
                 // ordinary names sit high in the range, where a ramp hands most of the gain back.
