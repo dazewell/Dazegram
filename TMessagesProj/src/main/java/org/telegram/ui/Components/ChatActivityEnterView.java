@@ -3041,7 +3041,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         aiButton.setImageDrawable(aiButtonIcon = new AiButtonDrawable(context));
         aiButton.setScaleType(ImageView.ScaleType.CENTER);
         aiButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
-        aiButton.setBackground(composerPanelSelector());
+        aiButton.setBackground(composerPanelCompactSelector());
         if (composerToolbarEnabled) {
             composerToolbar.addConfigurable(xyz.nextalone.nagram.ui.composer.ComposerButtons.AI, aiButton);
         } else {
@@ -3112,7 +3112,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         richButton.setImageResource(R.drawable.iv_fullscreen);
         richButton.setScaleType(ImageView.ScaleType.CENTER);
         richButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
-        richButton.setBackground(composerPanelSelector());
+        richButton.setBackground(composerPanelCompactSelector());
         if (composerToolbarEnabled) {
             composerToolbar.addConfigurable(xyz.nextalone.nagram.ui.composer.ComposerButtons.RICH, richButton);
         } else {
@@ -3130,7 +3130,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             expandInputButton = new ImageView(context);
             expandInputButton.setScaleType(ImageView.ScaleType.CENTER);
             updateExpandInputButtonColor();
-            expandInputButton.setBackground(composerPanelSelector());
+            expandInputButton.setBackground(composerPanelCompactSelector());
             // NagramX: fullscreen expand stays in the pinned trailing group beside attach rather than the
             // scrolling one - it gets used far more than the article editor, so it must never scroll out of reach
             composerToolbar.addConfigurable(xyz.nextalone.nagram.ui.composer.ComposerButtons.EXPAND, expandInputButton);
@@ -13280,6 +13280,19 @@ public class ChatActivityEnterView extends FrameLayout implements
         return composerToolbarEnabled
                 ? xyz.nextalone.nagram.ui.ComposerToolbarLayout.panelSelector(color)
                 : Theme.createInsetRoundRectDrawable(color, dp(19), dp(1), dp(3));
+    }
+
+    /**
+     * As {@link #composerPanelSelector()}, for the fork's own buttons, whose off-panel circle is the
+     * smaller 16dp one rather than upstream's 20dp. They are visible off the panel too - a business
+     * link editor builds this view without one - so the fallback has to be their own radius, not the
+     * majority's.
+     */
+    private Drawable composerPanelCompactSelector() {
+        int color = getThemedColor(Theme.key_listSelector);
+        return composerToolbarEnabled
+                ? xyz.nextalone.nagram.ui.ComposerToolbarLayout.panelSelector(color)
+                : Theme.createSelectorDrawable(color, Theme.RIPPLE_MASK_CIRCLE_20DP, dp(16));
     }
 
     private void updateRecordedDeleteIconColors() {

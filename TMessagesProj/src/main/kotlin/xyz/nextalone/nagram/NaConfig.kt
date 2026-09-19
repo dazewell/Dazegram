@@ -1483,7 +1483,7 @@ object NaConfig {
         addConfig(
             "ComposerToolbarSpacing",
             ConfigItem.configTypeInt,
-            100 // percent; slider range 85..100 in 1% steps, tighter-only (see ComposerToolbarLayout)
+            100 // percent; slider range 75..100 in 1% steps, tighter-only (see ComposerToolbarLayout)
         )
     val composerGlassLight =
         addConfig(

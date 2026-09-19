@@ -445,9 +445,12 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * further inside their cells - and it has to track the glyph floor, since that floor is what the
      * tightest cell actually lands on.
      *
-     * <p>Reads the live scale at construction, like {@link #buttonSize()}: the scale only changes
-     * while the settings screen is open and closing it rebuilds every chat, so each button is handed
-     * a selector matching the geometry it is laid out in.
+     * <p>Reads the live scale at construction, like {@link #buttonSize()}, and inherits that method's
+     * lifecycle assumption: closing the settings screen fires reloadInterface, which rebuilds the
+     * chats LaunchActivity owns. BubbleActivity keeps its own actionBarLayout and does not observe
+     * that event, so a bubble chat open across the change keeps its old geometry until it is
+     * recreated. That gap is older than this method - buttonSize() has always had it - and is not
+     * made worse by sizing the circle the same way.
      */
     public static Drawable panelSelector(int color) {
         return Theme.createSelectorDrawable(color, Theme.RIPPLE_MASK_CIRCLE_20DP,
