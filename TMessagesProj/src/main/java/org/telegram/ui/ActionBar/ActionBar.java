@@ -2336,11 +2336,26 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 // right, so we never move the container, just resize the bubble around the text.
                 // Center it on the text's own centre, which stays put while the status
                 // ("online" -> "last seen recently") grows or shrinks the width with animation.
-                // dp(72) is added to the outer bounds; the drawable insets itself dp(6) a side
-                // (setPadding above), so this reads as 30dp of visible padding either side of the
-                // text. That clears the pill's dp(23) corner radius -- the old dp(44) left 16dp,
-                // inside the curve, which is what made a short or medium name look wedged in.
-                final int width = Math.min(widthDefault, (int) animatorAvatarContainerWidth.getFactor() + dp(72));
+                // Padding eases from dp(72) down to dp(44) as the name approaches as long as it can
+                // get, so a maxed-out title keeps exactly the proportions it has today while
+                // everything shorter gets room. The drawable insets itself dp(6) a side (setPadding
+                // above) and its radius is dp(23), so dp(72) reads as 30dp of visible padding --
+                // clear of the curve, where a flat dp(44) leaves 16dp and looks wedged in.
+                //
+                // Fourth power, not a straight ramp: the text ceiling is only about 180dp on a
+                // normal phone, so ordinary names already sit in the top half of the range and a
+                // linear taper hands most of them back to ~20dp, which is the cramped look this is
+                // meant to fix. This holds the full width until a name is genuinely near the limit.
+                //
+                // Until the title has been measured the factor and the cap are both meaningless,
+                // so fall through to the tapered end and draw the width it has always drawn.
+                final int contentWidth = (int) animatorAvatarContainerWidth.getFactor();
+                final int contentCap = chatAvatarContainer.getCenteredContentCap();
+                final float fill = chatAvatarContainer.isCenteredContentMeasured() && contentCap > 0
+                        ? Math.min(1f, contentWidth / (float) contentCap)
+                        : 1f;
+                final float taper = fill * fill * fill * fill;
+                final int width = Math.min(widthDefault, contentWidth + lerp(dp(72), dp(44), taper));
                 final int centerX = (int) (chatAvatarContainer.getX() + chatAvatarContainer.getCenteredTitleCenterX());
                 int hugLeft = centerX - width / 2;
                 int hugRight = centerX + width / 2;

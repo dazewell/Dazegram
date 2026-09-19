@@ -898,6 +898,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             // instead of leaning into the avatar.
             availableWidth = width - 2 * dp(58);
         }
+        centeredContentCap = Math.max(0, availableWidth - padding);
         avatarImageView.measure(MeasureSpec.makeMeasureSpec(dp(avatarSizeInDp) - 2, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(dp(avatarSizeInDp) - 2, MeasureSpec.EXACTLY));
         int tzPillReserve = 0;
         if (tzClockPill != null && tzClockPill.getVisibility() == VISIBLE) {
@@ -2182,6 +2183,16 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
 
     public boolean isCenteredContentMeasured() {
         return titleTextView != null && titleTextView.getMeasuredWidth() > 0;
+    }
+
+    // The width the centred title and status lines were measured against on the last pass, i.e. as
+    // wide as a name in this chat can ever get. Recorded in onMeasure() rather than recomputed here
+    // so it can't drift from the reservation that actually shaped the text. The bubble's padding
+    // taper divides by it, so it is a ceiling, not the current content width.
+    private int centeredContentCap;
+
+    public int getCenteredContentCap() {
+        return centeredContentCap;
     }
 
     // Full drawn width of the subtitle line: a leading status icon (typing/recording/sending
