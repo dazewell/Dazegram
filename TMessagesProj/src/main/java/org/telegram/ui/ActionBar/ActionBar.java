@@ -271,8 +271,11 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     // NagramX: upstream squares the forum pill's left corners to match the topic squircle sitting
     // beside it. The centered title floats the pill mid-bar with nothing on its left, so there give
     // it the same capsule end the right gets. Recomputed from dispatchDraw rather than baked in at
-    // setup because centering is a live NaConfig read (ChatActivity.canShowCenteredTitle) and
-    // turning the setting on does not rebuild this drawable.
+    // setup because centering is read live (ChatActivity.canShowCenteredTitle) and can flip under
+    // an ActionBar that survives it: the settings row only rebuilds background fragments when its
+    // own centered predicate changes (NekoGeneralSettingsActivity.animateActionBarUpdate), and
+    // that predicate ignores type 2 while the chat's ignores type 3, so switching "always" to
+    // "settings only" flips the chat and rebuilds nothing.
     //
     // The centered branch uses the one-arg setRadius because it writes shaderRadii too, which the
     // four-arg overload skips; without it the liquid-glass refraction keeps square corners under a
