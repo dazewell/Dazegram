@@ -2336,26 +2336,31 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 // right, so we never move the container, just resize the bubble around the text.
                 // Center it on the text's own centre, which stays put while the status
                 // ("online" -> "last seen recently") grows or shrinks the width with animation.
-                // Padding eases from dp(72) down to dp(44) as the name approaches as long as it can
-                // get, so a maxed-out title keeps exactly the proportions it has today while
-                // everything shorter gets room. The drawable insets itself dp(6) a side (setPadding
-                // above) and its radius is dp(23), so dp(72) reads as 30dp of visible padding --
-                // clear of the curve, where a flat dp(44) leaves 16dp and looks wedged in.
+                // Padding runs from dp(72) at little content down to dp(44) at the ceiling the
+                // centred group was measured against, so the widest titles draw the width they drew
+                // before this and everything shorter gains room. The drawable insets itself dp(6) a
+                // side (setPadding above) against a dp(23) radius, so those two read as 30dp and
+                // 16dp of visible padding.
                 //
-                // Fourth power, not a straight ramp: the text ceiling is only about 180dp on a
-                // normal phone, so ordinary names already sit in the top half of the range and a
-                // linear taper hands most of them back to ~20dp, which is the cramped look this is
-                // meant to fix. This holds the full width until a name is genuinely near the limit.
-                //
-                // Until the title has been measured the factor and the cap are both meaningless,
-                // so fall through to the tapered end and draw the width it has always drawn.
+                // Fourth power rather than a straight ramp: the ceiling is narrow enough that
+                // ordinary names sit high in the range, where a ramp hands most of the gain back.
+                // Its slope reaches 4 at the top though, so against a cap too narrow to absorb that
+                // the padding falls faster than the text grows and the pill shrinks as the name gets
+                // longer. alpha straightens the curve just far enough to stop that, and drop caps
+                // the fall for a cap narrower than the fall itself.
                 final int contentWidth = (int) animatorAvatarContainerWidth.getFactor();
                 final int contentCap = chatAvatarContainer.getCenteredContentCap();
-                final float fill = chatAvatarContainer.isCenteredContentMeasured() && contentCap > 0
-                        ? Math.min(1f, contentWidth / (float) contentCap)
-                        : 1f;
-                final float taper = fill * fill * fill * fill;
-                final int width = Math.min(widthDefault, contentWidth + lerp(dp(72), dp(44), taper));
+                final int pad;
+                if (!chatAvatarContainer.isCenteredContentMeasured() || contentCap <= 0) {
+                    // Nothing measured yet, so draw the width this drew before the taper existed.
+                    pad = dp(44);
+                } else {
+                    final int drop = Math.min(dp(72) - dp(44), contentCap);
+                    final float fill = Math.min(1f, contentWidth / (float) contentCap);
+                    final float alpha = Math.max(0f, Math.min(1f, (contentCap / (float) drop - 1f) / 3f));
+                    pad = dp(72) - Math.round(drop * lerp(fill, fill * fill * fill * fill, alpha));
+                }
+                final int width = Math.min(widthDefault, contentWidth + pad);
                 final int centerX = (int) (chatAvatarContainer.getX() + chatAvatarContainer.getCenteredTitleCenterX());
                 int hugLeft = centerX - width / 2;
                 int hugRight = centerX + width / 2;

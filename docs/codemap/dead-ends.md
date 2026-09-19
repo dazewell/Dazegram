@@ -954,18 +954,18 @@ Two independent reservations cap the text far below that ceiling first:
 - Inside it, centered glass mode reserves the two side bubbles again,
   `availableWidth = width - 2 * dp(58)` (`ChatAvatarContainer.java:895`), and the
   lines are then measured at `availableWidth - dp(10)`
-  (`ChatAvatarContainer.java:915,920`).
+  (`ChatAvatarContainer.java:913-917`).
 
 So the text ceiling is about `W - 230dp` against a pill ceiling of `W - 104dp`:
 roughly 54dp of slack left over even at the widest padding this fork has shipped.
 `ActionBar.checkAvatarContainerWidth()`'s own `getMeasuredWidth() - dp(116)` cap
 (`ActionBar.java:2241`) is looser still and equally non-binding.
 
-The consequence that matters: **the pill's padding is flat at every name length.**
-What looks adaptive on screen is the title's gradient fade once it hits its own
-ceiling, not the bubble giving room back. Anything that wants length-dependent
-padding has to compute it, and needs the real ceiling to normalise against --
-which is why `getCenteredContentCap()` records it in `onMeasure` rather than
-recomputing it at draw time.
+The consequence that matters: **a fixed padding term stays fixed at every name
+length.** What looks adaptive on screen is the title's gradient fade once it hits
+its own ceiling, not the bubble giving room back. Anything that wants
+length-dependent padding has to compute it, and needs the real ceiling to
+normalise against -- which is why `getCenteredContentCap()` records it in
+`onMeasure` rather than recomputing it at draw time.
 
 *(Established 2026-09-19, #title-pill-fix.)*

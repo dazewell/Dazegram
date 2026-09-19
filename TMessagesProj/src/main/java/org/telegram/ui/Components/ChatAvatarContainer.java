@@ -2185,10 +2185,11 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         return titleTextView != null && titleTextView.getMeasuredWidth() > 0;
     }
 
-    // The width the centred title and status lines were measured against on the last pass, i.e. as
-    // wide as a name in this chat can ever get. Recorded in onMeasure() rather than recomputed here
-    // so it can't drift from the reservation that actually shaped the text. The bubble's padding
-    // taper divides by it, so it is a ceiling, not the current content width.
+    // The ceiling the centred lines were measured against on the last pass: the widest the title
+    // group or the status line can get, whichever of the two is driving. Recorded in onMeasure()
+    // rather than recomputed at draw time so it can't drift from the reservation that actually
+    // shaped the text. The bubble's padding taper divides by it, so it is a ceiling, not the
+    // current content width.
     private int centeredContentCap;
 
     public int getCenteredContentCap() {
