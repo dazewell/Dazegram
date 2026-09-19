@@ -2336,7 +2336,11 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 // right, so we never move the container, just resize the bubble around the text.
                 // Center it on the text's own centre, which stays put while the status
                 // ("online" -> "last seen recently") grows or shrinks the width with animation.
-                final int width = Math.min(widthDefault, (int) animatorAvatarContainerWidth.getFactor() + dp(44));
+                // dp(72) is the total horizontal padding, so 36dp a side -- past the bubble's own
+                // dp(29) corner radius, which is what stops a short or medium title from looking
+                // like it is wedged into the curve. Long titles are unaffected: the min() below
+                // saturates at widthDefault first and squeezes this back down on its own.
+                final int width = Math.min(widthDefault, (int) animatorAvatarContainerWidth.getFactor() + dp(72));
                 final int centerX = (int) (chatAvatarContainer.getX() + chatAvatarContainer.getCenteredTitleCenterX());
                 int hugLeft = centerX - width / 2;
                 int hugRight = centerX + width / 2;
