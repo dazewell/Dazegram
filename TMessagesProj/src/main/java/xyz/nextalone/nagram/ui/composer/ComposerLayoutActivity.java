@@ -104,10 +104,12 @@ public class ComposerLayoutActivity extends BaseFragment {
     };
 
     /**
-     * Tighter-only, and that is forced rather than chosen - see ComposerToolbarLayout for why
-     * anything above 100% is clipped by the row that has to contain it.
+     * The absolute range the stored value is clamped into, and the floor the bind drops the knob to
+     * before applying a new one. Not the anchors the slider actually draws - those are built from the
+     * scale-dependent floor by {@link #spacingSteps()}, so the track's left endpoint is always a
+     * value the thumb can reach.
      *
-     * <p>Every reachable value is listed as its own anchor, one percent apart. This is deliberate
+     * <p>Every reachable value is a whole percent, one apart. This is deliberate
      * and must not be "simplified" back to {85, 90, 95, 100} with SPACING_BETWEEN_STEPS raised to
      * subdivide them: SlideIntChooseView.getProgress does Math.round(...) / options.betweenSteps as
      * an integer division (betweenSteps is int), while getValue divides by (float) betweenSteps, so
@@ -127,10 +129,10 @@ public class ComposerLayoutActivity extends BaseFragment {
      *
      * <p>Must stay 1. With more than one sub-step, getProgress's integer division truncates any
      * value that falls between two anchors down to the lower anchor's progress (see SPACING_STEPS),
-     * so the thumb lands left of the label on any rebind, and a scale-dependent floor that is not
-     * itself an anchor draws no dimmed band or a short one. The value range is real, not cosmetic:
-     * the cell is round(48 x size x packing), so the rounding boundary falls every couple of
-     * percent, giving eleven distinct cell sizes at 100% size and fourteen at 125%.
+     * so the thumb lands left of the label on any rebind, and the floor spacingSteps() puts at the
+     * array's left endpoint would no longer land exactly on it. The value range is real, not
+     * cosmetic: the cell is round(48 x size x packing), so the rounding boundary falls every couple
+     * of percent, giving eleven distinct cell sizes at 100% size and fourteen at 125%.
      */
     private static final int SPACING_BETWEEN_STEPS = 1;
 
@@ -719,12 +721,15 @@ public class ComposerLayoutActivity extends BaseFragment {
                         }
                         updatePreview();
                     });
-                    // Raise to the real floor after the value has landed: this draws the dimmed
-                    // unreachable band and clamps a genuinely-below-floor saved value up to it. A
-                    // falling floor must be lowered before set() (above) or the thumb strands; a
-                    // rising floor must be applied after or a value below it would not clamp up. On the
-                    // first bind of a freshly created view the pre-call no-ops while options is still
-                    // null, so this call is also what makes the floor stick at all.
+                    // Raise to the real floor after the value has landed. Under the anchors
+                    // spacingSteps() builds this normally equals the array's own minimum, so it
+                    // clamps a genuinely-below-floor saved value up and draws no band; the one case
+                    // it does draw a band is the locked state, where the array keeps a spare anchor
+                    // below a floor of 100. A falling floor must be lowered before set() (above) or
+                    // the thumb strands; a rising floor must be applied after or a value below it
+                    // would not clamp up. On the first bind of a freshly created view the pre-call
+                    // no-ops while options is still null, so this call is also what makes the floor
+                    // stick at all.
                     spacingView.setMinValueAllowed(spacingFloor());
                     break;
                 case TYPE_GLASS_LIGHT:
@@ -1085,11 +1090,37 @@ public class ComposerLayoutActivity extends BaseFragment {
     }
 
     private static SlideIntChooseView.Options spacingOptions() {
-        return SlideIntChooseView.Options.make(0, SPACING_STEPS, SPACING_BETWEEN_STEPS,
-                // The left endpoint (type == -1) is handed SPACING_STEPS[0], the static anchor -
-                // not what's substituted here. The floor the user can actually reach depends on
-                // the toolbar scale, so the label has to ask the toolbar rather than echo the step.
+        return SlideIntChooseView.Options.make(0, spacingSteps(), SPACING_BETWEEN_STEPS,
+                // The left endpoint (type == -1) is handed the step array's own minimum, which
+                // spacingSteps() builds to be the floor - except in the locked state, where it backs
+                // off one step to keep two anchors. Substituting the floor covers that case, so the
+                // label always prints the leftmost value the thumb can actually hold.
                 (type, value) -> (type == -1 ? spacingFloor() : value) + "%");
+    }
+
+    /**
+     * The anchors the packing slider draws, from the floor at the current toolbar size up to 100.
+     *
+     * <p>Built per bind rather than taken from {@link #SPACING_STEPS} because the floor moves with
+     * the toolbar size. A fixed array that starts below the floor leaves a stretch of track the
+     * thumb can never enter - SlideIntChooseView.setMinValueAllowed draws it as a dimmed band, which
+     * at the default toolbar size was four steps wide and read as a jammed slider rather than as a
+     * disabled range, especially against a left-endpoint label that already printed the floor.
+     *
+     * <p>The floor is held one below the top so the array always has at least two entries. At the
+     * toolbar size where packing cannot move at all the floor comes back as 100, and a single-entry
+     * array would send SlideIntChooseView.getProgress down its no-interval fallback and divide by a
+     * zero range. Two entries keep that arithmetic sane; setMinValueAllowed still pins the thumb to
+     * the top, and the footer says why it cannot move.
+     */
+    private static int[] spacingSteps() {
+        int top = SPACING_STEPS[SPACING_STEPS.length - 1];
+        int floor = Math.max(SPACING_STEPS[0], Math.min(spacingFloor(), top - 1));
+        int[] steps = new int[top - floor + 1];
+        for (int i = 0; i < steps.length; i++) {
+            steps[i] = floor + i;
+        }
+        return steps;
     }
 
     /**
@@ -1113,8 +1144,9 @@ public class ComposerLayoutActivity extends BaseFragment {
      * goes through a gesture at all - the accessibility branch of the TYPE_SCALE bind, which drives
      * the scale slider one discrete step at a time with no touch events to defer against, so this
      * settle fires immediately instead of waiting for a gesture end that will never arrive. A direct
-     * onBindViewHolder on the two attached children, not a notify - it moves the dimmed band, the min
-     * label, and when the saved value is below the new floor the thumb and printed value too, without
+     * onBindViewHolder on the two attached children, not a notify - it rebuilds the anchor array at
+     * the new floor, moves the min label, and when the saved value is below that floor the thumb and
+     * printed value too, without
      * a change animation in the middle of the list, and it refreshes the footer so its three-way
      * disclosure never goes stale. */
     private void settleSpacingRows() {

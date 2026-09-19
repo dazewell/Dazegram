@@ -2038,3 +2038,26 @@ rather than typing a dp. `ComposerToolbarLayout.panelSelector(int)` sizes it as
 pack to.
 
 *(Established 2026-09-18, `#composer-spacing`.)*
+
+## `SlideIntChooseView.setMinValueAllowed`'s unreachable band is indistinguishable from the fill
+
+`setMinValueAllowed(v)` forwards `getProgress(v)` to
+`SeekBarView.setMinProgress` (`SlideIntChooseView.java:223-231`), and
+`SeekBarView` then splits the track into a segment from `minProgress` to the
+thumb and a segment from the left edge to `minProgress`
+(`SeekBarView.java:529-533`). On a dark theme the second segment reads as
+ordinary fill, not as a disabled range.
+
+So when the thumb is already sitting on the floor, the whole left stretch is
+painted and the thumb simply refuses to move any further left. There is nothing
+on screen that says why, and the slider looks jammed. It is worse when the
+left-endpoint label is substituted with the floor rather than the array's first
+anchor, because the label then claims a value the thumb cannot reach.
+
+Prefer building the anchor array from the live floor so the array's own minimum
+*is* the floor and the reachable range fills the track — see
+`ComposerLayoutActivity.spacingSteps()`. Keep at least two anchors: a
+one-element array sends `getProgress` down its no-interval fallback
+(`SlideIntChooseView.java:196`) and divides by a zero range.
+
+*(Established 2026-09-18, `#composer-spacing`.)*
