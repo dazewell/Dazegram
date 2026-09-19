@@ -2061,3 +2061,33 @@ one-element array sends `getProgress` down its no-interval fallback
 (`SlideIntChooseView.java:196`) and divides by a zero range.
 
 *(Established 2026-09-18, `#composer-spacing`.)*
+
+## `BlurredBackgroundDrawable`'s four-arg `setRadius` leaves the glass shader square
+
+There are two radius arrays. `radii` shapes the clip path and the outline;
+`shaderRadii` is fed to the liquid-glass `RuntimeShader`'s `radius` uniform
+(`BlurredBackgroundDrawableRenderNode.java:122` -> `LiquidGlassEffect.java:93`),
+which is what rounds the refracted edge on API 33+ when
+`LiteMode.FLAG_LIQUID_GLASS` is on. The one-arg `setRadius(float)` writes both
+(`BlurredBackgroundDrawable.java:102-109`). The four-arg
+`setRadius(tl, tr, br, bl)` writes only `radii`
+(`BlurredBackgroundDrawable.java:111-120`) -- the five-arg overload just below
+it does write both, which is what makes the four-arg look like an oversight
+rather than a choice.
+
+So any caller that only ever uses the four-arg overload leaves `shaderRadii` at
+the `new float[8]` zeros it was constructed with, and there is no way to lower
+it again afterwards. The action bar's forum pill is one such caller
+(`ActionBar.java:234`), so a forum header draws a square refraction edge under
+a rounded clip. It is subtle, and invisible below API 33 or with liquid glass
+off, which is why it has survived.
+
+`#title-pill-fix` deliberately did **not** repair this. It writes `shaderRadii`
+for the centered forum pill only, because there the pill is supposed to match a
+non-forum chat exactly, and it zeroes `shaderRadii` again on the way back out so
+the non-centered pill stays byte-identical to upstream
+(`ActionBar.updateGlassForumRadius`). Fixing the gap properly means fixing the
+four-arg overload, which changes every caller of it at once and wants its own
+branch and its own device build.
+
+*(Established 2026-09-19, `#title-pill-fix`.)*
