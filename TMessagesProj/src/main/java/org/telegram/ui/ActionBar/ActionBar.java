@@ -2336,7 +2336,35 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 // right, so we never move the container, just resize the bubble around the text.
                 // Center it on the text's own centre, which stays put while the status
                 // ("online" -> "last seen recently") grows or shrinks the width with animation.
-                final int width = Math.min(widthDefault, (int) animatorAvatarContainerWidth.getFactor() + dp(44));
+                // NagramX: padding runs from padMax at little content down to padMin at the ceiling
+                // the centred group was measured against, so the widest titles draw the width they
+                // drew before this and shorter ones gain room. That endpoint holds while the cap is
+                // at least padMax - padMin; below that drop clamps to the cap itself and even the
+                // widest content stays a little wider than it used to be. The drawable insets itself
+                // dp(6) a side (setPadding above) against a dp(23) radius, so padMax and padMin read
+                // as 30dp and 16dp of visible padding.
+                //
+                // Fourth power rather than a straight ramp: the ceiling is narrow enough that
+                // ordinary names sit high in the range, where a ramp hands most of the gain back.
+                // Its slope reaches 4 at the top though, so against a cap too narrow to absorb that
+                // the padding falls faster than the text grows and the pill shrinks as the name gets
+                // longer. alpha straightens the curve just far enough to stop that, and drop caps
+                // the fall for a cap narrower than the fall itself.
+                final int padMax = dp(72);
+                final int padMin = dp(44);
+                final int contentWidth = (int) animatorAvatarContainerWidth.getFactor();
+                final int contentCap = chatAvatarContainer.getCenteredContentCap();
+                final int pad;
+                if (!chatAvatarContainer.isCenteredContentMeasured() || contentCap <= 0) {
+                    // Nothing measured yet, so draw the width this drew before the taper existed.
+                    pad = padMin;
+                } else {
+                    final int drop = Math.min(padMax - padMin, contentCap);
+                    final float fill = Math.min(1f, contentWidth / (float) contentCap);
+                    final float alpha = Math.max(0f, Math.min(1f, (contentCap / (float) drop - 1f) / 3f));
+                    pad = padMax - Math.round(drop * lerp(fill, fill * fill * fill * fill, alpha));
+                }
+                final int width = Math.min(widthDefault, contentWidth + pad);
                 final int centerX = (int) (chatAvatarContainer.getX() + chatAvatarContainer.getCenteredTitleCenterX());
                 int hugLeft = centerX - width / 2;
                 int hugRight = centerX + width / 2;

@@ -898,6 +898,9 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             // instead of leaning into the avatar.
             availableWidth = width - 2 * dp(58);
         }
+        // NagramX: the centred title bubble's padding taper normalises against this, so it has to
+        // be the ceiling the lines were actually measured against, captured in the same pass.
+        centeredContentCap = Math.max(0, availableWidth - padding);
         avatarImageView.measure(MeasureSpec.makeMeasureSpec(dp(avatarSizeInDp) - 2, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(dp(avatarSizeInDp) - 2, MeasureSpec.EXACTLY));
         int tzPillReserve = 0;
         if (tzClockPill != null && tzClockPill.getVisibility() == VISIBLE) {
@@ -2182,6 +2185,17 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
 
     public boolean isCenteredContentMeasured() {
         return titleTextView != null && titleTextView.getMeasuredWidth() > 0;
+    }
+
+    // NagramX: the ceiling the centred lines were measured against on the last pass: the widest the
+    // title group or the status line can get, whichever of the two is driving. Recorded in
+    // onMeasure() rather than recomputed at draw time so it can't drift from the reservation that
+    // actually shaped the text. The bubble's padding taper divides by it, so it is a ceiling, not
+    // the current content width.
+    private int centeredContentCap;
+
+    public int getCenteredContentCap() {
+        return centeredContentCap;
     }
 
     // Full drawn width of the subtitle line: a leading status icon (typing/recording/sending
