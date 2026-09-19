@@ -2014,3 +2014,27 @@ guard covers both the auto-navigated and manually-opened cases with one
 condition.
 
 *(Established 2026-09-17, `#remember-send-action`.)*
+
+## `Theme.createSelectorDrawable`'s press circle is a fixed dp radius that ignores the view it is on
+
+On API 23+ (`minSdk` is 27, so always) the `RIPPLE_MASK_CIRCLE_20DP` branch
+hands the `RippleDrawable` a **null mask** and then calls
+`setRadius(radius <= 0 ? dp(20) : radius)`
+(`Theme.java:5039-5040`, `:5102-5107`). Null mask means unbounded: the press
+circle is not clipped to the view, and its radius is whatever raw dp was passed.
+It does not scale with the view, so shrinking or growing a button changes only
+how much empty space sits between the circle and the cell edge.
+
+That is how the composer panel ended up with two circle sizes that both looked
+wrong. Upstream buttons take the one-argument overload
+(`Theme.java:5022-5024`), so 20dp -> a 40dp circle; the fork's own toolbar
+buttons passed `dp(16)` -> a 32dp circle. With the panel's cell at 41dp the
+32dp circles sat 9dp apart and the gap widened further at larger toolbar sizes,
+because the cell scaled and the radius did not.
+
+The fix direction, if this comes up again: derive the radius from the geometry
+rather than typing a dp. `ComposerToolbarLayout.panelSelector(int)` sizes it as
+`minCellDp(scale()) / 2`, so the circle is exactly the tightest cell the row can
+pack to.
+
+*(Established 2026-09-18, `#composer-spacing`.)*

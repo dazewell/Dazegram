@@ -10,7 +10,6 @@ import android.widget.ImageView;
 
 import androidx.core.graphics.ColorUtils;
 
-import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.ChatActivityEnterView;
@@ -134,7 +133,7 @@ public final class ComposerFormattingActions {
 
     public void updateColors() {
         for (Action action : actions) {
-            action.view.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector, resourcesProvider), Theme.RIPPLE_MASK_CIRCLE_20DP, AndroidUtilities.dp(16)));
+            action.view.setBackground(ComposerToolbarLayout.panelSelector(Theme.getColor(Theme.key_listSelector, resourcesProvider)));
             applyIconColor(action.view, action.view.isEnabled());
         }
     }
@@ -142,7 +141,7 @@ public final class ComposerFormattingActions {
     private ImageView createView(Context context, ComposerButtons.Button button) {
         ImageView view = new ImageView(context);
         view.setImageResource(button.iconRes);
-        view.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector, resourcesProvider), Theme.RIPPLE_MASK_CIRCLE_20DP, AndroidUtilities.dp(16)));
+        view.setBackground(ComposerToolbarLayout.panelSelector(Theme.getColor(Theme.key_listSelector, resourcesProvider)));
         view.setContentDescription(LocaleController.getString(button.titleRes));
         applyIconColor(view, true);
         ScaleStateListAnimator.apply(view);

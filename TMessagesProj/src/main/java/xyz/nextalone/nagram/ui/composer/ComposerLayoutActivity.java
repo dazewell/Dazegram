@@ -117,6 +117,7 @@ public class ComposerLayoutActivity extends BaseFragment {
      * getProgress exact for every value the slider can hold.
      */
     private static final int[] SPACING_STEPS = {
+            75, 76, 77, 78, 79, 80, 81, 82, 83, 84,
             85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100
     };
 
@@ -129,7 +130,7 @@ public class ComposerLayoutActivity extends BaseFragment {
      * so the thumb lands left of the label on any rebind, and a scale-dependent floor that is not
      * itself an anchor draws no dimmed band or a short one. The value range is real, not cosmetic:
      * the cell is round(48 x size x packing), so the rounding boundary falls every couple of
-     * percent, giving eight distinct cell sizes at 100% size and ten at 125%.
+     * percent, giving eleven distinct cell sizes at 100% size and fourteen at 125%.
      */
     private static final int SPACING_BETWEEN_STEPS = 1;
 
