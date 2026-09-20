@@ -2132,12 +2132,12 @@ for the app, the previously chosen icon and the new one.
 The launcher reads component enabled state when the package is installed, long
 before any app code runs, so nothing in `ApplicationLoader.onCreate` can prevent
 it — a repair in `LauncherIconController.tryFixLauncherIconIfNeeded`
-(`LauncherIconController.java:29-63`, called at `ApplicationLoader.java:401`) only
+(`LauncherIconController.java:31-70`, called at `ApplicationLoader.java:401`) only
 collapses the duplicate after the user next opens the app.
 
 The state that produces it: `setIcon` writes explicit `ENABLED`/`DISABLED` for
 every entry in `LauncherIcon` **as it exists at the time it runs**
-(`LauncherIconController.java:71-78`). An alias added in a later version was not
+(`LauncherIconController.java:78-85`). An alias added in a later version was not
 in that loop, so it stays at `COMPONENT_ENABLED_STATE_DEFAULT` forever, and
 `DEFAULT` means *whatever the manifest says*. Give that new alias
 `android:enabled="true"` and every user who had ever picked an icon now has two
