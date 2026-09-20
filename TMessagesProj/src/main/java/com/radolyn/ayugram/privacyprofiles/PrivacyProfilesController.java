@@ -51,9 +51,6 @@ import java.util.Map;
  */
 public final class PrivacyProfilesController {
 
-    /** The only auto-lock values a profile (or the stock picker) can carry. */
-    private static final int[] SUPPORTED_TIMEOUTS = {0, 1, 60, 300, 3600, 18000};
-
     public static final int MAX_PROFILES = 20;
 
     private static final Object LOCK = new Object();
@@ -92,10 +89,7 @@ public final class PrivacyProfilesController {
     private PrivacyProfilesController() {}
 
     private static boolean isSupportedTimeout(int value) {
-        for (int t : SUPPORTED_TIMEOUTS) {
-            if (t == value) return true;
-        }
-        return false;
+        return tw.nekomimi.nekogram.helpers.AutoLockHelper.isSupported(value);
     }
 
     private static SharedPreferences prefs() {
@@ -113,8 +107,9 @@ public final class PrivacyProfilesController {
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject o = arr.getJSONObject(i);
                 int timeout = o.getInt("timeout");
-                // A profile whose stored timeout isn't one of the six stock values is corrupt --
-                // drop just that entry rather than let it silently apply an unsupported timeout.
+                // A profile whose stored timeout isn't one of the stock values in
+                // AutoLockHelper.VALUES is corrupt -- drop just that entry rather than let it
+                // silently apply an unsupported timeout.
                 if (!isSupportedTimeout(timeout)) continue;
                 // Round-1 profiles have no "icon" key; backfill the default rather than persist
                 // an empty icon that FolderIconHelper.folderIcons can't resolve later.

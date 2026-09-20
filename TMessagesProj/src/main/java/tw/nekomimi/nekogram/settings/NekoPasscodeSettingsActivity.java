@@ -44,6 +44,7 @@ import org.telegram.ui.PrivacySettingsActivity;
 import java.util.ArrayList;
 import java.util.Locale;
 
+import tw.nekomimi.nekogram.helpers.AutoLockHelper;
 import tw.nekomimi.nekogram.helpers.PasscodeHelper;
 import tw.nekomimi.nekogram.ui.cells.AccountCell;
 import tw.nekomimi.nekogram.ui.cells.HeaderCell;
@@ -483,29 +484,8 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
         }).show();
     }
 
-    private static final int[] AUTO_LOCK_VALUES = {0, 1, 60, 60 * 5, 60 * 60, 60 * 60 * 5};
-
-    /** Short form, used only by the add/edit dialog's NumberPicker wheel -- it doesn't ellipsize,
-     * so the verbose row strings below would clip there. */
-    private String autoLockValueText(int value) {
-        if (value == 0) {
-            return getString(R.string.AutoLockDisabled);
-        } else if (value == 1) {
-            return LocaleController.getString("AutoLockImmediately", R.string.AutoLockImmediately);
-        } else if (value == 60) {
-            return LocaleController.formatString("AutoLockInTime", R.string.AutoLockInTime, LocaleController.formatPluralString("Minutes", 1));
-        } else if (value == 60 * 5) {
-            return LocaleController.formatString("AutoLockInTime", R.string.AutoLockInTime, LocaleController.formatPluralString("Minutes", 5));
-        } else if (value == 60 * 60) {
-            return LocaleController.formatString("AutoLockInTime", R.string.AutoLockInTime, LocaleController.formatPluralString("Hours", 1));
-        } else if (value == 60 * 60 * 5) {
-            return LocaleController.formatString("AutoLockInTime", R.string.AutoLockInTime, LocaleController.formatPluralString("Hours", 5));
-        }
-        return "";
-    }
-
-    /** Verbose form, used only by the profile row (item 6) -- exact fixed strings, one per
-     * supported timeout, never fragment-style ("5 min") the way the dialog wheel shows it. */
+    /** Verbose form, used only by the profile row (item 6) and the add/edit dialog caption --
+     * full sentences, never the fragment-style "in 5 min" the wheel itself shows. */
     private String autoLockValueVerbose(int value) {
         if (value == 0) {
             return getString(R.string.PrivacyProfileLockNever);
@@ -520,14 +500,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
         } else if (value == 60 * 60 * 5) {
             return getString(R.string.PrivacyProfileLockAfter5Hours);
         }
-        return "";
-    }
-
-    private int autoLockValueIndex(int value) {
-        for (int i = 0; i < AUTO_LOCK_VALUES.length; i++) {
-            if (AUTO_LOCK_VALUES[i] == value) return i;
-        }
-        return 4;
+        return LocaleController.formatString(R.string.PrivacyProfileLockAfterTime, AutoLockHelper.duration(value));
     }
 
     /**
@@ -629,16 +602,16 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
 
         NumberPicker numberPicker = new NumberPicker(context);
         numberPicker.setMinValue(0);
-        numberPicker.setMaxValue(AUTO_LOCK_VALUES.length - 1);
-        numberPicker.setValue(autoLockValueIndex(existing != null ? existing.timeout : SharedConfig.autoLockIn));
-        numberPicker.setFormatter(v -> autoLockValueText(AUTO_LOCK_VALUES[v]));
+        numberPicker.setMaxValue(AutoLockHelper.count() - 1);
+        numberPicker.setValue(AutoLockHelper.index(existing != null ? existing.timeout : SharedConfig.autoLockIn));
+        numberPicker.setFormatter(v -> AutoLockHelper.label(AutoLockHelper.valueAt(v)));
         // Explicit 3 visible rows: the default item count leaves the wheel taller than this
         // dialog needs and pushes the caption below the fold on short screens.
         numberPicker.setItemCount(3);
         linearLayout.addView(numberPicker, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, NumberPicker.DEFAULT_SIZE_PER_COUNT * 3, 0, 4, 0, 0));
 
         TextView caption = new TextView(context);
-        caption.setText(autoLockValueVerbose(AUTO_LOCK_VALUES[numberPicker.getValue()]));
+        caption.setText(autoLockValueVerbose(AutoLockHelper.valueAt(numberPicker.getValue())));
         caption.setTextColor(Theme.getColor(Theme.key_dialogTextGray2));
         caption.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 13);
         caption.setGravity(Gravity.CENTER);
@@ -646,7 +619,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
         // The caption states what the *currently selected* value actually does, so it has to
         // track the wheel rather than describing the control in the abstract.
         numberPicker.setOnValueChangedListener((picker, oldVal, newVal) ->
-                caption.setText(autoLockValueVerbose(AUTO_LOCK_VALUES[newVal])));
+                caption.setText(autoLockValueVerbose(AutoLockHelper.valueAt(newVal))));
 
         android.widget.ScrollView scrollView = new android.widget.ScrollView(context);
         scrollView.setFillViewport(true);
@@ -660,7 +633,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
         builder.setNegativeButton(getString(R.string.Cancel), null);
         builder.setPositiveButton(getString(R.string.PrivacyProfileSave), (dialog, which) -> {
             String name = editText.getText() != null ? editText.getText().toString() : "";
-            int timeout = AUTO_LOCK_VALUES[numberPicker.getValue()];
+            int timeout = AutoLockHelper.valueAt(numberPicker.getValue());
             if (existing == null) {
                 if (com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getProfileCount() >= com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.MAX_PROFILES) {
                     BulletinFactory.of(this).createErrorBulletin(getString(R.string.PrivacyProfileMaxCount)).show();
