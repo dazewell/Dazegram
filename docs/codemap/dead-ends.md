@@ -9,11 +9,11 @@ see the README.
 
 Disproven on the tested ColorOS device, for the pre-change manifest. Selecting
 the Neon launcher icon in Chat Settings flips the enabled activity alias
-through `LauncherIconController.setIcon` (`LauncherIconController.java:27-34`),
+through `LauncherIconController.setIcon` (`LauncherIconController.java:56-63`),
 called from the picker's tap handler at `AppIconsSelectorCell.java:136` — not
 from the unrelated `tryFixLauncherIconIfNeeded` startup safety net
-(`LauncherIconController.java:11-19`), which only runs at app launch to catch
-a state where no alias is enabled at all. Selecting Neon changed the
+(`LauncherIconController.java:28-48`), which only runs at app launch to
+normalise the alias state when the number of live aliases is not exactly one. Selecting Neon changed the
 home-screen icon as expected. But the ColorOS notification stayed on the
 Telegram-blue paper plane rather than following Neon. Notifications never read
 an activity-alias icon in the first place: `NotificationsController` derives
@@ -130,7 +130,7 @@ runtime candidate considered, and why it's dead:
 setting Reasons A and B aside.** Limiting scope to just the monochrome status-bar
 small icon Android actually composites, there is nothing in the tree to map
 the 18-entry `LauncherIconController.LauncherIcon` picker
-(`TMessagesProj/src/main/java/org/telegram/ui/LauncherIconController.java:49-71`) onto:
+(`TMessagesProj/src/main/java/org/telegram/ui/LauncherIconController.java:65-87`) onto:
 - Of those 18 entries, 9 (`DEFAULT`, `GOOGLE`, `COLORFUL`, `DARKGREEN`,
   `NEON`, `NIELLO`, `BLUE`, `DARKBLUE`, `BLURBLUE`) resolve to adaptive-icon
   XML under `mipmap-anydpi-v26/` that **all** reference the same monochrome
@@ -172,7 +172,7 @@ the 18-entry `LauncherIconController.LauncherIcon` picker
   x139→371 (Official) or x162→349 (Unofficial) — each only ~40-45% of the
   canvas, because adaptive icons reserve a safe zone around the mark.
   `ic_launcher_nagram_ribbon_monochrome` is the same story, `108dp`/`512`
-  with a ~52dp envelope held inside the 66dp safe circle on purpose.
+  with a ~42dp envelope held inside the 66dp safe circle on purpose.
   `icon_plane.xml` is `90dp`/`90`-viewport with a path spanning roughly
   x28→58, ~33% of its canvas. The real notification glyphs, e.g.
   `TMessagesProj/src/main/res/drawable-anydpi/nagram_notification.xml`, are
