@@ -31,7 +31,7 @@
             </gradient>
         </aapt:attr>
     </path>
-    <path android:pathData="M250.0,278.0L177.6,278.0L142.4,368.8L145.6,371.2L204.4,330.0L250.0,330.0Z">
+    <path android:pathData="M250.0,278.0L177.6,278.0L145.7,364.2L148.9,366.6L204.4,330.0L250.0,330.0Z">
         <aapt:attr name="android:fillColor">
             <gradient
                 android:startX="0"
@@ -45,6 +45,6 @@
         </aapt:attr>
     </path>
     <path
-        android:pathData="M250.0,278.0L177.6,278.0L142.4,368.8L145.6,371.2L204.4,330.0L250.0,330.0Z"
+        android:pathData="M250.0,278.0L177.6,278.0L145.7,364.2L148.9,366.6L204.4,330.0L250.0,330.0Z"
         android:fillColor="#2BFFFFFF" />
 </vector>
