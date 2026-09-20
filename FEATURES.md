@@ -302,6 +302,10 @@ You can apply a chat pattern over your live Material You color. Turn it off by o
 
 On DazegramX (Unofficial), the app's fixed system-level icon — the one Android shows in the app switcher and permission dialogs — is the same *Default* art as the Chat Settings → App Icon picker's Default option. Dazegram (Official) keeps its usual Blue icon. Picking a launcher icon under Chat Settings → App Icon works as before on both variants.
 
+### Centered chat title <!-- #title-pill-fix -->
+
+The chat title and its status line sit centered in the action bar, in a pill that hugs the text rather than spanning the bar. Forum topics get the same rounded ends as any other chat. N-Settings → General → *Use Centered Title*, off by default, with options for everywhere, chats only, or settings screens only.
+
 <!-- Retired entries, plus sync-reconciliation and superseded feature slugs that have no catalog entry of their own.
      The behaviour still ships; it is documented in README instead of here.
      Slugs kept so old commits stay greppable and the catalog check keeps passing. -->

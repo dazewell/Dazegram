@@ -205,6 +205,11 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     private boolean glassOnlyBack;
     private boolean glassModeIsForum;
 
+    // NagramX: what updateGlassForumRadius last wrote. -1 means unknown; false is known, because
+    // setupGlass leaves the drawable in exactly the non-centered state.
+    private float glassForumRadiusLeft = -1;
+    private boolean glassForumRadiusCentered;
+
     private ChatAvatarContainer chatAvatarContainer;
 
     public void setGlassOnlyBack() {
@@ -235,6 +240,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         } else {
             glassDrawable.setRadius(dp(23));
         }
+        // NagramX: fresh drawable, so the cached pair has to forget whatever the old one held.
+        glassForumRadiusLeft = -1;
+        glassForumRadiusCentered = false;
 
 
         glassDrawableBack = factory.create(this)
@@ -258,6 +266,44 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         if (backButtonImageView != null) {
             backButtonImageView.setTranslationX(dp(2));
         }
+    }
+
+    // NagramX: upstream squares the forum pill's left corners to match the topic squircle sitting
+    // beside it. The centered title floats the pill mid-bar with nothing on its left, so there give
+    // it the same capsule end the right gets. Recomputed from dispatchDraw rather than baked in at
+    // setup because centering is read live (ChatActivity.canShowCenteredTitle) and can flip under
+    // an ActionBar that survives it: the settings row only rebuilds background fragments when its
+    // own centered predicate changes (NekoGeneralSettingsActivity.animateActionBarUpdate), and
+    // that predicate ignores type 2 while the chat's ignores type 3, so switching "always" to
+    // "settings only" flips the chat and rebuilds nothing.
+    //
+    // The centered branch uses the one-arg setRadius because it writes shaderRadii too, which the
+    // four-arg overload skips; without it the liquid-glass refraction keeps square corners under a
+    // capsule clip. Leaving centered mode has to zero shaderRadii again, since the four-arg write
+    // cannot lower it and the non-centered pill has to stay identical to upstream -- that
+    // refraction gap is upstream's to fix in one place, not something to half-fix from here. Only
+    // needed when the previous write was the centered one, which holds only while setupGlass and
+    // this method stay the drawable's only writers.
+    private void updateGlassForumRadius(boolean centeredTitle) {
+        if (glassDrawable == null || !glassModeIsForum) {
+            return;
+        }
+        // Both arguments stay int so this keeps binding to upstream's int lerp, which steps in
+        // whole pixels and lets the cache below coalesce most frames of a search animation.
+        final float left = centeredTitle ? dp(23) : lerp(dp(18.33f), dp(23), searchFieldVisibleAlpha);
+        if (glassForumRadiusLeft == left && glassForumRadiusCentered == centeredTitle) {
+            return;
+        }
+        if (centeredTitle) {
+            glassDrawable.setRadius(dp(23));
+        } else {
+            if (glassForumRadiusCentered) {
+                glassDrawable.setRadius(0);
+            }
+            glassDrawable.setRadius(left, dp(23), dp(23), left);
+        }
+        glassForumRadiusLeft = left;
+        glassForumRadiusCentered = centeredTitle;
     }
 
     public INavigationLayout.BackButtonState getBackButtonState() {
@@ -1239,10 +1285,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         alphaUpdate.addUpdateListener(anm -> {
             searchFieldVisibleAlpha = (float) anm.getAnimatedValue();
 
+            // NagramX: the radius write moved to updateGlassForumRadius, which dispatchDraw calls
+            // with the live alpha. Only the invalidate that drives it is still needed here.
             if (glassDrawable != null && glassModeIsForum) {
-                final float r1 = dp(23);
-                final float r2 = lerp(dp(18.33f), dp(23), searchFieldVisibleAlpha);
-                glassDrawable.setRadius(r2, r1, r1, r2);
                 invalidate();
             }
 
@@ -2325,6 +2370,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         final int b = t + s + p * 2;
 
         if (glassDrawable != null && !glassOnlyBack) {
+            // NagramX: the pill's corners depend on the centering, which can change under a live
+            // chat, so they are recomputed here alongside its bounds.
+            updateGlassForumRadius(centeredTitle);
             final int menuWidthWithPadding = menuWidth + ((hasForcedMenuWidth || hasForcedMenuMinWidth) ? (menuWidth > 0 ? p : 0) : (int) (p * animatorHasMenuItems.getFloatValue()));
             final int leftDefault = hasBackButton ? s + p : 0;
             final int avatarBubbleWidth = (int) (animatorAvatarContainerHasAvatar.getFloatValue() * (s + p));

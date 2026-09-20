@@ -2061,3 +2061,34 @@ one-element array sends `getProgress` down its no-interval fallback
 (`SlideIntChooseView.java:196`) and divides by a zero range.
 
 *(Established 2026-09-18, `#composer-spacing`.)*
+
+## `BlurredBackgroundDrawable`'s four-arg `setRadius` leaves the glass shader square
+
+There are two radius arrays. `radii` shapes the clip path and the outline;
+`shaderRadii` is fed to the liquid-glass `RuntimeShader`'s `radius` uniform
+(`BlurredBackgroundDrawableRenderNode.java:122` -> `LiquidGlassEffect.java:93`),
+which is what rounds the refracted edge on API 33+ when
+`LiteMode.FLAG_LIQUID_GLASS` is on (`ChatActivity.java:3008-3016`). The one-arg
+`setRadius(float)` writes both (`BlurredBackgroundDrawable.java:102-109`). The
+four-arg `setRadius(tl, tr, br, bl)` writes only `radii`
+(`BlurredBackgroundDrawable.java:111-120`) -- it neither raises `shaderRadii`
+nor clears a value another overload left there. The five-arg overload just below
+it does write both, which is what makes the four-arg look like an oversight
+rather than a choice.
+
+So a caller that reaches for the four-arg overload alone leaves `shaderRadii` at
+the `new float[8]` zeros it was constructed with. Upstream's forum pill is such
+a caller (`ActionBar.java:239`), so a forum header draws a square refraction
+edge under a rounded clip. It is subtle, and invisible below API 33 or with
+liquid glass off, which is why it has survived.
+
+`#title-pill-fix` deliberately did **not** repair that. It writes `shaderRadii`
+on the centered forum pill only, through the one-arg overload, because there the
+pill is supposed to match a non-forum chat exactly; and since the four-arg write
+cannot clear it again, it calls `setRadius(0)` on the way back out so the
+non-centered pill stays byte-identical to upstream
+(`ActionBar.updateGlassForumRadius`, `ActionBar.java:287-307`). Fixing the gap
+properly means fixing the four-arg overload, which changes every caller of it at
+once and wants its own branch and its own device build.
+
+*(Established 2026-09-19, `#title-pill-fix`.)*
