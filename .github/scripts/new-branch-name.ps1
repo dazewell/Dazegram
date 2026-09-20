@@ -37,7 +37,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $Clean = $Slug.Trim().ToLowerInvariant()
-$Clean = $Clean -replace '^\d{4}-\d{2}-\d{2}[-_]', ''
+$Clean = $Clean -replace '^\d{4}-\d{1,2}-\d{1,2}[-_]', ''
 $Clean = $Clean -replace '[^a-z0-9]+', '-'
 $Clean = $Clean.Trim('-')
 
