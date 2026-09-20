@@ -130,7 +130,7 @@ runtime candidate considered, and why it's dead:
 setting Reasons A and B aside.** Limiting scope to just the monochrome status-bar
 small icon Android actually composites, there is nothing in the tree to map
 the 18-entry `LauncherIconController.LauncherIcon` picker
-(`TMessagesProj/src/main/java/org/telegram/ui/LauncherIconController.java:36-54`) onto:
+(`TMessagesProj/src/main/java/org/telegram/ui/LauncherIconController.java:36-58`) onto:
 - Of those 18 entries, 9 (`DEFAULT`, `GOOGLE`, `COLORFUL`, `DARKGREEN`,
   `NEON`, `NIELLO`, `BLUE`, `DARKBLUE`, `BLURBLUE`) resolve to adaptive-icon
   XML under `mipmap-anydpi-v26/` that **all** reference the same monochrome
