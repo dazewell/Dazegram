@@ -2123,6 +2123,33 @@ once and wants its own branch and its own device build.
 
 *(Established 2026-09-19, `#title-pill-fix`.)*
 
+## "Immediately" auto-lock outranks the returning-intent grace period
+
+`AndroidUtilities.needShowPasscode` tests `SharedConfig.autoLockIn == 1` as its
+own OR arm, **before** the arm that requires `lastPauseTime != 0`
+(`AndroidUtilities.java:3482-3483`). `LaunchActivity.onActivityResult` zeroes
+`lastPauseTime` on any returning activity result
+(`LaunchActivity.java:6785-6790`), which is upstream's grace period for a camera
+intent, a share sheet or a file picker. So every timed value -- including the
+fork's 5/10/15/30 second ones -- skips the lock when you come back from one of
+those, while "Immediately" locks anyway. The short values are therefore
+*better*-behaved in intent flows than "Immediately", not worse; what they lock
+on is a plain home/recents excursion.
+
+`lastPauseTime` and the comparison clock are both
+`(int) (SystemClock.elapsedRealtime() / 1000)` (`LaunchActivity.java:8333`,
+`AndroidUtilities.java:3477`), so sub-minute timeouts are exact to the second;
+the scheduled lock runnable pads by 1000ms
+(`LaunchActivity.java:8369`), which covers the truncation.
+
+Nothing validates `autoLockIn` on load (`SharedConfig.java:559`), so an
+unsupported value can reach the picker from a hand-edited settings backup.
+Upstream left the wheel at position 0 in that case and wrote `0` ("Disabled")
+back out on confirm; `AutoLockHelper.index` falls back to the 1-hour default
+instead.
+
+*(Established 2026-09-20, `#passcode-autolock-seconds`.)*
+
 ## A second manifest-enabled `<activity-alias>` gives existing users two launcher entries
 
 Confirmed on-device 2026-09-20 on DazegramX: after an update that shipped a new

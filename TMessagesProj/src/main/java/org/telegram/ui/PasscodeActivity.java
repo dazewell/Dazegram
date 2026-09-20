@@ -321,53 +321,18 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
                         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
                         builder.setTitle(LocaleController.getString(R.string.AutoLock));
                         final NumberPicker numberPicker = new NumberPicker(getParentActivity());
+                        // NagramX: upstream wrote the timeout list out as three parallel if-chains here
+                        // (value->index, index->label, index->value). The fork adds sub-minute values and
+                        // the privacy-profiles feature validates against the same list, so the list lives
+                        // in AutoLockHelper now and the chains are index lookups into it.
                         numberPicker.setMinValue(0);
-                        numberPicker.setMaxValue(5);
-                        if (SharedConfig.autoLockIn == 0) {
-                            numberPicker.setValue(0);
-                        } else if (SharedConfig.autoLockIn == 1) {
-                            numberPicker.setValue(1);
-                        } else if (SharedConfig.autoLockIn == 60) {
-                            numberPicker.setValue(2);
-                        } else if (SharedConfig.autoLockIn == 60 * 5) {
-                            numberPicker.setValue(3);
-                        } else if (SharedConfig.autoLockIn == 60 * 60) {
-                            numberPicker.setValue(4);
-                        } else if (SharedConfig.autoLockIn == 60 * 60 * 5) {
-                            numberPicker.setValue(5);
-                        }
-                        numberPicker.setFormatter(value -> {
-                            if (value == 0) {
-                                return LocaleController.getString(R.string.AutoLockDisabled);
-                            } else if (value == 1) {
-                                return LocaleController.getString("AutoLockImmediately", R.string.AutoLockImmediately);
-                            } else if (value == 2) {
-                                return LocaleController.formatString("AutoLockInTime", R.string.AutoLockInTime, LocaleController.formatPluralString("Minutes", 1));
-                            } else if (value == 3) {
-                                return LocaleController.formatString("AutoLockInTime", R.string.AutoLockInTime, LocaleController.formatPluralString("Minutes", 5));
-                            } else if (value == 4) {
-                                return LocaleController.formatString("AutoLockInTime", R.string.AutoLockInTime, LocaleController.formatPluralString("Hours", 1));
-                            } else if (value == 5) {
-                                return LocaleController.formatString("AutoLockInTime", R.string.AutoLockInTime, LocaleController.formatPluralString("Hours", 5));
-                            }
-                            return "";
-                        });
+                        numberPicker.setMaxValue(tw.nekomimi.nekogram.helpers.AutoLockHelper.count() - 1);
+                        numberPicker.setValue(tw.nekomimi.nekogram.helpers.AutoLockHelper.index(SharedConfig.autoLockIn));
+                        numberPicker.setFormatter(value -> tw.nekomimi.nekogram.helpers.AutoLockHelper.label(tw.nekomimi.nekogram.helpers.AutoLockHelper.valueAt(value)));
                         builder.setView(numberPicker);
                         builder.setNegativeButton(LocaleController.getString(R.string.Done), (dialog, which) -> {
                             which = numberPicker.getValue();
-                            if (which == 0) {
-                                SharedConfig.autoLockIn = 0;
-                            } else if (which == 1) {
-                                SharedConfig.autoLockIn = 1;
-                            } else if (which == 2) {
-                                SharedConfig.autoLockIn = 60;
-                            } else if (which == 3) {
-                                SharedConfig.autoLockIn = 60 * 5;
-                            } else if (which == 4) {
-                                SharedConfig.autoLockIn = 60 * 60;
-                            } else if (which == 5) {
-                                SharedConfig.autoLockIn = 60 * 60 * 5;
-                            }
+                            SharedConfig.autoLockIn = tw.nekomimi.nekogram.helpers.AutoLockHelper.valueAt(which);
                             listAdapter.notifyItemChanged(position);
                             UserConfig.getInstance(currentAccount).saveConfig(false);
                         });
@@ -1287,18 +1252,10 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
                             textCell.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
                         }
                     } else if (position == autoLockRow) {
-                        String val;
-                        if (SharedConfig.autoLockIn == 0) {
-                            val = LocaleController.formatString("AutoLockDisabled", R.string.AutoLockDisabled);
-                        } else if (SharedConfig.autoLockIn == 1) {
-                            val = LocaleController.formatString("AutoLockImmediately", R.string.AutoLockImmediately);
-                        } else if (SharedConfig.autoLockIn < 60 * 60) {
-                            val = LocaleController.formatString("AutoLockInTime", R.string.AutoLockInTime, LocaleController.formatPluralString("Minutes", SharedConfig.autoLockIn / 60));
-                        } else if (SharedConfig.autoLockIn < 60 * 60 * 24) {
-                            val = LocaleController.formatString("AutoLockInTime", R.string.AutoLockInTime, LocaleController.formatPluralString("Hours", (int) Math.ceil(SharedConfig.autoLockIn / 60.0f / 60)));
-                        } else {
-                            val = LocaleController.formatString("AutoLockInTime", R.string.AutoLockInTime, LocaleController.formatPluralString("Days", (int) Math.ceil(SharedConfig.autoLockIn / 60.0f / 60 / 24)));
-                        }
+                        // NagramX: the sub-minute values the fork adds rendered as "0 minutes" through
+                        // upstream's integer-division branch, so the whole summary goes through the
+                        // same formatter the picker wheel uses.
+                        String val = tw.nekomimi.nekogram.helpers.AutoLockHelper.label(SharedConfig.autoLockIn);
                         textCell.setTextAndValue(LocaleController.getString(R.string.AutoLock), val, true);
                         textCell.setTag(Theme.key_windowBackgroundWhiteBlackText);
                         textCell.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
