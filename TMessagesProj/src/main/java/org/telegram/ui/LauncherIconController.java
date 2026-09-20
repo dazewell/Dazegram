@@ -21,14 +21,30 @@ public class LauncherIconController {
         return LauncherIcon.BLUE;
     }
 
+    // NagramX: counts live aliases instead of stopping at the first, because setIcon() only ever wrote
+    // explicit state for the icons that existed when it ran. An icon added later sits at DEFAULT forever,
+    // and on the variant where DEFAULT means enabled that lands a second launcher entry beside the one the
+    // user picked. Re-asserting their choice writes the explicit DISABLED the old setIcon() never could.
     public static void tryFixLauncherIconIfNeeded() {
+        Context ctx = ApplicationLoader.applicationContext;
+        PackageManager pm = ctx.getPackageManager();
+        LauncherIcon chosen = null;
+        int live = 0;
         for (LauncherIcon icon : LauncherIcon.values()) {
-            if (isEnabled(icon)) {
-                return;
+            int state = pm.getComponentEnabledSetting(icon.getComponentName(ctx));
+            if (state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
+                chosen = icon;
+                live++;
+            } else if (state == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && icon == getDefaultIcon()) {
+                live++;
             }
         }
+        if (live == 1) {
+            return;
+        }
 
-        setIcon(getDefaultIcon());
+        // live == 0 is the original repair case; live > 1 keeps the explicit pick and drops the rest
+        setIcon(chosen != null ? chosen : getDefaultIcon());
     }
 
     public static boolean isEnabled(LauncherIcon icon) {
