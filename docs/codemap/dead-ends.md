@@ -129,9 +129,9 @@ runtime candidate considered, and why it's dead:
 **Reason C — no notification-legal art exists for the picker's icons, even
 setting Reasons A and B aside.** Limiting scope to just the monochrome status-bar
 small icon Android actually composites, there is nothing in the tree to map
-the 15-entry `LauncherIconController.LauncherIcon` picker
-(`TMessagesProj/src/main/java/org/telegram/ui/LauncherIconController.java:36-51`) onto:
-- Of those 15 entries, 9 (`DEFAULT`, `GOOGLE`, `COLORFUL`, `DARKGREEN`,
+the 18-entry `LauncherIconController.LauncherIcon` picker
+(`TMessagesProj/src/main/java/org/telegram/ui/LauncherIconController.java:36-54`) onto:
+- Of those 18 entries, 9 (`DEFAULT`, `GOOGLE`, `COLORFUL`, `DARKGREEN`,
   `NEON`, `NIELLO`, `BLUE`, `DARKBLUE`, `BLURBLUE`) resolve to adaptive-icon
   XML under `mipmap-anydpi-v26/` that **all** reference the same monochrome
   layer, `@drawable/ic_launcher_nagram_monochrome` — confirmed by grep across
@@ -144,27 +144,35 @@ the 15-entry `LauncherIconController.LauncherIcon` picker
 - 1 entry (`TELEGRAM`, `ic_launcher_dr.xml`/`_round`) references
   `@drawable/icon_plane` (`TMessagesProj/src/main/res/drawable/icon_plane.xml`,
   `90dp`/`90` viewport).
+- 3 entries (`RIBBON`, `RIBBON_DAWN`, `RIBBON_AMBER`) share a third shape,
+  `@drawable/ic_launcher_nagram_ribbon_monochrome`
+  (`TMessagesProj/src/main/res/drawable/ic_launcher_nagram_ribbon_monochrome.xml`,
+  `108dp`/`512` viewport). Unlike the other two it lives in `src/main/res/`
+  rather than per package-variant, because the art is identical in both.
 - The remaining 5 entries (`VINTAGE`→`icon_6_launcher`, `AQUA`→`icon_4_launcher`,
   `PREMIUM`→`icon_3_launcher`, `TURBO`→`icon_5_launcher`,
   `NOX`→`icon_2_launcher`) have **no `<monochrome>` element at all** — confirmed
   by the same grep returning zero matches for any of those five files.
-- Net: 2 distinct shapes cover 10 of the 15 picker entries, and the other 5
-  have nothing to map to. This also weakens the case for adding a "match app
-  icon" mode on redundancy grounds, not just geometry: the existing
-  `notificationIcon` setting's own value `0` is already labeled "Telegram"
-  (`strings.xml:1575`, `R.drawable.notification`) and its default value `1`
-  is already the nagram glyph. Even setting geometry aside, mapping the
-  launcher picker's 9-entry "nagram-style" cluster and its 1-entry
-  `TELEGRAM` slot onto notification art would land on shapes conceptually
-  adjacent to icons this setting can already produce manually — it does not
-  reach a state the four-option setting is currently unable to express.
-- Geometry rules out using either of the two available launcher monochrome
+- Net: 3 distinct shapes cover 13 of the 18 picker entries, and the other 5
+  have nothing to map to. Redundancy still argues against a "match app icon"
+  mode for most of the picker, though it no longer carries the whole case:
+  the existing `notificationIcon` setting's own value `0` is already labeled
+  "Telegram" (`strings.xml:1575`, `R.drawable.notification`) and its default
+  value `1` is already the nagram glyph, so mapping the 9-entry
+  "nagram-style" cluster or the 1-entry `TELEGRAM` slot onto notification art
+  would land on shapes this setting can already produce manually. The three
+  `RIBBON` entries are the exception — that mark is genuinely absent from the
+  four-option setting, so for those three the redundancy argument does not
+  apply and only the geometry objection below rules them out.
+- Geometry rules out using any of the three available launcher monochrome
   shapes as a notification icon even where one exists — this is a separate,
   independently-fatal point from the redundancy argument above, not
   contingent on it. Both `ic_launcher_nagram_monochrome` variants are
   `108dp`/`512`-viewport adaptive layers with a path spanning roughly
   x139→371 (Official) or x162→349 (Unofficial) — each only ~40-45% of the
   canvas, because adaptive icons reserve a safe zone around the mark.
+  `ic_launcher_nagram_ribbon_monochrome` is the same story, `108dp`/`512`
+  with a ~52dp envelope held inside the 66dp safe circle on purpose.
   `icon_plane.xml` is `90dp`/`90`-viewport with a path spanning roughly
   x28→58, ~33% of its canvas. The real notification glyphs, e.g.
   `TMessagesProj/src/main/res/drawable-anydpi/nagram_notification.xml`, are
