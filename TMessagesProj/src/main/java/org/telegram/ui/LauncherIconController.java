@@ -8,8 +8,10 @@ import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.R;
 
 public class LauncherIconController {
-    // NagramX: the alias the manifest ships enabled. Every other alias is android:enabled="false", so a
-    // component still at COMPONENT_ENABLED_STATE_DEFAULT is live only if it is this one.
+    // NagramX: the alias the manifest ships enabled. Exactly one alias may carry android:enabled="true",
+    // permanently and on both package variants - a second one becomes a second launcher entry for anyone
+    // who has ever picked an icon, and it appears at install time where no code can intercept it. A
+    // per-variant or per-version default has to come from setIcon() instead, never from this attribute.
     private static final LauncherIcon MANIFEST_DEFAULT = LauncherIcon.BLUE;
 
     // NagramX: the icon this package variant wants to start on, which is not the same question - the
@@ -54,9 +56,14 @@ public class LauncherIconController {
             return;
         }
 
-        // live == 0 is the original repair case. live > 1 should no longer be reachable, but a future icon
-        // that ships enabled would land here, and re-asserting the explicit pick writes the DISABLED that
-        // the setIcon() of the day had no entry to write.
+        // live == 0 is the original repair case: nothing is launchable, so put something back.
+        //
+        // live > 1 is NOT reachable from here and this branch must not be read as covering it. The count
+        // treats a DEFAULT component as live only for MANIFEST_DEFAULT, so a second alias shipped
+        // android:enabled="true" would be invisible to it. Counting it properly would not help anyway -
+        // the launcher reads component state at install time, so the duplicate entry is on screen before
+        // this method ever runs. The only real defence is the invariant above: exactly one alias enabled
+        // in the manifest, permanently. See docs/codemap/upstream-traps.md.
         if (live != 1) {
             setIcon(chosen != null ? chosen : getDefaultIcon());
         }
