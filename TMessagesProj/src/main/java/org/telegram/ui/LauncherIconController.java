@@ -8,49 +8,64 @@ import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.R;
 
 public class LauncherIconController {
-    // NagramX: which alias ships android:enabled="true" is decided in build.gradle and differs per package
-    // variant, so a component still sitting at COMPONENT_ENABLED_STATE_DEFAULT does not always mean Blue.
-    // Falls back to BLUE if the key ever stops matching an entry, so a mismatch costs the wrong default
-    // rather than an app with no launcher icon at all.
+    // NagramX: the alias the manifest ships enabled. Every other alias is android:enabled="false", so a
+    // component still at COMPONENT_ENABLED_STATE_DEFAULT is live only if it is this one.
+    private static final LauncherIcon MANIFEST_DEFAULT = LauncherIcon.BLUE;
+
+    // NagramX: the icon this package variant wants to start on, which is not the same question - the
+    // manifest cannot vary per user, and making a second alias enabled there gave anyone with an explicit
+    // pick two launcher entries from install time onwards. Applied from code instead, below.
     public static LauncherIcon getDefaultIcon() {
         for (LauncherIcon icon : LauncherIcon.values()) {
             if (icon.key.equals(org.telegram.messenger.BuildConfig.DEFAULT_LAUNCHER_ICON_KEY)) {
                 return icon;
             }
         }
-        return LauncherIcon.BLUE;
+        return MANIFEST_DEFAULT;
     }
 
-    // NagramX: counts live aliases instead of stopping at the first, because setIcon() only ever wrote
-    // explicit state for the icons that existed when it ran. An icon added later sits at DEFAULT forever,
-    // and on the variant where DEFAULT means enabled that lands a second launcher entry beside the one the
-    // user picked. Re-asserting their choice writes the explicit DISABLED the old setIcon() never could.
+    // NagramX: runs from ApplicationLoader.onCreate. Two jobs, and both have to leave exactly one alias
+    // live, because the launcher reads component state at install time and shows one entry per live alias.
     public static void tryFixLauncherIconIfNeeded() {
         Context ctx = ApplicationLoader.applicationContext;
         PackageManager pm = ctx.getPackageManager();
         LauncherIcon chosen = null;
+        boolean untouched = true;
         int live = 0;
         for (LauncherIcon icon : LauncherIcon.values()) {
             int state = pm.getComponentEnabledSetting(icon.getComponentName(ctx));
+            if (state != PackageManager.COMPONENT_ENABLED_STATE_DEFAULT) {
+                untouched = false;
+            }
             if (state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
                 chosen = icon;
                 live++;
-            } else if (state == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && icon == getDefaultIcon()) {
+            } else if (state == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && icon == MANIFEST_DEFAULT) {
                 live++;
             }
         }
-        if (live == 1) {
+
+        // Nobody has ever picked an icon, so moving them costs no choice. This is the only path that
+        // applies the variant preference, which is why an existing pick survives an update untouched.
+        if (untouched) {
+            if (getDefaultIcon() != MANIFEST_DEFAULT) {
+                setIcon(getDefaultIcon());
+            }
             return;
         }
 
-        // live == 0 is the original repair case; live > 1 keeps the explicit pick and drops the rest
-        setIcon(chosen != null ? chosen : getDefaultIcon());
+        // live == 0 is the original repair case. live > 1 should no longer be reachable, but a future icon
+        // that ships enabled would land here, and re-asserting the explicit pick writes the DISABLED that
+        // the setIcon() of the day had no entry to write.
+        if (live != 1) {
+            setIcon(chosen != null ? chosen : getDefaultIcon());
+        }
     }
 
     public static boolean isEnabled(LauncherIcon icon) {
         Context ctx = ApplicationLoader.applicationContext;
         int i = ctx.getPackageManager().getComponentEnabledSetting(icon.getComponentName(ctx));
-        return i == PackageManager.COMPONENT_ENABLED_STATE_ENABLED || i == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && icon == getDefaultIcon();
+        return i == PackageManager.COMPONENT_ENABLED_STATE_ENABLED || i == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && icon == MANIFEST_DEFAULT;
     }
 
     public static void setIcon(LauncherIcon icon) {
