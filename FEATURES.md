@@ -189,7 +189,7 @@ Telegram's forward API cannot forward a message that hasn't been sent yet. The s
 
 ### Repost as Copy <!-- #repost-reply --> <!-- #repost-spread --> <!-- #scheduled-reply-fix -->
 
-*Repost as Copy* comes from NagramX — turn it on in settings (it's off by default) and it re-sends a message without a "Forwarded from" header, re-uploading the media. Copies keep the original reply and quote, and offer to delete the originals once sent. Scheduling a *NoQuote* forward re-sends it as a copy when it replies to something, so the reply survives the delay; a selection of several is spaced three minutes apart.
+*Repost as Copy* comes from NagramX — turn it on in settings (it's off by default) and it re-sends a message without a "Forwarded from" header, re-uploading the media. Copies keep the original reply and quote, and offer to delete the originals once sent. A scheduled *NoQuote* forward is re-sent as a copy too when it replies to something, so the reply survives; several are spaced three minutes apart.
 
 <img height="150" alt="Reposted as a copy confirmation bar with a Delete action for the original messages" src="docs/images/features/repost-copy.png" />
 
