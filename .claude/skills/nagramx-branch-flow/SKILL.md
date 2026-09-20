@@ -40,8 +40,8 @@ camelCase, spaces, owner prefix, or `coord-<slug>`. Slug matches:
 `2026-08-05_video-cc` -> `#video-cc`.
 
 Locally this is mostly automatic once `core.hooksPath` is set:
-`.githooks/post-commit` dates an undated branch at its first commit (skipped
-once the branch is on a remote; opt out with `NAX_NO_AUTO_DATE=1`), and
+`.githooks/post-commit` dates an undated branch whenever it is committed to
+(skipped once the branch is on a remote; opt out with `NAX_NO_AUTO_DATE=1`), and
 `.githooks/pre-push` refuses to push one. For a name up front:
 
 ```powershell

@@ -45,7 +45,7 @@ if ([string]::IsNullOrEmpty($Clean)) {
     throw "Slug '$Slug' has no usable characters left after normalization."
 }
 
-$Name = '{0}{1}{2}' -f $Date.ToString('yyyy-MM-dd'), $Separator, $Clean
+$Name = '{0}{1}{2}' -f $Date.ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture), $Separator, $Clean
 
 $Validator = Join-Path $PSScriptRoot 'test-branch-name.ps1'
 $global:LASTEXITCODE = 0
