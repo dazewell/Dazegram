@@ -182,10 +182,11 @@ gh pr create --base dev --head <YYYY-MM-DD>_<slug> --title "<title>" --body "<bo
 body. `process-rules.yml` also runs. Prefer `build-apk`: it builds the PR merge ref
 (`dev` + branch), uploads a signed dual test build, and auto-removes itself.
 
-If labelling produces **no run at all** — not a skipped one — there is no merge
-ref: the PR is conflicted (`mergeable_state: dirty`). Merge `origin/dev` **into
-the feature branch**, push, re-label. The one case that overrides "do not catch
-up feature branches" above: nothing builds until it is resolved.
+If labelling produces **no run at all** — not a skipped one — check
+`mergeable_state`: `dirty` means there is no merge ref to build. Merge
+`origin/dev` **into the feature branch**, push, re-label. The one case that
+overrides "do not catch up feature branches" above: nothing builds until it is
+resolved.
 
 Manual `workflow_dispatch` builds branch head as-is; use only if label fails,
 after:
