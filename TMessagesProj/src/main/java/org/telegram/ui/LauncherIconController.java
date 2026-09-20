@@ -35,6 +35,10 @@ public class LauncherIconController {
 
     public enum LauncherIcon {
         DEFAULT("DefaultIcon", R.mipmap.ic_launcher_nagram, R.mipmap.icon_background_nagram, R.string.AppIconDefault),
+        // NagramX: fork-drawn icons. Each entry's key must keep a matching
+        // <activity-alias android:name="org.telegram.messenger.<key>"> in the
+        // manifest - without it getComponentName() points at nothing and
+        // setIcon() silently does nothing.
         RIBBON("RibbonIcon", R.drawable.ic_launcher_nagram_ribbon_background, R.drawable.ic_launcher_nagram_ribbon_foreground, R.string.AppIconRibbon),
         RIBBON_DAWN("RibbonDawnIcon", R.drawable.ic_launcher_nagram_ribbon_dawn_background, R.drawable.ic_launcher_nagram_ribbon_dawn_foreground, R.string.AppIconRibbonDawn),
         RIBBON_AMBER("RibbonAmberIcon", R.drawable.ic_launcher_nagram_ribbon_amber_background, R.drawable.ic_launcher_nagram_ribbon_amber_foreground, R.string.AppIconRibbonAmber),
