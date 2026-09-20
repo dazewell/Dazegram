@@ -1,6 +1,6 @@
 #!/bin/sh
-# Put the mandatory date prefix on a change branch, automatically, at the first
-# commit — before anything has been pushed and while a rename is still free.
+# Put the mandatory date prefix on a change branch, automatically, before
+# anything has been pushed and while a rename is still free.
 #
 # Session tooling hands us branches like "sturdy-carnival", and by the time
 # process-rules.yml rejects the name the branch has a remote ref, a PR and
@@ -32,7 +32,7 @@ done
 branch=$(git symbolic-ref --short -q HEAD) || exit 0
 
 case "$branch" in
-  dev|base|main|master) exit 0 ;;
+  dev|base|nbase|main|master) exit 0 ;;
 esac
 
 # Already conformant: nothing to do. This is the whole name, not just the date
