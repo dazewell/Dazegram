@@ -2158,9 +2158,15 @@ for the app, the previously chosen icon and the new one.
 
 The launcher reads component enabled state when the package is installed, long
 before any app code runs, so nothing in `ApplicationLoader.onCreate` can prevent
-it — a repair in `LauncherIconController.tryFixLauncherIconIfNeeded`
-(`LauncherIconController.java:31-70`, called at `ApplicationLoader.java:401`) only
-collapses the duplicate after the user next opens the app.
+it. Nor does anything there clean it up afterwards: the repair in
+`LauncherIconController.tryFixLauncherIconIfNeeded`
+(`LauncherIconController.java:31-70`, called at `ApplicationLoader.java:401`)
+counts a `DEFAULT` component as live only for `MANIFEST_DEFAULT`, so the new
+alias is invisible to it, the count stays at one and no `setIcon()` runs. Both
+halves are deliberate — see the comment on that branch. Counting it correctly
+would only collapse the duplicate after the user next opens the app, which is
+already too late to be worth relying on, so the invariant below is the fix
+rather than a smarter counter.
 
 The state that produces it: `setIcon` writes explicit `ENABLED`/`DISABLED` for
 every entry in `LauncherIcon` **as it exists at the time it runs**
