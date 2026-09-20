@@ -16008,10 +16008,9 @@ public class ChatActivity extends BaseFragment implements
             return false;
         }
         boolean toCurrentDialog = did == dialog_id;
-        // NagramX: reposting into the current dialog can keep the source's own reply (resolved per
-        // message inside sendMessagesAsCopy); a scheduled message sent to another dialog can't, since
-        // its reply target doesn't exist there, so only preserve the reply when it stays in this chat.
-        if (!getMessageHelper().sendMessagesAsCopy(messages, did, null, toCurrentDialog ? getThreadMessage() : null, null, toCurrentDialog, hideCaption, notify, scheduleDate, toCurrentDialog ? chatMode : 0, quickReplyShortcut, getQuickReplyId(), payStars, toCurrentDialog ? getSendMonoForumPeerId() : 0, toCurrentDialog ? getSendMessageSuggestionParams() : null)) {
+        // NagramX: keep the original reply's peer across chats; only the destination thread context
+        // depends on this fragment. MessageHelper resolves each source's reply independently.
+        if (!getMessageHelper().sendMessagesAsCopy(messages, did, null, toCurrentDialog ? getThreadMessage() : null, null, true, hideCaption, notify, scheduleDate, toCurrentDialog ? chatMode : 0, quickReplyShortcut, getQuickReplyId(), payStars, toCurrentDialog ? getSendMonoForumPeerId() : 0, toCurrentDialog ? getSendMessageSuggestionParams() : null)) {
             waitingForSendingMessageLoad = false;
             forwardAsCopyFailed = true;
             // the picker fragment on top of us is still closing, and its own bulletin would replace this one
@@ -16052,7 +16051,7 @@ public class ChatActivity extends BaseFragment implements
         boolean allDispatched = true;
         for (int i = 0; i < slots.size(); i++) {
             int slotSchedule = baseScheduleDate + i * intervalSeconds;
-            MessageHelper.CopyDispatchResult r = getMessageHelper().sendMessagesAsCopy(slots.get(i), did, null, toCurrentDialog ? getThreadMessage() : null, null, toCurrentDialog, hideCaption, notify, slotSchedule, toCurrentDialog ? chatMode : 0, quickReplyShortcut, getQuickReplyId(), payStars, toCurrentDialog ? getSendMonoForumPeerId() : 0, toCurrentDialog ? getSendMessageSuggestionParams() : null, markerMap);
+            MessageHelper.CopyDispatchResult r = getMessageHelper().sendMessagesAsCopy(slots.get(i), did, null, toCurrentDialog ? getThreadMessage() : null, null, true, hideCaption, notify, slotSchedule, toCurrentDialog ? chatMode : 0, quickReplyShortcut, getQuickReplyId(), payStars, toCurrentDialog ? getSendMonoForumPeerId() : 0, toCurrentDialog ? getSendMessageSuggestionParams() : null, markerMap);
             sentAny = sentAny || r.sentAny;
             allDispatched = allDispatched && r.allDispatched;
         }
@@ -16094,7 +16093,13 @@ public class ChatActivity extends BaseFragment implements
             return false;
         }
         ArrayList<ArrayList<MessageObject>> slots = getMessageHelper().buildCopySpreadSlots(messagesToForward);
-        if (slots.size() < 2) {
+        // NagramX: #scheduled-reply-fix. One slot has nothing to spread, but it still can't go out as a
+        // plain forward without losing something: messages.forwardMessages carries no reply_to, so the
+        // source's own reply is dropped on the way. Take the copy path anyway when the batch really
+        // replies to something. A drop-author forward already shows no "Forwarded from", so the copy
+        // looks the same to the reader and keeps the reply a forward would have thrown away.
+        if (slots.size() < 2
+                && !getMessageHelper().shouldRepostAsCopyPreservingReply(messagesToForward, dialog_id, getThreadMessage())) {
             return false;
         }
         if (!naxSpreadScheduleWithinHorizon(baseScheduleDate, slots.size(), REPOST_SPREAD_INTERVAL_SECONDS)) {
