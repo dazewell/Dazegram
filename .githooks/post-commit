@@ -1,0 +1,60 @@
+#!/bin/sh
+# Put the mandatory date prefix on a change branch, automatically, at the first
+# commit — before anything has been pushed and while a rename is still free.
+#
+# Session tooling hands us branches like "sturdy-carnival", and by the time
+# process-rules.yml rejects the name the branch has a remote ref, a PR and
+# review history, so fixing it costs a re-push and a retargeted PR. Renaming
+# here costs nothing.
+#
+# Only ever renames a branch that is local-only and not already dated. Anything
+# with a remote counterpart is left alone and reported, because renaming a
+# pushed branch orphans the ref on the remote.
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+# Opt out for one commit: NAX_NO_AUTO_DATE=1 git commit ...
+
+[ "${NAX_NO_AUTO_DATE:-}" = "1" ] && exit 0
+
+git_dir=$(git rev-parse --git-dir 2>/dev/null) || exit 0
+
+# Mid-sequence commits (rebase, cherry-pick, revert) are not branch creation.
+for state in rebase-merge rebase-apply CHERRY_PICK_HEAD REVERT_HEAD MERGE_HEAD; do
+  [ -e "$git_dir/$state" ] && exit 0
+done
+
+branch=$(git symbolic-ref --short -q HEAD) || exit 0
+
+case "$branch" in
+  dev|base|main|master) exit 0 ;;
+esac
+
+# Already dated: nothing to do.
+printf '%s' "$branch" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}[-_]' && exit 0
+
+if [ -n "$(git for-each-ref --format='%(refname)' "refs/remotes/*/$branch")" ] ||
+   git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' >/dev/null 2>&1; then
+  echo "post-commit: branch '$branch' is missing its <YYYY-MM-DD> prefix but is already on a remote." >&2
+  echo "  Not renaming automatically. See .claude/skills/nagramx-branch-flow/SKILL.md for the re-push dance." >&2
+  exit 0
+fi
+
+slug=$(printf '%s' "$branch" | tr 'A-Z' 'a-z' | sed -e 's/[^a-z0-9]\{1,\}/-/g' -e 's/^-*//' -e 's/-*$//')
+[ -z "$slug" ] && exit 0
+
+dated="$(date +%Y-%m-%d)-$slug"
+
+if git rev-parse --verify --quiet "refs/heads/$dated" >/dev/null; then
+  echo "post-commit: cannot date branch '$branch' — '$dated' already exists. Rename it by hand." >&2
+  exit 0
+fi
+
+if git branch -m "$branch" "$dated" 2>/dev/null; then
+  echo "post-commit: renamed branch '$branch' -> '$dated' (the date prefix is mandatory)."
+  echo "  Session UI may still show the old name until it refreshes."
+  echo "  For a meaningful slug: ./.github/scripts/new-branch-name.ps1 -Slug <slug>"
+else
+  echo "post-commit: branch '$branch' is missing its <YYYY-MM-DD> prefix and could not be renamed." >&2
+fi
+
+exit 0
