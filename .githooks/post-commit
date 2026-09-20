@@ -1,0 +1,73 @@
+#!/bin/sh
+# Put the mandatory date prefix on a change branch, automatically, before
+# anything has been pushed and while a rename is still free.
+#
+# Session tooling hands us branches like "sturdy-carnival", and by the time
+# process-rules.yml rejects the name the branch has a remote ref, a PR and
+# review history, so fixing it costs a re-push and a retargeted PR. Renaming
+# here costs nothing.
+#
+# Only ever renames a branch that is local-only and not already dated. Anything
+# with a remote counterpart is left alone and reported, because renaming a
+# pushed branch orphans the ref on the remote.
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+# Opt out for one commit: NAX_NO_AUTO_DATE=1 git commit ...
+
+[ "${NAX_NO_AUTO_DATE:-}" = "1" ] && exit 0
+
+git_dir=$(git rev-parse --git-dir 2>/dev/null) || exit 0
+
+# A conflicted rebase / cherry-pick / revert / merge is not branch creation.
+# These files only exist while the operation is stopped for conflicts, so they
+# are not the load-bearing guard: a rebase keeps HEAD detached throughout (see
+# the symbolic-ref check below), and the sequencer doesn't invoke post-commit
+# for a multi-commit cherry-pick at all. A clean single-commit revert does
+# reach the rename, which is harmless — the branch was going to be renamed at
+# its next commit anyway.
+for state in rebase-merge rebase-apply CHERRY_PICK_HEAD REVERT_HEAD MERGE_HEAD; do
+  [ -e "$git_dir/$state" ] && exit 0
+done
+
+branch=$(git symbolic-ref --short -q HEAD) || exit 0
+
+case "$branch" in
+  dev|base|nbase|main|master) exit 0 ;;
+esac
+
+# Already conformant: nothing to do. This is the whole name, not just the date
+# prefix — a half-right name like "2026-09-19-Foo_Bar" must still be fixed here,
+# while the rename is free, rather than at push time. Month and day are range-
+# checked because process-rules.yml parses the date, so "2026-13-01" would clear
+# a laxer local check and then fail on the PR, which is the failure this exists
+# to prevent.
+printf '%s' "$branch" | grep -Eq '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[-_][a-z0-9]+(-[a-z0-9]+)*$' && exit 0
+
+if [ -n "$(git for-each-ref --format='%(refname)' "refs/remotes/*/$branch")" ] ||
+   git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' >/dev/null 2>&1; then
+  echo "post-commit: branch '$branch' is missing its <YYYY-MM-DD> prefix but is already on a remote." >&2
+  echo "  Not renaming automatically. See .claude/skills/nagramx-branch-flow/SKILL.md for the re-push dance." >&2
+  exit 0
+fi
+
+# Strip any existing date prefix first, so a near-miss like "2026-9-19-ci-rules"
+# is re-dated rather than stacked into "2026-09-19-2026-9-19-ci-rules".
+slug=$(printf '%s' "$branch" | tr 'A-Z' 'a-z' | sed -e 's/^[0-9]\{4\}-[0-9]\{1,2\}-[0-9]\{1,2\}[-_]//' -e 's/[^a-z0-9]\{1,\}/-/g' -e 's/^-*//' -e 's/-*$//')
+[ -z "$slug" ] && exit 0
+
+dated="$(date +%Y-%m-%d)-$slug"
+
+if git rev-parse --verify --quiet "refs/heads/$dated" >/dev/null; then
+  echo "post-commit: cannot date branch '$branch' — '$dated' already exists. Rename it by hand." >&2
+  exit 0
+fi
+
+if git branch -m "$branch" "$dated" 2>/dev/null; then
+  echo "post-commit: renamed branch '$branch' -> '$dated' (the date prefix is mandatory)."
+  echo "  Session UI may still show the old name until it refreshes."
+  echo "  For a meaningful slug: ./.github/scripts/new-branch-name.ps1 -Slug <slug>"
+else
+  echo "post-commit: branch '$branch' is missing its <YYYY-MM-DD> prefix and could not be renamed." >&2
+fi
+
+exit 0

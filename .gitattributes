@@ -1,0 +1,4 @@
+# Hooks execute as shell scripts; a CR at the end of a line can break sh in
+# ways `sh -n` in process-rules.yml would not catch. Keep the bytes that run
+# locally identical to the bytes CI checks.
+.githooks/* text eol=lf

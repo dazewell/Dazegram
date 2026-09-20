@@ -4,6 +4,36 @@ Non-obvious behaviour in base-fork code that has already bitten someone.
 What the trap is, where it lives, and what it costs if you miss it.
 Re-verify the citation before relying on it — see the README.
 
+## Copy replies need a peer, not a loaded preview
+
+`messages.forwardMessages` has no `reply_to` field, so a real forward always
+drops the source's own reply. The fork's copy dispatchers re-send instead
+(`ChatActivity.java:16013,16054`), and `getOwnReply` rebuilds the target from
+the `reply_to` header rather than requiring a loaded `replyMessageObject`
+(`MessageHelper.java:1585-1638`). A staged drop-author forward that was merely
+*scheduled* still went out as a real forward, losing its reply, until the
+single-slot door was opened (`ChatActivity.java:16096-16103`).
+
+`SendMessagesHelper.java:5152-5181` qualifies a cross-chat reply with
+`reply_to_peer_id`; copying only a message id would address the destination's
+own unrelated message. That same code redirects a **loaded forwarded** target to
+its channel origin (`:5156-5162`), which is why the copy helper hands it a
+detached reference carrying no forward header. A destination forum still needs
+its own topic anchor (`:5173-5174`), dereferenced there unconditionally.
+
+Note what the reconstructed peer does *not* buy. Every send builds its request
+from the local header, `createReplyInput((TL_messageReplyHeader) newMsg.reply_to)`
+(`SendMessagesHelper.java:5385,5444,5541`), and that header's `reply_to_peer_id`
+is `peer2`, which upstream re-derives itself with
+`getMessagesController().getPeer(replyToMsg.getDialogId())` (`:5154`).
+`getPeer` picks channel over chat only when the chat is in cache
+(`MessagesController.java:6100-6110`), so an uncached channel degrades to
+`TL_peerChat` on the wire whatever peer the reference holds. Upstream's own
+"reply in another chat" carries the same exposure, so fixing it belongs with
+that code, not in the copy helper.
+
+*(Established 2026-09-20, `#scheduled-reply-fix`.)*
+
 ## SectionsScrollView sectioning differs from RecyclerListView defaults
 
 `SectionsScrollView.isSectionView(...)` excludes only views tagged
@@ -2061,3 +2091,34 @@ one-element array sends `getProgress` down its no-interval fallback
 (`SlideIntChooseView.java:196`) and divides by a zero range.
 
 *(Established 2026-09-18, `#composer-spacing`.)*
+
+## `BlurredBackgroundDrawable`'s four-arg `setRadius` leaves the glass shader square
+
+There are two radius arrays. `radii` shapes the clip path and the outline;
+`shaderRadii` is fed to the liquid-glass `RuntimeShader`'s `radius` uniform
+(`BlurredBackgroundDrawableRenderNode.java:122` -> `LiquidGlassEffect.java:93`),
+which is what rounds the refracted edge on API 33+ when
+`LiteMode.FLAG_LIQUID_GLASS` is on (`ChatActivity.java:3008-3016`). The one-arg
+`setRadius(float)` writes both (`BlurredBackgroundDrawable.java:102-109`). The
+four-arg `setRadius(tl, tr, br, bl)` writes only `radii`
+(`BlurredBackgroundDrawable.java:111-120`) -- it neither raises `shaderRadii`
+nor clears a value another overload left there. The five-arg overload just below
+it does write both, which is what makes the four-arg look like an oversight
+rather than a choice.
+
+So a caller that reaches for the four-arg overload alone leaves `shaderRadii` at
+the `new float[8]` zeros it was constructed with. Upstream's forum pill is such
+a caller (`ActionBar.java:239`), so a forum header draws a square refraction
+edge under a rounded clip. It is subtle, and invisible below API 33 or with
+liquid glass off, which is why it has survived.
+
+`#title-pill-fix` deliberately did **not** repair that. It writes `shaderRadii`
+on the centered forum pill only, through the one-arg overload, because there the
+pill is supposed to match a non-forum chat exactly; and since the four-arg write
+cannot clear it again, it calls `setRadius(0)` on the way back out so the
+non-centered pill stays byte-identical to upstream
+(`ActionBar.updateGlassForumRadius`, `ActionBar.java:287-307`). Fixing the gap
+properly means fixing the four-arg overload, which changes every caller of it at
+once and wants its own branch and its own device build.
+
+*(Established 2026-09-19, `#title-pill-fix`.)*

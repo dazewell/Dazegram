@@ -34,11 +34,19 @@ date first, hyphens in slug. `process-rules.yml` enforces it on every PR:
 2026-08-05_video-cc          2026-08-05-video-cc          2026-08-06_ci-tag-check
 ```
 
-Date required; `video-cc`, `fix-expand-button-edit-mode`, and
-`composer-select-all` are wrong. `_` and `-` both valid; tooling may flatten
-`_` to `-`; do not flag dated hyphen names. No camelCase, spaces, owner
-prefix, or `coord-<slug>`. Slug matches:
+Date required; a bare `video-cc` or `composer-select-all` is wrong. `_` and `-`
+both valid; tooling may flatten `_` to `-`; do not flag dated hyphen names. No
+camelCase, spaces, owner prefix, or `coord-<slug>`. Slug matches:
 `2026-08-05_video-cc` -> `#video-cc`.
+
+Locally this is mostly automatic once `core.hooksPath` is set:
+`.githooks/post-commit` dates an undated branch whenever it is committed to
+(skipped once the branch is on a remote; opt out with `NAX_NO_AUTO_DATE=1`), and
+`.githooks/pre-push` refuses to push one. For a name up front:
+
+```powershell
+.\.github\scripts\new-branch-name.ps1 -Slug video-cc     # -> 2026-08-05_video-cc
+```
 
 Wrong name already created? Rename before review history accumulates:
 
@@ -148,14 +156,10 @@ worktree. Hooks are shared.
 
 ```powershell
 git switch dev; git pull --ff-only origin dev          # trunk already carries upstream via the guarded sync
-git switch -c <YYYY-MM-DD>_<slug> dev                   # cut the change branch from the trunk; DATE PREFIX REQUIRED (e.g. 2026-08-05_video-cc)
 git config core.hooksPath .githooks                     # once per clone, if not set
-# ...nagramx-workflow steps: design review, hooks, compile, code review...
-```
 
-```powershell
-git switch dev; git pull --ff-only origin dev          # trunk already carries upstream via the guarded sync
-git worktree add -b <YYYY-MM-DD>_<slug> ..\NagramX-<slug> dev   # sibling folder on a fresh branch cut from dev; DATE PREFIX REQUIRED
+git switch -c <YYYY-MM-DD>_<slug> dev                   # in place: cut the change branch from the trunk
+git worktree add -b <YYYY-MM-DD>_<slug> ..\NagramX-<slug> dev   # or a sibling folder on the same fresh branch
 cd ..\NagramX-<slug>                                    # work here; the main clone stays on dev
 # ...nagramx-workflow steps: design review, hooks, compile, code review...
 ```
