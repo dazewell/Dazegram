@@ -108,11 +108,14 @@ android {
         resValue 'string', 'NagramX', APP_PACKAGE.endsWith('.beta') ? 'Dazegram' : 'DazegramX'
 
         // NagramX: fixed <application> icon differs per package variant - Official (Dazegram) keeps its
-        // existing blue icon, Unofficial (DazegramX) uses Default art (#app-icon-fallback). += because AGP
-        // already populates manifestPlaceholders (e.g. applicationId) for the 11+ manifest sites that use it.
+        // existing blue icon, Unofficial (DazegramX) uses the Ribbon Amber art it also starts on
+        // (#app-icon-fallback, #ribbon-icons). This is the icon Android shows in the app switcher,
+        // permission dialogs and the notification header; it is baked at build time and cannot follow the
+        // picker, so it tracks the variant's default rather than the user's choice. += because AGP already
+        // populates manifestPlaceholders (e.g. applicationId) for the 11+ manifest sites that use it.
         manifestPlaceholders += [
-                fixedAppIcon     : APP_PACKAGE.endsWith('.beta') ? '@mipmap/ic_launcher_nagram_blue' : '@mipmap/ic_launcher_nagram',
-                fixedAppIconRound: APP_PACKAGE.endsWith('.beta') ? '@mipmap/ic_launcher_nagram_blue_round' : '@mipmap/ic_launcher_nagram_round'
+                fixedAppIcon     : APP_PACKAGE.endsWith('.beta') ? '@mipmap/ic_launcher_nagram_blue' : '@mipmap/ic_launcher_nagram_ribbon_amber',
+                fixedAppIconRound: APP_PACKAGE.endsWith('.beta') ? '@mipmap/ic_launcher_nagram_blue_round' : '@mipmap/ic_launcher_nagram_ribbon_amber_round'
         ]
 
         // account type and contact mime types must track applicationId so the two package variants don't collide

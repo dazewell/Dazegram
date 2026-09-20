@@ -49,14 +49,27 @@ about ColorOS behavior across other versions, OEM skins, or notification
 configurations. This result still applies after the later variant-scope
 correction: that change replaced the literal resource with a
 `${fixedAppIcon}`/`${fixedAppIconRound}` manifest placeholder resolved per
-package variant (`build.gradle` `manifestPlaceholders`), and for Unofficial
-that placeholder resolves to the same `ic_launcher_nagram`/`_round` pair the
-smoke build already tested — Unofficial's merged manifest icon attributes are
-unchanged, byte-for-byte, by that correction. This entry says nothing about
+package variant (`build.gradle` `manifestPlaceholders`). For Unofficial that
+placeholder resolved to the same `ic_launcher_nagram`/`_round` pair the smoke
+build already tested, leaving the merged manifest icon attributes unchanged
+byte-for-byte — until `#ribbon-icons` repointed it to
+`ic_launcher_nagram_ribbon_amber`/`_round` so the fixed icon matches the icon
+that variant now starts on.
+
+**Re-confirmed on-device 2026-09-20**, independently and by accident: after
+`#ribbon-icons` made Ribbon Amber the Unofficial launcher default, the
+notification icon was still the Default orange paper plane, which was the
+`<application>` icon at that commit. Reported as "the default did not apply",
+but the launcher alias had in fact changed — the notification surface simply
+does not read it. Same conclusion as the original investigation, reached from
+the opposite direction, and a good illustration of why this entry exists: the
+notification icon looks like it should follow the launcher icon and never does.
+
+This entry says nothing about
 Official (`org.telegram.messenger.beta`, Dazegram), which keeps its
 pre-existing Blue fixed icon and was not part of this investigation.
 
-*(Established 2026-09-04, confirmed 2026-09-05.)*
+*(Established 2026-09-04, confirmed 2026-09-05, re-confirmed 2026-09-20.)*
 
 ## "The notification icon can be made to follow the Chat Settings > App Icon selection at runtime"
 
