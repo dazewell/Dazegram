@@ -23,9 +23,9 @@ Each chat's ⋯ menu has one `Chat privacy` item, opening a sheet with `Hide las
 
 <img height="260" alt="Chat privacy sheet with Hide last message and Require password switched on, a custom placeholder text row between them, and the Disguise notifications card below" src="docs/images/features/chat-privacy-sheet.png" />
 
-### Privacy profiles <!-- #privacy-profiles -->
+### Privacy profiles <!-- #privacy-profiles --> <!-- #passcode-autolock-seconds -->
 
-Save sets of auto-lock timeouts under Nagram Settings → Passcode and switch between them, each with its own icon and colour. Activate a profile for now, for a stretch of time, or until a specific moment; long-press the Settings tab for a quick switcher. Changing the auto-lock timeout the normal way, restoring a backup, or clearing your passcode drops the active profile.
+Save sets of auto-lock timeouts under Nagram Settings → Passcode and switch between them, each with its own icon and colour. Activate a profile for now, for a stretch of time, or until a specific moment; long-press the Settings tab for a quick switcher. Telegram's own auto-lock picker gains 5, 10, 15 and 30 second steps, which profiles can use too.
 
 ### Passcode setup safety <!-- #passcode-setup-safety -->
 

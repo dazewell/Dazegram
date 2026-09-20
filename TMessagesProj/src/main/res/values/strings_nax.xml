@@ -468,6 +468,7 @@
     <string name="PrivacyProfileLockAfter5Minutes">Locks after 5 minutes away</string>
     <string name="PrivacyProfileLockAfter1Hour">Locks after 1 hour away</string>
     <string name="PrivacyProfileLockAfter5Hours">Locks after 5 hours away</string>
+    <string name="PrivacyProfileLockAfterTime">Locks after %1$s away</string>
     <string name="PrivacyProfileAutoLockLabel">Auto-lock</string>
     <string name="PrivacyProfileColorLabel">Color</string>
     <string name="PrivacyProfileColorDeep">Deep %1$s</string>
