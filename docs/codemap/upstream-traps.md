@@ -2149,3 +2149,39 @@ back out on confirm; `AutoLockHelper.index` falls back to the 1-hour default
 instead.
 
 *(Established 2026-09-20, `#passcode-autolock-seconds`.)*
+
+## A second manifest-enabled `<activity-alias>` gives existing users two launcher entries
+
+Confirmed on-device 2026-09-20 on DazegramX: after an update that shipped a new
+launcher alias with `android:enabled="true"`, the launcher showed **two** entries
+for the app, the previously chosen icon and the new one.
+
+The launcher reads component enabled state when the package is installed, long
+before any app code runs, so nothing in `ApplicationLoader.onCreate` can prevent
+it. Nor does anything there clean it up afterwards: the repair in
+`LauncherIconController.tryFixLauncherIconIfNeeded`
+(`LauncherIconController.java:31-70`, called at `ApplicationLoader.java:401`)
+counts a `DEFAULT` component as live only for `MANIFEST_DEFAULT`, so the new
+alias is invisible to it, the count stays at one and no `setIcon()` runs. Both
+halves are deliberate — see the comment on that branch. Counting it correctly
+would only collapse the duplicate after the user next opens the app, which is
+already too late to be worth relying on, so the invariant below is the fix
+rather than a smarter counter.
+
+The state that produces it: `setIcon` writes explicit `ENABLED`/`DISABLED` for
+every entry in `LauncherIcon` **as it exists at the time it runs**
+(`LauncherIconController.java:78-85`). An alias added in a later version was not
+in that loop, so it stays at `COMPONENT_ENABLED_STATE_DEFAULT` forever, and
+`DEFAULT` means *whatever the manifest says*. Give that new alias
+`android:enabled="true"` and every user who had ever picked an icon now has two
+live components: their explicit one plus the new default. Users who never picked
+are unaffected, which is what makes this easy to miss in testing — a fresh
+install looks correct.
+
+So a per-variant or per-version default cannot be expressed by flipping which
+alias the manifest enables. Keep exactly one alias enabled in the manifest,
+permanently, and apply any preferred default from code, gated on *every* alias
+still being at `DEFAULT` — that condition is what distinguishes "never chose"
+from "chose this one", and it is the only safe trigger for overriding.
+
+*(Established 2026-09-20, `#ribbon-icons`.)*

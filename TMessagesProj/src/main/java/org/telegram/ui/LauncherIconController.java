@@ -8,20 +8,71 @@ import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.R;
 
 public class LauncherIconController {
-    public static void tryFixLauncherIconIfNeeded() {
+    // NagramX: the alias the manifest ships enabled. Exactly one alias may carry android:enabled="true",
+    // permanently and on both package variants - a second one becomes a second launcher entry for anyone
+    // who has ever picked an icon, and it appears at install time where no code can intercept it. A
+    // per-variant or per-version default has to come from setIcon() instead, never from this attribute.
+    private static final LauncherIcon MANIFEST_DEFAULT = LauncherIcon.BLUE;
+
+    // NagramX: the icon this package variant wants to start on, which is not the same question - the
+    // manifest cannot vary per user, and making a second alias enabled there gave anyone with an explicit
+    // pick two launcher entries from install time onwards. Applied from code instead, below.
+    public static LauncherIcon getDefaultIcon() {
         for (LauncherIcon icon : LauncherIcon.values()) {
-            if (isEnabled(icon)) {
-                return;
+            if (icon.key.equals(org.telegram.messenger.BuildConfig.DEFAULT_LAUNCHER_ICON_KEY)) {
+                return icon;
+            }
+        }
+        return MANIFEST_DEFAULT;
+    }
+
+    // NagramX: runs from ApplicationLoader.onCreate. Two jobs, and both have to leave exactly one alias
+    // live, because the launcher reads component state at install time and shows one entry per live alias.
+    public static void tryFixLauncherIconIfNeeded() {
+        Context ctx = ApplicationLoader.applicationContext;
+        PackageManager pm = ctx.getPackageManager();
+        LauncherIcon chosen = null;
+        boolean untouched = true;
+        int live = 0;
+        for (LauncherIcon icon : LauncherIcon.values()) {
+            int state = pm.getComponentEnabledSetting(icon.getComponentName(ctx));
+            if (state != PackageManager.COMPONENT_ENABLED_STATE_DEFAULT) {
+                untouched = false;
+            }
+            if (state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
+                chosen = icon;
+                live++;
+            } else if (state == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && icon == MANIFEST_DEFAULT) {
+                live++;
             }
         }
 
-        setIcon(LauncherIcon.BLUE);
+        // Nobody has ever picked an icon, so moving them costs no choice. This is the only path that
+        // applies the variant preference, which is why an existing pick survives an update untouched.
+        if (untouched) {
+            if (getDefaultIcon() != MANIFEST_DEFAULT) {
+                setIcon(getDefaultIcon());
+            }
+            return;
+        }
+
+        // live == 0 is the original repair case: nothing is launchable, so put something back.
+        //
+        // live > 1 is NOT reachable from here and this branch must not be read as covering it. The count
+        // treats a DEFAULT component as live only for MANIFEST_DEFAULT, so a second alias shipped
+        // android:enabled="true" would be invisible to it. Counting it properly would not help anyway -
+        // the launcher reads component state at install time, so the duplicate entry is on screen before
+        // this method ever runs. The only real defence is the invariant above: exactly one alias enabled
+        // in the manifest, permanently. See docs/codemap/upstream-traps.md.
+        if (live != 1) {
+            setIcon(chosen != null ? chosen : getDefaultIcon());
+        }
     }
 
     public static boolean isEnabled(LauncherIcon icon) {
         Context ctx = ApplicationLoader.applicationContext;
         int i = ctx.getPackageManager().getComponentEnabledSetting(icon.getComponentName(ctx));
-        return i == PackageManager.COMPONENT_ENABLED_STATE_ENABLED || i == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && icon == LauncherIcon.BLUE;
+        return i == PackageManager.COMPONENT_ENABLED_STATE_ENABLED || i == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && icon == MANIFEST_DEFAULT;
     }
 
     public static void setIcon(LauncherIcon icon) {
@@ -35,6 +86,13 @@ public class LauncherIconController {
 
     public enum LauncherIcon {
         DEFAULT("DefaultIcon", R.mipmap.ic_launcher_nagram, R.mipmap.icon_background_nagram, R.string.AppIconDefault),
+        // NagramX: fork-drawn icons. Each entry's key must keep a matching
+        // <activity-alias android:name="org.telegram.messenger.<key>"> in the
+        // manifest - without it getComponentName() points at nothing and
+        // setIcon() silently does nothing.
+        RIBBON("RibbonIcon", R.drawable.ic_launcher_nagram_ribbon_background, R.drawable.ic_launcher_nagram_ribbon_foreground, R.string.AppIconRibbon),
+        RIBBON_DAWN("RibbonDawnIcon", R.drawable.ic_launcher_nagram_ribbon_dawn_background, R.drawable.ic_launcher_nagram_ribbon_dawn_foreground, R.string.AppIconRibbonDawn),
+        RIBBON_AMBER("RibbonAmberIcon", R.drawable.ic_launcher_nagram_ribbon_amber_background, R.drawable.ic_launcher_nagram_ribbon_amber_foreground, R.string.AppIconRibbonAmber),
         GOOGLE("GoogleIcon", R.drawable.ic_launcher_nagram_google_background, R.drawable.ic_launcher_nagram_google_foreground, R.string.AppIconGoogle),
         COLORFUL("ColorfulIcon", R.drawable.ic_launcher_nagram_colorful_background, R.drawable.ic_launcher_nagram_colorful_foreground, R.string.AppIconColorful),
         DARKGREEN("DarkGreenIcon", R.drawable.ic_launcher_nagram_darkgreen_background, R.drawable.ic_launcher_nagram_darkgreen_foreground, R.string.AppIconDarkGreen),

@@ -9,11 +9,11 @@ see the README.
 
 Disproven on the tested ColorOS device, for the pre-change manifest. Selecting
 the Neon launcher icon in Chat Settings flips the enabled activity alias
-through `LauncherIconController.setIcon` (`LauncherIconController.java:27-34`),
+through `LauncherIconController.setIcon` (`LauncherIconController.java:78-85`),
 called from the picker's tap handler at `AppIconsSelectorCell.java:136` — not
 from the unrelated `tryFixLauncherIconIfNeeded` startup safety net
-(`LauncherIconController.java:11-19`), which only runs at app launch to catch
-a state where no alias is enabled at all. Selecting Neon changed the
+(`LauncherIconController.java:31-70`), which only runs at app launch to
+normalise the alias state when the number of live aliases is not exactly one. Selecting Neon changed the
 home-screen icon as expected. But the ColorOS notification stayed on the
 Telegram-blue paper plane rather than following Neon. Notifications never read
 an activity-alias icon in the first place: `NotificationsController` derives
@@ -49,14 +49,27 @@ about ColorOS behavior across other versions, OEM skins, or notification
 configurations. This result still applies after the later variant-scope
 correction: that change replaced the literal resource with a
 `${fixedAppIcon}`/`${fixedAppIconRound}` manifest placeholder resolved per
-package variant (`build.gradle` `manifestPlaceholders`), and for Unofficial
-that placeholder resolves to the same `ic_launcher_nagram`/`_round` pair the
-smoke build already tested — Unofficial's merged manifest icon attributes are
-unchanged, byte-for-byte, by that correction. This entry says nothing about
+package variant (`build.gradle` `manifestPlaceholders`). For Unofficial that
+placeholder resolved to the same `ic_launcher_nagram`/`_round` pair the smoke
+build already tested, leaving the merged manifest icon attributes unchanged
+byte-for-byte — until `#ribbon-icons` repointed it to
+`ic_launcher_nagram_ribbon_amber`/`_round` so the fixed icon matches the icon
+that variant now starts on.
+
+**Re-confirmed on-device 2026-09-20**, independently and by accident: after
+`#ribbon-icons` made Ribbon Amber the Unofficial launcher default, the
+notification icon was still the Default orange paper plane, which was the
+`<application>` icon at that commit. Reported as "the default did not apply",
+but the launcher alias had in fact changed — the notification surface simply
+does not read it. Same conclusion as the original investigation, reached from
+the opposite direction, and a good illustration of why this entry exists: the
+notification icon looks like it should follow the launcher icon and never does.
+
+This entry says nothing about
 Official (`org.telegram.messenger.beta`, Dazegram), which keeps its
 pre-existing Blue fixed icon and was not part of this investigation.
 
-*(Established 2026-09-04, confirmed 2026-09-05.)*
+*(Established 2026-09-04, confirmed 2026-09-05, re-confirmed 2026-09-20.)*
 
 ## "The notification icon can be made to follow the Chat Settings > App Icon selection at runtime"
 
@@ -122,16 +135,16 @@ runtime candidate considered, and why it's dead:
   `ApplicationInfo.icon` drawable resolved at parse time differs) —
   considered and rejected explicitly: the app has no way to force system
   night mode on demand, this yields at most two resolved states rather than
-  the picker's fifteen, and which qualifier ships is OEM-dependent.
+  the picker's eighteen, and which qualifier ships is OEM-dependent.
 - **Per-alias `<activity-alias>` icons** — already disproven on-device by the
   entry above; notifications never read that value at all.
 
 **Reason C — no notification-legal art exists for the picker's icons, even
 setting Reasons A and B aside.** Limiting scope to just the monochrome status-bar
 small icon Android actually composites, there is nothing in the tree to map
-the 15-entry `LauncherIconController.LauncherIcon` picker
-(`TMessagesProj/src/main/java/org/telegram/ui/LauncherIconController.java:36-51`) onto:
-- Of those 15 entries, 9 (`DEFAULT`, `GOOGLE`, `COLORFUL`, `DARKGREEN`,
+the 18-entry `LauncherIconController.LauncherIcon` picker
+(`TMessagesProj/src/main/java/org/telegram/ui/LauncherIconController.java:87-109`) onto:
+- Of those 18 entries, 9 (`DEFAULT`, `GOOGLE`, `COLORFUL`, `DARKGREEN`,
   `NEON`, `NIELLO`, `BLUE`, `DARKBLUE`, `BLURBLUE`) resolve to adaptive-icon
   XML under `mipmap-anydpi-v26/` that **all** reference the same monochrome
   layer, `@drawable/ic_launcher_nagram_monochrome` — confirmed by grep across
@@ -144,27 +157,35 @@ the 15-entry `LauncherIconController.LauncherIcon` picker
 - 1 entry (`TELEGRAM`, `ic_launcher_dr.xml`/`_round`) references
   `@drawable/icon_plane` (`TMessagesProj/src/main/res/drawable/icon_plane.xml`,
   `90dp`/`90` viewport).
+- 3 entries (`RIBBON`, `RIBBON_DAWN`, `RIBBON_AMBER`) share a third shape,
+  `@drawable/ic_launcher_nagram_ribbon_monochrome`
+  (`TMessagesProj/src/main/res/drawable/ic_launcher_nagram_ribbon_monochrome.xml`,
+  `108dp`/`512` viewport). Unlike the other two it lives in `src/main/res/`
+  rather than per package-variant, because the art is identical in both.
 - The remaining 5 entries (`VINTAGE`→`icon_6_launcher`, `AQUA`→`icon_4_launcher`,
   `PREMIUM`→`icon_3_launcher`, `TURBO`→`icon_5_launcher`,
   `NOX`→`icon_2_launcher`) have **no `<monochrome>` element at all** — confirmed
   by the same grep returning zero matches for any of those five files.
-- Net: 2 distinct shapes cover 10 of the 15 picker entries, and the other 5
-  have nothing to map to. This also weakens the case for adding a "match app
-  icon" mode on redundancy grounds, not just geometry: the existing
-  `notificationIcon` setting's own value `0` is already labeled "Telegram"
-  (`strings.xml:1575`, `R.drawable.notification`) and its default value `1`
-  is already the nagram glyph. Even setting geometry aside, mapping the
-  launcher picker's 9-entry "nagram-style" cluster and its 1-entry
-  `TELEGRAM` slot onto notification art would land on shapes conceptually
-  adjacent to icons this setting can already produce manually — it does not
-  reach a state the four-option setting is currently unable to express.
-- Geometry rules out using either of the two available launcher monochrome
+- Net: 3 distinct shapes cover 13 of the 18 picker entries, and the other 5
+  have nothing to map to. Redundancy still argues against a "match app icon"
+  mode for most of the picker, though it no longer carries the whole case:
+  the existing `notificationIcon` setting's own value `0` is already labeled
+  "Telegram" (`strings.xml:1575`, `R.drawable.notification`) and its default
+  value `1` is already the nagram glyph, so mapping the 9-entry
+  "nagram-style" cluster or the 1-entry `TELEGRAM` slot onto notification art
+  would land on shapes this setting can already produce manually. The three
+  `RIBBON` entries are the exception — that mark is genuinely absent from the
+  four-option setting, so for those three the redundancy argument does not
+  apply and only the geometry objection below rules them out.
+- Geometry rules out using any of the three available launcher monochrome
   shapes as a notification icon even where one exists — this is a separate,
   independently-fatal point from the redundancy argument above, not
   contingent on it. Both `ic_launcher_nagram_monochrome` variants are
   `108dp`/`512`-viewport adaptive layers with a path spanning roughly
   x139→371 (Official) or x162→349 (Unofficial) — each only ~40-45% of the
   canvas, because adaptive icons reserve a safe zone around the mark.
+  `ic_launcher_nagram_ribbon_monochrome` is the same story, `108dp`/`512`
+  with a ~42dp envelope held inside the 66dp safe circle on purpose.
   `icon_plane.xml` is `90dp`/`90`-viewport with a path spanning roughly
   x28→58, ~33% of its canvas. The real notification glyphs, e.g.
   `TMessagesProj/src/main/res/drawable-anydpi/nagram_notification.xml`, are
