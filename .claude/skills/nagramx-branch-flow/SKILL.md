@@ -164,15 +164,10 @@ cd ..\NagramX-<slug>                                    # work here; the main cl
 # ...nagramx-workflow steps: design review, hooks, compile, code review...
 ```
 
-`FEATURES.md` rides in the same branch. Before self-managed worktree removal,
-stop/verify processes per `nagramx-process-lifecycle`; app-managed worktrees use
-only `archive_session`.
-
-```powershell
-cd ..\NagramX
-git worktree remove ..\NagramX-<slug>                   # drop the sibling tree
-git worktree prune                                      # tidy stale metadata (if the folder was already gone)
-```
+`FEATURES.md` rides in the same branch. Before self-managed worktree removal
+(`git worktree remove ..\NagramX-<slug>` from the main clone, then
+`git worktree prune`), stop/verify processes per `nagramx-process-lifecycle`;
+app-managed worktrees use only `archive_session`.
 
 ## PR, builds, and review
 
@@ -188,7 +183,9 @@ body. `process-rules.yml` also runs. Prefer `build-apk`: it builds the PR merge 
 (`dev` + branch), uploads a signed dual test build, and auto-removes itself.
 
 If labelling produces **no run at all** — not a skipped one — there is no merge
-ref: the PR is conflicted (`mergeable_state: dirty`). Merge `dev` and re-label.
+ref: the PR is conflicted (`mergeable_state: dirty`). Merge `origin/dev` **into
+the feature branch**, push, re-label. The one case that overrides "do not catch
+up feature branches" above: nothing builds until it is resolved.
 
 Manual `workflow_dispatch` builds branch head as-is; use only if label fails,
 after:
