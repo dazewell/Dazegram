@@ -85,7 +85,9 @@ skipped gate passed.
   `#tag`, never an amend plus force-push. Never force-push `dev`, `base`, or a
   feature branch.
 - Branches are `<YYYY-MM-DD>_<slug>`; the date prefix is mandatory and
-  `process-rules.yml` accepts `-` as an equally valid separator.
+  `process-rules.yml` accepts `-` as an equally valid separator. With hooks on,
+  `.githooks/post-commit` dates an undated local branch when it is committed to
+  and `.githooks/pre-push` blocks pushing one.
 - PRs target `dev`, are **not drafts**, and Copilot review is requested
   automatically by a repository ruleset — never request it by hand.
 - **Close every review point before handoff**: fix it, or reply explaining why
