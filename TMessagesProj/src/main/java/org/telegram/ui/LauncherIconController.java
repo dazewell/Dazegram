@@ -35,6 +35,9 @@ public class LauncherIconController {
 
     public enum LauncherIcon {
         DEFAULT("DefaultIcon", R.mipmap.ic_launcher_nagram, R.mipmap.icon_background_nagram, R.string.AppIconDefault),
+        RIBBON("RibbonIcon", R.drawable.ic_launcher_nagram_ribbon_background, R.drawable.ic_launcher_nagram_ribbon_foreground, R.string.AppIconRibbon),
+        RIBBON_DAWN("RibbonDawnIcon", R.drawable.ic_launcher_nagram_ribbon_dawn_background, R.drawable.ic_launcher_nagram_ribbon_dawn_foreground, R.string.AppIconRibbonDawn),
+        RIBBON_AMBER("RibbonAmberIcon", R.drawable.ic_launcher_nagram_ribbon_amber_background, R.drawable.ic_launcher_nagram_ribbon_amber_foreground, R.string.AppIconRibbonAmber),
         GOOGLE("GoogleIcon", R.drawable.ic_launcher_nagram_google_background, R.drawable.ic_launcher_nagram_google_foreground, R.string.AppIconGoogle),
         COLORFUL("ColorfulIcon", R.drawable.ic_launcher_nagram_colorful_background, R.drawable.ic_launcher_nagram_colorful_foreground, R.string.AppIconColorful),
         DARKGREEN("DarkGreenIcon", R.drawable.ic_launcher_nagram_darkgreen_background, R.drawable.ic_launcher_nagram_darkgreen_foreground, R.string.AppIconDarkGreen),

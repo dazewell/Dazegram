@@ -298,6 +298,10 @@ You can apply a chat pattern over your live Material You color. Turn it off by o
 
 <img height="260" alt="chat background pattern tinted with the current Material You accent color" src="docs/images/features/monet-pattern.png" />
 
+### Ribbon app icons <!-- #ribbon-icons -->
+
+Three launcher icons drawn for the fork rather than recoloured from the stock art: a strip folded into a chat bubble, with a cut end at the top right and a folded tail. *Ribbon* is amber on graphite, *Ribbon Dawn* warm cream, *Ribbon Amber* dark on amber. Pick one under Chat Settings → App Icon; all three carry a themed-icon layer.
+
 ### Fixed app icon uses Default art on DazegramX <!-- #app-icon-fallback -->
 
 On DazegramX (Unofficial), the app's fixed system-level icon — the one Android shows in the app switcher and permission dialogs — is the same *Default* art as the Chat Settings → App Icon picker's Default option. Dazegram (Official) keeps its usual Blue icon. Picking a launcher icon under Chat Settings → App Icon works as before on both variants.
