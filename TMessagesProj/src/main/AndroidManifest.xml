@@ -225,7 +225,7 @@
         </activity-alias>
 
         <activity-alias
-            android:enabled="true"
+            android:enabled="${blueIconEnabled}"
             android:name="org.telegram.messenger.BlueIcon"
             android:targetActivity="org.telegram.ui.LaunchActivity"
             android:icon="@mipmap/ic_launcher_nagram_blue"
@@ -405,7 +405,7 @@
         </activity-alias>
 
         <activity-alias
-            android:enabled="false"
+            android:enabled="${ribbonAmberIconEnabled}"
             android:name="org.telegram.messenger.RibbonAmberIcon"
             android:targetActivity="org.telegram.ui.LaunchActivity"
             android:icon="@mipmap/ic_launcher_nagram_ribbon_amber"

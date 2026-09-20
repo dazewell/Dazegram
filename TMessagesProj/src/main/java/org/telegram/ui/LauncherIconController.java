@@ -8,6 +8,19 @@ import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.R;
 
 public class LauncherIconController {
+    // NagramX: which alias ships android:enabled="true" is decided in build.gradle and differs per package
+    // variant, so a component still sitting at COMPONENT_ENABLED_STATE_DEFAULT does not always mean Blue.
+    // Falls back to BLUE if the key ever stops matching an entry, so a mismatch costs the wrong default
+    // rather than an app with no launcher icon at all.
+    public static LauncherIcon getDefaultIcon() {
+        for (LauncherIcon icon : LauncherIcon.values()) {
+            if (icon.key.equals(org.telegram.messenger.BuildConfig.DEFAULT_LAUNCHER_ICON_KEY)) {
+                return icon;
+            }
+        }
+        return LauncherIcon.BLUE;
+    }
+
     public static void tryFixLauncherIconIfNeeded() {
         for (LauncherIcon icon : LauncherIcon.values()) {
             if (isEnabled(icon)) {
@@ -15,13 +28,13 @@ public class LauncherIconController {
             }
         }
 
-        setIcon(LauncherIcon.BLUE);
+        setIcon(getDefaultIcon());
     }
 
     public static boolean isEnabled(LauncherIcon icon) {
         Context ctx = ApplicationLoader.applicationContext;
         int i = ctx.getPackageManager().getComponentEnabledSetting(icon.getComponentName(ctx));
-        return i == PackageManager.COMPONENT_ENABLED_STATE_ENABLED || i == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && icon == LauncherIcon.BLUE;
+        return i == PackageManager.COMPONENT_ENABLED_STATE_ENABLED || i == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && icon == getDefaultIcon();
     }
 
     public static void setIcon(LauncherIcon icon) {

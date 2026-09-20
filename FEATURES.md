@@ -300,7 +300,7 @@ You can apply a chat pattern over your live Material You color. Turn it off by o
 
 ### Ribbon app icons <!-- #ribbon-icons -->
 
-Three launcher icons drawn for the fork rather than recoloured from the stock art: a strip folded into a chat bubble, with a cut end at the top right and a folded tail. *Ribbon* is amber on graphite, *Ribbon Dawn* warm cream, *Ribbon Amber* dark on amber. Pick one under Chat Settings → App Icon; all three carry a themed-icon layer.
+Three launcher icons drawn for the fork, not recoloured stock art: a strip folded into a chat bubble, with a cut end at the top right and a folded tail. *Ribbon* is amber on graphite, *Ribbon Dawn* warm cream, *Ribbon Amber* dark on amber. Pick one under Chat Settings → App Icon; all three carry a themed-icon layer. DazegramX (Unofficial) starts on Ribbon Amber; Dazegram (Official) starts on Blue.
 
 ### Fixed app icon uses Default art on DazegramX <!-- #app-icon-fallback -->
 

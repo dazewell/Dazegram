@@ -110,9 +110,16 @@ android {
         // NagramX: fixed <application> icon differs per package variant - Official (Dazegram) keeps its
         // existing blue icon, Unofficial (DazegramX) uses Default art (#app-icon-fallback). += because AGP
         // already populates manifestPlaceholders (e.g. applicationId) for the 11+ manifest sites that use it.
+        //
+        // NagramX: the launcher alias that ships android:enabled="true" also differs - Official keeps Blue,
+        // Unofficial boots on Ribbon Amber (#ribbon-icons). Exactly one alias may be true or the launcher
+        // gets two entries, so these two placeholders are always opposites. defaultLauncherIconKey below
+        // carries the same answer into Java; keep all three in step.
         manifestPlaceholders += [
-                fixedAppIcon     : APP_PACKAGE.endsWith('.beta') ? '@mipmap/ic_launcher_nagram_blue' : '@mipmap/ic_launcher_nagram',
-                fixedAppIconRound: APP_PACKAGE.endsWith('.beta') ? '@mipmap/ic_launcher_nagram_blue_round' : '@mipmap/ic_launcher_nagram_round'
+                fixedAppIcon          : APP_PACKAGE.endsWith('.beta') ? '@mipmap/ic_launcher_nagram_blue' : '@mipmap/ic_launcher_nagram',
+                fixedAppIconRound     : APP_PACKAGE.endsWith('.beta') ? '@mipmap/ic_launcher_nagram_blue_round' : '@mipmap/ic_launcher_nagram_round',
+                blueIconEnabled       : APP_PACKAGE.endsWith('.beta') ? 'true' : 'false',
+                ribbonAmberIconEnabled: APP_PACKAGE.endsWith('.beta') ? 'false' : 'true'
         ]
 
         // account type and contact mime types must track applicationId so the two package variants don't collide
@@ -136,6 +143,11 @@ android {
         buildConfigField 'int', 'APP_ID', appId
         buildConfigField 'String', 'APP_HASH', '"' + appHash + '"'
         buildConfigField 'long', 'BUILD_TIMESTAMP', buildTimestamp + 'L'
+
+        // NagramX: the alias key whose android:enabled is "true" above, so LauncherIconController can tell
+        // which icon an untouched COMPONENT_ENABLED_STATE_DEFAULT actually resolves to. BuildVars.isBetaApp()
+        // is not usable for this - it returns BuildConfig.DEBUG, not the package variant.
+        buildConfigField 'String', 'DEFAULT_LAUNCHER_ICON_KEY', '"' + (APP_PACKAGE.endsWith('.beta') ? 'BlueIcon' : 'RibbonAmberIcon') + '"'
 
         externalNativeBuild {
             cmake {
