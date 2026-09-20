@@ -4,6 +4,36 @@ Non-obvious behaviour in base-fork code that has already bitten someone.
 What the trap is, where it lives, and what it costs if you miss it.
 Re-verify the citation before relying on it — see the README.
 
+## Copy replies need a peer, not a loaded preview
+
+`messages.forwardMessages` has no `reply_to` field, so a real forward always
+drops the source's own reply. The fork's copy dispatchers re-send instead
+(`ChatActivity.java:16013,16054`), and `getOwnReply` rebuilds the target from
+the `reply_to` header rather than requiring a loaded `replyMessageObject`
+(`MessageHelper.java:1585-1638`). A staged drop-author forward that was merely
+*scheduled* still went out as a real forward, losing its reply, until the
+single-slot door was opened (`ChatActivity.java:16096-16103`).
+
+`SendMessagesHelper.java:5152-5181` qualifies a cross-chat reply with
+`reply_to_peer_id`; copying only a message id would address the destination's
+own unrelated message. That same code redirects a **loaded forwarded** target to
+its channel origin (`:5156-5162`), which is why the copy helper hands it a
+detached reference carrying no forward header. A destination forum still needs
+its own topic anchor (`:5173-5174`), dereferenced there unconditionally.
+
+Note what the reconstructed peer does *not* buy. Every send builds its request
+from the local header, `createReplyInput((TL_messageReplyHeader) newMsg.reply_to)`
+(`SendMessagesHelper.java:5385,5444,5541`), and that header's `reply_to_peer_id`
+is `peer2`, which upstream re-derives itself with
+`getMessagesController().getPeer(replyToMsg.getDialogId())` (`:5154`).
+`getPeer` picks channel over chat only when the chat is in cache
+(`MessagesController.java:6100-6110`), so an uncached channel degrades to
+`TL_peerChat` on the wire whatever peer the reference holds. Upstream's own
+"reply in another chat" carries the same exposure, so fixing it belongs with
+that code, not in the copy helper.
+
+*(Established 2026-09-20, `#scheduled-reply-fix`.)*
+
 ## SectionsScrollView sectioning differs from RecyclerListView defaults
 
 `SectionsScrollView.isSectionView(...)` excludes only views tagged

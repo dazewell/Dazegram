@@ -16093,7 +16093,13 @@ public class ChatActivity extends BaseFragment implements
             return false;
         }
         ArrayList<ArrayList<MessageObject>> slots = getMessageHelper().buildCopySpreadSlots(messagesToForward);
-        if (slots.size() < 2) {
+        // NagramX: #scheduled-reply-fix. One slot has nothing to spread, but it still can't go out as a
+        // plain forward without losing something: messages.forwardMessages carries no reply_to, so the
+        // source's own reply is dropped on the way. Take the copy path anyway when the batch really
+        // replies to something. A drop-author forward already shows no "Forwarded from", so the copy
+        // looks the same to the reader and keeps the reply a forward would have thrown away.
+        if (slots.size() < 2
+                && !getMessageHelper().shouldRepostAsCopyPreservingReply(messagesToForward, dialog_id, getThreadMessage())) {
             return false;
         }
         if (!naxSpreadScheduleWithinHorizon(baseScheduleDate, slots.size(), REPOST_SPREAD_INTERVAL_SECONDS)) {
