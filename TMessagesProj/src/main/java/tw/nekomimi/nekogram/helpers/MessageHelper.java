@@ -1638,11 +1638,15 @@ public class MessageHelper extends BaseController {
     }
 
     // Cloud replies carry their original peer through SendMessagesHelper's cross-chat reply path.
-    // Secret-chat random ids and Saved Messages ids cannot be reused outside their own dialog.
+    // Secret-chat random ids can't be reused outside their own dialog, and neither can a Saved
+    // Messages id: a reply *pointing into* Saved Messages means nothing once the copy lands
+    // elsewhere. Saved Messages as the destination is just another cloud chat - a reply to some
+    // other chat is qualified by reply_to_peer_id and resolves there like any cross-chat reply.
     // A forum still needs its destination topic root: sendMessage dereferences it for replies.
     public MessageObject getPreservableOwnReply(MessageObject messageObject, long targetDialogId, MessageObject replyToTopMsg) {
-        if (messageObject == null || messageObject.getDialogId() != targetDialogId
-                && (DialogObject.isEncryptedDialog(messageObject.getDialogId()) || DialogObject.isEncryptedDialog(targetDialogId))) {
+        if (messageObject == null
+                || (messageObject.getDialogId() != targetDialogId
+                    && (DialogObject.isEncryptedDialog(messageObject.getDialogId()) || DialogObject.isEncryptedDialog(targetDialogId)))) {
             return null;
         }
         if (replyToTopMsg == null && isForumDialog(targetDialogId)) {
