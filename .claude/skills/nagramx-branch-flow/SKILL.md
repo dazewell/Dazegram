@@ -186,6 +186,13 @@ gh pr create --base dev --head <YYYY-MM-DD>_<slug> --title "<title>" --body "<bo
 `ci.yml` compiles every PR push and is the no-local-tools gate; say so in the
 body. `process-rules.yml` also runs. Prefer `build-apk`: it builds the PR merge ref
 (`dev` + branch), uploads a signed dual test build, and auto-removes itself.
+
+If labelling produces **no run at all** — not a skipped one — check the PR is
+mergeable before touching the label again. A conflicted PR has no merge ref to
+build, so `pull_request` events create no workflow run at all:
+`gh api repos/<o>/<r>/pulls/<n> --jq .mergeable_state` reads `dirty`. Merge
+`dev` in and re-label; the label was never the problem.
+
 Manual `workflow_dispatch` builds branch head as-is; use only if label fails,
 after:
 
