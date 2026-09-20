@@ -164,15 +164,10 @@ cd ..\NagramX-<slug>                                    # work here; the main cl
 # ...nagramx-workflow steps: design review, hooks, compile, code review...
 ```
 
-`FEATURES.md` rides in the same branch. Before self-managed worktree removal,
-stop/verify processes per `nagramx-process-lifecycle`; app-managed worktrees use
-only `archive_session`.
-
-```powershell
-cd ..\NagramX
-git worktree remove ..\NagramX-<slug>                   # drop the sibling tree
-git worktree prune                                      # tidy stale metadata (if the folder was already gone)
-```
+`FEATURES.md` rides in the same branch. Before self-managed worktree removal
+(`git worktree remove ..\NagramX-<slug>` from the main clone, then
+`git worktree prune`), stop/verify processes per `nagramx-process-lifecycle`;
+app-managed worktrees use only `archive_session`.
 
 ## PR, builds, and review
 
@@ -186,6 +181,13 @@ gh pr create --base dev --head <YYYY-MM-DD>_<slug> --title "<title>" --body "<bo
 `ci.yml` compiles every PR push and is the no-local-tools gate; say so in the
 body. `process-rules.yml` also runs. Prefer `build-apk`: it builds the PR merge ref
 (`dev` + branch), uploads a signed dual test build, and auto-removes itself.
+
+If labelling produces **no run at all** — not a skipped one — check
+`mergeable_state`: `dirty` means there is no merge ref to build. Merge
+`origin/dev` **into the feature branch**, push, re-label. The one case that
+overrides "do not catch up feature branches" above: nothing builds until it is
+resolved.
+
 Manual `workflow_dispatch` builds branch head as-is; use only if label fails,
 after:
 
@@ -216,12 +218,7 @@ resolve, verify none remain.
 ## Follow-up commits
 
 Review fixes, on-device bugs, and later improvements are new commits, not amends:
-
-```powershell
-# ...fix, re-run the compile gate...
-git add <files>; git commit -m "<what this fix actually does> #<slug>"
-git push origin <YYYY-MM-DD>_<slug>
-```
+re-run the compile gate, then commit and push to the same branch.
 
 Name the fix, not "address review". Push re-runs `ci.yml`; APK refresh needs
 `build-apk`. Rewriting is off by default even on feature branches; use it only on
@@ -331,7 +328,7 @@ git switch dev; git pull --ff-only origin dev
 git merge --squash <YYYY-MM-DD>_<slug>      # stage the change, no commit yet
 git commit -m "<summary> #<slug>"           # one commit; carry the slug so it stays greppable
 git push origin dev                          # -> staging.yml builds + uploads
-git branch -d <YYYY-MM-DD>_<slug>            # local only; a never-PR'd branch has no refs/pull recovery
+git branch -d <YYYY-MM-DD>_<slug>            # local only
 ```
 
 A never-PR'd branch has no `refs/pull`; PR it if it might be proposed upstream.

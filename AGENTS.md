@@ -95,6 +95,12 @@ skipped gate passed.
 - User-visible change ⇒ its `FEATURES.md` entry ships in the same PR (70 words
   hard ceiling). Durable finding ⇒ its `docs/codemap/` entry ships in the same
   PR, with a `file:line` citation you actually checked.
+- **Verify the artifact, not your intent.** After writing anything the system
+  stores for you — a file, a PR body, a manifest, a pin — read back what it now
+  holds and check that, not what you sent. Line citations are verified at the
+  **final** tree, by reading the line they land on; your own later commits are
+  what moves them. When you correct a claim, grep for it everywhere before
+  calling it fixed. One PR lost six review rounds to this (`#ribbon-icons`).
 
 ## The hard line
 
@@ -129,7 +135,7 @@ length.
 `.claude/skills/nagramx-workflow/diagnostics.md` is loaded on demand from
 `nagramx-workflow` for device probes and traced smoke cycles.
 `.github/instructions/*.instructions.md` attach automatically to the files they
-scope — upstream base files, fork-owned packages, and resources.
+scope — upstream base files, fork-owned packages, resources, and the build file.
 
 ### Context budget
 
