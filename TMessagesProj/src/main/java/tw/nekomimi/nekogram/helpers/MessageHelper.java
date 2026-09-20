@@ -1583,23 +1583,76 @@ public class MessageHelper extends BaseController {
     // message itself points at, gated so a forum-topic anchor (which carries a full reply_to whose
     // target is the "topic created" message) is not treated as a real reply.
     public MessageObject getOwnReply(MessageObject messageObject) {
-        return messageObject != null && messageObject.hasValidReplyMessageObject() ? messageObject.replyMessageObject : null;
+        if (messageObject == null || messageObject.currentAccount != currentAccount || messageObject.messageOwner == null) {
+            return null;
+        }
+        if (DialogObject.isEncryptedDialog(messageObject.getDialogId())) {
+            return messageObject.hasValidReplyMessageObject() ? messageObject.replyMessageObject : null;
+        }
+        TLRPC.MessageReplyHeader header = messageObject.messageOwner.reply_to;
+        if (header == null || header.reply_to_msg_id <= 0
+                || header.forum_topic && header.reply_to_msg_id == header.reply_to_top_id) {
+            return null;
+        }
+        long replyDialogId = header.reply_to_peer_id != null
+                ? DialogObject.getPeerDialogId(header.reply_to_peer_id) : messageObject.getDialogId();
+        if (replyDialogId == 0) {
+            return null;
+        }
+        // Decide first whether the loaded preview is this header's target at all. A preview left over
+        // from another message says nothing about this one, so it may neither enrich the reference nor
+        // veto it; only a preview that really is the target can refuse the reply.
+        MessageObject loaded = messageObject.replyMessageObject;
+        boolean loadedIsTarget = loaded != null && loaded.messageOwner != null
+                && loaded.currentAccount == currentAccount
+                && loaded.getId() == header.reply_to_msg_id
+                && loaded.getDialogId() == replyDialogId;
+        if (loadedIsTarget && (loaded.scheduled
+                || loaded.messageOwner instanceof TLRPC.TL_messageEmpty
+                || loaded.messageOwner.action instanceof TLRPC.TL_messageActionHistoryClear
+                || loaded.messageOwner.action instanceof TLRPC.TL_messageActionTopicCreate)) {
+            return null;
+        }
+        // The header is the address even when its preview hasn't loaded, and it carries the target's own
+        // peer: resolving the dialog id back through getPeer() would re-guess channel vs chat from the
+        // chat cache. A detached reference also avoids sendMessage redirecting a loaded forwarded target
+        // to that target's channel origin.
+        TLRPC.TL_message reference = new TLRPC.TL_message();
+        reference.id = header.reply_to_msg_id;
+        reference.dialog_id = replyDialogId;
+        reference.peer_id = header.reply_to_peer_id != null
+                ? header.reply_to_peer_id : getMessagesController().getPeer(replyDialogId);
+        reference.from_id = reference.peer_id;
+        reference.message = header.quote_text != null ? header.quote_text : "";
+        if (loadedIsTarget) {
+            reference.from_id = loaded.messageOwner.from_id;
+            reference.date = loaded.messageOwner.date;
+            reference.message = loaded.messageOwner.message;
+            reference.media = loaded.messageOwner.media;
+            reference.reply_to = loaded.messageOwner.reply_to;
+            if (loaded.messageOwner.entities != null) {
+                reference.entities = new ArrayList<>(loaded.messageOwner.entities);
+            }
+        }
+        return new MessageObject(currentAccount, reference, false, false);
     }
 
-    // The reply may only be carried into the copy when it can't produce a wrong or crashing send. The
-    // source has to be the destination dialog: a chat-scoped reply_to_msg_id resolved against another
-    // peer points at the wrong message (a mixed selection can hold migrated mergeDialogId messages).
-    // And a forum destination has to have a topic root to anchor to, because SendMessagesHelper
-    // dereferences the top message unconditionally for a forum, so a null anchor there crashes the
-    // send. When either fails, the copy is re-sent with no reply instead.
+    // Cloud replies carry their original peer through SendMessagesHelper's cross-chat reply path.
+    // Secret-chat random ids and Saved Messages ids cannot be reused outside their own dialog.
+    // A forum still needs its destination topic root: sendMessage dereferences it for replies.
     public MessageObject getPreservableOwnReply(MessageObject messageObject, long targetDialogId, MessageObject replyToTopMsg) {
-        if (messageObject == null || messageObject.getDialogId() != targetDialogId) {
+        if (messageObject == null || messageObject.getDialogId() != targetDialogId
+                && (DialogObject.isEncryptedDialog(messageObject.getDialogId()) || DialogObject.isEncryptedDialog(targetDialogId))) {
             return null;
         }
         if (replyToTopMsg == null && isForumDialog(targetDialogId)) {
             return null;
         }
-        return getOwnReply(messageObject);
+        MessageObject reply = getOwnReply(messageObject);
+        if (reply != null && reply.getDialogId() == getUserConfig().getClientUserId() && reply.getDialogId() != targetDialogId) {
+            return null;
+        }
+        return reply;
     }
 
     private boolean isForumDialog(long targetDialogId) {
@@ -1618,6 +1671,19 @@ public class MessageHelper extends BaseController {
         TLRPC.MessageReplyHeader header = messageObject.messageOwner.reply_to;
         if (!header.quote || TextUtils.isEmpty(header.quote_text)) {
             return null;
+        }
+        MessageObject loaded = messageObject.replyMessageObject;
+        if (!messageObject.hasValidReplyMessageObject()
+                || loaded.currentAccount != currentAccount || loaded.getId() != target.getId()
+                || loaded.getDialogId() != target.getDialogId()) {
+            // Only the quoted fragment is available, not the target's full text. Initialize from that
+            // fragment, then restore its source offset rather than interpreting it as offset zero.
+            ChatActivity.ReplyQuote quote = ChatActivity.ReplyQuote.from(target, 0, header.quote_text.length());
+            quote.text = header.quote_text;
+            quote.entities = header.quote_entities != null ? new ArrayList<>(header.quote_entities) : null;
+            quote.start = (header.flags & 1024) != 0 ? Math.max(0, header.quote_offset) : 0;
+            quote.end = quote.start + quote.text.length();
+            return quote;
         }
         // The server header already carries the quote the user made, so preserve it verbatim rather
         // than re-deriving from the target text. quote_offset is trusted only when its flag is set and
