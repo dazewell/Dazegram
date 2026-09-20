@@ -1663,7 +1663,10 @@ public class MessageHelper extends BaseController {
         if (!header.quote || TextUtils.isEmpty(header.quote_text)) {
             return null;
         }
-        if (!messageObject.hasValidReplyMessageObject()) {
+        MessageObject loaded = messageObject.replyMessageObject;
+        if (!messageObject.hasValidReplyMessageObject()
+                || loaded.currentAccount != currentAccount || loaded.getId() != target.getId()
+                || loaded.getDialogId() != target.getDialogId()) {
             // Only the quoted fragment is available, not the target's full text. Initialize from that
             // fragment, then restore its source offset rather than interpreting it as offset zero.
             ChatActivity.ReplyQuote quote = ChatActivity.ReplyQuote.from(target, 0, header.quote_text.length());
