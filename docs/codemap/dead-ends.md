@@ -122,7 +122,7 @@ runtime candidate considered, and why it's dead:
   `ApplicationInfo.icon` drawable resolved at parse time differs) —
   considered and rejected explicitly: the app has no way to force system
   night mode on demand, this yields at most two resolved states rather than
-  the picker's fifteen, and which qualifier ships is OEM-dependent.
+  the picker's eighteen, and which qualifier ships is OEM-dependent.
 - **Per-alias `<activity-alias>` icons** — already disproven on-device by the
   entry above; notifications never read that value at all.
 
