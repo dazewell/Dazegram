@@ -183,13 +183,13 @@ When you select messages in the scheduled view, the top bar keeps just Send Now,
 
 <img height="90" alt="scheduled-view selection toolbar showing Send Now, Reschedule, Delete and an overflow menu" src="docs/images/features/scheduled-selection-toolbar.png" />
 
-### Forward scheduled messages <!-- #scheduled-forward -->
+### Forward scheduled messages <!-- #scheduled-forward --> <!-- #scheduled-reply-fix -->
 
-Telegram's forward API cannot forward a message that hasn't been sent yet. The selection bar's ⋯ → Forward now re-sends the picked scheduled messages instead, so they arrive as new scheduled messages. Media must be in the app's cache to be re-sent. Polls, locations, and contacts cannot be forwarded this way.
+Telegram's forward API cannot forward a message that hasn't been sent yet. The selection bar's ⋯ → Forward re-sends the picked scheduled messages, keeping replies to the original messages across cloud chats. Media must be in the app's cache to be re-sent. Polls, locations, and contacts cannot be forwarded this way.
 
-### Repost as Copy <!-- #repost-reply --> <!-- #repost-spread -->
+### Repost as Copy <!-- #repost-reply --> <!-- #repost-spread --> <!-- #scheduled-reply-fix -->
 
-*Repost as Copy* comes from NagramX — turn it on in settings (it's off by default) and it re-sends a message without a "Forwarded from" header, re-uploading the media. This fork keeps the original reply and quote, offers to delete the original once the repost lands, and spreads a scheduled repost across its own send times. Reposting a selection through *NoQuote* spaces the copies three minutes apart.
+Turn on *Repost as Copy* in settings (off by default) to re-send without a "Forwarded from" header, re-uploading media. Copies keep the original reply and quote, including when scheduled into another cloud chat, and offer to delete the originals once sent. Scheduling a selection through *NoQuote* spaces the copies three minutes apart.
 
 <img height="150" alt="Reposted as a copy confirmation bar with a Delete action for the original messages" src="docs/images/features/repost-copy.png" />
 

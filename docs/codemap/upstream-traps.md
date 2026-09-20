@@ -4,6 +4,24 @@ Non-obvious behaviour in base-fork code that has already bitten someone.
 What the trap is, where it lives, and what it costs if you miss it.
 Re-verify the citation before relying on it — see the README.
 
+## Copy replies need a peer, not a loaded preview
+
+The scheduled-source and spread dispatchers use `MessageHelper.sendMessagesAsCopy`
+(`ChatActivity.java:16013,16054`). Restricting `preserveOwnReply` to the current
+dialog drops replies when choosing another chat. `getOwnReply` must also recover
+the target from `reply_to`, not require an already loaded `replyMessageObject`
+(`MessageHelper.java:1585-1628`).
+
+`SendMessagesHelper.java:5152-5181` already qualifies cross-chat replies with
+`reply_to_peer_id`; copying only a message id would address the destination's
+unrelated message. That same code redirects a loaded forwarded target to its
+channel origin (`:5156-5162`), so the copy helper uses a detached reference with
+the original reply coordinates and no forward header. References stay pointed
+at the original target, not a newly scheduled sibling copy. A destination forum
+still needs its own topic anchor (`:5173-5174`).
+
+*(Established 2026-09-20, `#scheduled-reply-fix`.)*
+
 ## SectionsScrollView sectioning differs from RecyclerListView defaults
 
 `SectionsScrollView.isSectionView(...)` excludes only views tagged
