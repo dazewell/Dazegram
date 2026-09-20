@@ -304,7 +304,7 @@ On DazegramX (Unofficial), the app's fixed system-level icon — the one Android
 
 ### Centered chat title <!-- #title-pill-fix -->
 
-The chat title and its status line sit centered in the action bar, in a pill that hugs the text rather than spanning the bar. Forum topics get the same rounded ends as any other chat. N-Settings → General → *Use Centered Title*, on everywhere by default, and limitable to chats only or to settings screens only.
+The chat title and its status line sit centered in the action bar, in a pill that hugs the text rather than spanning the bar. Forum topics get the same rounded ends as any other chat. N-Settings → General → *Use Centered Title*, off by default, with options for everywhere, chats only, or settings screens only.
 
 <!-- Retired entries, plus sync-reconciliation and superseded feature slugs that have no catalog entry of their own.
      The behaviour still ships; it is documented in README instead of here.
