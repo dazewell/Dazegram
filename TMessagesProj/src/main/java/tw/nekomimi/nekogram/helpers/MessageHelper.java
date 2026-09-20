@@ -1722,10 +1722,14 @@ public class MessageHelper extends BaseController {
         return quote;
     }
 
-    // Decide once for the whole selection: reconstruct only when every message shares the destination
-    // dialog (so no chat-scoped id resolves against the wrong peer), can be re-sent as a copy (cached
-    // media, a supported type), and at least one carries a preservable reply. Otherwise the caller
-    // forwards with drop_author exactly as before, so nothing that works today regresses.
+    // Decide once for the whole selection: reconstruct only when every message can be re-sent as a
+    // copy (cached media, a supported type) and at least one carries a preservable reply. Otherwise
+    // the caller forwards with drop_author exactly as before, so nothing that works today regresses.
+    // The source no longer has to be the destination dialog. That rule existed because a chat-scoped
+    // reply_to_msg_id resolved against another peer points at the wrong message, but getOwnReply now
+    // addresses the target by the header's own peer - falling back to the *source's* dialog, never the
+    // destination's - so a cross-chat copy carries a qualified reply that SendMessagesHelper converts
+    // to a cross-chat quote. getPreservableOwnReply still refuses the cases that genuinely can't cross.
     public boolean shouldRepostAsCopyPreservingReply(ArrayList<MessageObject> messages, long targetDialogId, MessageObject replyToTopMsg) {
         if (messages == null || messages.isEmpty()) {
             return false;
@@ -1737,9 +1741,6 @@ public class MessageHelper extends BaseController {
         for (int i = 0; i < messages.size(); i++) {
             MessageObject messageObject = messages.get(i);
             if (messageObject == null || messageObject.messageOwner == null) {
-                return false;
-            }
-            if (messageObject.getDialogId() != targetDialogId) {
                 return false;
             }
             boolean needsFile = !messageObject.isSticker() && !messageObject.isAnimatedSticker() && !messageObject.isAnimatedEmoji() &&
