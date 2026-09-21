@@ -4,9 +4,11 @@ import android.text.SpannableStringBuilder;
 import android.text.TextUtils;
 
 import org.telegram.messenger.MediaDataController;
+import org.telegram.tgnet.SerializedData;
 import org.telegram.tgnet.TLRPC;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 
 /**
  * Helpers for the attach-caption rescue (#attach-caption-guard).
@@ -59,10 +61,39 @@ public final class AttachCaptionHelper {
                 }
                 continue;
             }
-            if (!MediaDataController.entitiesEqual(one, two)) {
+            final byte[] signatureOne = signature(one);
+            final byte[] signatureTwo = signature(two);
+            if (signatureOne == null || signatureTwo == null) {
+                continue;
+            }
+            if (!Arrays.equals(signatureOne, signatureTwo)) {
                 return false;
             }
         }
         return true;
+    }
+
+    /**
+     * A value signature for one entity.
+     *
+     * <p>Field-by-field comparison is the wrong shape here. {@code MediaDataController.entitiesEqual}
+     * compares {@code TL_inputMessageEntityMentionName.user_id} with {@code !=}, and that field is an
+     * {@code InputUser} object built fresh on every parse, so two identical mentions never match. It
+     * also has nothing to say about payload like a blockquote's collapsed flag. Serializing covers
+     * every field of every entity type by construction, so this cannot fall behind a new one.
+     *
+     * <p>Returns null when an entity can't be serialized, and the caller then treats the pair as
+     * unchanged -- the cost of that is a caption not rescued, against re-adding media the user removed.
+     */
+    private static byte[] signature(TLRPC.MessageEntity entity) {
+        final SerializedData data = new SerializedData();
+        try {
+            entity.serializeToStream(data);
+            return data.toByteArray();
+        } catch (Throwable ignore) {
+            return null;
+        } finally {
+            data.cleanup();
+        }
     }
 }
