@@ -10308,6 +10308,33 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         return v != null ? v.getText() : null;
     }
 
+    // NagramX (#attach-caption-guard): whether the pause-time rescue above may apply the caption. applyCaption()
+    // auto-checks an unchecked item whenever the caption is non-empty (see setPhotoChecked below), and a plain
+    // minimize must never quietly put media back into the send set -- a caption left behind on an item the user
+    // unchecked is not going anywhere, so there is nothing to rescue there either. An item still being captioned
+    // is a different thing: the editor holds text the entry doesn't have yet, and upstream treats typing a
+    // caption as selecting the item, so let that one through.
+    private boolean shouldApplyCaptionOnPause() {
+        if (!isVisible() || placeProvider == null || currentIndex < 0 || currentIndex >= imagesArrLocals.size()) {
+            return false;
+        }
+        if (placeProvider.isPhotoChecked(currentIndex)) {
+            return true;
+        }
+        final CaptionContainerView view = getCaptionView();
+        if (view == null) {
+            return false;
+        }
+        final Object object = imagesArrLocals.get(currentIndex);
+        CharSequence stored = null;
+        if (object instanceof MediaController.PhotoEntry) {
+            stored = ((MediaController.PhotoEntry) object).caption;
+        } else if (object instanceof MediaController.SearchImage) {
+            stored = ((MediaController.SearchImage) object).caption;
+        }
+        return !TextUtils.equals(stored, view.getText());
+    }
+
     private CharSequence applyCaption() {
         if (!isVisible() || placeProvider == null || currentIndex < 0 || currentIndex >= imagesArrLocals.size()) {
             return null;
@@ -19301,13 +19328,13 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
     public void onPause() {
         // NagramX: applyCaption() is the only thing that moves a typed attachment caption out of the caption
-        // view and into the photo entry. Upstream reaches it from closeCaptionEnter() alone, and neither route
-        // survives an app lock: the guard below can never pass (lastTitle is declared but only ever assigned
-        // null), and closeCaptionEnter() self-cancels once isCaptionOpen() goes false, which the IME can do
-        // before we get here. Apply unconditionally, while the viewer is still visible -- the passcode lock
-        // closes it a moment later (LaunchActivity.showPasscodeActivity) and takes the text with it.
-        // No-op unless a local selection is open, since applyCaption() bails out on an empty imagesArrLocals.
-        applyCaption();
+        // view and into the photo entry, and the pause-time route to it is dead: the guard below reads a field
+        // that is never assigned anything but null, and closeCaptionEnter() self-cancels once isCaptionOpen()
+        // goes false, which the IME can do before we get here. Apply while the viewer is still visible -- the
+        // passcode lock closes it a moment later (LaunchActivity.showPasscodeActivity) and takes the text with it.
+        if (shouldApplyCaptionOnPause()) {
+            applyCaption();
+        }
         setWindowHdrColorMode(false);
         if (currentAnimation != null) {
             closePhoto(false, false);
