@@ -4,6 +4,43 @@ Non-obvious behaviour in base-fork code that has already bitten someone.
 What the trap is, where it lives, and what it costs if you miss it.
 Re-verify the citation before relying on it — see the README.
 
+## A typed attachment caption only reaches the model through `applyCaption`
+
+`PhotoViewer` keeps the caption being typed in its own `CaptionContainerView`,
+and the only thing that writes it into the `PhotoEntry` (with its entities) is
+the private `applyCaption()` (`PhotoViewer.java:10311`). Upstream reaches that
+from `closeCaptionEnter(true)` alone, and neither route survives an app lock.
+
+`onPause()` looks like it covers this — it calls `closeCaptionEnter(true)`
+behind `if (lastTitle != null)` (`PhotoViewer.java:19316`) — but `lastTitle` is
+declared at `:1963` and the only assignment anywhere in the file sets it to
+`null` (`:18005`), so the branch is dead code. Even with the guard passing,
+`closeCaptionEnter` early-returns on `!isCaptionOpen()`, which the IME can make
+false before `onPause` runs. Meanwhile `LaunchActivity.showPasscodeActivity`
+closes the viewer outright (`LaunchActivity.java:1467-1469`), taking the text
+with it. The fork now calls `applyCaption()` unconditionally at the top of
+`PhotoViewer.onPause()` (`:19302`); it self-cancels when no local selection is
+open, so it costs nothing on ordinary media viewing.
+
+*(Established 2026-09-20, `#attach-caption-guard`.)*
+
+## `ChatAttachAlert.dismiss()` is not a teardown — it can leave the window up
+
+`dismiss()` has two early returns that both leave the sheet on screen. The
+first is `currentAttachLayout.onDismiss()` (`ChatAttachAlert.java:6994`), which
+`ChatAttachAlertPhotoLayout` returns `true` from while its in-sheet camera is
+open (`ChatAttachAlertPhotoLayout.java:4177`). The second diverts to a
+"Discard selection?" confirmation and returns whenever anything is selected
+(`ChatAttachAlert.java:7008-7015`).
+
+That matters on any path that destroys the alert regardless of what `dismiss()`
+did — a view rebuild, for instance — because the result is an ownerless sheet
+sitting over the rebuilt screen. Use `dismissInternal()`, which routes straight
+to `removeFromRoot()` → `super.dismissInternal()` (`ChatAttachAlert.java:6904`)
+and is what `ChatActivity.onFragmentDestroy` already uses (`:3844`).
+
+*(Established 2026-09-20, `#attach-caption-guard`.)*
+
 ## Copy replies need a peer, not a loaded preview
 
 `messages.forwardMessages` has no `reply_to` field, so a real forward always

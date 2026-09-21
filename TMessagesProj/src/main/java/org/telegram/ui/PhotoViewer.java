@@ -19300,6 +19300,14 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     public void onConfigurationChanged(Configuration newConfig) {}
 
     public void onPause() {
+        // NagramX: applyCaption() is the only thing that moves a typed attachment caption out of the caption
+        // view and into the photo entry. Upstream reaches it from closeCaptionEnter() alone, and neither route
+        // survives an app lock: the guard below can never pass (lastTitle is declared but only ever assigned
+        // null), and closeCaptionEnter() self-cancels once isCaptionOpen() goes false, which the IME can do
+        // before we get here. Apply unconditionally, while the viewer is still visible -- the passcode lock
+        // closes it a moment later (LaunchActivity.showPasscodeActivity) and takes the text with it.
+        // No-op unless a local selection is open, since applyCaption() bails out on an empty imagesArrLocals.
+        applyCaption();
         setWindowHdrColorMode(false);
         if (currentAnimation != null) {
             closePhoto(false, false);

@@ -971,6 +971,8 @@ public class ChatActivity extends BaseFragment implements
     public MessageObject editingMessageObject;
     // NagramX: in-progress edit or scheduled-compose text stashed on pause so a view rebuild (e.g. passcode unlock) can restore it in createView
     private CharSequence textToRestoreOnRebuild;
+    // NagramX: attach-sheet caption stashed when a rebuild tears the sheet down, restored into the composer in onResume
+    private CharSequence captionToRestoreOnRebuild;
     private boolean paused = true;
     private boolean pausedOnLastMessage;
     private boolean wasPaused;
@@ -4277,9 +4279,20 @@ public class ChatActivity extends BaseFragment implements
 
         hasOwnBackground = true;
         if (chatAttachAlert != null) {
+            // NagramX: this teardown is a view rebuild (passcode unlock), not the user closing the sheet. Keep the
+            // caption being typed -- every attach layout, photos through documents, music and contacts, writes that
+            // one field -- so onResume can put it back in the composer instead of dropping it with the window.
+            if (chatAttachAlert.isShowing() && chatAttachAlert.getCommentView() != null) {
+                CharSequence attachCaption = chatAttachAlert.getCommentView().getText();
+                captionToRestoreOnRebuild = TextUtils.isEmpty(attachCaption) ? null : new SpannableStringBuilder(attachCaption);
+            }
             try {
                 if (chatAttachAlert.isShowing()) {
-                    chatAttachAlert.dismiss();
+                    // NagramX: dismiss() diverts to a "Discard selection?" prompt whenever something is selected and
+                    // returns without removing the window, while the lines below destroy the alert regardless -- which
+                    // leaves an ownerless sheet sitting over the rebuilt chat. dismissInternal() is the unconditional
+                    // teardown onFragmentDestroy already uses, and it also isn't blocked by an open in-sheet camera.
+                    chatAttachAlert.dismissInternal();
                 }
             } catch (Exception ignore) {
 
@@ -32314,6 +32327,14 @@ public class ChatActivity extends BaseFragment implements
 
         fixLayout();
         applyDraftMaybe(false);
+        // NagramX: put back the attach-sheet caption the rebuild destroyed. It goes in after applyDraftMaybe because
+        // in Saved Messages that call re-applies a stored draft even when the field already holds text, and that draft
+        // is the pre-attach copy. Stashing only a non-empty caption is deliberate: a caption the user deliberately
+        // cleared must not resurrect the text the sheet was seeded with.
+        if (captionToRestoreOnRebuild != null && chatActivityEnterView != null) {
+            chatActivityEnterView.setFieldText(captionToRestoreOnRebuild);
+            captionToRestoreOnRebuild = null;
+        }
         applyChatLinkMessageMaybe();
         if (bottomChannelButtonsLayout != null && bottomChannelButtonsLayout.getVisibility() != View.VISIBLE && !actionBar.isSearchFieldVisible() && chatMode != MODE_SEARCH && !BaseFragment.hasSheets(this)) {
             chatActivityEnterView.setFieldFocused(true);
