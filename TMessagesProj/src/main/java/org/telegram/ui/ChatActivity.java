@@ -4281,20 +4281,7 @@ public class ChatActivity extends BaseFragment implements
         if (chatAttachAlert != null) {
             android.util.Log.e("NAX_SMOKE_attach_caption", "createView alert=1"
                     + " showing=" + chatAttachAlert.isShowing()
-                    + " previewLen=" + (chatAttachAlert.lastAppliedPreviewCaption == null ? -1 : chatAttachAlert.lastAppliedPreviewCaption.length())
-                    + " commentLen=" + (chatAttachAlert.getCommentView() == null ? -1 : chatAttachAlert.getCommentView().getText().length()));
-            // NagramX: this teardown is a view rebuild (passcode unlock), not the user closing the sheet. Keep the
-            // caption being typed -- every attach layout, photos through documents, music and contacts, writes that
-            // one field -- so onResume can put it back in the composer instead of dropping it with the window.
-            if (chatAttachAlert.isShowing()) {
-                // NagramX: prefer the caption last applied in the full-screen preview -- it is the item the user
-                // was actually captioning, and it is null again the moment they type in the sheet's own field.
-                CharSequence attachCaption = chatAttachAlert.lastAppliedPreviewCaption;
-                if (TextUtils.isEmpty(attachCaption) && chatAttachAlert.getCommentView() != null) {
-                    attachCaption = chatAttachAlert.getCommentView().getText();
-                }
-                captionToRestoreOnRebuild = TextUtils.isEmpty(attachCaption) ? null : new SpannableStringBuilder(attachCaption);
-            }
+                    + " stashLen=" + (captionToRestoreOnRebuild == null ? -1 : captionToRestoreOnRebuild.length()));
             try {
                 if (chatAttachAlert.isShowing()) {
                     // NagramX: dismiss() diverts to a "Discard selection?" prompt whenever something is selected and
@@ -32344,12 +32331,14 @@ public class ChatActivity extends BaseFragment implements
         // in Saved Messages that call re-applies a stored draft even when the field already holds text, and that draft
         // is the pre-attach copy. Only a non-empty caption is stashed: an empty one is not a rescue, and writing it
         // would wipe what the composer legitimately still holds, since seeding the sheet never cleared the field.
-        if (captionToRestoreOnRebuild != null && chatActivityEnterView != null) {
-            chatActivityEnterView.setFieldText(captionToRestoreOnRebuild);
+        // A surviving sheet means no rebuild happened, so the stash is dropped rather than pushed into the composer.
+        if (captionToRestoreOnRebuild != null) {
+            if (chatAttachAlert == null && chatActivityEnterView != null) {
+                chatActivityEnterView.setFieldText(captionToRestoreOnRebuild);
+            }
             captionToRestoreOnRebuild = null;
         }
-        android.util.Log.e("NAX_SMOKE_attach_caption", "onResume stashLen="
-                + (captionToRestoreOnRebuild == null ? -1 : captionToRestoreOnRebuild.length())
+        android.util.Log.e("NAX_SMOKE_attach_caption", "onResumeRestore alert=" + (chatAttachAlert != null)
                 + " enterView=" + (chatActivityEnterView != null)
                 + " fieldLen=" + (chatActivityEnterView == null || chatActivityEnterView.getFieldText() == null ? -1 : chatActivityEnterView.getFieldText().length()));
         applyChatLinkMessageMaybe();
@@ -32497,6 +32486,19 @@ public class ChatActivity extends BaseFragment implements
         // edit or scheduled-compose text (neither has a draft to fall back on) so the old field's live Editable isn't held across the rebuild
         CharSequence fieldText = chatActivityEnterView != null && (editingMessageObject != null || chatMode == MODE_SCHEDULED) ? chatActivityEnterView.getFieldText() : null;
         textToRestoreOnRebuild = fieldText == null ? null : new SpannableStringBuilder(fieldText);
+        // NagramX: the attach sheet's caption has to be taken here, not at the rebuild. dismissCurrentDialog()
+        // tears the sheet down through dismissInternal() before createView runs, so by then it is no longer
+        // showing. Every attach layout -- photos, video, documents, music, contacts -- writes this one field.
+        CharSequence attachCaption = null;
+        if (chatAttachAlert != null && chatAttachAlert.isShowing()) {
+            attachCaption = chatAttachAlert.lastAppliedPreviewCaption;
+            if (TextUtils.isEmpty(attachCaption) && chatAttachAlert.getCommentView() != null) {
+                attachCaption = chatAttachAlert.getCommentView().getText();
+            }
+        }
+        captionToRestoreOnRebuild = TextUtils.isEmpty(attachCaption) ? null : new SpannableStringBuilder(attachCaption);
+        android.util.Log.e("NAX_SMOKE_attach_caption", "chatPauseStash len="
+                + (captionToRestoreOnRebuild == null ? -1 : captionToRestoreOnRebuild.length()));
         // NagramX: a round video that's still capturing -- live with the finger down, or hands-free/locked --
         // would be lost if the app backgrounds now (worst with passcode lock set to Immediately, which rebuilds
         // the chat on unlock). Finalize it into the preview strip so its file survives. send(3)
