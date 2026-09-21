@@ -337,7 +337,12 @@
     <string name="InterfaceStyleHeaderStyle">Style</string>
     <string name="InterfaceStyleLiquidGlass">Liquid Glass</string>
     <string name="InterfaceStyleLiquidGlassUnsupported">Your device can\'t render this</string>
-    <string name="InterfaceStyleInfo">Controls the panel and blur style. Material Design 3 uses the current theme colors as each surface adds support.</string>
+    <string name="InterfaceStyleApplyToHeader">Apply to</string>
+    <string name="InterfaceStyleApplyChatHeader">Chat header</string>
+    <string name="InterfaceStyleApplyChatHeaderInfo">The bar at the top of chats and similar screens.</string>
+    <string name="InterfaceStyleApplyChatListTopBar">Chat list top bar</string>
+    <string name="InterfaceStyleApplyChatListTopBarInfo">Search, filters, and the top panel in the chat list.</string>
+    <string name="InterfaceStyleInfo">Material Design 3 uses flat theme colors for supported panels. More surfaces will appear here as they get render support.</string>
     <string name="SaveDeletedExclusionMenu">Save Deleted</string>
     <string name="SaveDeletedExcluded">Exclude</string>
     <string name="MarkdownParser">Markdown Parser</string>

@@ -3,21 +3,33 @@
 "When the user taps X, the code that runs is Y." Re-verify the citation
 before relying on it — see the README.
 
-## Interface Style writes the existing Liquid Glass flag
+## Interface Style writes the existing Liquid Glass flag and gates MD3 panels
 
 NagramX Settings → General's Interface Style row opens
-`InterfaceStyleActivity` from `NekoGeneralSettingsActivity` (`:220-221`). The
-page does not own a second style enum: the Liquid Glass radio reads the stored
-Lite Mode setting with `LiteMode.isEnabledSetting(FLAG_LIQUID_GLASS)` and writes
-it with `LiteMode.toggleFlag(...)` (`InterfaceStyleActivity.java:108-115`), so
-low-battery power saver can still change rendering through `LiteMode.isEnabled`
-without rewriting the setting shown in the page. The support gate is centralized
-in `LiteMode.isLiquidGlassSupported()` (`LiteMode.java:121-123`) and reused by
-the Lite Mode screen (`LiteModeSettingsActivity.java:270-271`, `:634-635`).
+`InterfaceStyleActivity` from `NekoGeneralSettingsActivity`
+(`NekoGeneralSettingsActivity.java:221-222`). The page does not own a second
+style enum: `InterfaceStyleController.isMaterialDesign3()` derives MD3 from the
+existing Liquid Glass setting and support gate
+(`InterfaceStyleController.java:9-10`). The page writes Liquid Glass with
+`LiteMode.toggleFlag(...)` and reloads the interface
+(`InterfaceStyleActivity.java:127-136`).
 
-The dormant MD3 per-surface settings live in `NaConfig` only as future render
-inputs (`NaConfig.kt:1410-1442`); nothing on this first page exposes them until
-a surface actually consumes one.
+The MD3-only Apply to rows are visible only after the Material Design 3 radio is
+selected (`InterfaceStyleActivity.java:145-149`) and currently expose only
+surfaces with render consumers: Chat header and Chat list top bar
+(`InterfaceStyleActivity.java:232-239`). Their `NaConfig` flags live at
+`NaConfig.kt:1413-1423` and are consumed by
+`InterfaceStyleController.applyChatHeader()` / `.applyChatListTopBar()`
+(`InterfaceStyleController.java:13-18`).
+
+Chat/action-bar surfaces use the existing account-aware
+`topPanelChatActivity(...)` provider and switch to the pre-Glass theme colour in
+MD3 (`BlurredBackgroundProviderImpl.java:201-206`). Dialogs uses a
+`dialogsTopPanel(...)` / `dialogsFloatingPanel(...)` providers so the chat-list
+setting does not recolour every generic `topPanel` consumer and the floating
+panel keeps a card surface tone (`BlurredBackgroundProviderImpl.java:55-83`).
+`DialogsActivity` only swaps the four chat-list top-panel call sites
+(`DialogsActivity.java:4901`, `:4988`, `:5335`, `:5345`).
 
 *(Established 2026-09-21, during `#interface-style`.)*
 

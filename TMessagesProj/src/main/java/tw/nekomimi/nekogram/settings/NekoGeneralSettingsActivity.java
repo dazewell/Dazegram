@@ -56,6 +56,7 @@ import tw.nekomimi.nekogram.helpers.SaveFileNameDialog;
 import tw.nekomimi.nekogram.helpers.SaveFileNameHelper;
 import tw.nekomimi.nekogram.utils.AndroidUtil;
 import xyz.nextalone.nagram.NaConfig;
+import xyz.nextalone.nagram.helpers.InterfaceStyleController;
 import xyz.nextalone.nagram.ui.InterfaceStyleActivity;
 
 @SuppressLint("RtlHardcoded")
@@ -427,7 +428,7 @@ public class NekoGeneralSettingsActivity extends BaseNekoXSettingsActivity {
     }
 
     private String interfaceStyleValue() {
-        return LiteMode.isLiquidGlassSupported() && LiteMode.isEnabledSetting(LiteMode.FLAG_LIQUID_GLASS)
+        return !InterfaceStyleController.isMaterialDesign3()
                 ? getString(R.string.InterfaceStyleLiquidGlass)
                 : getString(R.string.StyleMaterialDesign3);
     }

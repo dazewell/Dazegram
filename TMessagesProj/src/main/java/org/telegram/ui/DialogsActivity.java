@@ -4897,7 +4897,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         searchTabsAndFiltersLayout.setPadding(0, dp(7), 0, dp(7));
         contentView.addView(searchTabsAndFiltersLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, SEARCH_TABS_HEIGHT, Gravity.TOP, 4, 0, 4, 0));
 
-        BlurredBackgroundDrawable searchTabsViewBackground = iBlur3FactoryLiquidGlass.create(searchTabsAndFiltersLayout, BlurredBackgroundProviderImpl.topPanel(resourceProvider));
+        // NagramX: dialogs-only provider keeps Interface Style from recolouring every generic top-panel consumer.
+        BlurredBackgroundDrawable searchTabsViewBackground = iBlur3FactoryLiquidGlass.create(searchTabsAndFiltersLayout, BlurredBackgroundProviderImpl.dialogsTopPanel(resourceProvider));
         searchTabsViewBackground.setRadius(dp(18));
         searchTabsViewBackground.setPadding(dp(6.666f));
         searchTabsAndFiltersLayout.setPadding(0, dp(7), 0, dp(7));
@@ -4983,7 +4984,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             });
 
             BlurredBackgroundDrawable topPanelLayoutBackground = iBlur3FactoryLiquidGlass.create(topPanelLayout)
-                .setColorProvider(BlurredBackgroundProviderImpl.topPanel(resourceProvider))
+                // NagramX: this floating panel needs the card tone, not the search/filter bar tone.
+                .setColorProvider(BlurredBackgroundProviderImpl.dialogsFloatingPanel(resourceProvider))
                 .setPadding(dp(7));
 
             topPanelLayout.setPadding(dp(11), dp(21), dp(11), dp(21));
@@ -5329,7 +5331,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
 
         if (filterTabsView != null) {
-            BlurredBackgroundDrawable filterTabsViewBackground = iBlur3FactoryLiquidGlass.create(filterTabsView, BlurredBackgroundProviderImpl.topPanel(resourceProvider));
+            // NagramX: dialogs-only provider keeps Interface Style from recolouring every generic top-panel consumer.
+            BlurredBackgroundDrawable filterTabsViewBackground = iBlur3FactoryLiquidGlass.create(filterTabsView, BlurredBackgroundProviderImpl.dialogsTopPanel(resourceProvider));
             filterTabsViewBackground.setRadius(dp(18));
             filterTabsViewBackground.setPadding(dp(6.666f));
             filterTabsView.setPadding(0, dp(7), 0, dp(7));
@@ -5338,7 +5341,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
 
         if (fragmentSearchField != null) {
-            fragmentSearchField.setupBlurredBackground(iBlur3FactoryLiquidGlass.create(fragmentSearchField, BlurredBackgroundProviderImpl.topPanel(resourceProvider)));
+            // NagramX: dialogs-only provider keeps Interface Style from recolouring every generic top-panel consumer.
+            fragmentSearchField.setupBlurredBackground(iBlur3FactoryLiquidGlass.create(fragmentSearchField, BlurredBackgroundProviderImpl.dialogsTopPanel(resourceProvider)));
         }
 
         dialogStoriesCell = new DialogStoriesCell(context, this, currentAccount, isArchive() ? DialogStoriesCell.TYPE_ARCHIVE : DialogStoriesCell.TYPE_DIALOGS) {

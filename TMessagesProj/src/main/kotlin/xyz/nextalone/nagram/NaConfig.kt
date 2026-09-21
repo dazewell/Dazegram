@@ -1408,7 +1408,7 @@ object NaConfig {
             0 // 0: default; 1: Modern; 2: MD3
         )
     // NagramX (#interface-style): the main style choice is LiteMode.FLAG_LIQUID_GLASS.
-    // These dormant MD3 mask keys are consumed by the per-surface render branches in later slices;
+    // Per-surface MD3 masks are consumed only by render branches that already support them;
     // MD3 colours must come from theme keys, not SwitchStyle/Monet.
     val interfaceStyleApplyChatHeader =
         addConfig(
