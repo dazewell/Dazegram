@@ -4282,8 +4282,13 @@ public class ChatActivity extends BaseFragment implements
             // NagramX: this teardown is a view rebuild (passcode unlock), not the user closing the sheet. Keep the
             // caption being typed -- every attach layout, photos through documents, music and contacts, writes that
             // one field -- so onResume can put it back in the composer instead of dropping it with the window.
-            if (chatAttachAlert.isShowing() && chatAttachAlert.getCommentView() != null) {
-                CharSequence attachCaption = chatAttachAlert.getCommentView().getText();
+            if (chatAttachAlert.isShowing()) {
+                // NagramX: prefer the caption last applied in the full-screen preview -- it is the item the user
+                // was actually captioning, and it is null again the moment they type in the sheet's own field.
+                CharSequence attachCaption = chatAttachAlert.lastAppliedPreviewCaption;
+                if (TextUtils.isEmpty(attachCaption) && chatAttachAlert.getCommentView() != null) {
+                    attachCaption = chatAttachAlert.getCommentView().getText();
+                }
                 captionToRestoreOnRebuild = TextUtils.isEmpty(attachCaption) ? null : new SpannableStringBuilder(attachCaption);
             }
             try {
@@ -32329,8 +32334,8 @@ public class ChatActivity extends BaseFragment implements
         applyDraftMaybe(false);
         // NagramX: put back the attach-sheet caption the rebuild destroyed. It goes in after applyDraftMaybe because
         // in Saved Messages that call re-applies a stored draft even when the field already holds text, and that draft
-        // is the pre-attach copy. Stashing only a non-empty caption is deliberate: a caption the user deliberately
-        // cleared must not resurrect the text the sheet was seeded with.
+        // is the pre-attach copy. Only a non-empty caption is stashed: an empty one is not a rescue, and writing it
+        // would wipe what the composer legitimately still holds, since seeding the sheet never cleared the field.
         if (captionToRestoreOnRebuild != null && chatActivityEnterView != null) {
             chatActivityEnterView.setFieldText(captionToRestoreOnRebuild);
             captionToRestoreOnRebuild = null;

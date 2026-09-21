@@ -11,17 +11,17 @@ Half true, and the useful half is false. `ChatAttachAlertPhotoLayout.selectedPho
 and `selectedPhotosOrder` really are process-wide statics
 (`ChatAttachAlertPhotoLayout.java:200-201`), and nothing on the passcode-unlock
 teardown path clears them: `ChatAttachAlertPhotoLayout.onDestroy()` removes two
-NotificationCenter observers and nothing else (`:3705`), and
+NotificationCenter observers and nothing else (`:3709`), and
 `ChatAttachAlert.init()` clears only the comment view.
 
 But the selection is unreachable in any usable state afterwards. Reopening the
 sheet goes `ChatActivity.openAttachMenu()` → `ChatAttachAlert.init()` →
-`photoLayout.onInit(...)` (`ChatAttachAlert.java:6194`), and `onInit`
-unconditionally calls `clearSelectedPhotos()` (`ChatAttachAlertPhotoLayout.java:3832`),
+`photoLayout.onInit(...)` (`ChatAttachAlert.java:6200`), and `onInit`
+unconditionally calls `clearSelectedPhotos()` (`ChatAttachAlertPhotoLayout.java:3836`),
 which runs `photoEntry.reset()` over every selected entry — dropping its
-caption, entities and every crop/paint/filter edit (`:1919`) — empties both
+caption, entities and every crop/paint/filter edit (`:1923`) — empties both
 maps, and **deletes camera-captured files from disk**. `onInit` also resets the
-first hundred gallery entries on its own (`:3829`).
+first hundred gallery entries on its own (`:3833`).
 
 So restoring the attachment across a rebuild is not a matter of holding the
 statics; it needs a durable store that serializes each entry's edit state, the

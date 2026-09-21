@@ -8,35 +8,40 @@ Re-verify the citation before relying on it — see the README.
 
 `PhotoViewer` keeps the caption being typed in its own `CaptionContainerView`,
 and the only thing that writes it into the `PhotoEntry` (with its entities) is
-the private `applyCaption()` (`PhotoViewer.java:10311`). Upstream reaches that
-from `closeCaptionEnter(true)` alone, and neither route survives an app lock.
+the private `applyCaption()` (`PhotoViewer.java:10338`). Upstream calls it from
+`closeCaptionEnter(true)` and from `toggleCaptionAbove()` (`:23897`) — both
+user actions, neither of which an app lock performs.
 
 `onPause()` looks like it covers this — it calls `closeCaptionEnter(true)`
-behind `if (lastTitle != null)` (`PhotoViewer.java:19316`) — but `lastTitle` is
+behind `if (lastTitle != null)` (`PhotoViewer.java:19343`) — but `lastTitle` is
 declared at `:1963` and the only assignment anywhere in the file sets it to
-`null` (`:18005`), so the branch is dead code. Even with the guard passing,
+`null` (`:18032`), so the branch is dead code. Even with the guard passing,
 `closeCaptionEnter` early-returns on `!isCaptionOpen()`, which the IME can make
 false before `onPause` runs. Meanwhile `LaunchActivity.showPasscodeActivity`
 closes the viewer outright (`LaunchActivity.java:1467-1469`), taking the text
-with it. The fork now calls `applyCaption()` unconditionally at the top of
-`PhotoViewer.onPause()` (`:19302`); it self-cancels when no local selection is
-open, so it costs nothing on ordinary media viewing.
+with it.
+
+The fork now applies at the top of `PhotoViewer.onPause()` (`:19335`), gated by
+`shouldApplyCaptionOnPause()` (`:10317`). The gate matters: `applyCaption()`
+auto-checks an unchecked item when the caption is non-empty (`:10364-10366`),
+and a caption left on an item the user deliberately unchecked would otherwise
+put that media back into the send set on any ordinary minimize.
 
 *(Established 2026-09-20, `#attach-caption-guard`.)*
 
 ## `ChatAttachAlert.dismiss()` is not a teardown — it can leave the window up
 
 `dismiss()` has two early returns that both leave the sheet on screen. The
-first is `currentAttachLayout.onDismiss()` (`ChatAttachAlert.java:6994`), which
+first is `currentAttachLayout.onDismiss()` (`ChatAttachAlert.java:7005`), which
 `ChatAttachAlertPhotoLayout` returns `true` from while its in-sheet camera is
-open (`ChatAttachAlertPhotoLayout.java:4177`). The second diverts to a
+open (`ChatAttachAlertPhotoLayout.java:4181`). The second diverts to a
 "Discard selection?" confirmation and returns whenever anything is selected
-(`ChatAttachAlert.java:7008-7015`).
+(`ChatAttachAlert.java:7019-7026`).
 
 That matters on any path that destroys the alert regardless of what `dismiss()`
 did — a view rebuild, for instance — because the result is an ownerless sheet
 sitting over the rebuilt screen. Use `dismissInternal()`, which routes straight
-to `removeFromRoot()` → `super.dismissInternal()` (`ChatAttachAlert.java:6904`)
+to `removeFromRoot()` → `super.dismissInternal()` (`ChatAttachAlert.java:6915`)
 and is what `ChatActivity.onFragmentDestroy` already uses (`:3844`).
 
 *(Established 2026-09-20, `#attach-caption-guard`.)*
