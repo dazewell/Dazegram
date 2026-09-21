@@ -151,6 +151,12 @@ establishes it. An unproven "immune by construction" is treated as false — see
 `MessagesController.java:18213-18237`, where the notification posts before the
 DB write is enqueued, so nothing downstream may assume the write landed.
 
+**A teardown you read from must be the first one.** Finding the code that
+destroys the state you need is the easy half; what needs proving is that no
+earlier path got there first. `#attach-caption-guard` read the attach sheet in
+`createView`, cited correctly as a destroyer, and rescued nothing — the sheet was
+already dismissed by `LaunchActivity.onResume` while the passcode was up.
+
 **A reviewer's prescribed fix is binding.** Implement the named mechanism, or
 contest it with `file:line` evidence before shipping a different one. Silently
 shipping a cleverer variant of a rejected approach is how one finding becomes
@@ -298,6 +304,13 @@ constraint. Push back with evidence rather than performative agreement. When a
 finding is right, just fix it; the diff shows you heard it, so skip the thanks.
 Fix one item per commit.
 
+**A logic commit pushed after the last architect round is unreviewed.** The
+round cap above bounds automated-review churn, not architect rounds — applying
+it to both is how `#attach-caption-guard` shipped commits its reviewer never
+saw, one carrying a defect the automated reviewer then caught. Send the new head
+back, or name those commits as unreviewed in the handback — that second option
+is what keeps this from becoming an unbounded loop.
+
 **Request the on-device APK build only after round 2 has cleared** — not before.
 Review can still find Criticals after you think you are done, which makes any
 earlier build stale the moment it lands. "Ready for a build" means a `ci.yml` run
@@ -310,10 +323,12 @@ report an absent run as absent.
 ## Diagnostics, when reachability is in question
 
 If the change adds a decision point that determines whether something is shown,
-or which of several paths presents the same screen, instrument it. A feature
-that passed a compile gate, an automated review and two architect rounds still
-shipped unreachable once, because every one of those reasons about the diff and
-none can see the device state that picks the branch.
+or which of several paths presents the same screen, instrument it. So does one
+whose effect is gated on lifecycle state you never watched happen — a dialog
+still showing, a view not yet destroyed. A feature that passed a compile
+gate, an automated review and two architect rounds still shipped unreachable
+once, because every one of those reasons about the diff and none can see the
+device state that picks the branch.
 
 - **Log only what identifies the path** — booleans, enum and state names, ids,
   counts. Never message text, a contact's name or number, or a token. If a value
@@ -369,6 +384,12 @@ checks that clearly need the same guard, or a comment that correctly describes a
 hazard the code beside it doesn't handle, means the *class* of the problem is
 harder than the size of the diff suggested. Escalate the model rather than
 grinding another round.
+
+**On a third correction in one function, the mechanism is wrong, not the
+detail.** Stop asking which case you missed and ask what makes the whole class
+impossible. `#attach-caption-guard` corrected one entity comparison three times,
+field by field, before switching to comparing serialized entities — which was
+available at the second.
 
 **When restarting the piece is not enough, hand the whole change to a fresh
 session** — follow `nagramx-session-handoff`. Commit and push **everything
