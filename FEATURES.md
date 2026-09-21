@@ -112,7 +112,7 @@ Light and dark theme each get their own slider (0–50%, default 25%) in the lay
 
 ### Interface style <!-- #interface-style -->
 
-NagramX Settings → General has an Interface Style page for switching between the existing Liquid Glass renderer and the Material Design 3 fallback. Installs with no stored Lite Mode preference start on Liquid Glass when supported; unsupported devices show Material Design 3 and disable Liquid Glass.
+NagramX Settings → General has an Interface Style page for switching between the existing Liquid Glass renderer and the Material Design 3 fallback. Unsupported devices show Material Design 3 and disable Liquid Glass.
 
 ### Quick schedule button <!-- #quick-schedule -->
 

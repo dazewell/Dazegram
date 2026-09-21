@@ -242,9 +242,7 @@ public class LiteMode {
                     defaultValue = PRESET_HIGH;
                 }
             } else {
-                boolean legacyLitePreference = false;
                 if (preferences.contains("light_mode")) {
-                    legacyLitePreference = true;
                     boolean prevLiteModeEnabled = (preferences.getInt("light_mode", SharedConfig.getDevicePerformanceClass() == SharedConfig.PERFORMANCE_CLASS_LOW ? 1 : 0) & 1) > 0;
                     if (prevLiteModeEnabled) {
                         defaultValue = PRESET_LOW;
@@ -254,7 +252,6 @@ public class LiteMode {
                 }
                 // migrate settings
                 if (preferences.contains("loopStickers")) {
-                    legacyLitePreference = true;
                     boolean loopStickers = preferences.getBoolean("loopStickers", true);
                     if (loopStickers) {
                         defaultValue |= FLAG_ANIMATED_STICKERS_CHAT;
@@ -263,7 +260,6 @@ public class LiteMode {
                     }
                 }
                 if (preferences.contains("autoplay_video")) {
-                    legacyLitePreference = true;
                     boolean autoplayVideo = preferences.getBoolean("autoplay_video", true) || preferences.getBoolean("autoplay_video_liteforce", false);
                     if (autoplayVideo) {
                         defaultValue |= FLAG_AUTOPLAY_VIDEOS;
@@ -272,7 +268,6 @@ public class LiteMode {
                     }
                 }
                 if (preferences.contains("autoplay_gif")) {
-                    legacyLitePreference = true;
                     boolean autoplayGif = preferences.getBoolean("autoplay_gif", true);
                     if (autoplayGif) {
                         defaultValue |= FLAG_AUTOPLAY_GIFS;
@@ -281,17 +276,12 @@ public class LiteMode {
                     }
                 }
                 if (preferences.contains("chatBlur")) {
-                    legacyLitePreference = true;
                     boolean chatBlur = preferences.getBoolean("chatBlur", true);
                     if (chatBlur) {
                         defaultValue |= FLAG_CHAT_BLUR;
                     } else {
                         defaultValue &= ~FLAG_CHAT_BLUR;
                     }
-                }
-                if (!legacyLitePreference && isLiquidGlassSupported()) {
-                    // NagramX: installs with no stored Lite Mode preference start in Liquid Glass when supported.
-                    defaultValue |= FLAG_LIQUID_GLASS;
                 }
             }
         }
