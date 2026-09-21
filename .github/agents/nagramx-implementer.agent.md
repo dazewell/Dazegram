@@ -308,7 +308,8 @@ Fix one item per commit.
 round cap above bounds automated-review churn, not architect rounds — applying
 it to both is how `#attach-caption-guard` shipped commits its reviewer never
 saw, one carrying a defect the automated reviewer then caught. Send the new head
-back, or name those commits as unreviewed in the handback.
+back, or name those commits as unreviewed in the handback — that second option
+is what keeps this from becoming an unbounded loop.
 
 **Request the on-device APK build only after round 2 has cleared** — not before.
 Review can still find Criticals after you think you are done, which makes any
