@@ -117,6 +117,10 @@ public class LiteMode {
         return value;
     }
 
+    public static boolean isLiquidGlassSupported() {
+        return Build.VERSION.SDK_INT >= 33 && (SharedConfig.getDevicePerformanceClass() >= SharedConfig.PERFORMANCE_CLASS_AVERAGE || BuildVars.DEBUG_PRIVATE_VERSION);
+    }
+
     private static int lastBatteryLevelCached = -1;
     private static long lastBatteryLevelChecked;
 
@@ -151,7 +155,11 @@ public class LiteMode {
             // always enabled for tablets
             return true;
         }
-        return (getValue() & preprocessFlag(flag)) > 0;
+        int processedFlag = preprocessFlag(flag);
+        if (!isLiquidGlassSupported()) {
+            processedFlag &= ~FLAG_LIQUID_GLASS;
+        }
+        return (getValue() & processedFlag) > 0;
     }
 
     public static boolean isEnabledSetting(int flag) {

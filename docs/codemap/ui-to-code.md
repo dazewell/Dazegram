@@ -3,6 +3,24 @@
 "When the user taps X, the code that runs is Y." Re-verify the citation
 before relying on it — see the README.
 
+## Interface Style writes the existing Liquid Glass flag
+
+NagramX Settings → General's Interface Style row opens
+`InterfaceStyleActivity` from `NekoGeneralSettingsActivity` (`:220-221`). The
+page does not own a second style enum: the Liquid Glass radio reads the stored
+Lite Mode setting with `LiteMode.isEnabledSetting(FLAG_LIQUID_GLASS)` and writes
+it with `LiteMode.toggleFlag(...)` (`InterfaceStyleActivity.java:108-115`), so
+low-battery power saver can still change rendering through `LiteMode.isEnabled`
+without rewriting the setting shown in the page. The support gate is centralized
+in `LiteMode.isLiquidGlassSupported()` (`LiteMode.java:120-122`) and reused by
+the Lite Mode screen (`LiteModeSettingsActivity.java:269-270`, `:632-633`).
+
+The dormant MD3 per-surface settings live in `NaConfig` only as future render
+inputs (`NaConfig.kt:1410-1442`); nothing on this first page exposes them until
+a surface actually consumes one.
+
+*(Established 2026-09-21, during `#interface-style`.)*
+
 ## BottomBuilder section cards are opt-in and isolated to Early Send
 
 `BottomBuilder` now has a fourth constructor arg `sections` defaulting `false`,
