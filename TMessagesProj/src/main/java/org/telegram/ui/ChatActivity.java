@@ -4279,6 +4279,10 @@ public class ChatActivity extends BaseFragment implements
 
         hasOwnBackground = true;
         if (chatAttachAlert != null) {
+            android.util.Log.e("NAX_SMOKE_attach_caption", "createView alert=1"
+                    + " showing=" + chatAttachAlert.isShowing()
+                    + " previewLen=" + (chatAttachAlert.lastAppliedPreviewCaption == null ? -1 : chatAttachAlert.lastAppliedPreviewCaption.length())
+                    + " commentLen=" + (chatAttachAlert.getCommentView() == null ? -1 : chatAttachAlert.getCommentView().getText().length()));
             // NagramX: this teardown is a view rebuild (passcode unlock), not the user closing the sheet. Keep the
             // caption being typed -- every attach layout, photos through documents, music and contacts, writes that
             // one field -- so onResume can put it back in the composer instead of dropping it with the window.
@@ -4304,7 +4308,11 @@ public class ChatActivity extends BaseFragment implements
             }
             chatAttachAlert.onDestroy();
             chatAttachAlert = null;
+        } else {
+            android.util.Log.e("NAX_SMOKE_attach_caption", "createView alert=0");
         }
+        android.util.Log.e("NAX_SMOKE_attach_caption", "createView stashLen="
+                + (captionToRestoreOnRebuild == null ? -1 : captionToRestoreOnRebuild.length()));
 
         Theme.createChatResources(context, false);
 
@@ -32340,6 +32348,10 @@ public class ChatActivity extends BaseFragment implements
             chatActivityEnterView.setFieldText(captionToRestoreOnRebuild);
             captionToRestoreOnRebuild = null;
         }
+        android.util.Log.e("NAX_SMOKE_attach_caption", "onResume stashLen="
+                + (captionToRestoreOnRebuild == null ? -1 : captionToRestoreOnRebuild.length())
+                + " enterView=" + (chatActivityEnterView != null)
+                + " fieldLen=" + (chatActivityEnterView == null || chatActivityEnterView.getFieldText() == null ? -1 : chatActivityEnterView.getFieldText().length()));
         applyChatLinkMessageMaybe();
         if (bottomChannelButtonsLayout != null && bottomChannelButtonsLayout.getVisibility() != View.VISIBLE && !actionBar.isSearchFieldVisible() && chatMode != MODE_SEARCH && !BaseFragment.hasSheets(this)) {
             chatActivityEnterView.setFieldFocused(true);
@@ -32501,6 +32513,9 @@ public class ChatActivity extends BaseFragment implements
             chatActivityEnterView.persistVideoTrimIfBound();
         }
         if (chatAttachAlert != null) {
+            android.util.Log.e("NAX_SMOKE_attach_caption", "chatPause alert=1"
+                    + " showing=" + chatAttachAlert.isShowing()
+                    + " commentLen=" + (chatAttachAlert.getCommentView() == null ? -1 : chatAttachAlert.getCommentView().getText().length()));
             if (!ignoreAttachOnPause) {
                 chatAttachAlert.onPause();
             } else {
