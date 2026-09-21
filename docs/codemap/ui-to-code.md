@@ -12,8 +12,8 @@ Lite Mode setting with `LiteMode.isEnabledSetting(FLAG_LIQUID_GLASS)` and writes
 it with `LiteMode.toggleFlag(...)` (`InterfaceStyleActivity.java:108-115`), so
 low-battery power saver can still change rendering through `LiteMode.isEnabled`
 without rewriting the setting shown in the page. The support gate is centralized
-in `LiteMode.isLiquidGlassSupported()` (`LiteMode.java:120-122`) and reused by
-the Lite Mode screen (`LiteModeSettingsActivity.java:269-270`, `:632-633`).
+in `LiteMode.isLiquidGlassSupported()` (`LiteMode.java:121-123`) and reused by
+the Lite Mode screen (`LiteModeSettingsActivity.java:270-271`, `:634-635`).
 
 The dormant MD3 per-surface settings live in `NaConfig` only as future render
 inputs (`NaConfig.kt:1410-1442`); nothing on this first page exposes them until
