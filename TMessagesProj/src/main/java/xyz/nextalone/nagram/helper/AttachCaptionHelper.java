@@ -64,6 +64,9 @@ public final class AttachCaptionHelper {
             final byte[] signatureOne = signature(one);
             final byte[] signatureTwo = signature(two);
             if (signatureOne == null || signatureTwo == null) {
+                if (!MediaDataController.entitiesEqual(one, two)) {
+                    return false;
+                }
                 continue;
             }
             if (!Arrays.equals(signatureOne, signatureTwo)) {
@@ -82,8 +85,8 @@ public final class AttachCaptionHelper {
      * also has nothing to say about payload like a blockquote's collapsed flag. Serializing covers
      * every field of every entity type by construction, so this cannot fall behind a new one.
      *
-     * <p>Returns null when an entity can't be serialized, and the caller then treats the pair as
-     * unchanged -- the cost of that is a caption not rescued, against re-adding media the user removed.
+     * <p>Returns null when an entity can't be serialized; the caller then falls back to
+     * {@code MediaDataController.entitiesEqual}, which is weaker but is still a real comparison.
      */
     private static byte[] signature(TLRPC.MessageEntity entity) {
         final SerializedData data = new SerializedData();
