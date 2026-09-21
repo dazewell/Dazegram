@@ -4,6 +4,29 @@ Non-obvious behaviour in base-fork code that has already bitten someone.
 What the trap is, where it lives, and what it costs if you miss it.
 Re-verify the citation before relying on it — see the README.
 
+## The attach sheet is gone before the unlock rebuild runs
+
+A fork feature that wants the attach sheet's state across an app lock cannot
+read it in `ChatActivity.createView()`. The sheet is excluded from
+`BaseFragment.onPause()`'s dialog dismissal by `dismissDialogOnPause`
+(`ChatActivity.java:15613`), which makes it look like it survives to the
+rebuild — it does not.
+
+While the passcode view is showing, `LaunchActivity.onResume()` takes the
+`else` branch and calls `actionBarLayout.dismissDialogs()`
+(`LaunchActivity.java:7175`) → `INavigationLayout.dismissDialogs()`
+(`INavigationLayout.java:281-287`) → `ChatActivity.dismissCurrentDialog()`
+(`:32106`), which tears the sheet down with `dismissInternal()` (`:32109`).
+That runs on the pause side of the lock. The unlock's
+`rebuildFragments` → `createView()` comes later, and by then the sheet is no
+longer showing.
+
+Traced on device: at `createView` the alert object was still non-null but
+`isShowing()` was already false, so a rescue gated on it never fired. Read the
+sheet in `ChatActivity.onPause()` instead, where it is genuinely up.
+
+*(Established 2026-09-21, `#attach-caption-guard`.)*
+
 ## A typed attachment caption only reaches the model through `applyCaption`
 
 `PhotoViewer` keeps the caption being typed in its own `CaptionContainerView`,

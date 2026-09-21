@@ -32476,9 +32476,10 @@ public class ChatActivity extends BaseFragment implements
         // edit or scheduled-compose text (neither has a draft to fall back on) so the old field's live Editable isn't held across the rebuild
         CharSequence fieldText = chatActivityEnterView != null && (editingMessageObject != null || chatMode == MODE_SCHEDULED) ? chatActivityEnterView.getFieldText() : null;
         textToRestoreOnRebuild = fieldText == null ? null : new SpannableStringBuilder(fieldText);
-        // NagramX: the attach sheet's caption has to be taken here, not at the rebuild. dismissCurrentDialog()
-        // tears the sheet down through dismissInternal() before createView runs, so by then it is no longer
-        // showing. Every attach layout -- photos, video, documents, music, contacts -- writes this one field.
+        // NagramX: the attach sheet's caption has to be taken here, not at the rebuild. While the passcode view is
+        // up, LaunchActivity.onResume calls actionBarLayout.dismissDialogs() -> dismissCurrentDialog(), which tears
+        // the sheet down through dismissInternal() -- so by the time the unlock rebuilds createView, it is already
+        // gone. Every attach layout -- photos, video, documents, music, contacts -- writes this one field.
         CharSequence attachCaption = null;
         if (chatAttachAlert != null && chatAttachAlert.isShowing()) {
             attachCaption = chatAttachAlert.lastAppliedPreviewCaption;
