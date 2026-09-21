@@ -530,6 +530,10 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 }
                 parentAlert.getCommentView().setText(AnimatedEmojiSpan.cloneSpans(firstPhotoCaption, AnimatedEmojiDrawable.CACHE_TYPE_ALERT_PREVIEW));
             }
+            // NagramX (#attach-caption-guard): recorded after the setText above, which fires the sheet field's
+            // watcher and would otherwise clear it again. This is the caption of the item actually being previewed;
+            // everything above refills the sheet from the first selected item and throws this value away.
+            parentAlert.lastAppliedPreviewCaption = caption;
         }
 
         @Override

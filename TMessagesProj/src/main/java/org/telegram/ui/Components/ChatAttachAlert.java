@@ -3268,6 +3268,9 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                     Emoji.replaceEmoji(editable, commentTextView.getEditText().getPaint().getFontMetricsInt(), false);
                     processChange = false;
                 }
+                // NagramX (#attach-caption-guard): typing here makes the sheet the surface last composed in, so a
+                // caption carried over from the full-screen preview is no longer the newer of the two.
+                lastAppliedPreviewCaption = null;
                 int beforeLimit;
                 codepointCount = Character.codePointCount(editable, 0, editable.length());
                 animatorCaptionNotEmpty.setValue(codepointCount > 0, true);
@@ -3412,6 +3415,9 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                     Emoji.replaceEmoji(editable, topCommentTextView.getEditText().getPaint().getFontMetricsInt(), false);
                     processChange = false;
                 }
+                // NagramX (#attach-caption-guard): same as the field below -- typing here supersedes any caption
+                // carried over from the full-screen preview.
+                lastAppliedPreviewCaption = null;
                 int beforeLimit;
                 codepointCount = Character.codePointCount(editable, 0, editable.length());
                 animatorCaptionNotEmpty.setValue(codepointCount > 0, true);
@@ -6332,6 +6338,11 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
 
     private boolean allowDrawContent = true;
     public boolean sent = false;
+    // NagramX (#attach-caption-guard): the caption last applied from the full-screen preview. Upstream's
+    // onApplyCaption drops the value it is handed and refills the field from the first selected item instead,
+    // so a caption typed on any other item would be unrecoverable once a view rebuild destroys this sheet.
+    // Cleared the moment the user types in the sheet's own field, so the surface typed in last is the one that wins.
+    public CharSequence lastAppliedPreviewCaption;
 
     public void setAllowDrawContent(boolean value) {
         currentAttachLayout.onContainerTranslationUpdated(currentPanTranslationY);

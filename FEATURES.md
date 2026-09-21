@@ -205,9 +205,9 @@ Tap the outward chevrons to grow the input between the chat header and the keybo
 
 <img height="260" alt="message input expanded to fill the space between the chat header and the keyboard, with a text formatting row along the bottom" src="docs/images/features/fullscreen-input-on.png" />
 
-### Don't lose typed text on an accidental back <!-- #discard-guard -->
+### Don't lose typed text on an accidental back <!-- #discard-guard --> <!-- #attach-caption-guard -->
 
-A swipe-back gesture while composing a scheduled or edited message will hold and prompt for confirmation so you don't accidentally discard it. Unsaved text in these states also survives an app-lock or if you minimize and return to the app.
+A swipe-back gesture while composing a scheduled or edited message will hold and prompt for confirmation so you don't accidentally discard it. Unsaved text in these states also survives an app-lock or if you minimize and return to the app. A caption typed for a photo, video or file comes back in the message box after an app-lock, though the attachment itself must be picked again.
 
 ## Media and camera
 
