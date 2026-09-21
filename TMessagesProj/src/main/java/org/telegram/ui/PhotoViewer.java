@@ -19340,11 +19340,6 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         // passcode lock closes it a moment later (LaunchActivity.showPasscodeActivity) and takes the text with it.
         if (shouldApplyCaptionOnPause()) {
             applyCaption();
-            android.util.Log.e("NAX_SMOKE_attach_caption", "viewerPause applied=1 index=" + currentIndex);
-        } else {
-            android.util.Log.e("NAX_SMOKE_attach_caption", "viewerPause applied=0 visible=" + isVisible()
-                    + " provider=" + (placeProvider != null) + " index=" + currentIndex
-                    + " locals=" + (imagesArrLocals == null ? -1 : imagesArrLocals.size()));
         }
         setWindowHdrColorMode(false);
         if (currentAnimation != null) {

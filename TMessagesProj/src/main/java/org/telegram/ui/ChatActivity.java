@@ -4279,9 +4279,6 @@ public class ChatActivity extends BaseFragment implements
 
         hasOwnBackground = true;
         if (chatAttachAlert != null) {
-            android.util.Log.e("NAX_SMOKE_attach_caption", "createView alert=1"
-                    + " showing=" + chatAttachAlert.isShowing()
-                    + " stashLen=" + (captionToRestoreOnRebuild == null ? -1 : captionToRestoreOnRebuild.length()));
             try {
                 if (chatAttachAlert.isShowing()) {
                     // NagramX: dismiss() diverts to a "Discard selection?" prompt whenever something is selected and
@@ -4295,11 +4292,7 @@ public class ChatActivity extends BaseFragment implements
             }
             chatAttachAlert.onDestroy();
             chatAttachAlert = null;
-        } else {
-            android.util.Log.e("NAX_SMOKE_attach_caption", "createView alert=0");
         }
-        android.util.Log.e("NAX_SMOKE_attach_caption", "createView stashLen="
-                + (captionToRestoreOnRebuild == null ? -1 : captionToRestoreOnRebuild.length()));
 
         Theme.createChatResources(context, false);
 
@@ -32338,9 +32331,6 @@ public class ChatActivity extends BaseFragment implements
             }
             captionToRestoreOnRebuild = null;
         }
-        android.util.Log.e("NAX_SMOKE_attach_caption", "onResumeRestore alert=" + (chatAttachAlert != null)
-                + " enterView=" + (chatActivityEnterView != null)
-                + " fieldLen=" + (chatActivityEnterView == null || chatActivityEnterView.getFieldText() == null ? -1 : chatActivityEnterView.getFieldText().length()));
         applyChatLinkMessageMaybe();
         if (bottomChannelButtonsLayout != null && bottomChannelButtonsLayout.getVisibility() != View.VISIBLE && !actionBar.isSearchFieldVisible() && chatMode != MODE_SEARCH && !BaseFragment.hasSheets(this)) {
             chatActivityEnterView.setFieldFocused(true);
@@ -32497,8 +32487,6 @@ public class ChatActivity extends BaseFragment implements
             }
         }
         captionToRestoreOnRebuild = TextUtils.isEmpty(attachCaption) ? null : new SpannableStringBuilder(attachCaption);
-        android.util.Log.e("NAX_SMOKE_attach_caption", "chatPauseStash len="
-                + (captionToRestoreOnRebuild == null ? -1 : captionToRestoreOnRebuild.length()));
         // NagramX: a round video that's still capturing -- live with the finger down, or hands-free/locked --
         // would be lost if the app backgrounds now (worst with passcode lock set to Immediately, which rebuilds
         // the chat on unlock). Finalize it into the preview strip so its file survives. send(3)
@@ -32515,9 +32503,6 @@ public class ChatActivity extends BaseFragment implements
             chatActivityEnterView.persistVideoTrimIfBound();
         }
         if (chatAttachAlert != null) {
-            android.util.Log.e("NAX_SMOKE_attach_caption", "chatPause alert=1"
-                    + " showing=" + chatAttachAlert.isShowing()
-                    + " commentLen=" + (chatAttachAlert.getCommentView() == null ? -1 : chatAttachAlert.getCommentView().getText().length()));
             if (!ignoreAttachOnPause) {
                 chatAttachAlert.onPause();
             } else {
