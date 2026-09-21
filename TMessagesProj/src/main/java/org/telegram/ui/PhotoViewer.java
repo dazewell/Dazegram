@@ -10327,12 +10327,18 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         }
         final Object object = imagesArrLocals.get(currentIndex);
         CharSequence stored = null;
+        ArrayList<TLRPC.MessageEntity> storedEntities = null;
         if (object instanceof MediaController.PhotoEntry) {
             stored = ((MediaController.PhotoEntry) object).caption;
+            storedEntities = ((MediaController.PhotoEntry) object).entities;
         } else if (object instanceof MediaController.SearchImage) {
             stored = ((MediaController.SearchImage) object).caption;
+            storedEntities = ((MediaController.SearchImage) object).entities;
+        } else {
+            return false;
         }
-        return !TextUtils.equals(stored, view.getText());
+        return xyz.nextalone.nagram.helper.AttachCaptionHelper.hasUnappliedCaption(
+                currentAccount, view.getText(), supportsSendingNewEntities(), stored, storedEntities);
     }
 
     private CharSequence applyCaption() {

@@ -8,24 +8,32 @@ Re-verify the citation before relying on it — see the README.
 
 `PhotoViewer` keeps the caption being typed in its own `CaptionContainerView`,
 and the only thing that writes it into the `PhotoEntry` (with its entities) is
-the private `applyCaption()` (`PhotoViewer.java:10338`). Upstream calls it from
-`closeCaptionEnter(true)` and from `toggleCaptionAbove()` (`:23897`) — both
+the private `applyCaption()` (`PhotoViewer.java:10344`). Upstream calls it from
+`closeCaptionEnter(true)` and from `toggleCaptionAbove()` (`:23903`) — both
 user actions, neither of which an app lock performs.
 
 `onPause()` looks like it covers this — it calls `closeCaptionEnter(true)`
-behind `if (lastTitle != null)` (`PhotoViewer.java:19343`) — but `lastTitle` is
+behind `if (lastTitle != null)` (`PhotoViewer.java:19349`) — but `lastTitle` is
 declared at `:1963` and the only assignment anywhere in the file sets it to
-`null` (`:18032`), so the branch is dead code. Even with the guard passing,
+`null` (`:18038`), so the branch is dead code. Even with the guard passing,
 `closeCaptionEnter` early-returns on `!isCaptionOpen()`, which the IME can make
 false before `onPause` runs. Meanwhile `LaunchActivity.showPasscodeActivity`
 closes the viewer outright (`LaunchActivity.java:1467-1469`), taking the text
 with it.
 
-The fork now applies at the top of `PhotoViewer.onPause()` (`:19335`), gated by
+The fork now applies at the top of `PhotoViewer.onPause()` (`:19341`), gated by
 `shouldApplyCaptionOnPause()` (`:10317`). The gate matters: `applyCaption()`
-auto-checks an unchecked item when the caption is non-empty (`:10364-10366`),
+auto-checks an unchecked item when the caption is non-empty (`:10370-10372`),
 and a caption left on an item the user deliberately unchecked would otherwise
 put that media back into the send set on any ordinary minimize.
+
+A second trap sits inside that gate. `applyCaption()` stores the text only
+after `MediaDataController.getEntities` has parsed markdown out of it
+(`MediaDataController.java:7299`), so a typed `` `code` `` is stored as
+`code`. Comparing an editor against the entry's stored caption therefore
+reports a difference forever after the first apply, which is why
+`AttachCaptionHelper.hasUnappliedCaption` derives the same canonical text and
+entities before comparing.
 
 *(Established 2026-09-20, `#attach-caption-guard`.)*
 
