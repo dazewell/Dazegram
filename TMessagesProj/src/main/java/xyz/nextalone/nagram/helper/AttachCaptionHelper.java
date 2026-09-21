@@ -59,7 +59,7 @@ public final class AttachCaptionHelper {
                 }
                 continue;
             }
-            if (one.getClass() != two.getClass() || one.offset != two.offset || one.length != two.length) {
+            if (!MediaDataController.entitiesEqual(one, two)) {
                 return false;
             }
         }
