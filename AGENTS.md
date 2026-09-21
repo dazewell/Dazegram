@@ -144,8 +144,8 @@ the cap is checked when a doc changes — not the corpus total, which is
 irrelevant while files load on demand.
 
 - **Always-on** (`AGENTS.md` + `CLAUDE.md` + the running agent file): **≤ 40 KB**.
-  Today 36 KB.
-- **Typical change** (always-on + `nagramx-workflow`): **≤ 60 KB**. Today 56 KB.
+  Today 37 KB.
+- **Typical change** (always-on + `nagramx-workflow`): **≤ 60 KB**. Today 57 KB.
 - Each skill body stays within Anthropic's 10–20 KB guidance. `nagramx-branch-flow`
   (21 KB) and `nagramx-process-lifecycle` (20.5 KB) sit just over and are not to
   grow; anything added to either buys its room by cutting.

@@ -100,6 +100,9 @@ hard-line policy, docs.
 - Ordering claims across threads, queues, or components require a producer
   `file:line` citation. "FIFO" or "immune by construction" without citation is
   unverified.
+- A change that reads state at a teardown must prove that teardown runs first.
+  A cited destroyer is not enough; an earlier dismissal on the same trigger
+  leaves the rescue dead code (`#attach-caption-guard`).
 - If the reviewer prescribes a mechanism, the implementer must implement it or
   contest it with `file:line` evidence before shipping an alternative. Say when
   a mechanism is binding, not merely a goal.
