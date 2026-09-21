@@ -10,7 +10,7 @@ import tw.nekomimi.nekogram.config.CellGroup;
 
 public class ConfigCellText extends AbstractConfigCell implements WithKey, WithOnClick {
     private final String key;
-    private final String value;
+    private String value;
     private final Runnable onClick;
     private boolean enabled = true;
     private TextSettingsCell cell;
@@ -40,6 +40,13 @@ public class ConfigCellText extends AbstractConfigCell implements WithKey, WithO
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
         if (this.cell != null) this.cell.setEnabled(this.enabled);
+    }
+
+    public void setValue(String value) {
+        this.value = value == null ? "" : value;
+        if (cell != null) {
+            cell.setTextAndValue(getString(key), this.value, cellGroup.needSetDivider(this));
+        }
     }
 
     public void onBindViewHolder(RecyclerView.ViewHolder holder) {
