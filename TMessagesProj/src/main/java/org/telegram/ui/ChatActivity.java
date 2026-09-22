@@ -8934,6 +8934,7 @@ public class ChatActivity extends BaseFragment implements
         chatActivityEnterView.setMinimumHeight(AndroidUtilities.dp(51));
         chatActivityEnterView.setAllowStickersAndGifs(true, true, currentEncryptedChat == null || AndroidUtilities.getPeerLayerVersion(currentEncryptedChat.layer) >= 46);
         chatActivityEnterView.shouldDrawBackground = false;
+        // NagramX: the reply/edit close satellite and composer tools belong to the Composer gate, not Buttons.
         chatActivityEnterView.setInputSatelliteGlassFactory(glassBackgroundDrawableFactory, composerGlassColorProvider);
         if (textToSet != null) {
             chatActivityEnterView.setFieldText(textToSet);
