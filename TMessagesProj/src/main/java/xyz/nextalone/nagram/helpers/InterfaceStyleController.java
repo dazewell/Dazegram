@@ -22,6 +22,10 @@ public class InterfaceStyleController {
         return isMaterialDesign3() && NaConfig.INSTANCE.getInterfaceStyleApplyButtons().Bool();
     }
 
+    public static boolean applyComposer() {
+        return isMaterialDesign3() && NaConfig.INSTANCE.getInterfaceStyleApplyComposer().Bool();
+    }
+
     public static boolean applyBottomNavigation() {
         return isMaterialDesign3() && NaConfig.INSTANCE.getInterfaceStyleApplyBottomNavigation().Bool();
     }

@@ -16,13 +16,13 @@ existing Liquid Glass setting and support gate
 
 The shared Blur strength row is visible in both styles because composer glass
 already consumes it (`InterfaceStyleActivity.java:213-215,347-352`;
-`ComposerGlassProvider.java:59-65`; `NaConfig.kt:1528-1531`). MD3-only rows are
+`ComposerGlassProvider.java:70-71`; `NaConfig.kt:1534-1537`). MD3-only rows are
 visible only after the Material Design 3 radio is selected
-(`InterfaceStyleActivity.java:216-241`). The Apply to rows expose Chat header,
-Chat list top bar, Buttons, and Bottom navigation
-(`InterfaceStyleActivity.java:328-343`). Only the first two currently have
-render consumers; Buttons and Bottom navigation are settings/controller gates
-for later render slices (`InterfaceStyleController.java:13-26`).
+(`InterfaceStyleActivity.java:216-241`). The Apply to rows expose Chat header, Chat list top bar, Buttons, Composer, and
+Bottom navigation (`InterfaceStyleActivity.java:328-351`). Chat header, chat
+list top bar, and Composer have render consumers; Buttons and Bottom navigation
+remain settings/controller gates for later render slices
+(`InterfaceStyleController.java:13-30`).
 
 Chat/action-bar surfaces use the existing account-aware
 `topPanelChatActivity(...)` colour logic, but `ChatActivity` calls the
@@ -58,6 +58,20 @@ geometry (`ChatActivity.java:12710-12718`, `:12823-12948`,
 `:30968-30987`).
 
 *(Established 2026-09-21, during `#interface-style`.)*
+
+## Composer Apply to is isolated from shared button glass
+
+The Interface Style Composer switch is stored in `NaConfig` and exposed only
+for MD3 by `InterfaceStyleActivity` (`NaConfig.kt:1431-1437`;
+`InterfaceStyleActivity.java:115-123,221-244,328-356`). The real chat keeps
+the existing provider for satellite/action/channel/camera button surfaces, but
+uses a separate Composer provider for the input island and under-keyboard panel
+(`ChatActivity.java:4202-4203,5408-5422`). The Composer provider applies the
+flat opaque MD3 state at its own color/stroke/shadow chokepoint
+(`ComposerGlassProvider.java:63-112`), and the settings preview constructs the
+same provider role (`ComposerLayoutActivity.java:1413-1417,1490-1493`).
+
+*(Established 2026-09-22, during `#interface-style`.)*
 
 ## BottomBuilder section cards are opt-in and isolated to Early Send
 

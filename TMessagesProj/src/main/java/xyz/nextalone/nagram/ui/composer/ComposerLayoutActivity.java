@@ -47,11 +47,13 @@ import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.MotionBackgroundDrawable;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
+import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSource;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceBitmap;
 import org.telegram.ui.Components.chat.WallpaperBitmapProvider;
 
 import xyz.nextalone.nagram.NaConfig;
+import xyz.nextalone.nagram.helpers.InterfaceStyleController;
 import xyz.nextalone.nagram.ui.ComposerToolbarLayout;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -1410,9 +1412,11 @@ public class ComposerLayoutActivity extends BaseFragment {
             // (see attachGlass below) so the shadow/stroke shown here matches what actually ships;
             // gateOnBlurEnabled=false because this preview has always shown the configured glass
             // regardless of whether blur happens to be off for the previewing account right now.
-            ComposerGlassProvider bodyGlassColor = new ComposerGlassProvider(UserConfig.selectedAccount, null, false);
+            ComposerGlassProvider bodyGlassColor = new ComposerGlassProvider(UserConfig.selectedAccount, null, false, true);
             FrameLayout body = new FrameLayout(getContext());
-            body.setBackground(glassFactory.create(body, bodyGlassColor).setRadius(dp(PREVIEW_INPUT_HEIGHT / 2f)));
+            BlurredBackgroundDrawable bodyDrawable = glassFactory.create(body, bodyGlassColor);
+            bodyDrawable.setRadius(InterfaceStyleController.applyComposer() ? 0 : dp(PREVIEW_INPUT_HEIGHT / 2f));
+            body.setBackground(bodyDrawable);
             body.setFocusable(false);
             body.setClickable(false);
             body.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
@@ -1482,10 +1486,9 @@ public class ComposerLayoutActivity extends BaseFragment {
                 glassSource = null;
             }
             glassFactory = new BlurredBackgroundDrawableViewFactory(source);
-            // NagramX: must stay fed the same ComposerGlassProvider construction as the mock pill's
-            // provider in addMockInput() above, or the two preview surfaces disagree with each other
-            // (and with the real chat, where both read the one live-overridden provider) the moment the
-            // slider moves off its default.
+            // NagramX: the toolbar keeps the shared glass provider because the real chat shares that
+            // provider with its satellite and action buttons; only the input surface opts into the
+            // flat Composer provider.
             toolbar.attachGlass(
                     glassFactory,
                     new ComposerGlassProvider(UserConfig.selectedAccount, null, false));

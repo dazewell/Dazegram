@@ -344,11 +344,13 @@
     <string name="InterfaceStyleApplyChatListTopBarInfo">Search, filters, and the top panel in the chat list.</string>
     <string name="InterfaceStyleApplyButtons">Buttons</string>
     <string name="InterfaceStyleApplyButtonsInfo">Floating and pill-shaped buttons once they have Material Design 3 rendering.</string>
+    <string name="InterfaceStyleApplyComposer">Composer</string>
+    <string name="InterfaceStyleApplyComposerInfo">The message field and under-keyboard surface in chats, with a flat Material Design 3 treatment.</string>
     <string name="InterfaceStyleApplyBottomNavigation">Bottom navigation</string>
     <string name="InterfaceStyleApplyBottomNavigationInfo">The Chats, Settings, and Profile navigation bar once it has Material Design 3 rendering.</string>
     <string name="InterfaceStyleBlurStrength">Blur strength</string>
     <string name="InterfaceStyleBlurStrengthAccDescr">Blur strength</string>
-    <string name="InterfaceStyleBlurStrengthInfo">Controls how much wallpaper shows through the composer glass now, and MD3 blurred surfaces once they land. Has no visible effect in chats while chat blur is off.</string>
+    <string name="InterfaceStyleBlurStrengthInfo">Controls how much wallpaper shows through Composer glass while chat blur is on. Composer styling uses a flat opaque surface instead.</string>
     <string name="InterfaceStylePanelColorsHeader">Panel colors</string>
     <string name="InterfaceStyleMatchClassicDayHeader">Match Classic and Day header color</string>
     <string name="InterfaceStyleMatchClassicDayHeaderInfo">Will use the old Classic and Day theme panel color for MD3 chat headers once that color slice lands.</string>

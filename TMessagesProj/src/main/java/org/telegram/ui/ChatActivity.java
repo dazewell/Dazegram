@@ -517,6 +517,7 @@ public class ChatActivity extends BaseFragment implements
     private final WindowInsetsStateHolder windowInsetsStateHolder = new WindowInsetsStateHolder(this::checkInsets);
 
     private BlurredBackgroundColorProviderThemed blurredBackgroundColorProvider;
+    private BlurredBackgroundColorProviderThemed composerGlassColorProvider;
     private BlurredBackgroundColorProviderThemed blurredBackgroundColorProviderWhite;
 
     private final ReferenceList<View> glassAttachedViews = new ReferenceList<>();
@@ -4199,6 +4200,7 @@ public class ChatActivity extends BaseFragment implements
         // NagramX: named class (not anonymous) so it can also implement BlurredBackgroundProvider and
         // carry the composer's stronger drop shadow + pinned stroke widths - see ComposerGlassProvider.
         blurredBackgroundColorProvider = new xyz.nextalone.nagram.ui.composer.ComposerGlassProvider(currentAccount, themeDelegate, true);
+        composerGlassColorProvider = new xyz.nextalone.nagram.ui.composer.ComposerGlassProvider(currentAccount, themeDelegate, true, true);
         blurredBackgroundColorProviderWhite = new BlurredBackgroundColorProviderThemed(themeDelegate, Theme.key_windowBackgroundWhite) {
             @Override
             public int getBackgroundColor() {
@@ -5402,18 +5404,20 @@ public class ChatActivity extends BaseFragment implements
             actionBar.setForcedMenuMinWidth(dp(46));
         }
 
-        chatInputViewsContainer = new ChatInputViewsContainer(context);
+        chatInputViewsContainer = new ChatInputViewsContainer(context, true);
         chatInputViewsContainer.setClipChildren(false);
         chatInputViewsContainer.setWindowInsetsProvider(windowInsetsStateHolder);
-        chatInputViewsContainer.setInputIslandBubbleDrawable(
-            glassBackgroundDrawableFactory.create(chatInputViewsContainer, blurredBackgroundColorProvider));
+        BlurredBackgroundDrawable composerInputDrawable =
+            glassBackgroundDrawableFactory.create(chatInputViewsContainer, composerGlassColorProvider);
+        chatInputViewsContainer.setInputIslandBubbleDrawable(composerInputDrawable);
         BlurredBackgroundDrawable underKeyboardBackgroundDrawable =
-            glassBackgroundDrawableFactoryFrosted.create(chatInputViewsContainer, blurredBackgroundColorProvider);
+            glassBackgroundDrawableFactoryFrosted.create(chatInputViewsContainer, composerGlassColorProvider);
         // NagramX: this panel's own clip optimisation (enableInAppKeyboardOptimization, applied right
-        // below by setUnderKeyboardBackgroundDrawable) cuts shadow at the shape's own top edge, so the
-        // composer's stronger shadow would clip in a straight line under the in-app keyboard sheet. Hold
-        // it at the pre-existing geometry instead of inheriting ComposerGlassProvider's radius.
-        underKeyboardBackgroundDrawable.setShadowParams(AndroidUtilities.dpf2(1), 0, AndroidUtilities.dpf2(1 / 3f));
+        // below by setUnderKeyboardBackgroundDrawable) cuts the glass shadow at the shape's own top
+        // edge. Keep the old shadow only when Composer is not using the flat MD3 surface.
+        if (!xyz.nextalone.nagram.helpers.InterfaceStyleController.applyComposer()) {
+            underKeyboardBackgroundDrawable.setShadowParams(AndroidUtilities.dpf2(1), 0, AndroidUtilities.dpf2(1 / 3f));
+        }
         chatInputViewsContainer.setUnderKeyboardBackgroundDrawable(underKeyboardBackgroundDrawable);
 
 
@@ -46273,6 +46277,9 @@ public class ChatActivity extends BaseFragment implements
         ThemeDescription.ThemeDescriptionDelegate selectedBackgroundDelegate = () -> {
             if (blurredBackgroundColorProvider != null) {
                 blurredBackgroundColorProvider.updateColors();
+            }
+            if (composerGlassColorProvider != null) {
+                composerGlassColorProvider.updateColors();
             }
             if (blurredBackgroundColorProviderWhite != null) {
                 blurredBackgroundColorProviderWhite.updateColors();

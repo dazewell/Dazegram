@@ -10,22 +10,20 @@ import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundProvider
 import org.telegram.ui.Components.blur3.drawable.color.impl.BlurredBackgroundProviderImpl;
 
 import xyz.nextalone.nagram.NaConfig;
+import xyz.nextalone.nagram.helpers.InterfaceStyleController;
 
 /**
- * NagramX: color provider for the composer glass family (the input pill, the under-keyboard
- * panel, the toolbar row and everything else fed the one blurredBackgroundColorProvider instance
- * in ChatActivity, plus the settings-screen live preview in ComposerLayoutActivity). Named (not
- * anonymous) so it can implement BlurredBackgroundProvider on top of BlurredBackgroundColorProviderThemed -
- * only a concrete type can add methods beyond what its superclass declares, and BlurredBackgroundDrawable.
- * setColorProvider only picks up the shadow/stroke overrides below when the provider implements that
- * richer interface. Carries a stronger drop shadow than the base class default so the panels read as
- * floating above the chat (dazewell's ask), while pinning the stroke width so upgrading to the richer
- * interface doesn't also silently change stroke (setColorProvider applies both from the same block).
+ * NagramX: color provider for the composer glass family. ChatActivity keeps one ordinary instance
+ * for satellite and action surfaces and a second composerSurface instance for the input island and
+ * under-keyboard panel. Named (not anonymous) so it can implement BlurredBackgroundProvider on top
+ * of BlurredBackgroundColorProviderThemed; BlurredBackgroundDrawable.setColorProvider only picks up
+ * the shadow/stroke overrides below through that richer interface.
  */
 public class ComposerGlassProvider extends BlurredBackgroundColorProviderThemed implements BlurredBackgroundProvider {
     private final int currentAccount;
     private final Theme.ResourcesProvider resourcesProvider;
     private final boolean gateOnBlurEnabled;
+    private final boolean composerSurface;
 
     /**
      * @param gateOnBlurEnabled whether getBackgroundColor() should fall back to an opaque panel
@@ -37,10 +35,15 @@ public class ComposerGlassProvider extends BlurredBackgroundColorProviderThemed 
      *                          nobody asked for in this pass.
      */
     public ComposerGlassProvider(int currentAccount, Theme.ResourcesProvider resourcesProvider, boolean gateOnBlurEnabled) {
+        this(currentAccount, resourcesProvider, gateOnBlurEnabled, false);
+    }
+
+    public ComposerGlassProvider(int currentAccount, Theme.ResourcesProvider resourcesProvider, boolean gateOnBlurEnabled, boolean composerSurface) {
         super(resourcesProvider, Theme.key_chat_messagePanelBackground);
         this.currentAccount = currentAccount;
         this.resourcesProvider = resourcesProvider;
         this.gateOnBlurEnabled = gateOnBlurEnabled;
+        this.composerSurface = composerSurface;
     }
 
     // NagramX: theme-mode "dark", not perceived-brightness "dark" - used by getBackgroundColor() and
@@ -57,6 +60,9 @@ public class ComposerGlassProvider extends BlurredBackgroundColorProviderThemed 
     @Override
     public int getBackgroundColor() {
         NaConfig.migrateComposerGlassTransparency(isDarkTheme());
+        if (composerSurface && InterfaceStyleController.applyComposer()) {
+            return ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider), 255);
+        }
         if (gateOnBlurEnabled && !BlurredBackgroundProviderImpl.checkBlurEnabled(currentAccount, resourcesProvider)) {
             return ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider), 255);
         }
@@ -70,6 +76,9 @@ public class ComposerGlassProvider extends BlurredBackgroundColorProviderThemed 
     // change once light theme has been judged on device.
     @Override
     public int getShadowColor() {
+        if (composerSurface && InterfaceStyleController.applyComposer()) {
+            return 0;
+        }
         return isDarkTheme() ? 0 : 0x30000000;
     }
 
@@ -85,11 +94,17 @@ public class ComposerGlassProvider extends BlurredBackgroundColorProviderThemed 
     // getBackgroundColor() above.
     @Override
     public int getStrokeColorTop() {
+        if (composerSurface && InterfaceStyleController.applyComposer()) {
+            return 0;
+        }
         return isDark() ? 0x28FFFFFF : 0xFFFFFFFF;
     }
 
     @Override
     public int getStrokeColorBottom() {
+        if (composerSurface && InterfaceStyleController.applyComposer()) {
+            return 0;
+        }
         return isDark() ? 0x14FFFFFF : 0xFFFFFFFF;
     }
 

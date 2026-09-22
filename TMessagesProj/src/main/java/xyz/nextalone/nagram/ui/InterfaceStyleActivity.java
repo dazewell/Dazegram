@@ -57,6 +57,7 @@ public class InterfaceStyleActivity extends BaseFragment {
     private int rowApplyChatHeader;
     private int rowApplyChatListTopBar;
     private int rowApplyButtons;
+    private int rowApplyComposer;
     private int rowApplyBottomNavigation;
     private int rowBlurStrengthHeader;
     private int rowBlurStrength;
@@ -114,6 +115,10 @@ public class InterfaceStyleActivity extends BaseFragment {
                 reloadInterfaceStyle();
             } else if (position == rowApplyButtons) {
                 boolean checked = NaConfig.INSTANCE.getInterfaceStyleApplyButtons().toggleConfigBool();
+                ((TextCheckCell) view).setChecked(checked);
+                reloadInterfaceStyle();
+            } else if (position == rowApplyComposer) {
+                boolean checked = NaConfig.INSTANCE.getInterfaceStyleApplyComposer().toggleConfigBool();
                 ((TextCheckCell) view).setChecked(checked);
                 reloadInterfaceStyle();
             } else if (position == rowApplyBottomNavigation) {
@@ -218,6 +223,7 @@ public class InterfaceStyleActivity extends BaseFragment {
             rowApplyChatHeader = row++;
             rowApplyChatListTopBar = row++;
             rowApplyButtons = row++;
+            rowApplyComposer = row++;
             rowApplyBottomNavigation = row++;
             if (isClassicOrDayTheme()) {
                 rowPanelColorsHeader = row++;
@@ -231,6 +237,7 @@ public class InterfaceStyleActivity extends BaseFragment {
             rowApplyChatHeader = -1;
             rowApplyChatListTopBar = -1;
             rowApplyButtons = -1;
+            rowApplyComposer = -1;
             rowApplyBottomNavigation = -1;
             rowPanelColorsHeader = -1;
             rowMatchClassicDayHeader = -1;
@@ -260,6 +267,7 @@ public class InterfaceStyleActivity extends BaseFragment {
                     || rowApplyChatHeader >= 0 && position == rowApplyChatHeader
                     || rowApplyChatListTopBar >= 0 && position == rowApplyChatListTopBar
                     || rowApplyButtons >= 0 && position == rowApplyButtons
+                    || rowApplyComposer >= 0 && position == rowApplyComposer
                     || rowApplyBottomNavigation >= 0 && position == rowApplyBottomNavigation
                     || rowMatchClassicDayHeader >= 0 && position == rowMatchClassicDayHeader;
         }
@@ -270,7 +278,7 @@ public class InterfaceStyleActivity extends BaseFragment {
                 return TYPE_HEADER;
             } else if (position == rowInfo || position == rowBlurStrengthInfo) {
                 return TYPE_INFO;
-            } else if (position == rowApplyChatHeader || position == rowApplyChatListTopBar || position == rowApplyButtons || position == rowApplyBottomNavigation || position == rowMatchClassicDayHeader) {
+            } else if (position == rowApplyChatHeader || position == rowApplyChatListTopBar || position == rowApplyButtons || position == rowApplyComposer || position == rowApplyBottomNavigation || position == rowMatchClassicDayHeader) {
                 return TYPE_CHECK;
             } else if (position == rowBlurStrength) {
                 return TYPE_SLIDER;
@@ -336,6 +344,10 @@ public class InterfaceStyleActivity extends BaseFragment {
             } else if (position == rowApplyButtons) {
                 TextCheckCell cell = (TextCheckCell) holder.itemView;
                 cell.setTextAndValueAndCheck(getString(R.string.InterfaceStyleApplyButtons), getString(R.string.InterfaceStyleApplyButtonsInfo), NaConfig.INSTANCE.getInterfaceStyleApplyButtons().Bool(), true, true, true);
+                cell.setEnabled(true, null);
+            } else if (position == rowApplyComposer) {
+                TextCheckCell cell = (TextCheckCell) holder.itemView;
+                cell.setTextAndValueAndCheck(getString(R.string.InterfaceStyleApplyComposer), getString(R.string.InterfaceStyleApplyComposerInfo), NaConfig.INSTANCE.getInterfaceStyleApplyComposer().Bool(), true, true, true);
                 cell.setEnabled(true, null);
             } else if (position == rowApplyBottomNavigation) {
                 TextCheckCell cell = (TextCheckCell) holder.itemView;
