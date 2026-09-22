@@ -600,6 +600,13 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         return ColorUtils.setAlphaComponent(getThemedColor(getDialogsTopSurfaceColorKey()), 255);
     }
 
+    // NagramX: reloadInterface rebuilds this view without reconstructing these final factories.
+    private void refreshDialogsLiquidGlassFactories() {
+        boolean liquidGlass = LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS);
+        iBlur3FactoryFrostedLiquidGlass.setLiquidGlassEffectAllowed(liquidGlass);
+        iBlur3FactoryLiquidGlass.setLiquidGlassEffectAllowed(liquidGlass);
+    }
+
     private @Nullable ImageView actionModeCloseView;
     private NumberTextView selectedDialogsCountTextView;
     private final ArrayList<View> actionModeViews = new ArrayList<>();
@@ -3333,6 +3340,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         wasDrawn = false;
         pacmanAnimation = null;
         filterTabsView = null;
+        refreshDialogsLiquidGlassFactories();
         selectedDialogs.clear();
 
         additionNavigationBarHeight = hasMainTabs && !NaConfig.INSTANCE.getHideBottomNavigationBar().Bool() ? dp(MainTabsHelper.getMainTabsHeightWithMargins()) : 0;
