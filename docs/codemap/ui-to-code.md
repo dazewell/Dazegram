@@ -77,14 +77,12 @@ pill alpha through `InterfaceStyleController.filterTabSelectorAlpha(...)` when
 full-opacity stroked chip (`FilterTabsView.java:1644-1663`;
 `InterfaceStyleController.java:8-10,36-42`).
 
-Search tabs in the same top region remain deliberately outside this slice:
-`DialogsActivity` builds them with `ViewPagerFixed.TabsView`, whose selected
-bubble uses the same legacy `tabStyleStroke` alpha convention but has no
-chat-list consumer identity at draw time. Gating that generic draw path would
-also affect hashtag/search strips and bookmark tabs, so parity needs a separate
-plumbing slice rather than a global alpha change (`DialogsActivity.java:7816`;
-`ViewPagerFixed.java:2061-2076`). Other tab strips keep their own
-`tabStyleStroke` behavior independently (`ScrollSlidingTextTabStrip.java:772`).
+Dialogs search tabs opt into the same alpha through their own
+`ViewPagerFixed.TabsView` flag. The flag defaults off, so the shared bubble
+selector keeps hashtag/search and bookmark tabs on their existing
+`tabStyleStroke` behavior (`DialogsActivity.java:7816-7818`;
+`ViewPagerFixed.java:1512,1544-1546,2066-2079`). Other tab strips keep their
+own `tabStyleStroke` behavior independently (`ScrollSlidingTextTabStrip.java:772`).
 
 *(Established 2026-09-22, during `#interface-style`.)*
 

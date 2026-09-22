@@ -7814,6 +7814,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
             if (searchTabsView == null && searchViewPager != null && !onlyDialogsAdapter && communityId == 0) {
                 searchTabsView = searchViewPager.createTabsView(false, ViewPagerFixed.SELECTOR_TYPE_BUBBLE_STYLE);
+                // NagramX: the shared bubble selector also draws chat hashtag and bookmark tabs outside this top-bar setting.
+                searchTabsView.setInterfaceStyleChatListTabSelector(true);
                 searchTabsAndFiltersLayout.addView(searchTabsView, 0, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL));
             } else if (searchTabsAndFiltersLayout != null && onlyDialogsAdapter && communityId == 0) {
                 AndroidUtilities.removeFromParent(searchTabsView);
