@@ -12714,6 +12714,8 @@ public class ChatActivity extends BaseFragment implements
             : defaultDp;
     }
 
+    private static final int NAX_MD3_PINNED_TRAILING_KEYLINE_DP = 9;
+
     private void createPinnedMessageView() {
         if (currentEncryptedChat != null || pinnedMessageView != null || getContext() == null) {
             return;
@@ -12853,7 +12855,8 @@ public class ChatActivity extends BaseFragment implements
             pinnedMessageView.addView(pinnedMessageTextView[a], LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 18, Gravity.TOP | Gravity.LEFT, naxPinnedContentLeftDp(23), 25.3f, 44 + possibleLeftMarginDp, 0));
 
             pinnedMessageButton[a] = new PinnedMessageButton(getContext());
-            pinnedMessageView.addView(pinnedMessageButton[a], LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 28, Gravity.TOP | Gravity.RIGHT, 0, 10, 14, 0));
+            pinnedMessageView.addView(pinnedMessageButton[a], LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 28, Gravity.TOP | Gravity.RIGHT, 0, 10,
+                xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? NAX_MD3_PINNED_TRAILING_KEYLINE_DP : 14, 0));
 
             pinnedMessageImageView[a] = new BackupImageView(getContext()) {
                 private SpoilerEffect spoilerEffect = new SpoilerEffect();
@@ -12909,7 +12912,13 @@ public class ChatActivity extends BaseFragment implements
         pinnedListButton.setScaleX(0.4f);
         pinnedListButton.setScaleY(0.4f);
         pinnedListButton.setBackgroundDrawable(Theme.createSelectorDrawable(getThemedColor(Theme.key_inappPlayerClose) & 0x19ffffff));
-        pinnedMessageView.addView(pinnedListButton, LayoutHelper.createFrame(36, 48, Gravity.RIGHT | Gravity.TOP, 0, 0, 7, 0));
+        if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader()) {
+            // NagramX: keep the touch target while aligning the drawn icon with the header avatar.
+            // Padding is 2 * keyline - (view width - glyph width); this asset is 24dp.
+            pinnedListButton.setPadding(0, 0, dp(2 * NAX_MD3_PINNED_TRAILING_KEYLINE_DP - (36 - 24)), 0);
+        }
+        pinnedMessageView.addView(pinnedListButton, LayoutHelper.createFrame(36, 48, Gravity.RIGHT | Gravity.TOP, 0, 0,
+            xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : 7, 0));
         pinnedListButton.setOnClickListener(v -> openPinnedMessagesList(false));
 
         closePinned = new ImageView(getContext());
@@ -12924,10 +12933,16 @@ public class ChatActivity extends BaseFragment implements
         pinnedProgress.setSize(AndroidUtilities.dp(16));
         pinnedProgress.setStrokeWidth(2f);
         pinnedProgress.setProgressColor(getThemedColor(Theme.key_chat_topPanelLine));
-        pinnedMessageView.addView(pinnedProgress, LayoutHelper.createFrame(36, 48, Gravity.RIGHT | Gravity.TOP, 0, 0, 2, 0));
+        pinnedMessageView.addView(pinnedProgress, LayoutHelper.createFrame(36, 48, Gravity.RIGHT | Gravity.TOP, 0, 0,
+            xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : 2, 0));
 
         closePinned.setBackgroundDrawable(Theme.createSelectorDrawable(getThemedColor(Theme.key_inappPlayerClose) & 0x19ffffff, 1, AndroidUtilities.dp(14)));
-        pinnedMessageView.addView(closePinned, LayoutHelper.createFrame(36, 48, Gravity.RIGHT | Gravity.TOP, 0, 0, 2, 0));
+        if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader()) {
+            // This asset is 12dp; start padding moves its centered drawing toward the trailing edge.
+            closePinned.setPadding(dp(36 - 12 - 2 * NAX_MD3_PINNED_TRAILING_KEYLINE_DP), 0, 0, 0);
+        }
+        pinnedMessageView.addView(closePinned, LayoutHelper.createFrame(36, 48, Gravity.RIGHT | Gravity.TOP, 0, 0,
+            xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : 2, 0));
         closePinned.setOnClickListener(v -> {
             if (getParentActivity() == null) {
                 return;

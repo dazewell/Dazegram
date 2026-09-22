@@ -48,10 +48,12 @@ component flat hooks (`ChatActivity.java:8627-8630`, `:9896-9900`,
 `:11153-11155`, `:52132-52135`;
 `ChatActivityTopPanelLayout.java:37-89`;
 `DialogsActivityTopPanelLayout.java:36-82`; `TopicsTabsView.java:485-498`).
-Pinned-message child margins use one explicit MD3 keyline at creation and at
-both runtime image/no-image updates, while the full-width panel background and
-forum side-menu padding remain separate (`ChatActivity.java:12710-12716`,
-`:12821-12893`, `:30953-30972`).
+Pinned-message content uses explicit MD3 keylines at creation and at both
+runtime image/no-image updates. Its close, list, progress and action states
+also derive their drawn trailing edge from the header avatar keyline while
+retaining the clickable icons' 36×48dp targets; Liquid Glass keeps the original
+geometry (`ChatActivity.java:12710-12718`, `:12823-12948`,
+`:30968-30987`).
 
 *(Established 2026-09-21, during `#interface-style`.)*
 
