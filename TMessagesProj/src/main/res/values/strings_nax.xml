@@ -347,7 +347,7 @@
     <string name="InterfaceStyleApplyComposer">Composer</string>
     <string name="InterfaceStyleApplyComposerInfo">The message field and under-keyboard surface in chats, with a flat Material Design 3 treatment.</string>
     <string name="InterfaceStyleApplyBottomNavigation">Bottom navigation</string>
-    <string name="InterfaceStyleApplyBottomNavigationInfo">The Chats, Settings, and Profile navigation bar when Material Design 3 rendering is enabled.</string>
+    <string name="InterfaceStyleApplyBottomNavigationInfo">The global navigation bar when Material Design 3 rendering is enabled.</string>
     <string name="InterfaceStyleBlurStrength">Blur strength</string>
     <string name="InterfaceStyleBlurStrengthAccDescr">Blur strength</string>
     <string name="InterfaceStyleBlurStrengthInfo">Controls how much wallpaper shows through supported glass surfaces, including Composer when Composer styling is off and the Material Design 3 navigation bar.</string>

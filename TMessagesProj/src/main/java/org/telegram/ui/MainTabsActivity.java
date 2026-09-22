@@ -348,6 +348,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         Bulletin.addDelegate(contentView, getBulletinDelegate());
         tabletLayout = false;
 
+        // NagramX: snapshot the setting for this rebuilt navigation view; the toggle rebuilds the activity.
         md3BottomNavigation = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyBottomNavigation();
         final boolean compact = MainTabsHelper.isMainTabsHideTitleStyle();
         final int mainTabsMargin = MainTabsHelper.getMainTabsMargin();
@@ -359,6 +360,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         final int paddingH = md3BottomNavigation ? 0 : dp(mainTabsMargin + 4);
         final int paddingV = md3BottomNavigation ? 0 : dp(mainTabsMargin + 4);
         tabsView.setPadding(paddingH, paddingV, paddingH, paddingV);
+        // NagramX: MD3 navigation is full-width; the legacy pill keeps its capped geometry.
         tabsView.setMaxWidth(md3BottomNavigation ? 0 : dp(328 + DialogsActivity.MAIN_TABS_MARGIN * 2));
         tabsView.setFillWidth(md3BottomNavigation);
 
@@ -424,6 +426,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         iBlur3FactoryGlass.setSourceRootView(viewPositionWatcher, contentView);
         iBlur3FactoryGlass.setLiquidGlassEffectAllowed(LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS));
 
+        // NagramX: the MD3 provider belongs on the wrapper so system insets remain part of the surface.
         tabsViewWrapper = new FrameLayout(context);
         tabsViewWrapper.setOnClickListener(v -> {});
         tabsViewWrapper.addView(tabsView, LayoutHelper.createFrame(
@@ -439,6 +442,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         );
         tabsViewBackground.setRadius(md3BottomNavigation ? 0 : dp(MainTabsHelper.getMainTabsHeight() / 2f));
         tabsViewBackground.setPadding(md3BottomNavigation ? 0 : dp(mainTabsMargin - 0.334f));
+        // NagramX: hide the owner of the background in MD3; legacy mode keeps the original tab fade.
         if (md3BottomNavigation) {
             tabsViewWrapper.setBackground(tabsViewBackground);
         } else {

@@ -46,6 +46,7 @@ public class MainTabsLayout extends AnimatedLinearLayout {
     private static final float[] PASS_TEXT_SIZES_DP = {12f, 12f, 10f};
     private static final int[] PASS_PADDINGS_DP = {16, 8, 4};
 
+    // NagramX: only the global MD3 navigation may distribute tabs across the full width.
     private int maxWidthPx;
     private boolean fillWidth;
 

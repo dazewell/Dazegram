@@ -34,6 +34,7 @@ public class BlurredBackgroundProviderImpl {
             .build();
     }
 
+    // NagramX: Keep the MD3 navigation surface separate so attach/statistics keep the glass provider.
     public static BlurredBackgroundProvider mainTabsBottomNavigation(Theme.ResourcesProvider resourcesProvider) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
             .setBackgroundColor((r, isDark) -> Theme.multAlpha(

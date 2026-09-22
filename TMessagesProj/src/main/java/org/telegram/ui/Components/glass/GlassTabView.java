@@ -133,6 +133,7 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     private boolean hasGestureSelectedOverride;
     private float gestureSelectedOverride;
     private boolean skipDrawSelector;
+    // NagramX: MD3 navigation owns a tonal indicator while other GlassTabView users keep the glass selector.
     private boolean md3NavigationIndicator;
 
     public void setGestureSelectedOverride(float gestureSelectedOverride, boolean allow) {
