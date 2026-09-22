@@ -5391,7 +5391,7 @@ public class ChatActivity extends BaseFragment implements
         contentView.setOccupyStatusBar(!inBubbleMode && !isInsideContainer && !inPreviewMode);
 
         // NagramX: chat-only provider can flatten MD3 header chrome without changing other topPanelChatActivity consumers.
-        actionBar.setupGlass(glassBackgroundDrawableFactory, BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate), ChatObject.isForum(currentChat), xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader());
+        actionBar.setupGlass(glassBackgroundDrawableFactory, BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null), ChatObject.isForum(currentChat), xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader());
         actionBar.setChatAvatarContainer(avatarContainer);
         avatarContainer.setActionBar(actionBar);
 
@@ -8632,7 +8632,7 @@ public class ChatActivity extends BaseFragment implements
             // NagramX: the tag strip follows the MD3 chat-header surface geometry.
             final boolean naxFlatChatHeader = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader();
             hashtagSearchTabs.setBackground(glassBackgroundDrawableFactory.create(hashtagSearchTabs)
-                .setColorProvider(BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, resourceProvider))
+                .setColorProvider(BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, resourceProvider, glassBackgroundSourceFrostedRenderNode != null))
                 .setRadius(naxFlatChatHeader ? 0 : dp(18)).setPadding(naxFlatChatHeader ? 0 : dp(7f)));
 
             contentView.addView(hashtagSearchTabs, LayoutHelper.createFrameMarginPx(LayoutHelper.MATCH_PARENT, 50, Gravity.FILL_HORIZONTAL | Gravity.TOP, 0, -dp(5), 0, 0));
@@ -9892,14 +9892,14 @@ public class ChatActivity extends BaseFragment implements
             actionBarSearchTags.setVisibility(View.GONE);
             actionBarSearchTags.setBlurredFactory(
                 glassBackgroundDrawableFactory,
-                BlurredBackgroundProviderImpl.topPanelChatActivityTags(currentAccount, resourceProvider)
+                BlurredBackgroundProviderImpl.topPanelChatActivityTags(currentAccount, resourceProvider, glassBackgroundSourceFrostedRenderNode != null)
             );
             contentView.addView(actionBarSearchTags, LayoutHelper.createFrameMarginPx(LayoutHelper.MATCH_PARENT, 38, Gravity.FILL_HORIZONTAL | Gravity.TOP, 0, -dp(3), 0, 0));
         }
 
         checkUi_topPanelLayoutWidth();
         topPanelLayout.setBlurredBackground(glassBackgroundDrawableFactory.create(topPanelLayout)
-            .setColorProvider(BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate))
+            .setColorProvider(BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null))
             .setRadius(xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : dp(18))
             .setPadding(xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : dp(7)));
         // NagramX: MD3 top panels are full-width bars rather than inset Liquid Glass cards.
@@ -11157,8 +11157,8 @@ public class ChatActivity extends BaseFragment implements
 
         // NagramX: topic tab chrome is part of the chat-header surface for Interface Style.
         final boolean naxFlatChatHeader = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader();
-        topicsTabs.setSideMenuBackgroundDrawable(glassBackgroundDrawableFactory.create(topicsTabs, BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate)), naxFlatChatHeader);
-        topicsTabs.setTopMenuBackgroundDrawable(glassBackgroundDrawableFactory.create(topicsTabs, BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate)), naxFlatChatHeader);
+        topicsTabs.setSideMenuBackgroundDrawable(glassBackgroundDrawableFactory.create(topicsTabs, BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null)), naxFlatChatHeader);
+        topicsTabs.setTopMenuBackgroundDrawable(glassBackgroundDrawableFactory.create(topicsTabs, BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null)), naxFlatChatHeader);
 
         int index = 8;
         topicsTabs.setCurrentTopic(getTopicId());

@@ -203,22 +203,26 @@ public class BlurredBackgroundProviderImpl {
     }
 
     public static BlurredBackgroundProvider chatHeaderPanel(int currentAccount, Theme.ResourcesProvider resourcesProvider) {
-        return topPanelChatActivity(currentAccount, resourcesProvider, true);
+        return topPanelChatActivity(currentAccount, resourcesProvider, true, false);
+    }
+
+    public static BlurredBackgroundProvider chatHeaderPanel(int currentAccount, Theme.ResourcesProvider resourcesProvider, boolean frostedSourceAvailable) {
+        return topPanelChatActivity(currentAccount, resourcesProvider, true, frostedSourceAvailable);
     }
 
     // NagramX: account-aware overload so bubble chats (which run under a
     // notification's account, not the globally selected one) evaluate blur
     // eligibility against the right account's config.
     public static BlurredBackgroundProvider topPanelChatActivity(int currentAccount, Theme.ResourcesProvider resourcesProvider) {
-        return topPanelChatActivity(currentAccount, resourcesProvider, false);
+        return topPanelChatActivity(currentAccount, resourcesProvider, false, false);
     }
 
-    private static BlurredBackgroundProvider topPanelChatActivity(int currentAccount, Theme.ResourcesProvider resourcesProvider, boolean flatMd3Chrome) {
+    private static BlurredBackgroundProvider topPanelChatActivity(int currentAccount, Theme.ResourcesProvider resourcesProvider, boolean flatMd3Chrome, boolean frostedSourceAvailable) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
                 .setBackgroundColor((r, isDark) -> {
                     // NagramX: MD3 keeps the pre-Glass theme colour instead of the glass target tint.
                     final boolean md3Header = flatMd3Chrome && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader();
-                    if (md3Header && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && checkBlurEnabled(currentAccount, resourcesProvider)) {
+                    if (md3Header && frostedSourceAvailable && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && checkBlurEnabled(currentAccount, resourcesProvider)) {
                         return Theme.multAlpha(Theme.getColor(isDark ? Theme.key_actionBarDefault : Theme.key_chat_topPanelBackground, r), xyz.nextalone.nagram.NaConfig.interfaceStyleBlurAlpha());
                     }
                     if (md3Header || !checkBlurEnabled(currentAccount, resourcesProvider)) {
@@ -245,11 +249,15 @@ public class BlurredBackgroundProviderImpl {
     // NagramX: same account-aware fix as topPanelChatActivity, for the
     // hashtag/tag search strip that shares its blur-eligibility check.
     public static BlurredBackgroundProvider topPanelChatActivityTags(int currentAccount, Theme.ResourcesProvider resourcesProvider) {
+        return topPanelChatActivityTags(currentAccount, resourcesProvider, false);
+    }
+
+    public static BlurredBackgroundProvider topPanelChatActivityTags(int currentAccount, Theme.ResourcesProvider resourcesProvider, boolean frostedSourceAvailable) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
             .setBackgroundColor((r, isDark) -> {
                 // NagramX: the tag/search strip is visually part of the chat header surface.
                 final boolean md3Header = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader();
-                if (md3Header && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && checkBlurEnabled(currentAccount, resourcesProvider)) {
+                if (md3Header && frostedSourceAvailable && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && checkBlurEnabled(currentAccount, resourcesProvider)) {
                     return Theme.multAlpha(Theme.getColor(isDark ? Theme.key_actionBarDefault : Theme.key_chat_topPanelBackground, r), xyz.nextalone.nagram.NaConfig.interfaceStyleBlurAlpha());
                 }
                 if (md3Header || !checkBlurEnabled(currentAccount, resourcesProvider)) {
