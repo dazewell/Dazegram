@@ -152,6 +152,8 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     public void setMd3NavigationIndicator(boolean md3NavigationIndicator) {
         if (this.md3NavigationIndicator != md3NavigationIndicator) {
             this.md3NavigationIndicator = md3NavigationIndicator;
+            // MD3 puts the label 4dp below the 32dp indicator that wraps the icon.
+            textView.setLayoutParams(LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 0, md3NavigationIndicator ? 36 : 28.33f, 0, 0));
             invalidate();
         }
     }
@@ -167,8 +169,8 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
             paintCounterBackground.setColor(Theme.multAlpha(colorSelected, (md3NavigationIndicator ? 0.18f : 0.09f) * alpha));
             if (md3NavigationIndicator) {
                 final float indicatorWidth = Math.min(dp(64), viewWidth - dp(8));
-                final float indicatorHeight = dp(isCompact ? 32 : 26);
-                final float top = isCompact ? (getHeight() - indicatorHeight) / 2f : dp(1);
+                final float indicatorHeight = dp(32);
+                final float top = isCompact ? (getHeight() - indicatorHeight) / 2f : 0;
                 tmpRectF.set((viewWidth - indicatorWidth) / 2f, top, (viewWidth + indicatorWidth) / 2f, top + indicatorHeight);
                 canvas.drawRoundRect(tmpRectF, indicatorHeight / 2f, indicatorHeight / 2f, paintCounterBackground);
             } else {
