@@ -36,13 +36,16 @@ Dialogs uses `dialogsTopPanel(...)` / `dialogsFloatingPanel(...)` providers so
 the chat-list setting does not recolour every generic `topPanel` consumer and
 the floating panel keeps a card surface tone
 (`BlurredBackgroundProviderImpl.java:55-83`). MD3 geometry is still wired only
-at the four `DialogsActivity` call sites: search/filter bars drop their side
-margins, radius and drawable padding, the floating panel switches its own
+at `DialogsActivity` call sites: search/filter bars drop their side
+margins, radius, vertical padding, rounded child clip and drawable padding, the
+legacy top-bubbles fade is hidden, the floating panel switches its own
 background to flat bounds, and the shared search field uses the new flat
-overload (`DialogsActivity.java:4899-4905`, `:4990-4995`, `:5338-5348`).
+overload (`DialogsActivity.java:4891-4909`, `:4990-4997`, `:5341-5350`,
+`:6815-6824`; `SearchTabsAndFiltersLayout.java:18-58`).
 Chat-side strips use the same chat-header flag through `ChatActivity` and the
 component flat hooks (`ChatActivity.java:8627-8630`, `:9896-9900`,
-`:11153-11155`; `ChatActivityTopPanelLayout.java:37-88`;
+`:11153-11155`, `:52105-52110`, `:52124-52126`;
+`ChatActivityTopPanelLayout.java:37-89`;
 `DialogsActivityTopPanelLayout.java:36-82`; `FragmentSearchField.java:213-218`;
 `TopicsTabsView.java:485-498`).
 

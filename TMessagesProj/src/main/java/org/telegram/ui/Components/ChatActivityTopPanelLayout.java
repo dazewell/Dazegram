@@ -83,7 +83,8 @@ public class ChatActivityTopPanelLayout extends AnimatedLinearLayout {
             backgroundDrawable.setAlpha((int) (bgAlpha * 255));
             // NagramX: MD3 top panels are flat bars, not inset Liquid Glass cards.
             if (flatBackground) {
-                backgroundDrawable.setBounds(getPaddingLeft() - dp(7), 0, getMeasuredWidth(), getPaddingTop() + getPaddingBottom() + (int) bgHeight);
+                // NagramX: ChatActivity keeps any forum side offset in padding, but removes card padding.
+                backgroundDrawable.setBounds(getPaddingLeft(), 0, getMeasuredWidth() - getPaddingRight(), (int) bgHeight);
                 backgroundDrawable.setRadius(0);
             } else {
                 backgroundDrawable.setBounds(getPaddingLeft() - dp(7), 0, getMeasuredWidth() - getPaddingRight() + dp(7), getPaddingTop() + getPaddingBottom() + (int) bgHeight);

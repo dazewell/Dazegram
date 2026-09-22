@@ -13342,7 +13342,7 @@ public class ChatActivity extends BaseFragment implements
         if (!invalidateChatListViewTopPadding || chatListView == null || (fixedKeyboardHeight > 0 && searchExpandProgress == 0)) {
             return;
         }
-        float pinnedViewH = getTopPanelHeightWithPadding(dp(7))
+        float pinnedViewH = getTopPanelHeightWithPadding()
             + (actionBarSearchTags != null ? dp((28 + 7) * actionBarSearchTags.shownT) : 0)
             + (dp(36 + 7) * getHashtagTabsShownT());
 
@@ -13553,7 +13553,7 @@ public class ChatActivity extends BaseFragment implements
         ty += dp(36 + 7) * getHashtagTabsShownT();
 
         if (topicsTabs != null) {
-            topicsTabs.setSideMenuBackgroundMarginTop(ty   + getTopPanelHeightWithPadding(dp(7)) * getHashtagTabsShownT());
+            topicsTabs.setSideMenuBackgroundMarginTop(ty   + getTopPanelHeightWithPadding() * getHashtagTabsShownT());
             ty += getTopicTabsSideSize(TopicsTabsView.Position.TOP) * FBool.or(
                 FBool.not(animatorSearchResultAsListVisibility.getFloatValue()),
                 getHashtagTabsShownT()
@@ -52062,7 +52062,7 @@ public class ChatActivity extends BaseFragment implements
 
         float fadeHeight = actionBar.getMeasuredHeight();
         fadeHeight += dp(7 - 6);
-        fadeHeight += getTopPanelHeightWithPadding(dp(7));
+        fadeHeight += getTopPanelHeightWithPadding();
         if (topicsTabs != null) {
             fadeHeight += getTopicTabsSideSize(TopicsTabsView.Position.TOP);
         }
@@ -52080,7 +52080,7 @@ public class ChatActivity extends BaseFragment implements
         }
 
         final int top = AndroidUtilities.statusBarHeight + ActionBar.getCurrentActionBarHeight() + dp(2)
-            + ((int) getTopPanelHeightWithPadding(dp(7)))
+            + ((int) getTopPanelHeightWithPadding())
             + (actionBarSearchTags != null ? dp((28 + 7) * actionBarSearchTags.shownT) : 0)
             + dp((36 + 7) * getHashtagTabsShownT());
 
@@ -52102,10 +52102,11 @@ public class ChatActivity extends BaseFragment implements
         }
     }
 
-    private float getTopPanelHeightWithPadding(float padding) {
+    private float getTopPanelHeightWithPadding() {
         ChatActivity chatActivity = parentChatActivity != null ? parentChatActivity : this;
         if (chatActivity.topPanelLayout == null) return 0;
-        return chatActivity.topPanelLayout.getAnimatedHeightWithPadding(padding);
+        // NagramX: only the top inset is reserved here; the bottom inset belongs to the panel.
+        return chatActivity.topPanelLayout.getAnimatedHeightWithPadding(chatActivity.topPanelLayout.getPaddingTop());
     }
 
     private void checkUi_topPanelLayoutVisibility() {
@@ -52120,7 +52121,9 @@ public class ChatActivity extends BaseFragment implements
                 * (1f - animatorSearchResultAsListVisibility.getFloatValue())
                 * (1f - getHashtagTabsShownT());
 
-            topPanelLayout.setPadding(dp(7) + (int) sideMenu, dp(7), dp(7), dp(7));
+            // NagramX: MD3 panels are full-width bars; keep only the forum side offset.
+            final boolean naxFlatChatHeader = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader();
+            topPanelLayout.setPadding((naxFlatChatHeader ? 0 : dp(7)) + (int) sideMenu, naxFlatChatHeader ? 0 : dp(7), naxFlatChatHeader ? 0 : dp(7), naxFlatChatHeader ? 0 : dp(7));
         }
     }
 

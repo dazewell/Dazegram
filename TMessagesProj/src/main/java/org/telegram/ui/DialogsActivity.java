@@ -4887,24 +4887,26 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
         }
 
+        // NagramX: flat MD3 bars are opaque and should not inherit the floating-card fade.
+        final boolean naxFlatChatListTopBar = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar();
         topBubblesFadeView = new DialogsActivityTopBubblesFadeView(context);
         topBubblesFadeView.setColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+        topBubblesFadeView.setVisibility(naxFlatChatListTopBar ? View.GONE : View.VISIBLE);
         contentView.addView(topBubblesFadeView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 100, Gravity.TOP));
 
         searchViewPagerIndex = contentView.getChildCount();
 
         searchTabsAndFiltersLayout = new SearchTabsAndFiltersLayout(getContext());
-        searchTabsAndFiltersLayout.setPadding(0, dp(7), 0, dp(7));
-        // NagramX: MD3 chat-list top bars sit edge-to-edge instead of floating as cards.
-        final boolean naxFlatChatListTopBar = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar();
+        searchTabsAndFiltersLayout.setPadding(0, naxFlatChatListTopBar ? 0 : dp(7), 0, naxFlatChatListTopBar ? 0 : dp(7));
         contentView.addView(searchTabsAndFiltersLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, SEARCH_TABS_HEIGHT, Gravity.TOP, naxFlatChatListTopBar ? 0 : 4, 0, naxFlatChatListTopBar ? 0 : 4, 0));
 
         // NagramX: dialogs-only provider keeps Interface Style from recolouring every generic top-panel consumer.
         BlurredBackgroundDrawable searchTabsViewBackground = iBlur3FactoryLiquidGlass.create(searchTabsAndFiltersLayout, BlurredBackgroundProviderImpl.dialogsTopPanel(resourceProvider));
         searchTabsViewBackground.setRadius(naxFlatChatListTopBar ? 0 : dp(18));
         searchTabsViewBackground.setPadding(naxFlatChatListTopBar ? 0 : dp(6.666f));
-        searchTabsAndFiltersLayout.setPadding(0, dp(7), 0, dp(7));
         searchTabsAndFiltersLayout.setBlurredBackground(searchTabsViewBackground);
+        // NagramX: MD3 chat-list top bars sit edge-to-edge instead of floating as cards.
+        searchTabsAndFiltersLayout.setFlatBackground(naxFlatChatListTopBar);
 
         filtersView = new FiltersView(getParentActivity(), null);
         filtersView.setPadding(0, dp(3), 0, dp(3));
@@ -5338,6 +5340,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             BlurredBackgroundDrawable filterTabsViewBackground = iBlur3FactoryLiquidGlass.create(filterTabsView, BlurredBackgroundProviderImpl.dialogsTopPanel(resourceProvider));
             filterTabsViewBackground.setRadius(xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar() ? 0 : dp(18));
             filterTabsViewBackground.setPadding(xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar() ? 0 : dp(6.666f));
+            // NagramX: the tab strip keeps its own vertical centering inside the flat MD3 bar.
             filterTabsView.setPadding(0, dp(7), 0, dp(7));
             filterTabsView.setBlurredBackground(filterTabsViewBackground);
             contentView.addView(filterTabsView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 36 + 7 + 7, Gravity.TOP, xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar() ? 0 : 4, 0, xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar() ? 0 : 4, 0));
@@ -6810,10 +6813,14 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
 
         if (topBubblesFadeView != null) {
-            topBubblesFadeView.setTranslationY(fadeViewT - searchOffset);
-            final float s = lerp(dp(7), dp(50), Math.min(topPanelsVisibility, filtersTabVisibility));
-            topBubblesFadeView.setPosition(s, Math.min(dp(40), topPanelsHeight + filtersTabHeight - s));
-            topBubblesFadeView.setAlpha(Math.max(filtersTabVisibility, topPanelsVisibility));
+            if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()) {
+                topBubblesFadeView.setAlpha(0f);
+            } else {
+                topBubblesFadeView.setTranslationY(fadeViewT - searchOffset);
+                final float s = lerp(dp(7), dp(50), Math.min(topPanelsVisibility, filtersTabVisibility));
+                topBubblesFadeView.setPosition(s, Math.min(dp(40), topPanelsHeight + filtersTabHeight - s));
+                topBubblesFadeView.setAlpha(Math.max(filtersTabVisibility, topPanelsVisibility));
+            }
         }
     }
 
