@@ -479,15 +479,23 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
     private float sideMenuBackgroundMarginTop;
 
     public void setSideMenuBackgroundDrawable(BlurredBackgroundDrawable sideMenuBackgroundDrawable) {
+        setSideMenuBackgroundDrawable(sideMenuBackgroundDrawable, false);
+    }
+
+    public void setSideMenuBackgroundDrawable(BlurredBackgroundDrawable sideMenuBackgroundDrawable, boolean flatBackground) {
         this.sideMenuBackgroundDrawable = sideMenuBackgroundDrawable;
-        this.sideMenuBackgroundDrawable.setRadius(dp(16));
-        this.sideMenuBackgroundDrawable.setPadding(dp(7));
+        this.sideMenuBackgroundDrawable.setRadius(flatBackground ? 0 : dp(16));
+        this.sideMenuBackgroundDrawable.setPadding(flatBackground ? 0 : dp(7));
     }
 
     public void setTopMenuBackgroundDrawable(BlurredBackgroundDrawable sideMenuBackgroundDrawable) {
+        setTopMenuBackgroundDrawable(sideMenuBackgroundDrawable, false);
+    }
+
+    public void setTopMenuBackgroundDrawable(BlurredBackgroundDrawable sideMenuBackgroundDrawable, boolean flatBackground) {
         this.topMenuBackgroundDrawable = sideMenuBackgroundDrawable;
-        this.topMenuBackgroundDrawable.setRadius(dp(18));
-        this.topMenuBackgroundDrawable.setPadding(dp(7));
+        this.topMenuBackgroundDrawable.setRadius(flatBackground ? 0 : dp(18));
+        this.topMenuBackgroundDrawable.setPadding(flatBackground ? 0 : dp(7));
     }
 
 

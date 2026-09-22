@@ -5388,7 +5388,8 @@ public class ChatActivity extends BaseFragment implements
 
         contentView.setOccupyStatusBar(!inBubbleMode && !isInsideContainer && !inPreviewMode);
 
-        actionBar.setupGlass(glassBackgroundDrawableFactory, BlurredBackgroundProviderImpl.topPanelChatActivity(currentAccount, themeDelegate), ChatObject.isForum(currentChat));
+        // NagramX: chat-only provider can flatten MD3 header chrome without changing other topPanelChatActivity consumers.
+        actionBar.setupGlass(glassBackgroundDrawableFactory, BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate), ChatObject.isForum(currentChat), xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader());
         actionBar.setChatAvatarContainer(avatarContainer);
         avatarContainer.setActionBar(actionBar);
 
@@ -8622,9 +8623,11 @@ public class ChatActivity extends BaseFragment implements
             hashtagSearchTabs.setVisibility(View.GONE);
             hashtagSearchTabs.setTabs(searchViewPager.createTabsView(true, ViewPagerFixed.SELECTOR_TYPE_BUBBLE_STYLE));
             hashtagSearchTabs.setPadding(0, dp(7.66f), 0, dp(7.66f));
+            // NagramX: the tag strip follows the MD3 chat-header surface geometry.
+            final boolean naxFlatChatHeader = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader();
             hashtagSearchTabs.setBackground(glassBackgroundDrawableFactory.create(hashtagSearchTabs)
-                .setColorProvider(BlurredBackgroundProviderImpl.topPanelChatActivity(currentAccount, resourceProvider))
-                .setRadius(dp(18)).setPadding(dp(7f)));
+                .setColorProvider(BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, resourceProvider))
+                .setRadius(naxFlatChatHeader ? 0 : dp(18)).setPadding(naxFlatChatHeader ? 0 : dp(7f)));
 
             contentView.addView(hashtagSearchTabs, LayoutHelper.createFrameMarginPx(LayoutHelper.MATCH_PARENT, 50, Gravity.FILL_HORIZONTAL | Gravity.TOP, 0, -dp(5), 0, 0));
         }
@@ -9890,9 +9893,11 @@ public class ChatActivity extends BaseFragment implements
 
         checkUi_topPanelLayoutWidth();
         topPanelLayout.setBlurredBackground(glassBackgroundDrawableFactory.create(topPanelLayout)
-            .setColorProvider(BlurredBackgroundProviderImpl.topPanelChatActivity(currentAccount, themeDelegate))
-            .setRadius(dp(18))
-            .setPadding(dp(7)));
+            .setColorProvider(BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate))
+            .setRadius(xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : dp(18))
+            .setPadding(xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : dp(7)));
+        // NagramX: MD3 top panels are full-width bars rather than inset Liquid Glass cards.
+        topPanelLayout.setFlatBackground(xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader());
 
         if (chatMode == MODE_SEARCH) {
             animatorSearchResultAsListVisibility.setValue(true, false);
@@ -11144,8 +11149,10 @@ public class ChatActivity extends BaseFragment implements
             checkUi_topFade();
         });
 
-        topicsTabs.setSideMenuBackgroundDrawable(glassBackgroundDrawableFactory.create(topicsTabs, BlurredBackgroundProviderImpl.topPanelChatActivity(currentAccount, themeDelegate)));
-        topicsTabs.setTopMenuBackgroundDrawable(glassBackgroundDrawableFactory.create(topicsTabs, BlurredBackgroundProviderImpl.topPanelChatActivity(currentAccount, themeDelegate)));
+        // NagramX: topic tab chrome is part of the chat-header surface for Interface Style.
+        final boolean naxFlatChatHeader = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader();
+        topicsTabs.setSideMenuBackgroundDrawable(glassBackgroundDrawableFactory.create(topicsTabs, BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate)), naxFlatChatHeader);
+        topicsTabs.setTopMenuBackgroundDrawable(glassBackgroundDrawableFactory.create(topicsTabs, BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate)), naxFlatChatHeader);
 
         int index = 8;
         topicsTabs.setCurrentTopic(getTopicId());
@@ -12700,6 +12707,15 @@ public class ChatActivity extends BaseFragment implements
         contentView.addView(topUndoView, 17, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.LEFT, 8, 8, 8, 0));
     }
 
+    // NagramX: MD3 uses a chosen 16dp pinned-content keyline; it does not track the dynamic title layout.
+    private int naxPinnedContentLeftDp(int defaultDp) {
+        return xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader()
+            ? defaultDp - 7
+            : defaultDp;
+    }
+
+    private static final int NAX_MD3_PINNED_TRAILING_KEYLINE_DP = 9;
+
     private void createPinnedMessageView() {
         if (currentEncryptedChat != null || pinnedMessageView != null || getContext() == null) {
             return;
@@ -12804,7 +12820,7 @@ public class ChatActivity extends BaseFragment implements
         pinnedMessageView.setBackground(Theme.getSelectorDrawable(false));
 
         pinnedLineView = new PinnedLineView(getContext(), themeDelegate);
-        pinnedMessageView.addView(pinnedLineView, LayoutHelper.createFrame(3, 48, Gravity.LEFT | Gravity.TOP, 13, 0, 0, 0));
+        pinnedMessageView.addView(pinnedLineView, LayoutHelper.createFrame(3, 48, Gravity.LEFT | Gravity.TOP, naxPinnedContentLeftDp(13), 0, 0, 0));
         pinnedMessageView.setClipChildren(false);
 
         pinnedCounterTextView = new NumberTextView(getContext());
@@ -12812,14 +12828,14 @@ public class ChatActivity extends BaseFragment implements
         pinnedCounterTextView.setTextSize(14);
         pinnedCounterTextView.setTextColor(getThemedColor(Theme.key_chat_topPanelTitle));
         pinnedCounterTextView.setTypeface(AndroidUtilities.bold());
-        pinnedMessageView.addView(pinnedCounterTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 18, Gravity.TOP | Gravity.LEFT, 23, 7, 44 + possibleLeftMarginDp, 0));
+        pinnedMessageView.addView(pinnedCounterTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 18, Gravity.TOP | Gravity.LEFT, naxPinnedContentLeftDp(23), 7, 44 + possibleLeftMarginDp, 0));
 
         for (int a = 0; a < 2; a++) {
             pinnedNameTextView[a] = new TrackingWidthSimpleTextView(getContext());
             pinnedNameTextView[a].setTextSize(14);
             pinnedNameTextView[a].setTextColor(getThemedColor(Theme.key_chat_topPanelTitle));
             pinnedNameTextView[a].setTypeface(AndroidUtilities.bold());
-            pinnedMessageView.addView(pinnedNameTextView[a], LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 18, Gravity.TOP | Gravity.LEFT, 23, 7.3f, 44 + possibleLeftMarginDp, 0));
+            pinnedMessageView.addView(pinnedNameTextView[a], LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 18, Gravity.TOP | Gravity.LEFT, naxPinnedContentLeftDp(23), 7.3f, 44 + possibleLeftMarginDp, 0));
 
             pinnedMessageTextView[a] = new SimpleTextView(getContext()) {
                 @Override
@@ -12836,10 +12852,11 @@ public class ChatActivity extends BaseFragment implements
             };
             pinnedMessageTextView[a].setTextSize(14);
             pinnedMessageTextView[a].setTextColor(getThemedColor(Theme.key_chat_topPanelMessage));
-            pinnedMessageView.addView(pinnedMessageTextView[a], LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 18, Gravity.TOP | Gravity.LEFT, 23, 25.3f, 44 + possibleLeftMarginDp, 0));
+            pinnedMessageView.addView(pinnedMessageTextView[a], LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 18, Gravity.TOP | Gravity.LEFT, naxPinnedContentLeftDp(23), 25.3f, 44 + possibleLeftMarginDp, 0));
 
             pinnedMessageButton[a] = new PinnedMessageButton(getContext());
-            pinnedMessageView.addView(pinnedMessageButton[a], LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 28, Gravity.TOP | Gravity.RIGHT, 0, 10, 14, 0));
+            pinnedMessageView.addView(pinnedMessageButton[a], LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 28, Gravity.TOP | Gravity.RIGHT, 0, 10,
+                xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? NAX_MD3_PINNED_TRAILING_KEYLINE_DP : 14, 0));
 
             pinnedMessageImageView[a] = new BackupImageView(getContext()) {
                 private SpoilerEffect spoilerEffect = new SpoilerEffect();
@@ -12876,7 +12893,7 @@ public class ChatActivity extends BaseFragment implements
             };
             pinnedMessageImageView[a].setBlurAllowed(true);
             pinnedMessageImageView[a].setRoundRadius(AndroidUtilities.dp(2));
-            pinnedMessageView.addView(pinnedMessageImageView[a], LayoutHelper.createFrame(32, 32, Gravity.TOP | Gravity.LEFT, 22, 8, 0, 0));
+            pinnedMessageView.addView(pinnedMessageImageView[a], LayoutHelper.createFrame(32, 32, Gravity.TOP | Gravity.LEFT, naxPinnedContentLeftDp(22), 8, 0, 0));
             if (a == 1) {
                 pinnedNameTextView[a].setVisibility(View.INVISIBLE);
                 pinnedMessageButton[a].setVisibility(View.INVISIBLE);
@@ -12895,7 +12912,13 @@ public class ChatActivity extends BaseFragment implements
         pinnedListButton.setScaleX(0.4f);
         pinnedListButton.setScaleY(0.4f);
         pinnedListButton.setBackgroundDrawable(Theme.createSelectorDrawable(getThemedColor(Theme.key_inappPlayerClose) & 0x19ffffff));
-        pinnedMessageView.addView(pinnedListButton, LayoutHelper.createFrame(36, 48, Gravity.RIGHT | Gravity.TOP, 0, 0, 7, 0));
+        if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader()) {
+            // NagramX: keep the touch target while aligning the drawn icon with the header avatar.
+            // Padding is 2 * keyline - (view width - glyph width); this asset is 24dp.
+            pinnedListButton.setPadding(0, 0, dp(2 * NAX_MD3_PINNED_TRAILING_KEYLINE_DP - (36 - 24)), 0);
+        }
+        pinnedMessageView.addView(pinnedListButton, LayoutHelper.createFrame(36, 48, Gravity.RIGHT | Gravity.TOP, 0, 0,
+            xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : 7, 0));
         pinnedListButton.setOnClickListener(v -> openPinnedMessagesList(false));
 
         closePinned = new ImageView(getContext());
@@ -12910,10 +12933,16 @@ public class ChatActivity extends BaseFragment implements
         pinnedProgress.setSize(AndroidUtilities.dp(16));
         pinnedProgress.setStrokeWidth(2f);
         pinnedProgress.setProgressColor(getThemedColor(Theme.key_chat_topPanelLine));
-        pinnedMessageView.addView(pinnedProgress, LayoutHelper.createFrame(36, 48, Gravity.RIGHT | Gravity.TOP, 0, 0, 2, 0));
+        pinnedMessageView.addView(pinnedProgress, LayoutHelper.createFrame(36, 48, Gravity.RIGHT | Gravity.TOP, 0, 0,
+            xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : 2, 0));
 
         closePinned.setBackgroundDrawable(Theme.createSelectorDrawable(getThemedColor(Theme.key_inappPlayerClose) & 0x19ffffff, 1, AndroidUtilities.dp(14)));
-        pinnedMessageView.addView(closePinned, LayoutHelper.createFrame(36, 48, Gravity.RIGHT | Gravity.TOP, 0, 0, 2, 0));
+        if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader()) {
+            // This asset is 12dp; start padding moves its centered drawing toward the trailing edge.
+            closePinned.setPadding(dp(36 - 12 - 2 * NAX_MD3_PINNED_TRAILING_KEYLINE_DP), 0, 0, 0);
+        }
+        pinnedMessageView.addView(closePinned, LayoutHelper.createFrame(36, 48, Gravity.RIGHT | Gravity.TOP, 0, 0,
+            xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : 2, 0));
         closePinned.setOnClickListener(v -> {
             if (getParentActivity() == null) {
                 return;
@@ -13335,7 +13364,7 @@ public class ChatActivity extends BaseFragment implements
         if (!invalidateChatListViewTopPadding || chatListView == null || (fixedKeyboardHeight > 0 && searchExpandProgress == 0)) {
             return;
         }
-        float pinnedViewH = getTopPanelHeightWithPadding(dp(7))
+        float pinnedViewH = getTopPanelHeightWithPadding()
             + (actionBarSearchTags != null ? dp((28 + 7) * actionBarSearchTags.shownT) : 0)
             + (dp(36 + 7) * getHashtagTabsShownT());
 
@@ -13546,7 +13575,7 @@ public class ChatActivity extends BaseFragment implements
         ty += dp(36 + 7) * getHashtagTabsShownT();
 
         if (topicsTabs != null) {
-            topicsTabs.setSideMenuBackgroundMarginTop(ty   + getTopPanelHeightWithPadding(dp(7)) * getHashtagTabsShownT());
+            topicsTabs.setSideMenuBackgroundMarginTop(ty   + getTopPanelHeightWithPadding() * getHashtagTabsShownT());
             ty += getTopicTabsSideSize(TopicsTabsView.Position.TOP) * FBool.or(
                 FBool.not(animatorSearchResultAsListVisibility.getFloatValue()),
                 getHashtagTabsShownT()
@@ -30936,7 +30965,7 @@ public class ChatActivity extends BaseFragment implements
                         pinnedMessageImageView[0].setImageBitmap(null);
                         pinnedMessageImageView[0].setVisibility(View.INVISIBLE);
                     }
-                    layoutParams1.leftMargin = layoutParams2.leftMargin = layoutParams3.leftMargin = layoutParams4.leftMargin = layoutParams5.leftMargin = dp(23);
+                    layoutParams1.leftMargin = layoutParams2.leftMargin = layoutParams3.leftMargin = layoutParams4.leftMargin = layoutParams5.leftMargin = dp(naxPinnedContentLeftDp(23));
                 } else {
                     if (pinnedMessageObject.isRoundVideo()) {
                         pinnedMessageImageView[1].setRoundRadius(AndroidUtilities.dp(16));
@@ -30955,7 +30984,7 @@ public class ChatActivity extends BaseFragment implements
                     if (animateToNext != 0) {
                         pinnedMessageImageView[1].setAlpha(0.0f);
                     }
-                    layoutParams1.leftMargin = layoutParams2.leftMargin = layoutParams3.leftMargin = layoutParams4.leftMargin = layoutParams5.leftMargin = dp(60);
+                    layoutParams1.leftMargin = layoutParams2.leftMargin = layoutParams3.leftMargin = layoutParams4.leftMargin = layoutParams5.leftMargin = dp(naxPinnedContentLeftDp(60));
                 }
                 pinnedNameTextView[0].setLayoutParams(layoutParams1);
                 pinnedNameTextView[1].setLayoutParams(layoutParams2);
@@ -52055,7 +52084,7 @@ public class ChatActivity extends BaseFragment implements
 
         float fadeHeight = actionBar.getMeasuredHeight();
         fadeHeight += dp(7 - 6);
-        fadeHeight += getTopPanelHeightWithPadding(dp(7));
+        fadeHeight += getTopPanelHeightWithPadding();
         if (topicsTabs != null) {
             fadeHeight += getTopicTabsSideSize(TopicsTabsView.Position.TOP);
         }
@@ -52073,7 +52102,7 @@ public class ChatActivity extends BaseFragment implements
         }
 
         final int top = AndroidUtilities.statusBarHeight + ActionBar.getCurrentActionBarHeight() + dp(2)
-            + ((int) getTopPanelHeightWithPadding(dp(7)))
+            + ((int) getTopPanelHeightWithPadding())
             + (actionBarSearchTags != null ? dp((28 + 7) * actionBarSearchTags.shownT) : 0)
             + dp((36 + 7) * getHashtagTabsShownT());
 
@@ -52095,10 +52124,11 @@ public class ChatActivity extends BaseFragment implements
         }
     }
 
-    private float getTopPanelHeightWithPadding(float padding) {
+    private float getTopPanelHeightWithPadding() {
         ChatActivity chatActivity = parentChatActivity != null ? parentChatActivity : this;
         if (chatActivity.topPanelLayout == null) return 0;
-        return chatActivity.topPanelLayout.getAnimatedHeightWithPadding(padding);
+        // NagramX: only the top inset is reserved here; the bottom inset belongs to the panel.
+        return chatActivity.topPanelLayout.getAnimatedHeightWithPadding(chatActivity.topPanelLayout.getPaddingTop());
     }
 
     private void checkUi_topPanelLayoutVisibility() {
@@ -52113,7 +52143,9 @@ public class ChatActivity extends BaseFragment implements
                 * (1f - animatorSearchResultAsListVisibility.getFloatValue())
                 * (1f - getHashtagTabsShownT());
 
-            topPanelLayout.setPadding(dp(7) + (int) sideMenu, dp(7), dp(7), dp(7));
+            // NagramX: MD3 panels are full-width bars; keep only the forum side offset.
+            final boolean naxFlatChatHeader = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader();
+            topPanelLayout.setPadding((naxFlatChatHeader ? 0 : dp(7)) + (int) sideMenu, naxFlatChatHeader ? 0 : dp(7), naxFlatChatHeader ? 0 : dp(7), naxFlatChatHeader ? 0 : dp(7));
         }
     }
 

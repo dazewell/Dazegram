@@ -110,6 +110,10 @@ Light and dark theme each get their own slider (0–50%, default 25%) in the lay
 
 <img height="220" alt="separate transparency sliders for light and dark theme, set to 35 and 15 percent, both on a 0 to 50 percent scale" src="docs/images/features/composer-transparency-sliders.png" />
 
+### Interface style <!-- #interface-style -->
+
+NagramX Settings → General has an Interface Style page for switching between Liquid Glass and Material Design 3. MD3 gives chat headers and chat-list top regions one opaque edge-to-edge theme-colour surface while keeping search controls rounded, with switches for each supported area. Unsupported devices show Material Design 3 and disable Liquid Glass.
+
 ### Quick schedule button <!-- #quick-schedule -->
 
 The calendar icon is a one-tap schedule shortcut, instead of long-pressing Send.

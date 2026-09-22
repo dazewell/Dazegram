@@ -589,6 +589,17 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     private final Paint actionBarDefaultPaint = new Paint();
 
+    // NagramX: every MD3 chat-list top row shares one opaque surface color.
+    private int getDialogsTopSurfaceColorKey() {
+        return xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()
+            ? Theme.key_actionBarDefault
+            : Theme.key_windowBackgroundWhite;
+    }
+
+    private int getDialogsTopSurfaceColor() {
+        return ColorUtils.setAlphaComponent(getThemedColor(getDialogsTopSurfaceColorKey()), 255);
+    }
+
     private @Nullable ImageView actionModeCloseView;
     private NumberTextView selectedDialogsCountTextView;
     private final ArrayList<View> actionModeViews = new ArrayList<>();
@@ -813,6 +824,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private class ContentView extends SizeNotifierFrameLayout {
 
         private Paint actionBarSearchPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private boolean naxTopSurfaceDrawn;
+        private float naxTopSurfaceAdditionalHeight;
 
         public ContentView(Context context) {
             super(context);
@@ -918,6 +931,16 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             if (SizeNotifierFrameLayout.drawingBlur) {
                 return super.drawChild(canvas, child, drawingTime);
             }
+            // NagramX: paint one MD3 surface above scrolling rows and below all top controls.
+            if (!naxTopSurfaceDrawn
+                    && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()
+                    && (child == searchTabsAndFiltersLayout || child == filterTabsView || child == actionBar
+                    || child == fragmentSearchField || child == topPanelLayout)) {
+                naxTopSurfaceDrawn = true;
+                final int top = inPreviewMode ? AndroidUtilities.statusBarHeight : getActionBarTop();
+                final float bottom = top + getActionBarFullHeight() + naxTopSurfaceAdditionalHeight;
+                canvas.drawRect(0, Math.max(0, top), getMeasuredWidth(), Math.max(top, bottom), actionBarDefaultPaint);
+            }
             boolean result;
             if (child == viewPages[0] || (viewPages.length > 1 && child == viewPages[1]) || child == topPanelLayout || child == filterTabsView) {
                 canvas.save();
@@ -976,6 +999,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         @Override
         protected void dispatchDraw(Canvas canvas) {
+            naxTopSurfaceDrawn = false;
             if (Build.VERSION.SDK_INT >= 31 && scrollableViewNoiseSuppressor != null) {
                 blur3_InvalidateBlur();
             }
@@ -1037,7 +1061,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             float storiesAlpha = 1f;
             if (whiteActionBar) {
                 if (searchAnimationProgress == 1f) {
-                    actionBarSearchPaint.setColor(getThemedColor(Theme.key_windowBackgroundWhite));
+                    actionBarSearchPaint.setColor(getDialogsTopSurfaceColor());
                 } else if (searchAnimationProgress == 0) {
                     if (fragmentSearchField != null) {
                         fragmentSearchField.setTranslationY(scrollYOffset + getSearchFieldAdditionOffset());
@@ -1045,14 +1069,18 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 }
                 blurBounds.set(0, top, getMeasuredWidth(), top + actionBarHeight - dp(2 * searchAnimationProgress));
                 if (searchAnimationProgress < 0) {
-                    drawBlurRect(canvas, 0, blurBounds, searchAnimationProgress == 1f ? actionBarSearchPaint : actionBarDefaultPaint, true);
+                    if (!xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()) {
+                        drawBlurRect(canvas, 0, blurBounds, searchAnimationProgress == 1f ? actionBarSearchPaint : actionBarDefaultPaint, true);
+                    }
                 }
                 if (searchAnimationProgress > 0 && searchAnimationProgress < 1f) {
-                    actionBarSearchPaint.setColor(getThemedColor(Theme.key_windowBackgroundWhite));
+                    actionBarSearchPaint.setColor(getDialogsTopSurfaceColor());
                     if (searchIsShowed || !searchWasFullyShowed) {
                     } else {
                         blurBounds.set(0, top, getMeasuredWidth(), top + actionBarHeight - dp(2 * searchAnimationProgress));
-                        drawBlurRect(canvas, 0, blurBounds, actionBarSearchPaint, true);
+                        if (!xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()) {
+                            drawBlurRect(canvas, 0, blurBounds, actionBarSearchPaint, true);
+                        }
                     }
                     if (fragmentSearchField != null) {
                         fragmentSearchField.setTranslationY(top + actionBarHeight - (actionBar.getHeight() + (filterTabsView != null ? filterTabsView.getMeasuredHeight() : 0)) + getSearchFieldAdditionOffset());
@@ -1060,12 +1088,16 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 }
             } else if (!inPreviewMode) {
                 if (progressToActionMode > 0) {
-                    actionBarSearchPaint.setColor(getThemedColor(Theme.key_windowBackgroundWhite));
+                    actionBarSearchPaint.setColor(getDialogsTopSurfaceColor());
                     blurBounds.set(0, Math.max(0, top), getMeasuredWidth(), top + actionBarHeight - dp(2 * searchAnimationProgress));
-                    drawBlurRect(canvas, 0, blurBounds, actionBarSearchPaint, true);
+                    if (!xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()) {
+                        drawBlurRect(canvas, 0, blurBounds, actionBarSearchPaint, true);
+                    }
                 } else {
                     blurBounds.set(0, Math.max(0, top), getMeasuredWidth(), top + actionBarHeight - dp(2 * searchAnimationProgress));
-                    drawBlurRect(canvas, 0, blurBounds, actionBarDefaultPaint, true);
+                    if (!xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()) {
+                        drawBlurRect(canvas, 0, blurBounds, actionBarDefaultPaint, true);
+                    }
                 }
             }
             tabsYOffset = 0;
@@ -1114,7 +1146,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             updateContextViewPosition();
             updateStoriesViewAlpha(storiesAlpha);
             super.dispatchDraw(canvas);
-            drawHeaderShadow(canvas, top + actionBarHeight);
+            if (!xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()) {
+                drawHeaderShadow(canvas, top + actionBarHeight);
+            }
 
             /*if (fragmentContextView != null && fragmentContextView.isCallStyle()) {
                 canvas.save();
@@ -4887,21 +4921,28 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
         }
 
+        // NagramX: flat MD3 bars are opaque and should not inherit the floating-card fade.
+        final boolean naxFlatChatListTopBar = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar();
         topBubblesFadeView = new DialogsActivityTopBubblesFadeView(context);
         topBubblesFadeView.setColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+        topBubblesFadeView.setVisibility(naxFlatChatListTopBar ? View.GONE : View.VISIBLE);
         contentView.addView(topBubblesFadeView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 100, Gravity.TOP));
 
         searchViewPagerIndex = contentView.getChildCount();
 
         searchTabsAndFiltersLayout = new SearchTabsAndFiltersLayout(getContext());
         searchTabsAndFiltersLayout.setPadding(0, dp(7), 0, dp(7));
-        contentView.addView(searchTabsAndFiltersLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, SEARCH_TABS_HEIGHT, Gravity.TOP, 4, 0, 4, 0));
+        contentView.addView(searchTabsAndFiltersLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, SEARCH_TABS_HEIGHT, Gravity.TOP, naxFlatChatListTopBar ? 0 : 4, 0, naxFlatChatListTopBar ? 0 : 4, 0));
 
-        BlurredBackgroundDrawable searchTabsViewBackground = iBlur3FactoryLiquidGlass.create(searchTabsAndFiltersLayout, BlurredBackgroundProviderImpl.topPanel(resourceProvider));
-        searchTabsViewBackground.setRadius(dp(18));
-        searchTabsViewBackground.setPadding(dp(6.666f));
-        searchTabsAndFiltersLayout.setPadding(0, dp(7), 0, dp(7));
-        searchTabsAndFiltersLayout.setBlurredBackground(searchTabsViewBackground);
+        // NagramX: MD3 tabs inherit the parent surface instead of drawing another panel.
+        if (!naxFlatChatListTopBar) {
+            BlurredBackgroundDrawable searchTabsViewBackground = iBlur3FactoryLiquidGlass.create(searchTabsAndFiltersLayout, BlurredBackgroundProviderImpl.dialogsTopPanel(resourceProvider));
+            searchTabsViewBackground.setRadius(dp(18));
+            searchTabsViewBackground.setPadding(dp(6.666f));
+            searchTabsAndFiltersLayout.setBlurredBackground(searchTabsViewBackground);
+        }
+        // NagramX: MD3 tabs inherit the parent surface but must not keep the card-era clip.
+        searchTabsAndFiltersLayout.setFlatClip(naxFlatChatListTopBar);
 
         filtersView = new FiltersView(getParentActivity(), null);
         filtersView.setPadding(0, dp(3), 0, dp(3));
@@ -4983,11 +5024,13 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             });
 
             BlurredBackgroundDrawable topPanelLayoutBackground = iBlur3FactoryLiquidGlass.create(topPanelLayout)
-                .setColorProvider(BlurredBackgroundProviderImpl.topPanel(resourceProvider))
-                .setPadding(dp(7));
+                // NagramX: animated banners retain their drawable but share the parent surface color.
+                .setColorProvider(BlurredBackgroundProviderImpl.dialogsTopPanel(resourceProvider))
+                .setPadding(naxFlatChatListTopBar ? 0 : dp(7));
 
             topPanelLayout.setPadding(dp(11), dp(21), dp(11), dp(21));
             topPanelLayout.setBlurredBackground(topPanelLayoutBackground);
+            topPanelLayout.setFlatBackground(naxFlatChatListTopBar);
             topPanelLayout.setDefaultRadiusDp(communityId != 0 ? 18 : 24);
 
             fragmentLocationContextViewWrapper = new FrameLayout(context);
@@ -5329,16 +5372,20 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
 
         if (filterTabsView != null) {
-            BlurredBackgroundDrawable filterTabsViewBackground = iBlur3FactoryLiquidGlass.create(filterTabsView, BlurredBackgroundProviderImpl.topPanel(resourceProvider));
-            filterTabsViewBackground.setRadius(dp(18));
-            filterTabsViewBackground.setPadding(dp(6.666f));
             filterTabsView.setPadding(0, dp(7), 0, dp(7));
-            filterTabsView.setBlurredBackground(filterTabsViewBackground);
-            contentView.addView(filterTabsView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 36 + 7 + 7, Gravity.TOP, 4, 0, 4, 0));
+            // NagramX: MD3 folder tabs inherit the parent surface instead of drawing another panel.
+            if (!naxFlatChatListTopBar) {
+                BlurredBackgroundDrawable filterTabsViewBackground = iBlur3FactoryLiquidGlass.create(filterTabsView, BlurredBackgroundProviderImpl.dialogsTopPanel(resourceProvider));
+                filterTabsViewBackground.setRadius(dp(18));
+                filterTabsViewBackground.setPadding(dp(6.666f));
+                filterTabsView.setBlurredBackground(filterTabsViewBackground);
+            }
+            contentView.addView(filterTabsView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 36 + 7 + 7, Gravity.TOP, xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar() ? 0 : 4, 0, xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar() ? 0 : 4, 0));
         }
 
-        if (fragmentSearchField != null) {
-            fragmentSearchField.setupBlurredBackground(iBlur3FactoryLiquidGlass.create(fragmentSearchField, BlurredBackgroundProviderImpl.topPanel(resourceProvider)));
+        // NagramX: MD3 keeps the field's rounded control fill; the parent owns the outer surface.
+        if (fragmentSearchField != null && !naxFlatChatListTopBar) {
+            fragmentSearchField.setupBlurredBackground(iBlur3FactoryLiquidGlass.create(fragmentSearchField, BlurredBackgroundProviderImpl.dialogsTopPanel(resourceProvider)));
         }
 
         dialogStoriesCell = new DialogStoriesCell(context, this, currentAccount, isArchive() ? DialogStoriesCell.TYPE_ARCHIVE : DialogStoriesCell.TYPE_DIALOGS) {
@@ -5569,7 +5616,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             contentView.addView(blurredView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
         }
 
-        actionBarDefaultPaint.setColor(getThemedColor(Theme.key_windowBackgroundWhite));
+        actionBarDefaultPaint.setColor(getDialogsTopSurfaceColor());
         /*
         if (inPreviewMode) {
             final TLRPC.User currentUser = getUserConfig().getCurrentUser();
@@ -5755,8 +5802,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 if (folderId != 0 || communityId != 0) {
                     actionBarDefaultPaint.setColor(
                             ColorUtils.blendARGB(
-                                    getThemedColor(Theme.key_windowBackgroundWhite),
-                                    getThemedColor(Theme.key_windowBackgroundWhite),
+                                    getDialogsTopSurfaceColor(),
+                                    getDialogsTopSurfaceColor(),
                                     progress
                             )
                     );
@@ -6790,6 +6837,15 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             filtersTabVisibility = filterTabsView.getAlpha();
             filtersTabHeight = dp(36 + 7) * filtersTabVisibility;
             totalOffset += filtersTabHeight;
+        }
+
+        if (fragmentView != null) {
+            final float visibleFilterTabsHeight = filterTabsView == null
+                ? 0
+                : Math.max(0, filterTabsView.getMeasuredHeight() * filtersTabVisibility - searchOffset);
+            // NagramX: reuse current animation state so the parent surface follows visible tab rows.
+            ((ContentView) fragmentView).naxTopSurfaceAdditionalHeight =
+                searchTabsHeight * searchAnimationProgress + visibleFilterTabsHeight;
         }
 
         if (topPanelLayout != null) {
@@ -12507,7 +12563,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             if (onlySelect) {
                 arrayList.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_windowBackgroundWhite));
             }
-            arrayList.add(new ThemeDescription(fragmentView, 0, null, actionBarDefaultPaint, null, null, Theme.key_windowBackgroundWhite));
+            arrayList.add(new ThemeDescription(fragmentView, 0, null, actionBarDefaultPaint, null, null, getDialogsTopSurfaceColorKey()));
             if (searchViewPager != null) {
                 arrayList.add(new ThemeDescription(searchViewPager.searchListView, ThemeDescription.FLAG_LISTGLOWCOLOR, null, null, null, null, Theme.key_windowBackgroundWhite));
             }
@@ -12517,7 +12573,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             arrayList.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_SEARCH, null, null, null, null, Theme.key_actionBarDefaultSearch));
             arrayList.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_SEARCHPLACEHOLDER, null, null, null, null, Theme.key_actionBarDefaultSearchPlaceholder));
         } else {
-            arrayList.add(new ThemeDescription(fragmentView, 0, null, actionBarDefaultPaint, null, null, Theme.key_windowBackgroundWhite));
+            arrayList.add(new ThemeDescription(fragmentView, 0, null, actionBarDefaultPaint, null, null, getDialogsTopSurfaceColorKey()));
             if (searchViewPager != null) {
                 arrayList.add(new ThemeDescription(searchViewPager.searchListView, ThemeDescription.FLAG_LISTGLOWCOLOR, null, null, null, null, Theme.key_windowBackgroundWhite));
             }
@@ -14493,7 +14549,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void checkUi_searchFieldStyle() {
-        fragmentSearchField.setBlurredBackgroundVisibility(animatorSearchVisible.getFloatValue());
+        // NagramX: MD3 keeps the rounded field fill visible in normal and Search modes.
+        fragmentSearchField.setBlurredBackgroundVisibility(
+            xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()
+                ? 0f
+                : animatorSearchVisible.getFloatValue()
+        );
     }
 
     private void checkUi_searchFieldHint() {

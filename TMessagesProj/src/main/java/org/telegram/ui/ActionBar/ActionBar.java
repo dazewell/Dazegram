@@ -204,6 +204,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     private boolean glassMode;
     private boolean glassOnlyBack;
     private boolean glassModeIsForum;
+    private boolean naxFlatGlassHeader;
 
     // NagramX: what updateGlassForumRadius last wrote. -1 means unknown; false is known, because
     // setupGlass leaves the drawable in exactly the non-centered state.
@@ -227,15 +228,26 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     public void setupGlass(BlurredBackgroundDrawableViewFactory factory,
                            BlurredBackgroundColorProvider colorProvider,
                            boolean isForum) {
+        setupGlass(factory, colorProvider, isForum, false);
+    }
+
+    public void setupGlass(BlurredBackgroundDrawableViewFactory factory,
+                           BlurredBackgroundColorProvider colorProvider,
+                           boolean isForum,
+                           boolean flatHeader) {
         setBackground(null);
         setClipChildren(false);
         glassMode = true;
         glassModeIsForum = isForum;
+        naxFlatGlassHeader = flatHeader;
+        // NagramX: MD3 keeps glass-mode title/status layout but draws one flat full-width bar.
 
         glassDrawable = factory.create(this)
             .setColorProvider(colorProvider)
-            .setPadding(dp(6));
-        if (isForum) {
+            .setPadding(flatHeader ? 0 : dp(6));
+        if (flatHeader) {
+            glassDrawable.setRadius(0);
+        } else if (isForum) {
             glassDrawable.setRadius(dp(18.33f), dp(23), dp(23), dp(18.33f));
         } else {
             glassDrawable.setRadius(dp(23));
@@ -245,27 +257,31 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         glassForumRadiusCentered = false;
 
 
-        glassDrawableBack = factory.create(this)
+        glassDrawableBack = flatHeader ? null : factory.create(this)
             .setColorProvider(colorProvider)
             .setRadius(dp(23))
             .setPadding(dp(6));
 
-        glassDrawableMenu = factory.create(this)
+        glassDrawableMenu = flatHeader ? null : factory.create(this)
             .setColorProvider(colorProvider)
             .setRadius(dp(23))
             .setPadding(dp(6));
 
         if (menu != null) {
-            menu.setTranslationX(-dp(10));
+            menu.setTranslationX(naxGlassTranslationX(-dp(10)));
             menu.setGlassMode(true);
         }
         if (actionMode != null) {
-            actionMode.setTranslationX(-dp(10));
+            actionMode.setTranslationX(naxGlassTranslationX(-dp(10)));
             actionMode.setGlassMode(true);
         }
         if (backButtonImageView != null) {
-            backButtonImageView.setTranslationX(dp(2));
+            backButtonImageView.setTranslationX(naxGlassTranslationX(dp(2)));
         }
+    }
+
+    private float naxGlassTranslationX(float translationX) {
+        return naxFlatGlassHeader ? 0 : translationX;
     }
 
     // NagramX: upstream squares the forum pill's left corners to match the topic squircle sitting
@@ -285,7 +301,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     // needed when the previous write was the centered one, which holds only while setupGlass and
     // this method stay the drawable's only writers.
     private void updateGlassForumRadius(boolean centeredTitle) {
-        if (glassDrawable == null || !glassModeIsForum) {
+        if (glassDrawable == null || !glassModeIsForum || naxFlatGlassHeader) {
             return;
         }
         // Both arguments stay int so this keeps binding to upstream's int lerp, which steps in
@@ -847,7 +863,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 }
             }
         };
-        actionMode.setTranslationX(glassMode ? -dp(10) : 0);
+        actionMode.setTranslationX(glassMode ? naxGlassTranslationX(-dp(10)) : 0);
         actionMode.setGlassMode(glassMode);
         actionMode.isActionMode = true;
         actionMode.setClickable(true);
@@ -1292,7 +1308,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             }
 
             if (glassMode && menu != null) {
-                menu.setTranslationX(-lerp((float) dp(10), dp(5), searchFieldVisibleAlpha));
+                menu.setTranslationX(naxGlassTranslationX(-lerp((float) dp(10), dp(5), searchFieldVisibleAlpha)));
             }
             if (backgroundUpdateListener != null) {
                 backgroundUpdateListener.run();
@@ -2368,8 +2384,12 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
 
         final int t = getHeight() - (getCurrentActionBarHeight() + s) / 2 - p;
         final int b = t + s + p * 2;
+        final boolean naxFlatHeader = glassDrawable != null && naxFlatGlassHeader;
 
-        if (glassDrawable != null && !glassOnlyBack) {
+        if (naxFlatHeader) {
+            glassDrawable.setBounds(0, 0, getWidth(), getHeight());
+            glassDrawable.draw(canvas);
+        } else if (glassDrawable != null && !glassOnlyBack) {
             // NagramX: the pill's corners depend on the centering, which can change under a live
             // chat, so they are recomputed here alongside its bounds.
             updateGlassForumRadius(centeredTitle);
@@ -2431,15 +2451,14 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 left = leftDefault;
                 right = rightDefault;
             }
-
             glassDrawable.setBounds(left, t, right, b);
             glassDrawable.draw(canvas);
         }
-        if (glassDrawableBack != null && hasBackButton) {
+        if (!naxFlatHeader && glassDrawableBack != null && hasBackButton) {
             glassDrawableBack.setBounds(0, t, s + p * 2, b);
             glassDrawableBack.draw(canvas);
         }
-        if (glassDrawableMenu != null && (menuWidth > 0 || animatorAvatarContainerHasAvatar.getFloatValue() > 0) && !glassOnlyBack && !doNotDrawGlassMenu) {
+        if (!naxFlatHeader && glassDrawableMenu != null && (menuWidth > 0 || animatorAvatarContainerHasAvatar.getFloatValue() > 0) && !glassOnlyBack && !doNotDrawGlassMenu) {
             glassDrawableMenu.setBounds(getWidth() - Math.max(s, menuWidth) - p * 2, t, getWidth(), b);
             glassDrawableMenu.setAlpha(hasForcedMenuWidth || hasForcedMenuMinWidth || menuWidth == 0 ? (int) (255 * animatorAvatarContainerHasAvatar.getFloatValue()) : (int) (255 * animatorHasMenuItems.getFloatValue()));
             glassDrawableMenu.draw(canvas);

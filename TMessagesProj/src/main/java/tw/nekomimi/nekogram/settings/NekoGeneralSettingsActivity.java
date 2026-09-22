@@ -20,6 +20,7 @@ import com.radolyn.ayugram.hotkeys.HotkeysActivity;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ContactsController;
+import org.telegram.messenger.LiteMode;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.PushListenerController;
@@ -45,6 +46,7 @@ import tw.nekomimi.nekogram.config.cell.AbstractConfigCell;
 import tw.nekomimi.nekogram.config.cell.ConfigCellDivider;
 import tw.nekomimi.nekogram.config.cell.ConfigCellHeader;
 import tw.nekomimi.nekogram.config.cell.ConfigCellSelectBox;
+import tw.nekomimi.nekogram.config.cell.ConfigCellText;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextCheck;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextCheckPage;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextDetail;
@@ -54,6 +56,8 @@ import tw.nekomimi.nekogram.helpers.SaveFileNameDialog;
 import tw.nekomimi.nekogram.helpers.SaveFileNameHelper;
 import tw.nekomimi.nekogram.utils.AndroidUtil;
 import xyz.nextalone.nagram.NaConfig;
+import xyz.nextalone.nagram.helpers.InterfaceStyleController;
+import xyz.nextalone.nagram.ui.InterfaceStyleActivity;
 
 @SuppressLint("RtlHardcoded")
 @SuppressWarnings({"unused", "FieldCanBeLocal"})
@@ -214,6 +218,8 @@ public class NekoGeneralSettingsActivity extends BaseNekoXSettingsActivity {
             getString(R.string.StyleModern),
             getString(R.string.StyleMaterialDesign3)
     }, null));
+    private final ConfigCellText interfaceStyleRow = (ConfigCellText) cellGroup.appendCell(new ConfigCellText("InterfaceStyle", interfaceStyleValue(), () ->
+            presentFragment(new InterfaceStyleActivity())));
     private final AbstractConfigCell actionBarDecorationRow = cellGroup.appendCell(new ConfigCellSelectBox(null, NekoConfig.actionBarDecoration, new String[]{
             getString(R.string.DependsOnDate),
             getString(R.string.Snowflakes),
@@ -410,6 +416,21 @@ public class NekoGeneralSettingsActivity extends BaseNekoXSettingsActivity {
         };
 
         return superView;
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (listAdapter != null) {
+            interfaceStyleRow.setValue(interfaceStyleValue());
+            listAdapter.notifyItemChanged(cellGroup.rows.indexOf(interfaceStyleRow));
+        }
+    }
+
+    private String interfaceStyleValue() {
+        return !InterfaceStyleController.isMaterialDesign3()
+                ? getString(R.string.InterfaceStyleLiquidGlass)
+                : getString(R.string.StyleMaterialDesign3);
     }
 
     private void showUnifiedPushStatistics() {

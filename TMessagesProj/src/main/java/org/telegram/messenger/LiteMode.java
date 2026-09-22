@@ -117,6 +117,11 @@ public class LiteMode {
         return value;
     }
 
+    // NagramX: Interface Style and Lite Mode share this gate so their Liquid Glass rows never drift.
+    public static boolean isLiquidGlassSupported() {
+        return Build.VERSION.SDK_INT >= 33 && (SharedConfig.getDevicePerformanceClass() >= SharedConfig.PERFORMANCE_CLASS_AVERAGE || BuildVars.DEBUG_PRIVATE_VERSION);
+    }
+
     private static int lastBatteryLevelCached = -1;
     private static long lastBatteryLevelChecked;
 
@@ -151,7 +156,12 @@ public class LiteMode {
             // always enabled for tablets
             return true;
         }
-        return (getValue() & preprocessFlag(flag)) > 0;
+        int processedFlag = preprocessFlag(flag);
+        if (!isLiquidGlassSupported()) {
+            // NagramX: stored or restored Liquid Glass choices fall back to MD3 on devices that cannot render it.
+            processedFlag &= ~FLAG_LIQUID_GLASS;
+        }
+        return (getValue() & processedFlag) > 0;
     }
 
     public static boolean isEnabledSetting(int flag) {

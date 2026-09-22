@@ -3,6 +3,60 @@
 "When the user taps X, the code that runs is Y." Re-verify the citation
 before relying on it — see the README.
 
+## Interface Style writes the existing Liquid Glass flag and gates MD3 panels
+
+NagramX Settings → General's Interface Style row opens
+`InterfaceStyleActivity` from `NekoGeneralSettingsActivity`
+(`NekoGeneralSettingsActivity.java:221-222`). The page does not own a second
+style enum: `InterfaceStyleController.isMaterialDesign3()` derives MD3 from the
+existing Liquid Glass setting and support gate
+(`InterfaceStyleController.java:9-10`). The page writes Liquid Glass with
+`LiteMode.toggleFlag(...)` and reloads the interface
+(`InterfaceStyleActivity.java:127-136`).
+
+The MD3-only Apply to rows are visible only after the Material Design 3 radio is
+selected (`InterfaceStyleActivity.java:145-149`) and currently expose only
+surfaces with render consumers: Chat header and Chat list top bar
+(`InterfaceStyleActivity.java:232-239`). Their `NaConfig` flags live at
+`NaConfig.kt:1413-1423` and are consumed by
+`InterfaceStyleController.applyChatHeader()` / `.applyChatListTopBar()`
+(`InterfaceStyleController.java:13-18`).
+
+Chat/action-bar surfaces use the existing account-aware
+`topPanelChatActivity(...)` colour logic, but `ChatActivity` calls the
+chat-only `chatHeaderPanel(...)` wrapper so MD3 can also remove glass
+stroke/shadow without changing Community/Admin/SearchTags users of the generic
+provider (`BlurredBackgroundProviderImpl.java:194-220`;
+`ChatActivity.java:5392`). `ActionBar` still stays in glass mode for title and
+status layout, but the chat-only setup flag makes MD3 draw the main glass
+drawable full-bounds and suppress the separate back/menu pills
+(`ActionBar.java:207`, `:2387-2461`).
+
+Dialogs MD3 is owned by `DialogsActivity.ContentView`, not by each row.
+`getDialogsTopSurfaceColorKey()` selects one opaque theme role for normal and
+Search modes, `drawChild(...)` paints that surface above scrolling rows but
+below the top controls, and `updateContextViewPosition()` supplies its animated
+tab extent (`DialogsActivity.java:593-600`, `:934-942`, `:6839-6848`). The
+search/folder rows do not install their own MD3 backgrounds; search-type tabs
+keep only a full-bounds child clip, the search field keeps its rounded control
+background, and the independently animated temporary panel reuses the same
+dialogs provider (`DialogsActivity.java:4932-4945`, `:5024-5033`,
+`:5372-5389`; `SearchTabsAndFiltersLayout.java:15-59`;
+`BlurredBackgroundProviderImpl.java:53-72`).
+Chat-side strips use the same chat-header flag through `ChatActivity` and the
+component flat hooks (`ChatActivity.java:8627-8630`, `:9896-9900`,
+`:11153-11155`, `:52132-52135`;
+`ChatActivityTopPanelLayout.java:37-89`;
+`DialogsActivityTopPanelLayout.java:36-82`; `TopicsTabsView.java:485-498`).
+Pinned-message content uses explicit MD3 keylines at creation and at both
+runtime image/no-image updates. Its close, list, progress and action states
+also derive their drawn trailing edge from the header avatar keyline while
+retaining the clickable icons' 36×48dp targets; Liquid Glass keeps the original
+geometry (`ChatActivity.java:12710-12718`, `:12823-12948`,
+`:30968-30987`).
+
+*(Established 2026-09-21, during `#interface-style`.)*
+
 ## BottomBuilder section cards are opt-in and isolated to Early Send
 
 `BottomBuilder` now has a fourth constructor arg `sections` defaulting `false`,

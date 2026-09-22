@@ -1407,6 +1407,39 @@ object NaConfig {
             ConfigItem.configTypeInt,
             0 // 0: default; 1: Modern; 2: MD3
         )
+    // NagramX (#interface-style): the main style choice is LiteMode.FLAG_LIQUID_GLASS.
+    // Per-surface MD3 masks are consumed only by render branches that already support them;
+    // MD3 colours must come from theme keys, not SwitchStyle/Monet.
+    val interfaceStyleApplyChatHeader =
+        addConfig(
+            "InterfaceStyleApplyChatHeader",
+            ConfigItem.configTypeBool,
+            true
+        )
+    val interfaceStyleApplyChatListTopBar =
+        addConfig(
+            "InterfaceStyleApplyChatListTopBar",
+            ConfigItem.configTypeBool,
+            true
+        )
+    val interfaceStyleApplyButtons =
+        addConfig(
+            "InterfaceStyleApplyButtons",
+            ConfigItem.configTypeBool,
+            true
+        )
+    val interfaceStyleBlurStrength =
+        addConfig(
+            "InterfaceStyleBlurStrength",
+            ConfigItem.configTypeInt,
+            50 // percent; slider range 0..100 in 10% steps when MD3 surfaces consume it
+        )
+    val interfaceStyleMatchClassicDayHeader =
+        addConfig(
+            "InterfaceStyleMatchClassicDayHeader",
+            ConfigItem.configTypeBool,
+            true
+        )
     val ignoreUnreadCount =
         addConfig(
             "IgnoreUnreadCount",
