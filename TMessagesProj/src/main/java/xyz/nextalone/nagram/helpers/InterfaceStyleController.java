@@ -5,6 +5,9 @@ import org.telegram.messenger.LiteMode;
 import xyz.nextalone.nagram.NaConfig;
 
 public class InterfaceStyleController {
+    private static final int FILTER_TAB_SELECTOR_ALPHA_LEGACY = 31;
+    private static final int FILTER_TAB_SELECTOR_ALPHA_MD3 = 46;
+    private static final int FILTER_TAB_SELECTOR_ALPHA_STROKE = 255;
 
     public static boolean isMaterialDesign3() {
         return !(LiteMode.isLiquidGlassSupported() && LiteMode.isEnabledSetting(LiteMode.FLAG_LIQUID_GLASS));
@@ -28,5 +31,12 @@ public class InterfaceStyleController {
 
     public static boolean applyBottomNavigation() {
         return isMaterialDesign3() && NaConfig.INSTANCE.getInterfaceStyleApplyBottomNavigation().Bool();
+    }
+
+    public static int filterTabSelectorAlpha(boolean strokeStyle) {
+        if (strokeStyle) {
+            return FILTER_TAB_SELECTOR_ALPHA_STROKE;
+        }
+        return applyChatListTopBar() ? FILTER_TAB_SELECTOR_ALPHA_MD3 : FILTER_TAB_SELECTOR_ALPHA_LEGACY;
     }
 }

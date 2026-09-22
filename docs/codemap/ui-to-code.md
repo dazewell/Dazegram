@@ -67,6 +67,27 @@ header-color switch remain separate follow-up slices.
 
 *(Established 2026-09-22, during `#interface-style`.)*
 
+## MD3 chat-list filter tabs strengthen only FilterTabsView's selected pill
+
+`FilterTabsView.drawSelector(...)` is the folder-tab row's selected-indicator
+draw path. The MD3 chat-list top-bar gate leaves the existing 28dp stadium,
+theme colour, sizing and animation in place, but raises the borderless selected
+pill alpha through `InterfaceStyleController.filterTabSelectorAlpha(...)` when
+`applyChatListTopBar()` is true; `tabStyleStroke` still keeps the existing
+full-opacity stroked chip (`FilterTabsView.java:1644-1663`;
+`InterfaceStyleController.java:8-10,36-42`).
+
+Search tabs in the same top region remain deliberately outside this slice:
+`DialogsActivity` builds them with `ViewPagerFixed.TabsView`, whose selected
+bubble uses the same legacy `tabStyleStroke` alpha convention but has no
+chat-list consumer identity at draw time. Gating that generic draw path would
+also affect hashtag/search strips and bookmark tabs, so parity needs a separate
+plumbing slice rather than a global alpha change (`DialogsActivity.java:7816`;
+`ViewPagerFixed.java:2061-2076`). Other tab strips keep their own
+`tabStyleStroke` behavior independently (`ScrollSlidingTextTabStrip.java:772`).
+
+*(Established 2026-09-22, during `#interface-style`.)*
+
 ## Bottom navigation uses a dedicated MD3 surface
 
 The Bottom navigation setting reaches the real global navigation bar through

@@ -5,6 +5,24 @@ killed them. Recorded so the next investigation doesn't spend time re-testing
 a theory that's already dead. Re-verify the citation before relying on it —
 see the README.
 
+## "Classic and Day can restore their pre-Glass header colour by swapping `key_chat_topPanelBackground` for `key_actionBarDefault`"
+
+Disproven for the shipped Classic/Blue and Day themes. Classic/Blue is the
+built-in default theme, so it reads the default palette (`Theme.java:3966-3989`).
+That default palette gives both `key_actionBarDefault` and
+`key_chat_topPanelBackground` the same white value (`ThemeColors.java:193`,
+`ThemeColors.java:520`). Day is an asset-backed theme (`Theme.java:4040-4041`);
+it only overrides `actionBarDefault=-1` and leaves `chat_topPanelBackground`
+absent, so the chat top-panel key still falls back to the same white default
+(`day.attheme:213`).
+
+That means a literal Classic/Day switch between those two keys changes no
+pixels. If the Interface Style panel-colour option needs a future implementation
+for these themes, its target has to be something else, such as opacity or blur
+eligibility, not a colour-key restoration.
+
+*(Established 2026-09-22, during `#interface-style`.)*
+
 ## "The attach sheet's static selection survives a rebuild, so the attachment can be restored cheaply"
 
 Half true, and the useful half is false. `ChatAttachAlertPhotoLayout.selectedPhotos`

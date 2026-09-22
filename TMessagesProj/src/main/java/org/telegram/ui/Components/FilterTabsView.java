@@ -1641,7 +1641,8 @@ public class FilterTabsView extends FrameLayout {
                 counterVisible = tabView.tabCounterVisible;
             }
         }
-        if (NaConfig.INSTANCE.getTabStyleStroke().Bool()) {
+        final boolean tabStyleStroke = NaConfig.INSTANCE.getTabStyleStroke().Bool();
+        if (tabStyleStroke) {
             selectorDrawable.setStroke(AndroidUtilities.dp(1), Theme.getColor(activeTextColorKey, resourcesProvider));
             selectorDrawable.setColor(ColorUtils.setAlphaComponent(Theme.getColor(tabLineColorKey, resourcesProvider), 50));
         } else {
@@ -1658,7 +1659,8 @@ public class FilterTabsView extends FrameLayout {
             final int y = height / 2 - dp(14);
             float internalPadding = FolderIconHelper.getTabInternalPadding();
             selectorDrawable.setBounds((int) (indicatorX - dp(internalPadding) - add), y, (int) (indicatorX + indicatorWidth + dp(internalPadding) + add), y + dp(28));
-            selectorDrawable.setAlpha(NaConfig.INSTANCE.getTabStyleStroke().Bool() ? 255 : 31);
+            // NagramX: MD3 chat-list top bars need a stronger tonal selected tab without changing stroke mode.
+            selectorDrawable.setAlpha(xyz.nextalone.nagram.helpers.InterfaceStyleController.filterTabSelectorAlpha(tabStyleStroke));
             selectorDrawable.draw(canvas);
             canvas.restore();
         }
