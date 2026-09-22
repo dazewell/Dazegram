@@ -359,7 +359,13 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         tabsView.setClipChildren(false);
         final int paddingH = md3BottomNavigation ? 0 : dp(mainTabsMargin + 4);
         final int paddingV = md3BottomNavigation ? 0 : dp(mainTabsMargin + 4);
-        tabsView.setPadding(paddingH, paddingV, paddingH, paddingV);
+        if (md3BottomNavigation) {
+            // NagramX: MD3 insets the tabs vertically inside the 80dp bar instead of the legacy outer margin.
+            final int indicatorTop = dp(compact ? MainTabsHelper.MD3_NAVIGATION_INDICATOR_TOP_COMPACT : MainTabsHelper.MD3_NAVIGATION_INDICATOR_TOP);
+            tabsView.setPadding(0, indicatorTop, 0, compact ? indicatorTop : 0);
+        } else {
+            tabsView.setPadding(paddingH, paddingV, paddingH, paddingV);
+        }
         // NagramX: MD3 navigation is full-width; the legacy pill keeps its capped geometry.
         tabsView.setMaxWidth(md3BottomNavigation ? 0 : dp(328 + DialogsActivity.MAIN_TABS_MARGIN * 2));
         tabsView.setFillWidth(md3BottomNavigation);
