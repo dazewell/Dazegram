@@ -4961,7 +4961,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         // NagramX: MD3 tabs inherit the parent surface instead of drawing another panel.
         if (!naxFlatChatListTopBar) {
-            BlurredBackgroundDrawable searchTabsViewBackground = iBlur3FactoryLiquidGlass.create(searchTabsAndFiltersLayout, BlurredBackgroundProviderImpl.dialogsTopPanel(resourceProvider));
+            BlurredBackgroundDrawable searchTabsViewBackground = iBlur3FactoryLiquidGlass.create(searchTabsAndFiltersLayout, BlurredBackgroundProviderImpl.dialogsTopPanel(currentAccount, resourceProvider));
             searchTabsViewBackground.setRadius(dp(18));
             searchTabsViewBackground.setPadding(dp(6.666f));
             searchTabsAndFiltersLayout.setBlurredBackground(searchTabsViewBackground);
@@ -5400,7 +5400,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             filterTabsView.setPadding(0, dp(7), 0, dp(7));
             // NagramX: MD3 folder tabs inherit the parent surface instead of drawing another panel.
             if (!naxFlatChatListTopBar) {
-                BlurredBackgroundDrawable filterTabsViewBackground = iBlur3FactoryLiquidGlass.create(filterTabsView, BlurredBackgroundProviderImpl.dialogsTopPanel(resourceProvider));
+                BlurredBackgroundDrawable filterTabsViewBackground = iBlur3FactoryLiquidGlass.create(filterTabsView, BlurredBackgroundProviderImpl.dialogsTopPanel(currentAccount, resourceProvider));
                 filterTabsViewBackground.setRadius(dp(18));
                 filterTabsViewBackground.setPadding(dp(6.666f));
                 filterTabsView.setBlurredBackground(filterTabsViewBackground);
@@ -5410,7 +5410,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         // NagramX: MD3 keeps the field's rounded control fill; the parent owns the outer surface.
         if (fragmentSearchField != null && !naxFlatChatListTopBar) {
-            fragmentSearchField.setupBlurredBackground(iBlur3FactoryLiquidGlass.create(fragmentSearchField, BlurredBackgroundProviderImpl.dialogsTopPanel(resourceProvider)));
+            fragmentSearchField.setupBlurredBackground(iBlur3FactoryLiquidGlass.create(fragmentSearchField, BlurredBackgroundProviderImpl.dialogsTopPanel(currentAccount, resourceProvider)));
         }
 
         dialogStoriesCell = new DialogStoriesCell(context, this, currentAccount, isArchive() ? DialogStoriesCell.TYPE_ARCHIVE : DialogStoriesCell.TYPE_DIALOGS) {

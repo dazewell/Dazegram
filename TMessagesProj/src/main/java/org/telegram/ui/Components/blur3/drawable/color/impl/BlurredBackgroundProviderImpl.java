@@ -202,10 +202,6 @@ public class BlurredBackgroundProviderImpl {
         return topPanelChatActivity(UserConfig.selectedAccount, resourcesProvider);
     }
 
-    public static BlurredBackgroundProvider chatHeaderPanel(int currentAccount, Theme.ResourcesProvider resourcesProvider) {
-        return topPanelChatActivity(currentAccount, resourcesProvider, true, false);
-    }
-
     public static BlurredBackgroundProvider chatHeaderPanel(int currentAccount, Theme.ResourcesProvider resourcesProvider, boolean frostedSourceAvailable) {
         return topPanelChatActivity(currentAccount, resourcesProvider, true, frostedSourceAvailable);
     }
@@ -243,15 +239,11 @@ public class BlurredBackgroundProviderImpl {
     }
 
     public static BlurredBackgroundProvider topPanelChatActivityTags(Theme.ResourcesProvider resourcesProvider) {
-        return topPanelChatActivityTags(UserConfig.selectedAccount, resourcesProvider);
+        return topPanelChatActivityTags(UserConfig.selectedAccount, resourcesProvider, false);
     }
 
     // NagramX: same account-aware fix as topPanelChatActivity, for the
     // hashtag/tag search strip that shares its blur-eligibility check.
-    public static BlurredBackgroundProvider topPanelChatActivityTags(int currentAccount, Theme.ResourcesProvider resourcesProvider) {
-        return topPanelChatActivityTags(currentAccount, resourcesProvider, false);
-    }
-
     public static BlurredBackgroundProvider topPanelChatActivityTags(int currentAccount, Theme.ResourcesProvider resourcesProvider, boolean frostedSourceAvailable) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
             .setBackgroundColor((r, isDark) -> {
