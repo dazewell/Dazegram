@@ -25,13 +25,23 @@ public class InterfaceStyleController {
         return isMaterialDesign3() && NaConfig.INSTANCE.getInterfaceStyleApplyButtons().Bool();
     }
 
+    // The flat MD3 Composer is being rebuilt as its own layout; until it lands the stored switch is ignored.
+    public static final boolean COMPOSER_STYLE_AVAILABLE = false;
+
     public static boolean applyComposer() {
-        return isMaterialDesign3() && NaConfig.INSTANCE.getInterfaceStyleApplyComposer().Bool();
+        return COMPOSER_STYLE_AVAILABLE && isMaterialDesign3() && NaConfig.INSTANCE.getInterfaceStyleApplyComposer().Bool();
     }
 
     public static boolean applyBottomNavigation() {
         return isMaterialDesign3() && NaConfig.INSTANCE.getInterfaceStyleApplyBottomNavigation().Bool();
     }
+
+    public static boolean panelDividers() {
+        return isMaterialDesign3() && NaConfig.INSTANCE.getInterfaceStylePanelDividers().Bool();
+    }
+
+    // Panel colors has no render consumer yet, so its section stays hidden.
+    public static final boolean MATCH_CLASSIC_DAY_HEADER_AVAILABLE = false;
 
     public static int filterTabSelectorAlpha(boolean strokeStyle) {
         if (strokeStyle) {

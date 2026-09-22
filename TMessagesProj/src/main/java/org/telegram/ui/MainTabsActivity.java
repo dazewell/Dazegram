@@ -433,7 +433,16 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         iBlur3FactoryGlass.setLiquidGlassEffectAllowed(LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS));
 
         // NagramX: the MD3 provider belongs on the wrapper so system insets remain part of the surface.
-        tabsViewWrapper = new FrameLayout(context);
+        tabsViewWrapper = new FrameLayout(context) {
+            @Override
+            protected void dispatchDraw(Canvas canvas) {
+                super.dispatchDraw(canvas);
+                // NagramX: MD3 hairline where the bar meets content; drawn here so it follows the bar's translation and alpha.
+                if (md3BottomNavigation && xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividers()) {
+                    canvas.drawRect(0, 0, getWidth(), Math.max(1, AndroidUtilities.dp(0.66f)), Theme.dividerPaint);
+                }
+            }
+        };
         tabsViewWrapper.setOnClickListener(v -> {});
         tabsViewWrapper.addView(tabsView, LayoutHelper.createFrame(
             tabsViewWidth < 0 ? LayoutHelper.MATCH_PARENT : tabsViewWidth,

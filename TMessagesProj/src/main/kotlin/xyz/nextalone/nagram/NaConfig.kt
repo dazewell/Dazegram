@@ -1452,6 +1452,12 @@ object NaConfig {
             ConfigItem.configTypeBool,
             true
         )
+    val interfaceStylePanelDividers =
+        addConfig(
+            "InterfaceStylePanelDividers",
+            ConfigItem.configTypeBool,
+            true
+        )
     val ignoreUnreadCount =
         addConfig(
             "IgnoreUnreadCount",

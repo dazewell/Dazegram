@@ -40,6 +40,7 @@ public class SettingsHelper {
         BaseFragment fragment;
         BaseNekoSettingsActivity neko_fragment = null;
         BaseNekoXSettingsActivity nekox_fragment = null;
+        xyz.nextalone.nagram.ui.InterfaceStyleActivity interfaceStyleFragment = null;
         if (segments.size() == 1) {
             fragment = new NekoSettingsActivity();
         } else if (PasscodeHelper.getSettingsKey().equals(segments.get(1))) {
@@ -64,6 +65,9 @@ public class SettingsHelper {
                 case "general":
                 case "g":
                     fragment = nekox_fragment = new NekoGeneralSettingsActivity();
+                    break;
+                case xyz.nextalone.nagram.ui.InterfaceStyleActivity.SETTINGS_KEY:
+                    fragment = interfaceStyleFragment = new xyz.nextalone.nagram.ui.InterfaceStyleActivity();
                     break;
                 case "translator":
                 case "translate":
@@ -92,6 +96,9 @@ public class SettingsHelper {
             if (neko_fragment != null) {
                 BaseNekoSettingsActivity finalNeko_fragment = neko_fragment;
                 AndroidUtilities.runOnUIThread(() -> finalNeko_fragment.scrollToRow(rowFinal, unknown));
+            } else if (interfaceStyleFragment != null) {
+                var finalInterfaceStyleFragment = interfaceStyleFragment;
+                AndroidUtilities.runOnUIThread(() -> finalInterfaceStyleFragment.scrollToRow(rowFinal, unknown));
             } else if (nekox_fragment != null) {
                 BaseNekoXSettingsActivity finalNekoX_fragment = nekox_fragment;
                 if (!TextUtils.isEmpty(value)) {
