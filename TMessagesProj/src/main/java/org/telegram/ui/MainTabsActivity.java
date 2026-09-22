@@ -348,6 +348,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         Bulletin.addDelegate(contentView, getBulletinDelegate());
         tabletLayout = false;
 
+        md3BottomNavigation = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyBottomNavigation();
         final boolean compact = MainTabsHelper.isMainTabsHideTitleStyle();
         final int mainTabsMargin = MainTabsHelper.getMainTabsMargin();
         final boolean hideContacts = MainTabsHelper.isContactsTabHidden();
@@ -355,10 +356,11 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
         tabsView = new MainTabsLayout(context, resourceProvider);
         tabsView.setClipChildren(false);
-        final int paddingH = dp(mainTabsMargin + 4);
-        final int paddingV = dp(mainTabsMargin + 4);
+        final int paddingH = md3BottomNavigation ? 0 : dp(mainTabsMargin + 4);
+        final int paddingV = md3BottomNavigation ? 0 : dp(mainTabsMargin + 4);
         tabsView.setPadding(paddingH, paddingV, paddingH, paddingV);
-        tabsView.setMaxWidth(dp(328 + DialogsActivity.MAIN_TABS_MARGIN * 2));
+        tabsView.setMaxWidth(md3BottomNavigation ? 0 : dp(328 + DialogsActivity.MAIN_TABS_MARGIN * 2));
+        tabsView.setFillWidth(md3BottomNavigation);
 
         tabs = new GlassTabView[5];
         tabs[INDEX_CHATS] = GlassTabView.createMainTab(context, resourceProvider, GlassTabView.TabAnimation.CHATS, R.string.MainTabsChats);
@@ -372,6 +374,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         tabs[INDEX_PROFILE].setOnLongClickListener(this::openAccountSelector);
         for (GlassTabView tab : tabs) {
             tab.setMainTabsCompact(compact);
+            tab.setMd3NavigationIndicator(md3BottomNavigation);
         }
 
         tabsView.addTabToIgnoreClick(tabs[INDEX_CHATS]);
@@ -421,10 +424,26 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         iBlur3FactoryGlass.setSourceRootView(viewPositionWatcher, contentView);
         iBlur3FactoryGlass.setLiquidGlassEffectAllowed(LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS));
 
-        tabsViewBackground = iBlur3FactoryGlass.create(tabsView, BlurredBackgroundProviderImpl.mainTabs(resourceProvider));
-        tabsViewBackground.setRadius(dp(MainTabsHelper.getMainTabsHeight() / 2f));
-        tabsViewBackground.setPadding(dp(mainTabsMargin - 0.334f));
-        tabsView.setBackground(tabsViewBackground);
+        tabsViewWrapper = new FrameLayout(context);
+        tabsViewWrapper.setOnClickListener(v -> {});
+        tabsViewWrapper.addView(tabsView, LayoutHelper.createFrame(
+            tabsViewWidth < 0 ? LayoutHelper.MATCH_PARENT : tabsViewWidth,
+            MainTabsHelper.getMainTabsHeightWithMargins(),
+            Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL
+        ));
+        tabsViewWrapper.setClipToPadding(false);
+
+        tabsViewBackground = iBlur3FactoryGlass.create(
+            md3BottomNavigation ? tabsViewWrapper : tabsView,
+            md3BottomNavigation ? BlurredBackgroundProviderImpl.mainTabsBottomNavigation(resourceProvider) : BlurredBackgroundProviderImpl.mainTabs(resourceProvider)
+        );
+        tabsViewBackground.setRadius(md3BottomNavigation ? 0 : dp(MainTabsHelper.getMainTabsHeight() / 2f));
+        tabsViewBackground.setPadding(md3BottomNavigation ? 0 : dp(mainTabsMargin - 0.334f));
+        if (md3BottomNavigation) {
+            tabsViewWrapper.setBackground(tabsViewBackground);
+        } else {
+            tabsView.setBackground(tabsViewBackground);
+        }
 
         BlurredBackgroundDrawableViewFactory iBlur3FactoryFade = new BlurredBackgroundDrawableViewFactory(iBlur3SourceColor);
         iBlur3FactoryFade.setSourceRootView(viewPositionWatcher, contentView);
@@ -436,10 +455,6 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
         contentView.addView(fadeView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 0, Gravity.BOTTOM));
 
-        tabsViewWrapper = new FrameLayout(context);
-        tabsViewWrapper.setOnClickListener(v -> {});
-        tabsViewWrapper.addView(tabsView, LayoutHelper.createFrame(tabsViewWidth, MainTabsHelper.getMainTabsHeightWithMargins(), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL));
-        tabsViewWrapper.setClipToPadding(false);
         contentView.addView(tabsViewWrapper, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM));
 
         updateLayoutWrapper = new UpdateLayoutWrapper(context);
@@ -993,6 +1008,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
     private int navigationBarHeight;
     private int insetLeft;
     private int insetRight;
+    private boolean md3BottomNavigation;
 
     @NonNull
     @Override
@@ -1170,13 +1186,14 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
     private void checkUi_tabsPosition() {
         if (tabsView == null) return;
         if (NaConfig.INSTANCE.getHideBottomNavigationBar().Bool()) {
+            tabsViewWrapper.setVisibility(View.GONE);
             tabsView.setVisibility(View.GONE);
             return;
         }
         final boolean isUpdateLayoutVisible = updateLayoutWrapper.isUpdateLayoutVisible();
         final int updateLayoutHeight = isUpdateLayoutVisible ? dp(UpdateLayoutWrapper.HEIGHT) : 0;
         final int normalY = -(updateLayoutHeight);
-        final int hiddenY = normalY + dp(MainTabsHelper.isMainTabsHideTitleStyle() ? 30 : 40);
+        final int hiddenY = normalY + (md3BottomNavigation ? tabsViewWrapper.getHeight() : dp(MainTabsHelper.isMainTabsHideTitleStyle() ? 30 : 40));
 
         final float factor = animatorTabsVisible.getFloatValue();
         final float scale = lerp(0.85f, 1f, factor);
@@ -1184,8 +1201,13 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         tabsViewWrapper.setTranslationY(lerp(hiddenY, normalY, factor));
         tabsView.setClickable(factor > 1);
         tabsView.setEnabled(factor > 1);
-        tabsView.setAlpha(factor);
-        tabsView.setVisibility(factor > 0 ? View.VISIBLE : View.GONE);
+        if (md3BottomNavigation) {
+            tabsViewWrapper.setAlpha(factor);
+            tabsViewWrapper.setVisibility(factor > 0 ? View.VISIBLE : View.GONE);
+        } else {
+            tabsView.setAlpha(factor);
+            tabsView.setVisibility(factor > 0 ? View.VISIBLE : View.GONE);
+        }
     }
 
     private void checkUi_callTabVisible(boolean callTabsVisible, boolean animated) {

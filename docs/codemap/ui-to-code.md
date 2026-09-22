@@ -59,6 +59,19 @@ geometry (`ChatActivity.java:12710-12718`, `:12823-12948`,
 
 *(Established 2026-09-21, during `#interface-style`.)*
 
+## Bottom navigation uses a dedicated MD3 surface
+
+The Bottom navigation setting reaches the real global navigation bar through
+`MainTabsActivity.createView()` and the shared geometry helper
+(`MainTabsActivity.java:346-449`; `MainTabsHelper.java:22-69`). MD3 uses a
+dedicated provider so the existing `mainTabs()` provider remains unchanged for
+attach/statistics surfaces (`BlurredBackgroundProviderImpl.java:21-35,37-48`).
+`MainTabsLayout` fills the available width only in this scoped mode, and
+`GlassTabView` draws the selected tonal indicator without changing Liquid Glass
+tab geometry (`MainTabsLayout.java:20-93`; `GlassTabView.java:145-187`).
+
+*(Established 2026-09-22, during `#interface-style`.)*
+
 ## Composer Apply to is isolated from shared button glass
 
 The Interface Style Composer switch is stored in `NaConfig` and exposed only

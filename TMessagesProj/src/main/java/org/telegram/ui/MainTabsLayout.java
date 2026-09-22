@@ -47,10 +47,18 @@ public class MainTabsLayout extends AnimatedLinearLayout {
     private static final int[] PASS_PADDINGS_DP = {16, 8, 4};
 
     private int maxWidthPx;
+    private boolean fillWidth;
 
     public void setMaxWidth(int maxWidthPx) {
         if (this.maxWidthPx != maxWidthPx) {
             this.maxWidthPx = maxWidthPx;
+            requestLayout();
+        }
+    }
+
+    public void setFillWidth(boolean fillWidth) {
+        if (this.fillWidth != fillWidth) {
+            this.fillWidth = fillWidth;
             requestLayout();
         }
     }
@@ -66,7 +74,7 @@ public class MainTabsLayout extends AnimatedLinearLayout {
         }
 
         final int maxTotalWidthForTabs = width - getPaddingLeft() - getPaddingRight();
-        final int minTotalWidthForTabs = Math.min(dp(320), maxTotalWidthForTabs);
+        final int minTotalWidthForTabs = fillWidth ? maxTotalWidthForTabs : Math.min(dp(320), maxTotalWidthForTabs);
 
         int chosenPass = PASS_TEXT_SIZES_DP.length - 1;
         float lastMeasuredTextSize = -1;

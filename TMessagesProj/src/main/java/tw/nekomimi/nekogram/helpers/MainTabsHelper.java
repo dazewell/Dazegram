@@ -24,6 +24,9 @@ public final class MainTabsHelper {
     }
 
     public static int getMainTabsMargin() {
+        if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyBottomNavigation()) {
+            return 0;
+        }
         return isMainTabsHideTitleStyle() ? MAIN_TABS_MARGIN_COMPACT : MAIN_TABS_MARGIN;
     }
 
@@ -56,6 +59,9 @@ public final class MainTabsHelper {
     }
 
     public static int getTabsViewWidth() {
+        if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyBottomNavigation()) {
+            return -1;
+        }
         return TAB_WIDTH * getFragmentsCount() + (getMainTabsMargin() + TAB_PADDING) * 2;
     }
 }

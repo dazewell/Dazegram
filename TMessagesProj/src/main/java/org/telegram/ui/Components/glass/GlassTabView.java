@@ -133,6 +133,7 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     private boolean hasGestureSelectedOverride;
     private float gestureSelectedOverride;
     private boolean skipDrawSelector;
+    private boolean md3NavigationIndicator;
 
     public void setGestureSelectedOverride(float gestureSelectedOverride, boolean allow) {
         this.gestureSelectedOverride = gestureSelectedOverride;
@@ -147,6 +148,13 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
         }
     }
 
+    public void setMd3NavigationIndicator(boolean md3NavigationIndicator) {
+        if (this.md3NavigationIndicator != md3NavigationIndicator) {
+            this.md3NavigationIndicator = md3NavigationIndicator;
+            invalidate();
+        }
+    }
+
     @Override
     protected void dispatchDraw(@NonNull Canvas canvas) {
         final float viewWidth = hasVisualWidth ? visualWidth : getWidth();
@@ -154,13 +162,21 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
         if (selectedFactor > 0 && !skipDrawSelector) {
             final float alpha = AnimatorUtils.DECELERATE_INTERPOLATOR.getInterpolation(selectedFactor);
 
-            paintCounterBackground.setColor(Theme.multAlpha(colorSelected, 0.09f * alpha));
-            tmpRectF.set(0, 0, viewWidth, getHeight());
-            final float r = Math.min(tmpRectF.width(), tmpRectF.height()) / 2f;
-            final float s = lerp(0.6f, 1, selectedFactor) * MathUtils.clamp(attachScale, 0, 1);
             canvas.save();
-            canvas.scale(s, s, tmpRectF.centerX(), tmpRectF.centerY());
-            canvas.drawRoundRect(tmpRectF, r, r, paintCounterBackground);
+            paintCounterBackground.setColor(Theme.multAlpha(colorSelected, (md3NavigationIndicator ? 0.18f : 0.09f) * alpha));
+            if (md3NavigationIndicator) {
+                final float indicatorWidth = Math.min(dp(64), viewWidth - dp(8));
+                final float indicatorHeight = dp(isCompact ? 32 : 26);
+                final float top = isCompact ? (getHeight() - indicatorHeight) / 2f : dp(1);
+                tmpRectF.set((viewWidth - indicatorWidth) / 2f, top, (viewWidth + indicatorWidth) / 2f, top + indicatorHeight);
+                canvas.drawRoundRect(tmpRectF, indicatorHeight / 2f, indicatorHeight / 2f, paintCounterBackground);
+            } else {
+                tmpRectF.set(0, 0, viewWidth, getHeight());
+                final float r = Math.min(tmpRectF.width(), tmpRectF.height()) / 2f;
+                final float s = lerp(0.6f, 1, selectedFactor) * MathUtils.clamp(attachScale, 0, 1);
+                canvas.scale(s, s, tmpRectF.centerX(), tmpRectF.centerY());
+                canvas.drawRoundRect(tmpRectF, r, r, paintCounterBackground);
+            }
             canvas.restore();
         }
 
@@ -685,6 +701,7 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     }
 
     public void setMainTabsCompact(boolean compact) {
+        isCompact = compact;
         if (textView.getVisibility() == (compact ? GONE : VISIBLE)) {
             return;
         }

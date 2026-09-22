@@ -34,6 +34,19 @@ public class BlurredBackgroundProviderImpl {
             .build();
     }
 
+    public static BlurredBackgroundProvider mainTabsBottomNavigation(Theme.ResourcesProvider resourcesProvider) {
+        return new BlurredBackgroundProviderBuilder(resourcesProvider)
+            .setBackgroundColor((r, isDark) -> Theme.multAlpha(
+                Theme.getColor(Theme.key_windowBackgroundWhite, r),
+                xyz.nextalone.nagram.NaConfig.interfaceStyleBlurAlpha()
+            ))
+            .setStrokeColorTop(0, 0)
+            .setStrokeColorBottom(0, 0)
+            .setShadowColor(0, 0)
+            .setStrokeWidth(0, 0)
+            .build();
+    }
+
     public static BlurredBackgroundProvider topPanel(Theme.ResourcesProvider resourcesProvider) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
             .setBackgroundColor((r, isDark) -> {
