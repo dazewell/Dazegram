@@ -19074,7 +19074,11 @@ public class ChatActivity extends BaseFragment implements
             }
 
             final BlurredBackgroundSource source = wallpaperBitmapProvider.updateSourceFromBackgroundViewDrawable(drawable);
-            final int statusBarColor = wallpaperBitmapProvider.getStatusBarColor(source);
+            int statusBarColor = wallpaperBitmapProvider.getStatusBarColor(source);
+            // NagramX: an MD3 header paints its own mostly opaque surface over the wallpaper, so icon contrast must follow that composite.
+            if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader()) {
+                statusBarColor = ColorUtils.compositeColors(BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null).getBackgroundColor(), ColorUtils.setAlphaComponent(statusBarColor, 255));
+            }
             final float statusBarBrightness = AndroidUtilities.computePerceivedBrightness(statusBarColor);
             final int navigationBarColor = wallpaperBitmapProvider.getNavigationBarColor(source);
             final float navigationBarBrightness = AndroidUtilities.computePerceivedBrightness(navigationBarColor);
