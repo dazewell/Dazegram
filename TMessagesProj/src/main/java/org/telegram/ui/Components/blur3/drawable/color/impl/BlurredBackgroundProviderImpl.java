@@ -66,10 +66,6 @@ public class BlurredBackgroundProviderImpl {
 
     // NagramX: DialogsActivity needs an Interface Style branch without changing the many unrelated
     // generic topPanel consumers such as media pickers and shared-media tabs.
-    public static BlurredBackgroundProvider dialogsTopPanel(Theme.ResourcesProvider resourcesProvider) {
-        return dialogsTopPanel(UserConfig.selectedAccount, resourcesProvider);
-    }
-
     public static BlurredBackgroundProvider dialogsTopPanel(int currentAccount, Theme.ResourcesProvider resourcesProvider) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
             .setBackgroundColor((r, isDark) -> {
