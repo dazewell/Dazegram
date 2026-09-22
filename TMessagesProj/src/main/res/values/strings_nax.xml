@@ -350,7 +350,7 @@
     <string name="InterfaceStyleApplyBottomNavigationInfo">The global navigation bar when Material Design 3 rendering is enabled.</string>
     <string name="InterfaceStyleBlurStrength">Blur strength</string>
     <string name="InterfaceStyleBlurStrengthAccDescr">Blur strength</string>
-    <string name="InterfaceStyleBlurStrengthInfo">Controls how much wallpaper shows through supported glass surfaces, including Composer when Composer styling is off and the Material Design 3 navigation bar.</string>
+    <string name="InterfaceStyleBlurStrengthInfo">Controls translucency on supported frosted surfaces, including chat panels, the Material Design 3 navigation bar, and Composer when Composer styling is off.</string>
     <string name="InterfaceStylePanelColorsHeader">Panel colors</string>
     <string name="InterfaceStyleMatchClassicDayHeader">Match Classic and Day header color</string>
     <string name="InterfaceStyleMatchClassicDayHeaderInfo">Will use the old Classic and Day theme panel color for MD3 chat headers once that color slice lands.</string>

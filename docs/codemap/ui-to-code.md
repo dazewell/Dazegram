@@ -35,15 +35,17 @@ drawable full-bounds and suppress the separate back/menu pills
 (`ActionBar.java:207`, `:2387-2461`).
 
 Dialogs MD3 is owned by `DialogsActivity.ContentView`, not by each row.
-`getDialogsTopSurfaceColorKey()` selects one opaque theme role for normal and
-Search modes, `drawChild(...)` paints that surface above scrolling rows but
-below the top controls, and `updateContextViewPosition()` supplies its animated
-tab extent (`DialogsActivity.java:593-600`, `:934-942`, `:6839-6848`). The
+`getDialogsTopSurfaceColorKey()` selects the pre-Glass theme role for normal and
+Search modes, while `drawChild(...)` paints one translucent frosted surface
+above scrolling rows and below the top controls when the RenderEffect source is
+available; unsupported or blur-disabled paths retain the opaque fallback.
+`updateContextViewPosition()` supplies its animated tab extent
+(`DialogsActivity.java:593-600`, `:941-968`, `:6867-6874`). The
 search/folder rows do not install their own MD3 backgrounds; search-type tabs
 keep only a full-bounds child clip, the search field keeps its rounded control
 background, and the independently animated temporary panel reuses the same
-dialogs provider (`DialogsActivity.java:4932-4945`, `:5024-5033`,
-`:5372-5389`; `SearchTabsAndFiltersLayout.java:15-59`;
+dialogs provider (`DialogsActivity.java:4963-4972`, `:5052-5060`,
+`:5400-5410`; `SearchTabsAndFiltersLayout.java:15-59`;
 `BlurredBackgroundProviderImpl.java:53-72`).
 Chat-side strips use the same chat-header flag through `ChatActivity` and the
 component flat hooks (`ChatActivity.java:8627-8630`, `:9896-9900`,
@@ -57,7 +59,13 @@ retaining the clickable icons' 36×48dp targets; Liquid Glass keeps the original
 geometry (`ChatActivity.java:12710-12718`, `:12823-12948`,
 `:30968-30987`).
 
-*(Established 2026-09-21, during `#interface-style`.)*
+Chat header and tag-search providers use the same shared blur-strength alpha
+for translucent MD3 surfaces and fall back to opaque theme roles below the
+RenderEffect/API/blur gate (`BlurredBackgroundProviderImpl.java:211-250`;
+`NaConfig.kt:1534-1537`). The filter-tab tonal pill, Buttons, and Classic/Day
+header-color switch remain separate follow-up slices.
+
+*(Established 2026-09-22, during `#interface-style`.)*
 
 ## Bottom navigation uses a dedicated MD3 surface
 

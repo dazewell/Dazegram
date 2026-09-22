@@ -946,7 +946,24 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 naxTopSurfaceDrawn = true;
                 final int top = inPreviewMode ? AndroidUtilities.statusBarHeight : getActionBarTop();
                 final float bottom = top + getActionBarFullHeight() + naxTopSurfaceAdditionalHeight;
-                canvas.drawRect(0, Math.max(0, top), getMeasuredWidth(), Math.max(top, bottom), actionBarDefaultPaint);
+                final float surfaceTop = Math.max(0, top);
+                final float surfaceBottom = Math.max(surfaceTop, bottom);
+                // NagramX: use the real frosted source only when the drawable can sample it;
+                // older or blur-disabled paths keep the opaque MD3 fallback.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                        && SharedConfig.chatBlurEnabled()
+                        && iBlur3SourceGlassFrosted != null
+                        && canvas.isHardwareAccelerated()
+                        && BlurredBackgroundProviderImpl.checkBlurEnabled(currentAccount, resourceProvider)) {
+                    iBlur3SourceGlassFrosted.draw(canvas, 0, surfaceTop, getMeasuredWidth(), surfaceBottom);
+                    final int oldColor = actionBarDefaultPaint.getColor();
+                    actionBarDefaultPaint.setColor(getDialogsTopSurfaceColor());
+                    actionBarDefaultPaint.setAlpha(Math.round(255f * xyz.nextalone.nagram.NaConfig.interfaceStyleBlurAlpha()));
+                    canvas.drawRect(0, surfaceTop, getMeasuredWidth(), surfaceBottom, actionBarDefaultPaint);
+                    actionBarDefaultPaint.setColor(oldColor);
+                } else {
+                    canvas.drawRect(0, surfaceTop, getMeasuredWidth(), surfaceBottom, actionBarDefaultPaint);
+                }
             }
             boolean result;
             if (child == viewPages[0] || (viewPages.length > 1 && child == viewPages[1]) || child == topPanelLayout || child == filterTabsView) {
@@ -5033,7 +5050,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
             BlurredBackgroundDrawable topPanelLayoutBackground = iBlur3FactoryLiquidGlass.create(topPanelLayout)
                 // NagramX: animated banners retain their drawable but share the parent surface color.
-                .setColorProvider(BlurredBackgroundProviderImpl.dialogsTopPanel(resourceProvider))
+                .setColorProvider(BlurredBackgroundProviderImpl.dialogsTopPanel(currentAccount, resourceProvider))
                 .setPadding(naxFlatChatListTopBar ? 0 : dp(7));
 
             topPanelLayout.setPadding(dp(11), dp(21), dp(11), dp(21));
