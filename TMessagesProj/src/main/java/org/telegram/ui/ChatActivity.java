@@ -5407,6 +5407,8 @@ public class ChatActivity extends BaseFragment implements
         chatInputViewsContainer = new ChatInputViewsContainer(context, true);
         chatInputViewsContainer.setClipChildren(false);
         chatInputViewsContainer.setWindowInsetsProvider(windowInsetsStateHolder);
+        // NagramX: keep Composer input surfaces on their own provider so the Apply Composer gate
+        // cannot flatten satellite, action, channel, or camera button surfaces using the shared provider.
         BlurredBackgroundDrawable composerInputDrawable =
             glassBackgroundDrawableFactory.create(chatInputViewsContainer, composerGlassColorProvider);
         chatInputViewsContainer.setInputIslandBubbleDrawable(composerInputDrawable);

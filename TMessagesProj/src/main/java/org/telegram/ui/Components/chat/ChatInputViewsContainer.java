@@ -22,8 +22,6 @@ import org.telegram.ui.Components.blur3.BlurredBackgroundWithFadeDrawable;
 import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
 import org.telegram.ui.Components.inset.InAppKeyboardInsetView;
 import org.telegram.ui.Components.inset.WindowInsetsProvider;
-import xyz.nextalone.nagram.helpers.InterfaceStyleController;
-
 public class ChatInputViewsContainer extends FrameLayout {
     public static final int INPUT_BUBBLE_RADIUS = 22;
     public static final int INPUT_KEYBOARD_RADIUS = 29;
@@ -143,7 +141,7 @@ public class ChatInputViewsContainer extends FrameLayout {
 
     private int currentBlurredHeight;
     private int composerRadius(int radius) {
-        return flatComposer && InterfaceStyleController.applyComposer() ? 0 : dp(radius);
+        return flatComposer && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyComposer() ? 0 : dp(radius);
     }
 
     private void checkBlurredHeight(boolean force) {
