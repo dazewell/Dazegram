@@ -10,7 +10,6 @@ import org.telegram.messenger.BuildConfig
 import org.telegram.messenger.BuildVars
 import org.telegram.messenger.FileLog
 import org.telegram.messenger.SharedConfig
-import org.telegram.ui.ActionBar.Theme
 import tw.nekomimi.nekogram.NekoConfig
 import tw.nekomimi.nekogram.config.ConfigItem
 import tw.nekomimi.nekogram.config.ConfigItemKeyLinked
@@ -1531,6 +1530,41 @@ object NaConfig {
         return 1f - percent / 100f
     }
 
+    @Volatile
+    private var composerGlassTransparencyMigrated = false
+
+    // NagramX: caller supplies theme mode because Theme may not be ready during NaConfig init.
+    @JvmStatic
+    fun migrateComposerGlassTransparency(preferDark: Boolean) {
+        if (composerGlassTransparencyMigrated) {
+            return
+        }
+        synchronized(sync) {
+            if (composerGlassTransparencyMigrated) {
+                return
+            }
+            val preferredComposerGlassKey = if (preferDark) "ComposerGlassDark" else "ComposerGlassLight"
+            val fallbackComposerGlassKey = if (preferDark) "ComposerGlassLight" else "ComposerGlassDark"
+            val legacyComposerGlassKey = when {
+                getPreferences().contains(preferredComposerGlassKey) -> preferredComposerGlassKey
+                getPreferences().contains(fallbackComposerGlassKey) -> fallbackComposerGlassKey
+                else -> null
+            }
+            if (!getPreferences().contains(interfaceStyleBlurStrength.key) && legacyComposerGlassKey != null) {
+                interfaceStyleBlurStrength.setConfigInt(
+                    (getPreferences().getInt(legacyComposerGlassKey, 25) * 2).coerceIn(0, 100)
+                )
+            }
+            if (legacyComposerGlassKey != null) {
+                getPreferences().edit {
+                    remove("ComposerGlassLight")
+                    remove("ComposerGlassDark")
+                }
+            }
+            composerGlassTransparencyMigrated = true
+        }
+    }
+
     val inputTextSize =
         addConfig(
             "InputTextSize",
@@ -1775,24 +1809,6 @@ object NaConfig {
             translatorMode.setConfigInt(0)
         }
         xyz.nextalone.nagram.ui.composer.ComposerLayout.migrate()
-        val preferredComposerGlassKey = if (Theme.isCurrentThemeDark()) "ComposerGlassDark" else "ComposerGlassLight"
-        val fallbackComposerGlassKey = if (Theme.isCurrentThemeDark()) "ComposerGlassLight" else "ComposerGlassDark"
-        val legacyComposerGlassKey = when {
-            getPreferences().contains(preferredComposerGlassKey) -> preferredComposerGlassKey
-            getPreferences().contains(fallbackComposerGlassKey) -> fallbackComposerGlassKey
-            else -> null
-        }
-        if (!getPreferences().contains(interfaceStyleBlurStrength.key) && legacyComposerGlassKey != null) {
-            interfaceStyleBlurStrength.setConfigInt(
-                (getPreferences().getInt(legacyComposerGlassKey, 25) * 2).coerceIn(0, 100)
-            )
-        }
-        if (legacyComposerGlassKey != null) {
-            getPreferences().edit {
-                remove("ComposerGlassLight")
-                remove("ComposerGlassDark")
-            }
-        }
         if (!getPreferences().contains(idDcType.key) && !getPreferences().getBoolean(
                 "ShowIdAndDc", true
             )

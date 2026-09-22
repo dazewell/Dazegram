@@ -56,6 +56,7 @@ public class ComposerGlassProvider extends BlurredBackgroundColorProviderThemed 
 
     @Override
     public int getBackgroundColor() {
+        NaConfig.migrateComposerGlassTransparency(isDarkTheme());
         if (gateOnBlurEnabled && !BlurredBackgroundProviderImpl.checkBlurEnabled(currentAccount, resourcesProvider)) {
             return ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider), 255);
         }

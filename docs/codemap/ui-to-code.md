@@ -12,15 +12,15 @@ style enum: `InterfaceStyleController.isMaterialDesign3()` derives MD3 from the
 existing Liquid Glass setting and support gate
 (`InterfaceStyleController.java:9-10`). The page writes Liquid Glass with
 `LiteMode.toggleFlag(...)` and reloads the interface
-(`InterfaceStyleActivity.java:154-164`).
+(`InterfaceStyleActivity.java:170-175`).
 
 The shared Blur strength row is visible in both styles because composer glass
-already consumes it (`InterfaceStyleActivity.java:211-213,342-350`;
-`ComposerGlassProvider.java:63-64`; `NaConfig.kt:1528-1530`). MD3-only rows are
+already consumes it (`InterfaceStyleActivity.java:213-215,347-352`;
+`ComposerGlassProvider.java:59-65`; `NaConfig.kt:1528-1531`). MD3-only rows are
 visible only after the Material Design 3 radio is selected
-(`InterfaceStyleActivity.java:214-239`). The Apply to rows expose Chat header,
+(`InterfaceStyleActivity.java:216-241`). The Apply to rows expose Chat header,
 Chat list top bar, Buttons, and Bottom navigation
-(`InterfaceStyleActivity.java:329-341`). Only the first two currently have
+(`InterfaceStyleActivity.java:328-343`). Only the first two currently have
 render consumers; Buttons and Bottom navigation are settings/controller gates
 for later render slices (`InterfaceStyleController.java:13-26`).
 

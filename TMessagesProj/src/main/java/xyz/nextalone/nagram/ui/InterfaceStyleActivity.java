@@ -72,6 +72,8 @@ public class InterfaceStyleActivity extends BaseFragment {
 
     @Override
     public View createView(Context context) {
+        NaConfig.migrateComposerGlassTransparency(Theme.isCurrentThemeDark());
+
         actionBar.setBackButtonImage(R.drawable.ic_ab_back);
         actionBar.setTitle(getString(R.string.InterfaceStyle));
         actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
