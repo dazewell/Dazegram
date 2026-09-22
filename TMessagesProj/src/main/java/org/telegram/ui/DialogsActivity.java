@@ -957,10 +957,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         && BlurredBackgroundProviderImpl.checkBlurEnabled(currentAccount, resourceProvider)) {
                     iBlur3SourceGlassFrosted.draw(canvas, 0, surfaceTop, getMeasuredWidth(), surfaceBottom);
                     final int oldColor = actionBarDefaultPaint.getColor();
+                    final int oldAlpha = actionBarDefaultPaint.getAlpha();
                     actionBarDefaultPaint.setColor(getDialogsTopSurfaceColor());
                     actionBarDefaultPaint.setAlpha(Math.round(255f * xyz.nextalone.nagram.NaConfig.interfaceStyleBlurAlpha()));
                     canvas.drawRect(0, surfaceTop, getMeasuredWidth(), surfaceBottom, actionBarDefaultPaint);
                     actionBarDefaultPaint.setColor(oldColor);
+                    actionBarDefaultPaint.setAlpha(oldAlpha);
                 } else {
                     canvas.drawRect(0, surfaceTop, getMeasuredWidth(), surfaceBottom, actionBarDefaultPaint);
                 }
