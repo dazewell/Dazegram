@@ -15,7 +15,7 @@ import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
 public class SearchTabsAndFiltersLayout extends FrameLayout implements Theme.Colorable {
     private final Path clipPath = new Path();
     private BlurredBackgroundDrawable blurredBackgroundDrawable;
-    private boolean flatBackground;
+    private boolean flatClip;
 
     public SearchTabsAndFiltersLayout(@NonNull Context context) {
         super(context);
@@ -29,7 +29,7 @@ public class SearchTabsAndFiltersLayout extends FrameLayout implements Theme.Col
 
     private void updateClipPath(int w, int h) {
         clipPath.rewind();
-        if (flatBackground) {
+        if (flatClip) {
             clipPath.addRect(0, 0, w, h, Path.Direction.CW);
         } else {
             clipPath.addRoundRect(dp(9), dp(9), w - dp(9), h - dp(9),
@@ -49,9 +49,9 @@ public class SearchTabsAndFiltersLayout extends FrameLayout implements Theme.Col
         setBackground(blurredBackgroundDrawable = drawable);
     }
 
-    public void setFlatBackground(boolean flatBackground) {
-        if (this.flatBackground != flatBackground) {
-            this.flatBackground = flatBackground;
+    public void setFlatClip(boolean flatClip) {
+        if (this.flatClip != flatClip) {
+            this.flatClip = flatClip;
             updateClipPath(getWidth(), getHeight());
             invalidate();
         }

@@ -75,7 +75,7 @@ public class DialogsActivityTopPanelLayout extends AnimatedLinearLayout {
             backgroundDrawable.setAlpha((int) (bgAlpha * 255));
             // NagramX: MD3 chat-list top panels sit edge-to-edge instead of floating as cards.
             if (flatBackground) {
-                backgroundDrawable.setBounds(0, 0, getMeasuredWidth(), getPaddingTop() + getPaddingBottom() + (int) bgHeight);
+                backgroundDrawable.setBounds(0, getPaddingTop(), getMeasuredWidth(), getPaddingTop() + (int) bgHeight);
                 backgroundDrawable.setRadius(0);
             } else {
                 backgroundDrawable.setBounds(dp(4), dp(14), getMeasuredWidth() - dp(4), getPaddingTop() + getPaddingBottom() + (int) bgHeight - dp(14));

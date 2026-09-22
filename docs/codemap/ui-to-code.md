@@ -32,22 +32,26 @@ status layout, but the chat-only setup flag makes MD3 draw the main glass
 drawable full-bounds and suppress the separate back/menu pills
 (`ActionBar.java:207`, `:2387-2461`).
 
-Dialogs uses `dialogsTopPanel(...)` / `dialogsFloatingPanel(...)` providers so
-the chat-list setting does not recolour every generic `topPanel` consumer and
-the floating panel keeps a card surface tone
-(`BlurredBackgroundProviderImpl.java:55-83`). MD3 geometry is still wired only
-at `DialogsActivity` call sites: search/filter bars drop their side
-margins, radius, vertical padding, rounded child clip and drawable padding, the
-legacy top-bubbles fade is hidden, the floating panel switches its own
-background to flat bounds, and the shared search field uses the new flat
-overload (`DialogsActivity.java:4891-4909`, `:4990-4997`, `:5341-5350`,
-`:6815-6824`; `SearchTabsAndFiltersLayout.java:18-58`).
+Dialogs MD3 is owned by `DialogsActivity.ContentView`, not by each row.
+`getDialogsTopSurfaceColorKey()` selects one opaque theme role for normal and
+Search modes, `drawChild(...)` paints that surface above scrolling rows but
+below the top controls, and `updateContextViewPosition()` supplies its animated
+tab extent (`DialogsActivity.java:593-600`, `:934-942`, `:6839-6848`). The
+search/folder rows do not install their own MD3 backgrounds; search-type tabs
+keep only a full-bounds child clip, the search field keeps its rounded control
+background, and the independently animated temporary panel reuses the same
+dialogs provider (`DialogsActivity.java:4932-4945`, `:5024-5033`,
+`:5372-5389`; `SearchTabsAndFiltersLayout.java:15-59`;
+`BlurredBackgroundProviderImpl.java:53-72`).
 Chat-side strips use the same chat-header flag through `ChatActivity` and the
 component flat hooks (`ChatActivity.java:8627-8630`, `:9896-9900`,
-`:11153-11155`, `:52105-52110`, `:52124-52126`;
+`:11153-11155`, `:52132-52135`;
 `ChatActivityTopPanelLayout.java:37-89`;
-`DialogsActivityTopPanelLayout.java:36-82`; `FragmentSearchField.java:213-218`;
-`TopicsTabsView.java:485-498`).
+`DialogsActivityTopPanelLayout.java:36-82`; `TopicsTabsView.java:485-498`).
+Pinned-message child margins use one explicit MD3 keyline at creation and at
+both runtime image/no-image updates, while the full-width panel background and
+forum side-menu padding remain separate (`ChatActivity.java:12710-12716`,
+`:12821-12893`, `:30953-30972`).
 
 *(Established 2026-09-21, during `#interface-style`.)*
 

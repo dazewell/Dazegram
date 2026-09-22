@@ -53,20 +53,10 @@ public class BlurredBackgroundProviderImpl {
     // NagramX: DialogsActivity needs an Interface Style branch without changing the many unrelated
     // generic topPanel consumers such as media pickers and shared-media tabs.
     public static BlurredBackgroundProvider dialogsTopPanel(Theme.ResourcesProvider resourcesProvider) {
-        return dialogsPanel(resourcesProvider, Theme.key_actionBarDefault);
-    }
-
-    // NagramX: the floating dialogs panel is part of the chat-list top area but still uses a card
-    // surface tone, not the action-bar tone used by the search and filter bars.
-    public static BlurredBackgroundProvider dialogsFloatingPanel(Theme.ResourcesProvider resourcesProvider) {
-        return dialogsPanel(resourcesProvider, Theme.key_windowBackgroundWhite);
-    }
-
-    private static BlurredBackgroundProvider dialogsPanel(Theme.ResourcesProvider resourcesProvider, int md3ColorKey) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
             .setBackgroundColor((r, isDark) -> {
                 if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()) {
-                    return ColorUtils.setAlphaComponent(Theme.getColor(md3ColorKey, r), 255);
+                    return ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_actionBarDefault, r), 255);
                 }
                 final float alpha = LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS) ? 0.85f : 0.76f;
                 final int colorBg = Theme.getColor(Theme.key_windowBackgroundWhite, r);
