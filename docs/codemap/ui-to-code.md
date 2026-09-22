@@ -23,13 +23,28 @@ surfaces with render consumers: Chat header and Chat list top bar
 (`InterfaceStyleController.java:13-18`).
 
 Chat/action-bar surfaces use the existing account-aware
-`topPanelChatActivity(...)` provider and switch to the pre-Glass theme colour in
-MD3 (`BlurredBackgroundProviderImpl.java:201-206`). Dialogs uses a
-`dialogsTopPanel(...)` / `dialogsFloatingPanel(...)` providers so the chat-list
-setting does not recolour every generic `topPanel` consumer and the floating
-panel keeps a card surface tone (`BlurredBackgroundProviderImpl.java:55-83`).
-`DialogsActivity` only swaps the four chat-list top-panel call sites
-(`DialogsActivity.java:4901`, `:4988`, `:5335`, `:5345`).
+`topPanelChatActivity(...)` colour logic, but `ChatActivity` calls the
+chat-only `chatHeaderPanel(...)` wrapper so MD3 can also remove glass
+stroke/shadow without changing Community/Admin/SearchTags users of the generic
+provider (`BlurredBackgroundProviderImpl.java:194-220`;
+`ChatActivity.java:5392`). `ActionBar` still stays in glass mode for title and
+status layout, but the chat-only setup flag makes MD3 draw the main glass
+drawable full-bounds and suppress the separate back/menu pills
+(`ActionBar.java:207`, `:2387-2461`).
+
+Dialogs uses `dialogsTopPanel(...)` / `dialogsFloatingPanel(...)` providers so
+the chat-list setting does not recolour every generic `topPanel` consumer and
+the floating panel keeps a card surface tone
+(`BlurredBackgroundProviderImpl.java:55-83`). MD3 geometry is still wired only
+at the four `DialogsActivity` call sites: search/filter bars drop their side
+margins, radius and drawable padding, the floating panel switches its own
+background to flat bounds, and the shared search field uses the new flat
+overload (`DialogsActivity.java:4899-4905`, `:4990-4995`, `:5338-5348`).
+Chat-side strips use the same chat-header flag through `ChatActivity` and the
+component flat hooks (`ChatActivity.java:8627-8630`, `:9896-9900`,
+`:11153-11155`; `ChatActivityTopPanelLayout.java:37-88`;
+`DialogsActivityTopPanelLayout.java:36-82`; `FragmentSearchField.java:213-218`;
+`TopicsTabsView.java:485-498`).
 
 *(Established 2026-09-21, during `#interface-style`.)*
 

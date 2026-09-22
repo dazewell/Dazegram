@@ -66,6 +66,7 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
     private boolean closeButtonForcedVisible;
     public final EditTextBoldCursor editText;
     private BlurredBackgroundDrawable blurredBackgroundDrawable;
+    private boolean flatBlurredBackground;
 
     public FragmentSearchField(Context context, Theme.ResourcesProvider resourcesProvider) {
         super(context);
@@ -193,11 +194,12 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
             bg.draw(canvas);
         }
         if (blurredBackgroundDrawable != null) {
+            final int inset = flatBlurredBackground ? 0 : dp(4);
             blurredBackgroundDrawable.setBounds(
-                    getPaddingLeft() - dp(4),
-                    getPaddingTop() - dp(4),
-                    getWidth() - getPaddingRight() + dp(4),
-                    (getHeight() - getPaddingBottom()) + dp(4));
+                    getPaddingLeft() - inset,
+                    getPaddingTop() - inset,
+                    getWidth() - getPaddingRight() + inset,
+                    (getHeight() - getPaddingBottom()) + inset);
             blurredBackgroundDrawable.draw(canvas);
         }
         super.dispatchDraw(canvas);
@@ -205,8 +207,14 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
     }
 
     public void setupBlurredBackground(BlurredBackgroundDrawable drawable) {
-        drawable.setRadius(dp(20));
-        drawable.setPadding(dp(4));
+        setupBlurredBackground(drawable, false);
+    }
+
+    public void setupBlurredBackground(BlurredBackgroundDrawable drawable, boolean flatBackground) {
+        flatBlurredBackground = flatBackground;
+        // NagramX: dialogs MD3 uses this shared field as an edge-to-edge top-panel strip.
+        drawable.setRadius(flatBackground ? 0 : dp(20));
+        drawable.setPadding(flatBackground ? 0 : dp(4));
         blurredBackgroundDrawable = drawable;
     }
 

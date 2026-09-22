@@ -4895,12 +4895,14 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         searchTabsAndFiltersLayout = new SearchTabsAndFiltersLayout(getContext());
         searchTabsAndFiltersLayout.setPadding(0, dp(7), 0, dp(7));
-        contentView.addView(searchTabsAndFiltersLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, SEARCH_TABS_HEIGHT, Gravity.TOP, 4, 0, 4, 0));
+        // NagramX: MD3 chat-list top bars sit edge-to-edge instead of floating as cards.
+        final boolean naxFlatChatListTopBar = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar();
+        contentView.addView(searchTabsAndFiltersLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, SEARCH_TABS_HEIGHT, Gravity.TOP, naxFlatChatListTopBar ? 0 : 4, 0, naxFlatChatListTopBar ? 0 : 4, 0));
 
         // NagramX: dialogs-only provider keeps Interface Style from recolouring every generic top-panel consumer.
         BlurredBackgroundDrawable searchTabsViewBackground = iBlur3FactoryLiquidGlass.create(searchTabsAndFiltersLayout, BlurredBackgroundProviderImpl.dialogsTopPanel(resourceProvider));
-        searchTabsViewBackground.setRadius(dp(18));
-        searchTabsViewBackground.setPadding(dp(6.666f));
+        searchTabsViewBackground.setRadius(naxFlatChatListTopBar ? 0 : dp(18));
+        searchTabsViewBackground.setPadding(naxFlatChatListTopBar ? 0 : dp(6.666f));
         searchTabsAndFiltersLayout.setPadding(0, dp(7), 0, dp(7));
         searchTabsAndFiltersLayout.setBlurredBackground(searchTabsViewBackground);
 
@@ -4986,10 +4988,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             BlurredBackgroundDrawable topPanelLayoutBackground = iBlur3FactoryLiquidGlass.create(topPanelLayout)
                 // NagramX: this floating panel needs the card tone, not the search/filter bar tone.
                 .setColorProvider(BlurredBackgroundProviderImpl.dialogsFloatingPanel(resourceProvider))
-                .setPadding(dp(7));
+                .setPadding(naxFlatChatListTopBar ? 0 : dp(7));
 
             topPanelLayout.setPadding(dp(11), dp(21), dp(11), dp(21));
             topPanelLayout.setBlurredBackground(topPanelLayoutBackground);
+            topPanelLayout.setFlatBackground(naxFlatChatListTopBar);
             topPanelLayout.setDefaultRadiusDp(communityId != 0 ? 18 : 24);
 
             fragmentLocationContextViewWrapper = new FrameLayout(context);
@@ -5333,16 +5336,16 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (filterTabsView != null) {
             // NagramX: dialogs-only provider keeps Interface Style from recolouring every generic top-panel consumer.
             BlurredBackgroundDrawable filterTabsViewBackground = iBlur3FactoryLiquidGlass.create(filterTabsView, BlurredBackgroundProviderImpl.dialogsTopPanel(resourceProvider));
-            filterTabsViewBackground.setRadius(dp(18));
-            filterTabsViewBackground.setPadding(dp(6.666f));
+            filterTabsViewBackground.setRadius(xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar() ? 0 : dp(18));
+            filterTabsViewBackground.setPadding(xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar() ? 0 : dp(6.666f));
             filterTabsView.setPadding(0, dp(7), 0, dp(7));
             filterTabsView.setBlurredBackground(filterTabsViewBackground);
-            contentView.addView(filterTabsView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 36 + 7 + 7, Gravity.TOP, 4, 0, 4, 0));
+            contentView.addView(filterTabsView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 36 + 7 + 7, Gravity.TOP, xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar() ? 0 : 4, 0, xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar() ? 0 : 4, 0));
         }
 
         if (fragmentSearchField != null) {
             // NagramX: dialogs-only provider keeps Interface Style from recolouring every generic top-panel consumer.
-            fragmentSearchField.setupBlurredBackground(iBlur3FactoryLiquidGlass.create(fragmentSearchField, BlurredBackgroundProviderImpl.dialogsTopPanel(resourceProvider)));
+            fragmentSearchField.setupBlurredBackground(iBlur3FactoryLiquidGlass.create(fragmentSearchField, BlurredBackgroundProviderImpl.dialogsTopPanel(resourceProvider)), xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar());
         }
 
         dialogStoriesCell = new DialogStoriesCell(context, this, currentAccount, isArchive() ? DialogStoriesCell.TYPE_ARCHIVE : DialogStoriesCell.TYPE_DIALOGS) {

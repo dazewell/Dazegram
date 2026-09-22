@@ -27,9 +27,16 @@ public class DialogsActivityTopPanelLayout extends AnimatedLinearLayout {
     }
 
     BlurredBackgroundDrawable backgroundDrawable;
+    private boolean flatBackground;
 
     public void setBlurredBackground(BlurredBackgroundDrawable background) {
         backgroundDrawable = background;
+    }
+
+    public void setFlatBackground(boolean flatBackground) {
+        this.flatBackground = flatBackground;
+        checkBoundsAndClipping();
+        invalidate();
     }
 
     @Override
@@ -60,14 +67,20 @@ public class DialogsActivityTopPanelLayout extends AnimatedLinearLayout {
 
         clipRectF.set(getPaddingLeft(), getPaddingTop(), getMeasuredWidth() - getPaddingRight(), getPaddingTop() + bgHeight);
 
-        final float r = Math.min(dp(defaultRadiusDp), Math.min(clipRectF.width(), clipRectF.height()) / 2f);
+        final float r = flatBackground ? 0 : Math.min(dp(defaultRadiusDp), Math.min(clipRectF.width(), clipRectF.height()) / 2f);
         clipPath.rewind();
         clipPath.addRoundRect(clipRectF, r, r, Path.Direction.CW);
 
         if (backgroundDrawable != null) {
             backgroundDrawable.setAlpha((int) (bgAlpha * 255));
-            backgroundDrawable.setBounds(dp(4), dp(14), getMeasuredWidth() - dp(4), getPaddingTop() + getPaddingBottom() + (int) bgHeight - dp(14));
-            backgroundDrawable.setRadius(Math.min(dp(defaultRadiusDp), bgHeight / 2));
+            // NagramX: MD3 chat-list top panels sit edge-to-edge instead of floating as cards.
+            if (flatBackground) {
+                backgroundDrawable.setBounds(0, 0, getMeasuredWidth(), getPaddingTop() + getPaddingBottom() + (int) bgHeight);
+                backgroundDrawable.setRadius(0);
+            } else {
+                backgroundDrawable.setBounds(dp(4), dp(14), getMeasuredWidth() - dp(4), getPaddingTop() + getPaddingBottom() + (int) bgHeight - dp(14));
+                backgroundDrawable.setRadius(Math.min(dp(defaultRadiusDp), bgHeight / 2));
+            }
         }
     }
 

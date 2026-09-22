@@ -28,9 +28,16 @@ public class ChatActivityTopPanelLayout extends AnimatedLinearLayout {
     }
 
     BlurredBackgroundDrawable backgroundDrawable;
+    private boolean flatBackground;
 
     public void setBlurredBackground(BlurredBackgroundDrawable background) {
         backgroundDrawable = background;
+    }
+
+    public void setFlatBackground(boolean flatBackground) {
+        this.flatBackground = flatBackground;
+        checkBoundsAndClipping();
+        invalidate();
     }
 
     @Override
@@ -68,14 +75,20 @@ public class ChatActivityTopPanelLayout extends AnimatedLinearLayout {
 
         clipRectF.set(getPaddingLeft(), getPaddingTop(), getMeasuredWidth() - getPaddingRight(), getPaddingTop() + bgHeight);
 
-        final float r = Math.min(dp(18), Math.min(clipRectF.width(), clipRectF.height()) / 2f);
+        final float r = flatBackground ? 0 : Math.min(dp(18), Math.min(clipRectF.width(), clipRectF.height()) / 2f);
         clipPath.rewind();
         clipPath.addRoundRect(clipRectF, r, r, Path.Direction.CW);
 
         if (backgroundDrawable != null) {
             backgroundDrawable.setAlpha((int) (bgAlpha * 255));
-            backgroundDrawable.setBounds(getPaddingLeft() - dp(7), 0, getMeasuredWidth() - getPaddingRight() + dp(7), getPaddingTop() + getPaddingBottom() + (int) bgHeight);
-            backgroundDrawable.setRadius(Math.min(dp(18), bgHeight / 2));
+            // NagramX: MD3 top panels are flat bars, not inset Liquid Glass cards.
+            if (flatBackground) {
+                backgroundDrawable.setBounds(getPaddingLeft() - dp(7), 0, getMeasuredWidth(), getPaddingTop() + getPaddingBottom() + (int) bgHeight);
+                backgroundDrawable.setRadius(0);
+            } else {
+                backgroundDrawable.setBounds(getPaddingLeft() - dp(7), 0, getMeasuredWidth() - getPaddingRight() + dp(7), getPaddingTop() + getPaddingBottom() + (int) bgHeight);
+                backgroundDrawable.setRadius(Math.min(dp(18), bgHeight / 2));
+            }
         }
     }
 

@@ -73,9 +73,9 @@ public class BlurredBackgroundProviderImpl {
                 final int colorTarget = Theme.getColor(Theme.key_glass_targetMainTopPanel, r);
                 return solveSrcColor(colorBg, colorTarget, alpha);
             })
-            .setStrokeColorTop(0x11000000, 0x06FFFFFF)
-            .setStrokeColorBottom(0x20000000, 0x11FFFFFF)
-            .setShadowColor(0x20000000, 0x04FFFFFF)
+            .setStrokeColorTop((r, isDark) -> xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar() ? 0 : (isDark ? 0x06FFFFFF : 0x11000000))
+            .setStrokeColorBottom((r, isDark) -> xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar() ? 0 : (isDark ? 0x11FFFFFF : 0x20000000))
+            .setShadowColor((r, isDark) -> xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar() ? 0 : (isDark ? 0x04FFFFFF : 0x20000000))
             .setShadowLayer(dpf2(2.667f), 0, dpf2(0.85f))
             .setStrokeWidth(dpf2(0.4f), dpf2(0.4f))
             .build();
@@ -191,14 +191,22 @@ public class BlurredBackgroundProviderImpl {
         return topPanelChatActivity(UserConfig.selectedAccount, resourcesProvider);
     }
 
+    public static BlurredBackgroundProvider chatHeaderPanel(int currentAccount, Theme.ResourcesProvider resourcesProvider) {
+        return topPanelChatActivity(currentAccount, resourcesProvider, true);
+    }
+
     // NagramX: account-aware overload so bubble chats (which run under a
     // notification's account, not the globally selected one) evaluate blur
     // eligibility against the right account's config.
     public static BlurredBackgroundProvider topPanelChatActivity(int currentAccount, Theme.ResourcesProvider resourcesProvider) {
+        return topPanelChatActivity(currentAccount, resourcesProvider, false);
+    }
+
+    private static BlurredBackgroundProvider topPanelChatActivity(int currentAccount, Theme.ResourcesProvider resourcesProvider, boolean flatMd3Chrome) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
                 .setBackgroundColor((r, isDark) -> {
                     // NagramX: MD3 keeps the pre-Glass theme colour instead of the glass target tint.
-                    if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() || !checkBlurEnabled(currentAccount, resourcesProvider)) {
+                    if (flatMd3Chrome && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() || !checkBlurEnabled(currentAccount, resourcesProvider)) {
                         return ColorUtils.setAlphaComponent(Theme.getColor(isDark ?
                             Theme.key_actionBarDefault : Theme.key_chat_topPanelBackground, r), 255);
                     }
@@ -207,9 +215,9 @@ public class BlurredBackgroundProviderImpl {
                     final int colorBg = Theme.getColor(Theme.key_chat_topPanelBackground, r);
                     return Theme.multAlpha(colorBg, alpha);
                 })
-                .setStrokeColorTop(0xFFFFFFFF, 0x20FFFFFF)
-                .setStrokeColorBottom(0xFFFFFFFF, 0x14FFFFFF)
-                .setShadowColor(0x20000000, 0)
+                .setStrokeColorTop((r, isDark) -> flatMd3Chrome && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : (isDark ? 0x20FFFFFF : 0xFFFFFFFF))
+                .setStrokeColorBottom((r, isDark) -> flatMd3Chrome && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : (isDark ? 0x14FFFFFF : 0xFFFFFFFF))
+                .setShadowColor((r, isDark) -> flatMd3Chrome && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : (isDark ? 0 : 0x20000000))
                 //.setShadowLayer(dpf2(10 / 3f), 0, dpf2(2 / 3f))
                 .setStrokeWidth(dpf2(0.55f), dpf2(0.55f))
                 .build();
