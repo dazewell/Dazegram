@@ -17,4 +17,12 @@ public class InterfaceStyleController {
     public static boolean applyChatListTopBar() {
         return isMaterialDesign3() && NaConfig.INSTANCE.getInterfaceStyleApplyChatListTopBar().Bool();
     }
+
+    public static boolean applyButtons() {
+        return isMaterialDesign3() && NaConfig.INSTANCE.getInterfaceStyleApplyButtons().Bool();
+    }
+
+    public static boolean applyBottomNavigation() {
+        return isMaterialDesign3() && NaConfig.INSTANCE.getInterfaceStyleApplyBottomNavigation().Bool();
+    }
 }

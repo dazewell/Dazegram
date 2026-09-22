@@ -60,8 +60,8 @@ public class ComposerGlassProvider extends BlurredBackgroundColorProviderThemed 
             return ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider), 255);
         }
 
-        // NagramX: dropped upstream's light-theme alpha 216 override — light and dark theme now each read their own configured pass-through (see NaConfig.composerGlassAlpha), read live rather than cached so an auto night mode flip picks up the right one without reopening the chat
-        return Theme.multAlpha(Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider), NaConfig.composerGlassAlpha(isDarkTheme()));
+        // NagramX: composer glass shares Interface Style's blur-strength value, capped to its old 0-50% pass-through band in NaConfig so the pill cannot disappear into the wallpaper.
+        return Theme.multAlpha(Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider), NaConfig.interfaceStyleBlurAlpha());
     }
 
     // NagramX: light-theme shadow alpha bumped from the base class's 0x20000000 for the stronger 3D

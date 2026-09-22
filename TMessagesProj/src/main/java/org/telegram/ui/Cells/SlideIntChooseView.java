@@ -139,6 +139,18 @@ public class SlideIntChooseView extends FrameLayout {
     private Options options;
     private CharSequence label;
 
+    public void updateColors() {
+        // NagramX: fork settings pages reuse this upstream slider; theme changes must refresh labels
+        // that were previously coloured only in the constructor.
+        minText.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText, resourcesProvider));
+        valueText.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteValueText, resourcesProvider));
+        if (options != null) {
+            maxText.setTextColor(Theme.getColor(value >= options.getMax() ? Theme.key_windowBackgroundWhiteValueText : Theme.key_windowBackgroundWhiteGrayText, resourcesProvider));
+        } else {
+            maxText.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText, resourcesProvider));
+        }
+    }
+
     public void setLabel(CharSequence label) {
         this.label = label;
     }
