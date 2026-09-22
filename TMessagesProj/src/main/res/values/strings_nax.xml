@@ -348,7 +348,7 @@
     <string name="InterfaceStyleApplyBottomNavigationInfo">The Chats, Settings, and Profile navigation bar once it has Material Design 3 rendering.</string>
     <string name="InterfaceStyleBlurStrength">Blur strength</string>
     <string name="InterfaceStyleBlurStrengthAccDescr">Blur strength</string>
-    <string name="InterfaceStyleBlurStrengthInfo">Controls how much wallpaper shows through the composer glass now, and MD3 blurred surfaces once they land.</string>
+    <string name="InterfaceStyleBlurStrengthInfo">Controls how much wallpaper shows through the composer glass now, and MD3 blurred surfaces once they land. Has no visible effect in chats while chat blur is off.</string>
     <string name="InterfaceStylePanelColorsHeader">Panel colors</string>
     <string name="InterfaceStyleMatchClassicDayHeader">Match Classic and Day header color</string>
     <string name="InterfaceStyleMatchClassicDayHeaderInfo">Will use the old Classic and Day theme panel color for MD3 chat headers once that color slice lands.</string>

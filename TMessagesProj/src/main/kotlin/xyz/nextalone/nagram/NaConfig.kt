@@ -10,6 +10,7 @@ import org.telegram.messenger.BuildConfig
 import org.telegram.messenger.BuildVars
 import org.telegram.messenger.FileLog
 import org.telegram.messenger.SharedConfig
+import org.telegram.ui.ActionBar.Theme
 import tw.nekomimi.nekogram.NekoConfig
 import tw.nekomimi.nekogram.config.ConfigItem
 import tw.nekomimi.nekogram.config.ConfigItemKeyLinked
@@ -1774,9 +1775,11 @@ object NaConfig {
             translatorMode.setConfigInt(0)
         }
         xyz.nextalone.nagram.ui.composer.ComposerLayout.migrate()
+        val preferredComposerGlassKey = if (Theme.isCurrentThemeDark()) "ComposerGlassDark" else "ComposerGlassLight"
+        val fallbackComposerGlassKey = if (Theme.isCurrentThemeDark()) "ComposerGlassLight" else "ComposerGlassDark"
         val legacyComposerGlassKey = when {
-            getPreferences().contains("ComposerGlassLight") -> "ComposerGlassLight"
-            getPreferences().contains("ComposerGlassDark") -> "ComposerGlassDark"
+            getPreferences().contains(preferredComposerGlassKey) -> preferredComposerGlassKey
+            getPreferences().contains(fallbackComposerGlassKey) -> fallbackComposerGlassKey
             else -> null
         }
         if (!getPreferences().contains(interfaceStyleBlurStrength.key) && legacyComposerGlassKey != null) {
