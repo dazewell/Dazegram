@@ -20,9 +20,9 @@ already consumes it (`InterfaceStyleActivity.java:213-215,347-352`;
 visible only after the Material Design 3 radio is selected
 (`InterfaceStyleActivity.java:216-241`). The Apply to rows expose Chat header, Chat list top bar, Buttons, Composer, and
 Bottom navigation (`InterfaceStyleActivity.java:328-351`). Chat header, chat
-list top bar, and Composer have render consumers; Buttons and Bottom navigation
-remain settings/controller gates for later render slices
-(`InterfaceStyleController.java:13-30`).
+list top bar, Buttons, Composer, and Bottom navigation have render consumers;
+Classic/Day header colour remains a settings-only gate for a later slice
+(`InterfaceStyleActivity.java:128-129,370-372`; `ComposerGlassProvider.java:23-114`).
 
 Chat/action-bar surfaces use the existing account-aware
 `topPanelChatActivity(...)` colour logic, but `ChatActivity` calls the
@@ -62,7 +62,7 @@ geometry (`ChatActivity.java:12710-12718`, `:12823-12948`,
 Chat header and tag-search providers use the same shared blur-strength alpha
 for translucent MD3 surfaces and fall back to opaque theme roles below the
 RenderEffect/API/blur gate (`BlurredBackgroundProviderImpl.java:211-250`;
-`NaConfig.kt:1534-1537`). The filter-tab tonal pill, Buttons, and Classic/Day
+`NaConfig.kt:1534-1537`). The filter-tab tonal pill and Classic/Day
 header-color switch remain separate follow-up slices.
 
 *(Established 2026-09-22, during `#interface-style`.)*
@@ -80,17 +80,22 @@ tab geometry (`MainTabsLayout.java:50-95`; `GlassTabView.java:145-187`).
 
 *(Established 2026-09-22, during `#interface-style`.)*
 
-## Composer Apply to is isolated from shared button glass
+## Composer and Buttons Apply to split the chat glass provider family
 
 The Interface Style Composer switch is stored in `NaConfig` and exposed only
 for MD3 by `InterfaceStyleActivity` (`NaConfig.kt:1431-1437`;
-`InterfaceStyleActivity.java:115-123,221-244,328-356`). The real chat keeps
-the existing provider for satellite/action/channel/camera button surfaces, but
-uses a separate Composer provider for the input island and under-keyboard panel
-(`ChatActivity.java:4202-4203,5408-5422`). The Composer provider applies the
-flat opaque MD3 state at its own color/stroke/shadow chokepoint
-(`ComposerGlassProvider.java:63-112`), and the settings preview constructs the
-same provider role (`ComposerLayoutActivity.java:1413-1417,1490-1493`).
+`InterfaceStyleActivity.java:115-123,221-244,328-356`). The real chat uses a
+Buttons-role provider for side controls, selected-message actions, channel
+buttons, and instant-camera buttons, while the Composer provider owns the input
+island, under-keyboard panel, top-panel close satellite, and tools row
+(`ChatActivity.java:4202-4203,5412-5423,7993,8937,8977,9275,12048`;
+`ChatActivityEnterView.java:18959-18965`). The button role applies flat opaque
+MD3 colour at the shared colour-provider chokepoint; the Composer role skips
+toolbar glass when its flat MD3 input treatment is active
+(`ComposerGlassProvider.java:67-114`; `ComposerToolbarLayout.java:223-226`).
+Story controls and Dialogs floating buttons use separate providers and remain
+follow-up parity, not part of this chat-provider slice (`PeerStoriesView.java:549`;
+`FragmentFloatingButton.java:164-168`).
 
 *(Established 2026-09-22, during `#interface-style`.)*
 

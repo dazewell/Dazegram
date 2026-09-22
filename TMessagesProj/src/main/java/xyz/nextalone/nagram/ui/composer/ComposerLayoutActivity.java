@@ -1412,7 +1412,7 @@ public class ComposerLayoutActivity extends BaseFragment {
             // (see attachGlass below) so the shadow/stroke shown here matches what actually ships;
             // gateOnBlurEnabled=false because this preview has always shown the configured glass
             // regardless of whether blur happens to be off for the previewing account right now.
-            ComposerGlassProvider bodyGlassColor = new ComposerGlassProvider(UserConfig.selectedAccount, null, false, true);
+            ComposerGlassProvider bodyGlassColor = new ComposerGlassProvider(UserConfig.selectedAccount, null, false, ComposerGlassProvider.ROLE_COMPOSER);
             FrameLayout body = new FrameLayout(getContext());
             BlurredBackgroundDrawable bodyDrawable = glassFactory.create(body, bodyGlassColor);
             bodyDrawable.setRadius(InterfaceStyleController.applyComposer() ? 0 : dp(PREVIEW_INPUT_HEIGHT / 2f));
@@ -1486,9 +1486,8 @@ public class ComposerLayoutActivity extends BaseFragment {
                 glassSource = null;
             }
             glassFactory = new BlurredBackgroundDrawableViewFactory(source);
-            // NagramX: the toolbar keeps the shared glass provider because the real chat shares that
-            // provider with its satellite and action buttons; only the input surface opts into the
-            // flat Composer provider.
+            // NagramX: the preview uses the ungated default glass provider here; ComposerToolbarLayout
+            // itself clears these bubbles when the flat Composer role is active, matching the real chat.
             toolbar.attachGlass(
                     glassFactory,
                     new ComposerGlassProvider(UserConfig.selectedAccount, null, false));

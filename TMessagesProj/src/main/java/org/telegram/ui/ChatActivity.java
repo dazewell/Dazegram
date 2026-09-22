@@ -4197,10 +4197,10 @@ public class ChatActivity extends BaseFragment implements
         Timer t = Timer.create("ChatActivity.createView");
         ChatsHelper chatsHelper = ChatsHelper.getInstance(currentAccount);
 
-        // NagramX: named class (not anonymous) so it can also implement BlurredBackgroundProvider and
-        // carry the composer's stronger drop shadow + pinned stroke widths - see ComposerGlassProvider.
-        blurredBackgroundColorProvider = new xyz.nextalone.nagram.ui.composer.ComposerGlassProvider(currentAccount, themeDelegate, true);
-        composerGlassColorProvider = new xyz.nextalone.nagram.ui.composer.ComposerGlassProvider(currentAccount, themeDelegate, true, true);
+        // NagramX: named class (not anonymous) so it can carry role-specific Interface Style gates through
+        // BlurredBackgroundProvider's shadow/stroke hooks - see ComposerGlassProvider.
+        blurredBackgroundColorProvider = new xyz.nextalone.nagram.ui.composer.ComposerGlassProvider(currentAccount, themeDelegate, true, xyz.nextalone.nagram.ui.composer.ComposerGlassProvider.ROLE_BUTTON);
+        composerGlassColorProvider = new xyz.nextalone.nagram.ui.composer.ComposerGlassProvider(currentAccount, themeDelegate, true, xyz.nextalone.nagram.ui.composer.ComposerGlassProvider.ROLE_COMPOSER);
         blurredBackgroundColorProviderWhite = new BlurredBackgroundColorProviderThemed(themeDelegate, Theme.key_windowBackgroundWhite) {
             @Override
             public int getBackgroundColor() {
@@ -8934,7 +8934,7 @@ public class ChatActivity extends BaseFragment implements
         chatActivityEnterView.setMinimumHeight(AndroidUtilities.dp(51));
         chatActivityEnterView.setAllowStickersAndGifs(true, true, currentEncryptedChat == null || AndroidUtilities.getPeerLayerVersion(currentEncryptedChat.layer) >= 46);
         chatActivityEnterView.shouldDrawBackground = false;
-        chatActivityEnterView.setInputSatelliteGlassFactory(glassBackgroundDrawableFactory, blurredBackgroundColorProvider);
+        chatActivityEnterView.setInputSatelliteGlassFactory(glassBackgroundDrawableFactory, composerGlassColorProvider);
         if (textToSet != null) {
             chatActivityEnterView.setFieldText(textToSet);
             textToSet = null;
