@@ -1190,6 +1190,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             tabsView.setVisibility(View.GONE);
             return;
         }
+        tabsViewWrapper.setVisibility(View.VISIBLE);
         final boolean isUpdateLayoutVisible = updateLayoutWrapper.isUpdateLayoutVisible();
         final int updateLayoutHeight = isUpdateLayoutVisible ? dp(UpdateLayoutWrapper.HEIGHT) : 0;
         final int normalY = -(updateLayoutHeight);

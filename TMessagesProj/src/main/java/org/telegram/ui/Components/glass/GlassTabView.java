@@ -757,7 +757,6 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     // compact/non-compact) so the indicator never replaces the label a screen reader would
     // otherwise get for free from the child TextView.
     private void refreshContentDescription(boolean compact) {
-        isCompact = compact;
         boolean hasBadge = counterDrawable != null;
         CharSequence label = hasBadge || compact ? textView.getText() : null;
         if (hasBadge) {

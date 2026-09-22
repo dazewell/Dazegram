@@ -63,12 +63,12 @@ geometry (`ChatActivity.java:12710-12718`, `:12823-12948`,
 
 The Bottom navigation setting reaches the real global navigation bar through
 `MainTabsActivity.createView()` and the shared geometry helper
-(`MainTabsActivity.java:346-449`; `MainTabsHelper.java:22-69`). MD3 uses a
+(`MainTabsActivity.java:346-449`; `MainTabsHelper.java:26-31,61-66`). MD3 uses a
 dedicated provider so the existing `mainTabs()` provider remains unchanged for
 attach/statistics surfaces (`BlurredBackgroundProviderImpl.java:21-35,37-48`).
 `MainTabsLayout` fills the available width only in this scoped mode, and
 `GlassTabView` draws the selected tonal indicator without changing Liquid Glass
-tab geometry (`MainTabsLayout.java:20-93`; `GlassTabView.java:145-187`).
+tab geometry (`MainTabsLayout.java:50-95`; `GlassTabView.java:145-187`).
 
 *(Established 2026-09-22, during `#interface-style`.)*
 
