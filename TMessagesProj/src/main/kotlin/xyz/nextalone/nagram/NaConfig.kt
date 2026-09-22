@@ -1545,23 +1545,36 @@ object NaConfig {
             }
             val preferredComposerGlassKey = if (preferDark) "ComposerGlassDark" else "ComposerGlassLight"
             val fallbackComposerGlassKey = if (preferDark) "ComposerGlassLight" else "ComposerGlassDark"
-            val legacyComposerGlassKey = when {
-                getPreferences().contains(preferredComposerGlassKey) -> preferredComposerGlassKey
-                getPreferences().contains(fallbackComposerGlassKey) -> fallbackComposerGlassKey
-                else -> null
-            }
-            if (!getPreferences().contains(interfaceStyleBlurStrength.key) && legacyComposerGlassKey != null) {
+            val hasLegacyComposerGlass = getPreferences().contains(preferredComposerGlassKey) || getPreferences().contains(fallbackComposerGlassKey)
+            val legacyComposerGlassValue =
+                legacyComposerGlassValue(preferredComposerGlassKey)
+                    ?: legacyComposerGlassValue(fallbackComposerGlassKey)
+                    ?: if (hasLegacyComposerGlass) 25 else null
+            if (!getPreferences().contains(interfaceStyleBlurStrength.key) && legacyComposerGlassValue != null) {
                 interfaceStyleBlurStrength.setConfigInt(
-                    (getPreferences().getInt(legacyComposerGlassKey, 25) * 2).coerceIn(0, 100)
+                    (legacyComposerGlassValue * 2).coerceIn(0, 100)
                 )
             }
-            if (legacyComposerGlassKey != null) {
+            if (hasLegacyComposerGlass) {
                 getPreferences().edit {
                     remove("ComposerGlassLight")
                     remove("ComposerGlassDark")
                 }
             }
             composerGlassTransparencyMigrated = true
+        }
+    }
+
+    private fun legacyComposerGlassValue(key: String): Int? {
+        if (!getPreferences().contains(key)) {
+            return null
+        }
+        // NagramX: old fork builds could leave this key present with a non-int value.
+        return try {
+            getPreferences().getInt(key, 25).coerceIn(0, 50)
+        } catch (e: ClassCastException) {
+            FileLog.e(e)
+            null
         }
     }
 
