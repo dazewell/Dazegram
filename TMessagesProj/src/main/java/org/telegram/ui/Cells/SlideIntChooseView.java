@@ -149,6 +149,9 @@ public class SlideIntChooseView extends FrameLayout {
         } else {
             maxText.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText, resourcesProvider));
         }
+        // NagramX: the slider track caches this themed color in the constructor too.
+        seekBarView.setOuterColor(Theme.getColor(Theme.key_player_progress, resourcesProvider));
+        seekBarView.invalidate();
     }
 
     public void setLabel(CharSequence label) {

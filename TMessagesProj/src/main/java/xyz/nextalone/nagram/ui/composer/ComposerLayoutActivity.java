@@ -206,11 +206,9 @@ public class ComposerLayoutActivity extends BaseFragment {
      * fall through to onCreateViewHolder instead of reusing it - see
      * RecyclerView.Recycler#validateViewHolderForOffsetPosition, which covers the scrap/cache path,
      * not just the shared pool. A real recreation, not a rebind, is required because of where
-     * SlideIntChooseView (upstream, not ours to edit) puts its colours: minText and valueText -
-     * both AnimatedTextView, which ThemeDescription#processViewColor has no case for at all - are
-     * coloured once, in the constructor, and nothing in SlideIntChooseView ever re-colours them
-     * afterwards (updateTexts only re-colours maxText). Neither a rebind nor any ThemeDescription
-     * can reach those two fields from outside, so only a genuine onCreateViewHolder repaints them.
+     * SlideIntChooseView puts its colours: minText and valueText are AnimatedTextView instances,
+     * and ThemeDescription#processViewColor has no case for them. This screen still recreates its
+     * cached slider holders on theme changes instead of adding per-holder refresh plumbing here.
      * (The row background is not in the same boat - this file paints it in onCreateViewHolder below,
      * and it would be reachable the ordinary way by adding SlideIntChooseView.class to the
      * FLAG_CELLBACKGROUNDCOLOR listClasses further down; it just rides along with the same fix.)
