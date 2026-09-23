@@ -1467,16 +1467,31 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         com.radolyn.ayugram.eventschedule.MessageTriggersMenu.addTo(o, this);
     }
 
-    // NagramX: an MD3 tab spans a third of the bar, so a full-bounds card reaches the screen edge; hug indicator and label instead.
-    // The tab view is shorter than the card and its content starts at the top, so the card overhangs it to frame the indicator.
+    // NagramX: an MD3 tab spans a third of the bar and ItemOptions centres a sized card on the whole tab view,
+    // but the indicator and label sit at its top; pin the card 8dp above the indicator so it hugs them.
     private ShapeDrawable naxTabScrimBackground() {
         final int color = getThemedColor(Theme.key_windowBackgroundWhite);
         if (!md3BottomNavigation) {
             return Theme.createRoundRectDrawable(dp(28), color);
         }
-        final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(20), color);
+        final boolean compact = MainTabsHelper.isMainTabsHideTitleStyle();
+        final float r = dp(20);
+        final ShapeDrawable bg = new ShapeDrawable(new android.graphics.drawable.shapes.RoundRectShape(new float[]{r, r, r, r, r, r, r, r}, null, null)) {
+            @Override
+            public void draw(@NonNull Canvas canvas) {
+                if (compact) {
+                    super.draw(canvas);
+                    return;
+                }
+                canvas.save();
+                canvas.translate(0, -dp(8) - getBounds().top);
+                super.draw(canvas);
+                canvas.restore();
+            }
+        };
+        bg.getPaint().setColor(color);
         bg.setIntrinsicWidth(dp(96));
-        bg.setIntrinsicHeight(dp(72));
+        bg.setIntrinsicHeight(dp(compact ? 48 : 68));
         return bg;
     }
     private void setupPopupMenuStyle(ItemOptions options) {
