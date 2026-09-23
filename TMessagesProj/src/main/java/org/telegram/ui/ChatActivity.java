@@ -5407,6 +5407,9 @@ public class ChatActivity extends BaseFragment implements
         chatInputViewsContainer = new ChatInputViewsContainer(context, true);
         // NagramX: the MD3 Composer replaces the island and under-keyboard glass with one flat bar.
         chatInputViewsContainer.md3Surface = xyz.nextalone.nagram.ui.composer.ComposerMd3Surface.createIfEnabled(themeDelegate);
+        if (chatInputViewsContainer.md3Surface != null) {
+            chatInputViewsContainer.md3Surface.attachFrost(glassBackgroundSourceFrostedRenderNode, viewPositionWatcher, parentView, glassAttachedViews, glassAttachedDrawables, chatInputViewsContainer, currentAccount);
+        }
         chatInputViewsContainer.setClipChildren(false);
         chatInputViewsContainer.setWindowInsetsProvider(windowInsetsStateHolder);
         // NagramX: keep Composer input surfaces on their own provider so the Apply Composer gate

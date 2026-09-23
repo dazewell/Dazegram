@@ -10,6 +10,7 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 
 import androidx.annotation.NonNull;
@@ -19,7 +20,16 @@ import androidx.core.graphics.ColorUtils;
 import org.telegram.messenger.LocaleController;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.ChatActivityEnterView;
+import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
+import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
+import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundProvider;
+import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundProviderBuilder;
+import org.telegram.ui.Components.blur3.drawable.color.impl.BlurredBackgroundProviderImpl;
+import org.telegram.ui.Components.blur3.source.BlurredBackgroundSource;
+import org.telegram.ui.Components.chat.ViewPositionWatcher;
 
+import me.vkryl.core.reference.ReferenceList;
+import xyz.nextalone.nagram.NaConfig;
 import xyz.nextalone.nagram.helpers.InterfaceStyleController;
 
 /**
@@ -40,7 +50,7 @@ public final class ComposerMd3Surface {
     // centre with the send circle.
     private static final int FIELD_GROW = 2;
     private static final int FIELD_SEND_GAP = 8;
-    private static final int BAR_TOP_PADDING = 8;
+    private static final int BAR_TOP_PADDING = 4;
     private static final int HOST_RADIUS = 22;
 
     private final Theme.ResourcesProvider resourcesProvider;
@@ -54,6 +64,8 @@ public final class ComposerMd3Surface {
     private View actionButtons;
     private float barTop = Float.MAX_VALUE;
     private View host;
+    private BlurredBackgroundDrawable frost;
+    private int frostAccount;
     private final ViewTreeObserver.OnGlobalFocusChangeListener focusListener = (oldFocus, newFocus) -> {
         if (host != null) {
             host.invalidate();
@@ -93,13 +105,47 @@ public final class ComposerMd3Surface {
         }
     }
 
+    /**
+     * Frosts the bar the way the MD3 chat header is frosted. It gets its own factory over the chat's frosted
+     * source because the shared one hands out drawables with the Liquid Glass shader when that is enabled.
+     * Without a source (below API 31, or chat blur off when the chat opened) the bar stays opaque.
+     */
+    public void attachFrost(@Nullable BlurredBackgroundSource source, ViewPositionWatcher watcher, ViewGroup root,
+                            ReferenceList<View> linkedViews, ReferenceList<BlurredBackgroundDrawable> linkedDrawables,
+                            View view, int account) {
+        if (source == null) {
+            return;
+        }
+        final BlurredBackgroundDrawableViewFactory factory = new BlurredBackgroundDrawableViewFactory(watcher, root, source);
+        factory.setLinkedViewsRef(linkedViews);
+        factory.setLinkedDrawablesRef(linkedDrawables);
+        frost = factory.create(view, frostProvider());
+        frost.setRadius(0);
+        frostAccount = account;
+    }
+
+    // Flat by construction: no stroke and no shadow, so only the blur and the tinted surface show.
+    private BlurredBackgroundProvider frostProvider() {
+        return new BlurredBackgroundProviderBuilder(resourcesProvider)
+                .setBackgroundColor((r, isDark) -> Theme.multAlpha(surfaceColor(), NaConfig.interfaceStyleBlurAlpha()))
+                .setStrokeColorTop(0, 0)
+                .setStrokeColorBottom(0, 0)
+                .setShadowColor(0, 0)
+                .build();
+    }
+
+    private boolean frosted() {
+        return frost != null && BlurredBackgroundProviderImpl.checkBlurEnabled(frostAccount, resourcesProvider);
+    }
+
     public int surfaceColor() {
         return ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider), 255);
     }
 
-    public int containerColor() {
-        final int onSurface = ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider), 255);
-        return ColorUtils.blendARGB(surfaceColor(), onSurface, CONTAINER_ON_SURFACE_BLEND);
+    /** The 6% on-surface tint laid over the bar, so it tones a frosted bar and an opaque one alike. */
+    private int containerOverlay() {
+        final int onSurface = Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider);
+        return ColorUtils.setAlphaComponent(onSurface, Math.round(255 * CONTAINER_ON_SURFACE_BLEND));
     }
 
     public int primaryColor() {
@@ -137,7 +183,7 @@ public final class ComposerMd3Surface {
         final float channelFactor = visibility(channelButtons);
         final float actionFactor = visibility(actionButtons);
         final int surface = surfaceColor();
-        final int container = containerColor();
+        final int container = containerOverlay();
         final int outlineVariant = outlineVariantColor(surface);
         final float divider = Math.max(1, dp(0.66f));
         final boolean dividers = InterfaceStyleController.panelDividers();
@@ -148,8 +194,13 @@ public final class ComposerMd3Surface {
         final float fieldBottom = pill.bottom + dp(FIELD_GROW) * inputFactor;
         barTop = pill.top - pillTranslation - topOverhang();
 
-        fillPaint.setColor(surface);
-        canvas.drawRect(0, barTop, width, height, fillPaint);
+        if (frosted()) {
+            frost.setBounds(0, Math.round(barTop), width, height);
+            frost.draw(canvas);
+        } else {
+            fillPaint.setColor(surface);
+            canvas.drawRect(0, barTop, width, height, fillPaint);
+        }
 
         if (dividers) {
             dividerPaint.setColor(outlineVariant);
@@ -196,8 +247,7 @@ public final class ComposerMd3Surface {
             final float strokeWidth = dp(focused ? 2 : 1);
             rect.set(fieldLeft, fieldTop, fieldRight, fieldBottom);
             final float radius = Math.min(dp(FIELD_RADIUS), rect.height() / 2f);
-            fillPaint.setColor(Theme.multAlpha(surface, alpha * inputFactor));
-            canvas.drawRoundRect(rect, radius, radius, fillPaint);
+            // No fill: the field sits on the bar's own surface, frosted or not, and its outline is the edge.
             rect.inset(strokeWidth / 2f, strokeWidth / 2f);
             strokePaint.setStrokeWidth(strokeWidth);
             strokePaint.setColor(Theme.multAlpha(focused ? primaryColor() : outlineVariant, alpha * inputFactor));
@@ -221,16 +271,28 @@ public final class ComposerMd3Surface {
         canvas.drawRoundRect(rect, radius, radius, fillPaint);
     }
 
-    /** The layout editor's stand-in for the bar. */
-    public static Drawable previewBar() {
+    /**
+     * The layout editor's stand-in for the bar, frosted over the preview's wallpaper when a factory is
+     * given. Like the Liquid Glass preview it shows the configured blur whatever the account's blur state.
+     */
+    public static Drawable previewBar(@Nullable BlurredBackgroundDrawableViewFactory factory, @Nullable View view) {
         final ComposerMd3Surface surface = new ComposerMd3Surface(null);
+        final BlurredBackgroundDrawable frost = factory != null ? factory.create(view, surface.frostProvider()) : null;
+        if (frost != null) {
+            frost.setRadius(0);
+        }
         return new PreviewDrawable() {
             @Override
             public void draw(@NonNull Canvas canvas) {
                 final Rect bounds = getBounds();
                 final int surfaceColor = surface.surfaceColor();
-                surface.fillPaint.setColor(surfaceColor);
-                canvas.drawRect(bounds, surface.fillPaint);
+                if (frost != null) {
+                    frost.setBounds(bounds);
+                    frost.draw(canvas);
+                } else {
+                    surface.fillPaint.setColor(surfaceColor);
+                    canvas.drawRect(bounds, surface.fillPaint);
+                }
                 if (InterfaceStyleController.panelDividers()) {
                     final float divider = Math.max(1, dp(0.66f));
                     surface.dividerPaint.setColor(surface.outlineVariantColor(surfaceColor));
@@ -253,8 +315,6 @@ public final class ComposerMd3Surface {
                 // declare supportsRtl.
                 surface.rect.set(bounds.left, bounds.top, bounds.right - endReserve, bounds.bottom);
                 final float radius = Math.min(dp(FIELD_RADIUS), surface.rect.height() / 2f);
-                surface.fillPaint.setColor(surfaceColor);
-                canvas.drawRoundRect(surface.rect, radius, radius, surface.fillPaint);
                 surface.rect.inset(strokeWidth / 2f, strokeWidth / 2f);
                 surface.strokePaint.setStrokeWidth(strokeWidth);
                 surface.strokePaint.setColor(surface.outlineVariantColor(surfaceColor));

@@ -132,7 +132,7 @@ public class ComposerLayoutActivity extends BaseFragment {
     private static final int PREVIEW_INPUT_GAP = 2;
     private static final int PREVIEW_INPUT_HEIGHT = 44;
     private static final int PREVIEW_FIELD_SEND_GAP = 8;
-    private static final int PREVIEW_BAR_TOP_PADDING = 8;
+    private static final int PREVIEW_BAR_TOP_PADDING = 4;
     private static final int PREVIEW_MD3_SEND_INSET_DP = 2;
     private static final int PREVIEW_PADDING = 12;
     /** Matches ChatActivityEnterView.COMPOSER_PRIMARY_INSET - the real send button's own background inset
@@ -1493,6 +1493,8 @@ public class ComposerLayoutActivity extends BaseFragment {
                 glassSource = null;
             }
             glassFactory = new BlurredBackgroundDrawableViewFactory(source);
+            // The MD3 bar frosts from the same factory, so a new wallpaper has to rebuild it too.
+            md3Bar = null;
             // NagramX: the preview uses the ungated default glass provider here; ComposerToolbarLayout
             // itself clears these bubbles when the flat Composer role is active, matching the real chat.
             toolbar.attachGlass(
@@ -1564,7 +1566,7 @@ public class ComposerLayoutActivity extends BaseFragment {
             }
             if (InterfaceStyleController.applyComposer()) {
                 if (md3Bar == null) {
-                    md3Bar = ComposerMd3Surface.previewBar();
+                    md3Bar = ComposerMd3Surface.previewBar(glassFactory, this);
                 }
                 md3Bar.setBounds(0, stage.getTop() - dp(PREVIEW_BAR_TOP_PADDING), getMeasuredWidth(), getMeasuredHeight());
                 md3Bar.draw(canvas);
