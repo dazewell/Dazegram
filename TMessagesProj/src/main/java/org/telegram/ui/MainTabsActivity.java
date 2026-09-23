@@ -1468,6 +1468,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
     }
 
     // NagramX: an MD3 tab spans a third of the bar, so a full-bounds card reaches the screen edge; hug indicator and label instead.
+    // The tab view is shorter than the card and its content starts at the top, so the card overhangs it to frame the indicator.
     private ShapeDrawable naxTabScrimBackground() {
         final int color = getThemedColor(Theme.key_windowBackgroundWhite);
         if (!md3BottomNavigation) {
@@ -1475,7 +1476,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         }
         final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(20), color);
         bg.setIntrinsicWidth(dp(96));
-        bg.setIntrinsicHeight(dp(64));
+        bg.setIntrinsicHeight(dp(72));
         return bg;
     }
     private void setupPopupMenuStyle(ItemOptions options) {
