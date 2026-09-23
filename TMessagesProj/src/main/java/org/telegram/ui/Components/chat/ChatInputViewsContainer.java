@@ -39,6 +39,7 @@ public class ChatInputViewsContainer extends FrameLayout {
     private final FrameLayout inAppKeyboardBubbleContainer;
     // NagramX: only ChatActivity's composer opts in, so other hosts of this container keep the glass radii under MD3.
     private final boolean flatComposer;
+    // NagramX: set only by ChatActivity when the MD3 Composer is on; it then paints this container's bar.
     public xyz.nextalone.nagram.ui.composer.ComposerMd3Surface md3Surface;
 
     public ChatInputViewsContainer(@NonNull Context context) {

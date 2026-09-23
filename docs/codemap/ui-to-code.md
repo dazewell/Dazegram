@@ -125,7 +125,7 @@ buttons and the selection bar to it (`ChatActivity.java:5409`, `:9354-9356`).
 `dispatchDraw` then hands the frame to the surface instead of drawing the island
 and under-keyboard glass. It still sets both drawables' bounds, because the
 in-app keyboard clip and touch capture read them, and touch capture also covers
-the painted bar (`ChatInputViewsContainer.java:42`, `:343-354`, `:435`).
+the painted bar (`ChatInputViewsContainer.java:42-43`, `:344-355`, `:436`).
 `DialogsActivity` and `GiftMessageBottomSheet` never get a surface, so they keep
 their glass.
 
