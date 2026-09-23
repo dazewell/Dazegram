@@ -157,6 +157,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         endSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
 
         controls.setSlots(startSlot, middleScrollView, middle, endSlot);
+        controls.setJustifiedSlot(orderedSlot);
         middle.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
             if (right - left != oldRight - oldLeft) {
                 pinMiddleToStart();
@@ -790,11 +791,35 @@ public final class ComposerToolbarLayout extends FrameLayout {
             // painted flush edges and painted-edge-to-content is the same on every edge, flush or inner.
             // The trade: the outermost glyph now sits glassInset() nearer the row edge and no longer lines
             // up with the input pill's hint start (the bubble edge still does). Accepted.
-            setPaddingRelative(0, AndroidUtilities.dp(geometryInsetDp), 0, AndroidUtilities.dp(geometryInsetDp));
+            // MD3: the enter view already holds the row 7dp off the screen edge; one more dp puts the first and
+            // last targets on the composer's 8dp keyline.
+            int sidePadding = InterfaceStyleController.applyComposer() ? AndroidUtilities.dp(1) : 0;
+            setPaddingRelative(sidePadding, AndroidUtilities.dp(geometryInsetDp), sidePadding, AndroidUtilities.dp(geometryInsetDp));
         }
 
         int rowHeightDp() {
             return geometryHeightDp;
+        }
+
+        // The ordered buttons of the scrolling group, the only cells MD3 widens; the pinned send-as and bot
+        // buttons ahead of them keep their own widths.
+        private ViewGroup justifiedSlot;
+
+        void setJustifiedSlot(ViewGroup slot) {
+            justifiedSlot = slot;
+        }
+
+        private void justifyMiddleCells(int widthPx) {
+            if (justifiedSlot == null) {
+                return;
+            }
+            for (int i = 0; i < justifiedSlot.getChildCount(); i++) {
+                ViewGroup.LayoutParams lp = justifiedSlot.getChildAt(i).getLayoutParams();
+                if (lp != null && lp.width != widthPx) {
+                    lp.width = widthPx;
+                    justifiedSlot.getChildAt(i).forceLayout();
+                }
+            }
         }
 
         void setSlots(CollapsingLinearLayout startSlot, HorizontalScrollView middleScrollView, LinearLayout middleContent, CollapsingLinearLayout endSlot) {
@@ -906,6 +931,10 @@ public final class ComposerToolbarLayout extends FrameLayout {
             if (middleContent.getPaddingLeft() != middleInset || middleContent.getPaddingRight() != middleInset) {
                 middleContent.setPadding(middleInset, 0, middleInset, 0);
             }
+            boolean md3 = InterfaceStyleController.applyComposer();
+            if (md3) {
+                justifyMiddleCells(AndroidUtilities.dp(buttonSize()));
+            }
             middleContent.measure(unboundedWidthSpec, heightSpec);
 
             int startWidth = startSlot.getMeasuredWidth();
@@ -935,13 +964,19 @@ public final class ComposerToolbarLayout extends FrameLayout {
             // occupied one takes content plus padding into its window (capped by the width the row has left).
             int desiredMiddleWidth = occMiddle ? middleWidth : 0;
             int middleViewportWidth = Math.min(desiredMiddleWidth, Math.max(0, panelWidth - horizontalPadding - startWidth - endWidth - reservedGaps));
-            if (InterfaceStyleController.applyComposer() && middleViewportWidth < desiredMiddleWidth) {
+            if (md3 && middleViewportWidth < desiredMiddleWidth && justifiedSlot != null) {
                 // NagramX (#interface-style): with no bubble end to clear, a half-faded glyph at the scroll
-                // edge reads as disabled. Show whole cells only, plus at most the fade's width of the next
-                // cell, which is still inside its padding and so holds no ink.
+                // edge reads as disabled, and trimming the viewport to whole cells left a dead strip before
+                // the trailing group. Widen the scrolling cells instead, so a whole number of them spans the
+                // viewport exactly and the fade lands in their padding.
                 int cellPx = AndroidUtilities.dp(buttonSize());
-                int wholeCells = cellPx > 0 ? middleViewportWidth / cellPx * cellPx : middleViewportWidth;
-                middleViewportWidth = wholeCells + Math.min(AndroidUtilities.dp(MD3_SCROLL_EDGE), middleViewportWidth - wholeCells);
+                int orderedWidth = Math.max(0, middleViewportWidth - (middleContent.getMeasuredWidth() - justifiedSlot.getMeasuredWidth()));
+                int cells = Math.max(1, orderedWidth / cellPx);
+                int slotPx = Math.max(cellPx, orderedWidth / cells);
+                justifyMiddleCells(slotPx);
+                middleContent.measure(unboundedWidthSpec, heightSpec);
+                middleWidth = middleContent.getMeasuredWidth();
+                middleViewportWidth = Math.min(middleViewportWidth, middleWidth - justifiedSlot.getMeasuredWidth() + cells * slotPx);
             }
 
             middleScrollView.measure(MeasureSpec.makeMeasureSpec(middleViewportWidth, MeasureSpec.EXACTLY), heightSpec);
@@ -1041,7 +1076,8 @@ public final class ComposerToolbarLayout extends FrameLayout {
         // reserving nothing.
         private void applyEndSlotGapMargins() {
             boolean rtl = getLayoutDirection() == LAYOUT_DIRECTION_RTL;
-            int contextGap = (occContext && occTrailing) ? gapPx : 0;
+            // MD3 has no bubble per group, so the attach group and the trailing buttons read as one run.
+            int contextGap = (occContext && occTrailing && !InterfaceStyleController.applyComposer()) ? gapPx : 0;
             // Context's trailing-in-array side: rightMargin in LTR, leftMargin in RTL.
             setBubbleMargins(trailingContextGroup, rtl ? contextGap : 0, rtl ? 0 : contextGap);
         }
