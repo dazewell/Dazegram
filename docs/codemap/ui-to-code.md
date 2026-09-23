@@ -148,7 +148,7 @@ including the message list padding, clears it
 (`ChatInputViewsContainer.java:283-290`; `ChatActivity.java:13495-13497`).
 Channel and selection runs tone the island itself, and the input gets an opaque
 42dp tonal field (surface blended 10% toward the text colour) with a primary
-ring only while focused (`ComposerMd3Surface.java:46`, `:281-327`).In a channel the
+ring only while focused (`ComposerMd3Surface.java:46`, `:281-327`). In a channel the
 Join/Mute fill was never the Buttons provider's. It is the island glass shrunk
 to the button run by `setInputBubbleOffsets` (`ChatActivity.java:9352`), because
 `ChatActivityChannelButtonsLayout.setupDrawableForContainer()` (`:155`) is only
