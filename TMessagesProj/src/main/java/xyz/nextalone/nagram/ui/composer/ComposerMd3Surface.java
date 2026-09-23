@@ -1,18 +1,20 @@
 package xyz.nextalone.nagram.ui.composer;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
-import static org.telegram.messenger.AndroidUtilities.dpf2;
 
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
+import android.os.Build;
+import android.view.RoundedCorner;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.ViewTreeObserver;
+import android.view.WindowInsets;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -43,11 +45,15 @@ import xyz.nextalone.nagram.helpers.InterfaceStyleController;
  */
 public final class ComposerMd3Surface {
     private static final float CONTAINER_ON_SURFACE_BLEND = 0.06f;
-    private static final float FIELD_ON_SURFACE_BLEND = 0.10f;
-    private static final int STRIP_RADIUS = 12;
+    private static final float FIELD_ON_SURFACE_BLEND = 0.04f;
+    // Over a frosted island the field is its own tone laid at this opacity, which takes away 60% of what the
+    // blur still shows: at the default strength that is the island's 75% tint made 90%, one step denser.
+    private static final float FIELD_OVER_FROST = 0.6f;
+    private static final int STRIP_RADIUS = 10;
     private static final int STRIP_ACCENT = 3;
     private static final int STRIP_FIELD_GAP = 6;
-    private static final int FIELD_RADIUS = 21;
+    // Island radius minus the 3dp margin, so the field and the reply strip sit concentric in the island.
+    private static final int FIELD_RADIUS = 10;
     // The field is drawn this far inside the 44dp text row top and bottom, so it is 42dp and shares the
     // row's centre with the send circle.
     private static final int FIELD_INSET = 1;
@@ -56,7 +62,6 @@ public final class ComposerMd3Surface {
     private static final int ISLAND_PADDING = 2;
     private static final int FIELD_SIDE_INSET = 3;
     private static final int FIELD_SEND_GAP = 8;
-    private static final float FOCUS_RING = 1.5f;
     // The send circle's top corner sits about 4dp inside the island, which caps the radius near 13dp.
     private static final int ISLAND_RADIUS = 13;
     private static final int SHADOW_RADIUS = 4;
@@ -64,14 +69,18 @@ public final class ComposerMd3Surface {
     private static final int SHADOW_ALPHA = 77;
     // The pill's padded bounds already sit this far in from the container, so a selection island uses it too.
     private static final int SIDE_INSET = 7;
+    // The stock 9dp lift less the island's 2dp bottom padding: the gap the island rests at over the nav bar.
+    private static final int ISLAND_LIFT = 7;
 
     private final Theme.ResourcesProvider resourcesProvider;
     private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint dividerPaint = new Paint();
     private final RectF rect = new RectF();
     private final RectF island = new RectF();
     private final Rect islandBounds = new Rect();
+    private final float[] islandRadii = new float[8];
+    private final Path islandPath = new Path();
+    private float frostBottomRadius = -1;
 
     private ChatActivityEnterView enterView;
     private View channelButtons;
@@ -80,16 +89,9 @@ public final class ComposerMd3Surface {
     private View host;
     private BlurredBackgroundDrawable frost;
     private int frostAccount;
-    // The focus ring is painted by the host, and a focus change only redraws the edit text itself.
-    private final ViewTreeObserver.OnGlobalFocusChangeListener focusListener = (oldFocus, newFocus) -> {
-        if (host != null) {
-            host.invalidate();
-        }
-    };
 
     public ComposerMd3Surface(Theme.ResourcesProvider resourcesProvider) {
         this.resourcesProvider = resourcesProvider;
-        strokePaint.setStyle(Paint.Style.STROKE);
     }
 
     public static ComposerMd3Surface createIfEnabled(Theme.ResourcesProvider resourcesProvider) {
@@ -97,26 +99,12 @@ public final class ComposerMd3Surface {
     }
 
     // The island shows one of these at a time; their alpha is how ChatActivity cross-fades between them,
-    // so it is also how this surface decides which run the island wraps.
+    // so it is also how this surface decides which run the island wraps. The host supplies the window insets.
     public void bind(View host, ChatActivityEnterView enterView, View channelButtons, View actionButtons) {
         this.host = host;
         this.enterView = enterView;
         this.channelButtons = channelButtons;
         this.actionButtons = actionButtons;
-        host.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
-            @Override
-            public void onViewAttachedToWindow(@NonNull View v) {
-                v.getViewTreeObserver().addOnGlobalFocusChangeListener(focusListener);
-            }
-
-            @Override
-            public void onViewDetachedFromWindow(@NonNull View v) {
-                v.getViewTreeObserver().removeOnGlobalFocusChangeListener(focusListener);
-            }
-        });
-        if (host.isAttachedToWindow()) {
-            host.getViewTreeObserver().addOnGlobalFocusChangeListener(focusListener);
-        }
     }
 
     /**
@@ -169,6 +157,10 @@ public final class ComposerMd3Surface {
         return ColorUtils.blendARGB(surfaceColor(), onSurface, FIELD_ON_SURFACE_BLEND);
     }
 
+    private static float fieldOpacity(boolean frosted) {
+        return frosted ? FIELD_OVER_FROST : 1f;
+    }
+
     private int shadowColor() {
         return ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_chat_messagePanelShadow, resourcesProvider), SHADOW_ALPHA);
     }
@@ -184,6 +176,33 @@ public final class ComposerMd3Surface {
     public boolean contains(float x, float y) {
         // Same rule as the island glass: only a fully shown island takes touches.
         return barVisible && island.contains(x, y);
+    }
+
+    /**
+     * Resting on the nav bar, the island's lower corners nest in the display's own rounded corners instead of
+     * cutting across the screen curve. As the keyboard or emoji panel lifts it away they ease back to the top
+     * radius, over the same distance as the curve is tall.
+     */
+    private float bottomRadius(int height) {
+        final float base = dp(ISLAND_RADIUS);
+        if (Build.VERSION.SDK_INT < 31 || host == null) {
+            return base;
+        }
+        final WindowInsets insets = host.getRootWindowInsets();
+        if (insets == null) {
+            return base;
+        }
+        final RoundedCorner left = insets.getRoundedCorner(RoundedCorner.POSITION_BOTTOM_LEFT);
+        final RoundedCorner right = insets.getRoundedCorner(RoundedCorner.POSITION_BOTTOM_RIGHT);
+        final int display = Math.max(left == null ? 0 : left.getRadius(), right == null ? 0 : right.getRadius());
+        final float nested = display - island.left;
+        if (display <= 0 || nested <= base) {
+            return base;
+        }
+        final float restingGap = insets.getInsets(WindowInsets.Type.navigationBars()).bottom + dp(ISLAND_LIFT);
+        final float lifted = Math.max(0, height - island.bottom - restingGap);
+        final float t = Math.max(0, 1f - lifted / display);
+        return base + (nested - base) * t;
     }
 
     /** How far the island reaches above the pill. */
@@ -258,21 +277,31 @@ public final class ComposerMd3Surface {
         }
         island.set(left / weight, top / weight, right / weight, bottom / weight);
         final float radius = Math.min(dp(ISLAND_RADIUS), island.height() / 2f);
+        final float bottomRadius = Math.min(bottomRadius(height), island.height() / 2f);
+        islandRadii[0] = islandRadii[1] = islandRadii[2] = islandRadii[3] = radius;
+        islandRadii[4] = islandRadii[5] = islandRadii[6] = islandRadii[7] = bottomRadius;
+        islandPath.rewind();
+        islandPath.addRoundRect(island, islandRadii, Path.Direction.CW);
 
         final int frostAlpha = Math.round(255 * barFactor);
         if (frost != null && frost.getAlpha() != frostAlpha) {
             // Only on a change: every setAlpha re-records the blur's display list.
             frost.setAlpha(frostAlpha);
         }
+        final boolean frosted = frosted();
         if (barFactor > 0) {
-            if (frosted()) {
+            if (frosted) {
+                if (frostBottomRadius != bottomRadius) {
+                    frostBottomRadius = bottomRadius;
+                    frost.setRadius(dp(ISLAND_RADIUS), dp(ISLAND_RADIUS), bottomRadius, bottomRadius);
+                }
                 island.roundOut(islandBounds);
                 frost.setBounds(islandBounds);
                 frost.draw(canvas);
             } else {
                 fillPaint.setColor(Theme.multAlpha(surface, barFactor));
                 fillPaint.setShadowLayer(dp(SHADOW_RADIUS), 0, dp(SHADOW_DY), Theme.multAlpha(shadowColor(), barFactor));
-                canvas.drawRoundRect(island, radius, radius, fillPaint);
+                canvas.drawPath(islandPath, fillPaint);
                 fillPaint.clearShadowLayer();
             }
         }
@@ -280,14 +309,29 @@ public final class ComposerMd3Surface {
         // The channel and selection runs have no field of their own, so the island itself takes the tone.
         final float runFactor = Math.max(actionFactor, drawPill ? alpha * channelFactor : 0);
         if (runFactor > 0) {
-            fillPaint.setColor(Theme.multAlpha(fieldColor(), runFactor));
-            canvas.drawRoundRect(island, radius, radius, fillPaint);
+            fillPaint.setColor(Theme.multAlpha(fieldColor(), runFactor * fieldOpacity(frosted)));
+            canvas.drawPath(islandPath, fillPaint);
+        }
+
+        // The field and the reply strip share one column: both stop where the send and close controls begin.
+        float columnLeft = pill.left + dp(FIELD_SIDE_INSET);
+        float columnRight = pill.right - dp(FIELD_SIDE_INSET);
+        if (enterView != null) {
+            final int primaryEndInset = enterView.getComposerPrimaryEndInset();
+            if (primaryEndInset > 0) {
+                // The send column follows LocaleController.isRTL, not the layout direction.
+                if (LocaleController.isRTL) {
+                    columnLeft = Math.max(columnLeft, enterView.getLeft() + primaryEndInset + dp(FIELD_SEND_GAP));
+                } else {
+                    columnRight = Math.min(columnRight, enterView.getRight() - primaryEndInset - dp(FIELD_SEND_GAP));
+                }
+            }
         }
 
         if (drawPill && inputFactor > 0 && topViewHeight > dp(STRIP_FIELD_GAP)) {
             // Reply, edit, forward and link preview all share this top view, so one strip covers them.
             final float stripAlpha = alpha * inputFactor * topViewProgress;
-            rect.set(pill.left + dp(FIELD_SIDE_INSET), pill.top + dp(FIELD_INSET), pill.right - dp(FIELD_SIDE_INSET), pill.top + topViewHeight - dp(STRIP_FIELD_GAP));
+            rect.set(columnLeft, pill.top + dp(FIELD_INSET), columnRight, pill.top + topViewHeight - dp(STRIP_FIELD_GAP));
             final float stripRadius = Math.min(dp(STRIP_RADIUS), rect.height() / 2f);
             fillPaint.setColor(Theme.multAlpha(container, stripAlpha));
             canvas.drawRoundRect(rect, stripRadius, stripRadius, fillPaint);
@@ -299,33 +343,11 @@ public final class ComposerMd3Surface {
         }
 
         if (drawPill && inputFactor > 0) {
-            float fieldLeft = pill.left + dp(FIELD_SIDE_INSET);
-            float fieldRight = pill.right - dp(FIELD_SIDE_INSET);
-            final int primaryEndInset = enterView.getComposerPrimaryEndInset();
-            if (primaryEndInset > 0) {
-                // The send column follows LocaleController.isRTL, not the layout direction.
-                if (LocaleController.isRTL) {
-                    fieldLeft = Math.max(fieldLeft, enterView.getLeft() + primaryEndInset + dp(FIELD_SEND_GAP));
-                } else {
-                    fieldRight = Math.min(fieldRight, enterView.getRight() - primaryEndInset - dp(FIELD_SEND_GAP));
-                }
-            }
-            final float fieldAlpha = alpha * inputFactor;
-            rect.set(fieldLeft, pill.top + topViewHeight + dp(FIELD_INSET), fieldRight, pill.bottom - dp(FIELD_INSET));
+            rect.set(columnLeft, pill.top + topViewHeight + dp(FIELD_INSET), columnRight, pill.bottom - dp(FIELD_INSET));
             final float fieldRadius = Math.min(dp(FIELD_RADIUS), rect.height() / 2f);
-            fillPaint.setColor(Theme.multAlpha(fieldColor(), fieldAlpha));
+            fillPaint.setColor(Theme.multAlpha(fieldColor(), alpha * inputFactor * fieldOpacity(frosted)));
             canvas.drawRoundRect(rect, fieldRadius, fieldRadius, fillPaint);
-            final boolean focused = enterView.getEditField() != null && enterView.getEditField().isFocused();
-            if (focused) {
-                final float ring = dpf2(FOCUS_RING);
-                rect.inset(ring / 2f, ring / 2f);
-                strokePaint.setStrokeWidth(ring);
-                strokePaint.setColor(Theme.multAlpha(primaryColor(), fieldAlpha));
-                final float ringRadius = Math.max(0, fieldRadius - ring / 2f);
-                canvas.drawRoundRect(rect, ringRadius, ringRadius, strokePaint);
-            }
         }
-
         if (underKeyboard != null) {
             fillPaint.setColor(Theme.getColor(Theme.key_chat_emojiPanelBackground, resourcesProvider));
             canvas.drawRect(0, underKeyboard.top, width, height, fillPaint);
@@ -379,7 +401,7 @@ public final class ComposerMd3Surface {
                 // declare supportsRtl.
                 surface.rect.set(bounds.left + dp(FIELD_SIDE_INSET), bounds.top + dp(FIELD_INSET), bounds.right - endReserve, bounds.bottom - dp(FIELD_INSET));
                 final float radius = Math.min(dp(FIELD_RADIUS), surface.rect.height() / 2f);
-                surface.fillPaint.setColor(surface.fieldColor());
+                surface.fillPaint.setColor(Theme.multAlpha(surface.fieldColor(), fieldOpacity(true)));
                 canvas.drawRoundRect(surface.rect, radius, radius, surface.fillPaint);
             }
         };
