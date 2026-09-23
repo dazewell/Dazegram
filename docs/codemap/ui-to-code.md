@@ -121,7 +121,7 @@ tab geometry (`MainTabsLayout.java:50-95`; `GlassTabView.java:145-187`).
 The Composer Apply to switch reaches the real chat through one draw hook.
 `ChatActivity` gives its own `ChatInputViewsContainer` a `ComposerMd3Surface`
 only while `applyComposer()` is true, and binds the enter view, the channel
-buttons and the selection bar to it (`ChatActivity.java:5409`, `:9354-9356`).
+buttons and the selection bar to it (`ChatActivity.java:5409`, `:9357-9359`).
 `dispatchDraw` then hands the frame to the surface instead of drawing the island
 and under-keyboard glass. It still sets both drawables' bounds, because the
 in-app keyboard clip and touch capture read them, and touch capture also covers
@@ -129,21 +129,22 @@ the painted bar (`ChatInputViewsContainer.java:42-43`, `:349-360`, `:441`).
 `DialogsActivity` and `GiftMessageBottomSheet` never get a surface, so they keep
 their glass.
 
-The surface paints one full-width bar from 4dp above the field to the physical
-bottom edge, with the gated top divider and no divider between the input and
-tools rows (`ComposerMd3Surface.java:175-208`). Like the MD3 chat header it is
+The surface paints one full-width bar from 2dp above the 44dp text row to the
+physical bottom edge, with the gated top divider and no divider between the
+input and tools rows (`ComposerMd3Surface.java:155-199`). Like the MD3 chat header it is
 frosted when the chat has a frosted source and blur is enabled for the account,
-at `NaConfig.interfaceStyleBlurAlpha()`, and opaque otherwise (`:113-139`,
-`:197-203`). It gets its own factory over that source because the shared frosted
+at `NaConfig.interfaceStyleBlurAlpha()`, and opaque otherwise (`:92-118`,
+`:182-194`). It gets its own factory over that source because the shared frosted
 factory can hand out drawables with the Liquid Glass shader
 (`ChatActivity.java:5409-5412`; `BlurredBackgroundDrawableViewFactory.java:81-85`).
 The bar reaches `topOverhang()` above the
-island pill (`ComposerMd3Surface.java:164-166`), so `getInputBubbleHeight()` adds it and everything laid
+island pill (`ComposerMd3Surface.java:144-146`), so `getInputBubbleHeight()` adds it and everything laid
 out against the composer, including the message list padding, clears the bar
 (`ChatInputViewsContainer.java:283-290`; `ChatActivity.java:13495-13497`). The
 view fades picked by `ChatActivity` decide what sits on the island: a 6% tonal
-host pill for the channel row or the selection bar, or the unfilled outlined
-field (`ComposerMd3Surface.java:210-218`, `:234-256`). In a channel the
+host pill for the channel row or the selection bar, or the unfilled 40dp
+outlined field drawn 2dp inside the text row, whose 1dp outline does not change
+with focus (`ComposerMd3Surface.java:201-209`, `:225-246`). In a channel the
 Join/Mute fill was never the Buttons provider's. It is the island glass shrunk
 to the button run by `setInputBubbleOffsets` (`ChatActivity.java:9352`), because
 `ChatActivityChannelButtonsLayout.setupDrawableForContainer()` (`:155`) is only
@@ -151,19 +152,18 @@ called from `ChannelAdminLogActivity.java:1511`. Dropping the island glass
 without painting that run is what blanked channel chats in #409.
 The field stops short of the send column using the existing
 `getComposerPrimaryEndInset()`, on the left under `LocaleController.isRTL`
-(`ChatActivityEnterView.java:18929`). The reply strip reads
-`getTopViewHeight()` and `getTopViewEnterProgress()` (`:17928`, `:308`). MD3
+(`ChatActivityEnterView.java:18930`). The reply strip reads
+`getTopViewHeight()` and `getTopViewEnterProgress()` (`:17929`, `:308`). MD3
 draws the send circle at 40dp through `composerPrimaryInset` (`:693`).
 
 The tools row keeps its Liquid Glass geometry unless MD3 is on. Then size runs
 the row, cell, state layer and glyph linearly through 40/48/56dp rows at
-75/100/125%, spacing takes up to 4dp off the cell width, groups sit 8dp apart,
-and an overflowing Scrolling zone fits whichever nearest whole slot count bends
-the cell least, never more than 4dp narrower (`ComposerToolbarLayout.java:81-86`,
-`:422-446`, `:459-477`, `:500-505`, `:994-1015`).
-After a scroll or fling the zone eases to the nearest rest whose edges fall in
-button padding (`:1857`, `:1898-1912`, `:1951`). `attachGlass` still clears the
-bubbles under MD3, now with the bar painted behind them (`:234-236`). The layout
+75/100/125%, spacing takes up to 4dp off every cell's width, and groups sit
+8dp apart (`ComposerToolbarLayout.java:81-86`, `:421-435`, `:448-466`,
+`:489-494`). The Scrolling zone keeps fixed cells, hard-clips instead of fading
+and scrolls normally: fitting its cells to the viewport made smaller spacing
+look looser (`:139`). `attachGlass` still clears the bubbles under MD3, with
+the bar painted behind them (`:233-235`). The layout
 editor draws the same frosted bar and unfilled field (`ComposerLayoutActivity.java:1426`,
 `:1569`). Buttons-role surfaces keep
 their own provider (`ChatActivity.java:4202-4203`). Story controls and Dialogs
