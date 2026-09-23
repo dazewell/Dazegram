@@ -129,11 +129,11 @@ the painted bar (`ChatInputViewsContainer.java:42-43`, `:344-355`, `:436`).
 `DialogsActivity` and `GiftMessageBottomSheet` never get a surface, so they keep
 their glass.
 
-The surface paints a full-width bar from just above the field to the physical
-bottom edge, the tonal tools band and the dividers
-(`ComposerMd3Surface.java:99-134`). The view fades picked by `ChatActivity`
+The surface paints one full-width bar in the panel colour from 8dp above the
+field to the physical bottom edge, with the gated dividers
+(`ComposerMd3Surface.java:125-157`). The view fades picked by `ChatActivity`
 decide what sits on the island: a host pill for the channel row or the
-selection bar, or the outlined field (`:137-145`, `:161-184`). In a channel the
+selection bar, or the outlined field (`:160-168`, `:184-207`). In a channel the
 Join/Mute fill was never the Buttons provider's. It is the island glass shrunk
 to the button run by `setInputBubbleOffsets` (`ChatActivity.java:9349`), because
 `ChatActivityChannelButtonsLayout.setupDrawableForContainer()` (`:155`) is only
@@ -141,15 +141,18 @@ called from `ChannelAdminLogActivity.java:1511`. Dropping the island glass
 without painting that run is what blanked channel chats in #409.
 The field stops short of the send column using the existing
 `getComposerPrimaryEndInset()`, on the left under `LocaleController.isRTL`
-(`ChatActivityEnterView.java:18927`). The reply strip reads
-`getTopViewHeight()` and `getTopViewEnterProgress()` (`:17926`, `:308`).
+(`ChatActivityEnterView.java:18929`). The reply strip reads
+`getTopViewHeight()` and `getTopViewEnterProgress()` (`:17928`, `:308`). MD3
+draws the send circle at 40dp through `composerPrimaryInset` (`:693`).
 
 The tools row keeps its Liquid Glass geometry unless MD3 is on. Then the row
-never drops below 56dp, cells never below 48dp, and the ripple is a 40dp circle
-that the size slider scales (`ComposerToolbarLayout.java:413-420`, `:446`,
-`:467-476`). `attachGlass` still clears the bubbles under MD3, now with the bar
-painted behind them (`:225-231`). The layout editor draws the same bar and field
-(`ComposerLayoutActivity.java:1425`, `:1564-1569`). Buttons-role surfaces keep
+never drops below 56dp and carries an 8dp gap above it, cells never drop below
+48dp, groups sit 8dp apart, the ripple is a 40dp circle that the size slider
+scales, and an overflowing Scrolling zone shows whole cells only
+(`ComposerToolbarLayout.java:416-433`, `:459`, `:480`, `:937-945`).
+`attachGlass` still clears the bubbles under MD3, now with the bar painted
+behind them (`:228`). The layout editor draws the same bar and field
+(`ComposerLayoutActivity.java:1426`, `:1565-1571`). Buttons-role surfaces keep
 their own provider (`ChatActivity.java:4202-4203`). Story controls and Dialogs
 floating buttons remain separate follow-up parity (`PeerStoriesView.java:549`;
 `FragmentFloatingButton.java:164-168`).
