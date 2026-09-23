@@ -76,6 +76,8 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * toolbar was scaled up, because the radius was in raw dp and the cell was not.
      */
     private static final int MIN_CELL_FLOOR = 36;
+    private static final int MD3_MIN_TARGET = 48;
+    private static final int MD3_STATE_LAYER = 40;
     private static final int ICON_GLYPH = 24;
     private static final int GLASS_INSET = 4;
     private static final int GLASS_DRAW_INSET = 2;
@@ -409,6 +411,11 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * layout params it is given.
      */
     public static int height() {
+        // NagramX (#interface-style): MD3 never shrinks a target below 48dp, so the row can't drop below
+        // the height whose slot box holds one; see the spacing comment for why the box has to fit the cell.
+        if (InterfaceStyleController.applyComposer()) {
+            return Math.max(BASE_HEIGHT, Math.round(BASE_HEIGHT * scale()));
+        }
         return Math.round(BASE_HEIGHT * scale());
     }
 
@@ -436,7 +443,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
      */
     private static int minCellDp(float scale) {
         int widestGlyph = (int) Math.ceil(ICON_GLYPH * ComposerButtons.maxIconScale() * scale);
-        return Math.max(MIN_CELL_FLOOR, widestGlyph);
+        return Math.max(InterfaceStyleController.applyComposer() ? MD3_MIN_TARGET : MIN_CELL_FLOOR, widestGlyph);
     }
 
     /**
@@ -458,6 +465,12 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * made worse by sizing the circle the same way.
      */
     public static Drawable panelSelector(int color) {
+        // NagramX (#interface-style): MD3 draws a 40dp state layer inside the 48dp target, so neighbours
+        // keep 8dp between their circles; the size slider scales that circle, never the target.
+        if (InterfaceStyleController.applyComposer()) {
+            float radius = Math.min(MD3_STATE_LAYER * scale(), buttonSize() - (MD3_MIN_TARGET - MD3_STATE_LAYER)) / 2f;
+            return Theme.createSelectorDrawable(color, Theme.RIPPLE_MASK_CIRCLE_20DP, AndroidUtilities.dp(radius));
+        }
         return Theme.createSelectorDrawable(color, Theme.RIPPLE_MASK_CIRCLE_20DP,
                 AndroidUtilities.dp(minCellDp(scale()) / 2f));
     }
