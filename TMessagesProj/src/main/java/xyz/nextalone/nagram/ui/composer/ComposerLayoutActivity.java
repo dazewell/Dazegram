@@ -131,8 +131,9 @@ public class ComposerLayoutActivity extends BaseFragment {
     private static final int PREVIEW_HEADER_HEIGHT = 40;
     private static final int PREVIEW_INPUT_GAP = 2;
     private static final int PREVIEW_INPUT_HEIGHT = 44;
-    private static final int PREVIEW_FIELD_SEND_GAP = 6;
-    private static final int PREVIEW_BAR_TOP_PADDING = 6;
+    private static final int PREVIEW_FIELD_SEND_GAP = 8;
+    private static final int PREVIEW_BAR_TOP_PADDING = 8;
+    private static final int PREVIEW_MD3_SEND_INSET_DP = 2;
     private static final int PREVIEW_PADDING = 12;
     /** Matches ChatActivityEnterView.COMPOSER_PRIMARY_INSET - the real send button's own background inset
      * inside its DEFAULT_HEIGHT slot, kept in step so the preview's placeholder end-margin lines up with
@@ -1458,7 +1459,7 @@ public class ComposerLayoutActivity extends BaseFragment {
 
             ChatActivityEnterView.SendButton send = new ChatActivityEnterView.SendButton(
                     getContext(), R.drawable.send_plane_24, null, true);
-            send.setBackgroundInset(dp(SEND_BUTTON_INSET_DP));
+            send.setBackgroundInset(dp(InterfaceStyleController.applyComposer() ? PREVIEW_MD3_SEND_INSET_DP : SEND_BUTTON_INSET_DP));
             send.setFocusable(false);
             send.setClickable(false);
             send.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -1563,7 +1564,8 @@ public class ComposerLayoutActivity extends BaseFragment {
             }
             if (InterfaceStyleController.applyComposer()) {
                 if (md3Bar == null) {
-                    md3Bar = ComposerMd3Surface.previewBar(dp(PREVIEW_BAR_TOP_PADDING + PREVIEW_INPUT_HEIGHT + PREVIEW_INPUT_GAP));
+                    md3Bar = ComposerMd3Surface.previewBar(dp(PREVIEW_BAR_TOP_PADDING + PREVIEW_INPUT_HEIGHT + PREVIEW_INPUT_GAP
+                            + ComposerToolbarLayout.height() - ComposerToolbarLayout.rowHeight()));
                 }
                 md3Bar.setBounds(0, stage.getTop() - dp(PREVIEW_BAR_TOP_PADDING), getMeasuredWidth(), getMeasuredHeight());
                 md3Bar.draw(canvas);

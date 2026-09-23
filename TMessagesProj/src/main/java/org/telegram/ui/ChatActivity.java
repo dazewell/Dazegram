@@ -9352,7 +9352,7 @@ public class ChatActivity extends BaseFragment implements
         chatInputBubbleContainer.addView(bottomChannelButtonsLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 56, Gravity.BOTTOM, 0, 0, 0, (44 - 56) / 2));
         // NagramX: the MD3 Composer reads these three views' fades to choose between field and host pill.
         if (chatInputViewsContainer.md3Surface != null) {
-            chatInputViewsContainer.md3Surface.bind(chatActivityEnterView, bottomChannelButtonsLayout, actionsButtonsLayout);
+            chatInputViewsContainer.md3Surface.bind(chatInputViewsContainer, chatActivityEnterView, bottomChannelButtonsLayout, actionsButtonsLayout);
         }
 
         bottomOverlayStartButton = new TextView(context) {
