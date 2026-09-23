@@ -1222,9 +1222,13 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         tabsView.setClickable(factor > 1);
         tabsView.setEnabled(factor > 1);
         if (md3BottomNavigation) {
+            // NagramX: the wrapper animates as a whole; undo any child state left by Hide bottom navigation or the classic path.
+            tabsView.setAlpha(1f);
+            tabsView.setVisibility(View.VISIBLE);
             tabsViewWrapper.setAlpha(factor);
             tabsViewWrapper.setVisibility(factor > 0 ? View.VISIBLE : View.GONE);
         } else {
+            tabsViewWrapper.setAlpha(1f);
             tabsView.setAlpha(factor);
             tabsView.setVisibility(factor > 0 ? View.VISIBLE : View.GONE);
         }
