@@ -1783,12 +1783,204 @@ public final class ComposerToolbarLayout extends FrameLayout {
     // strip closes the chat instead. Claiming the touch on ACTION_DOWN, whenever the strip has content
     // to scroll to, closes that gap.
     private static final class ComposerMiddleScrollView extends HorizontalScrollView {
+        private static final int SNAP_SETTLE_DELAY_MS = 60;
+        private static final int SNAP_DURATION_MS = 180;
+        private static final int FLING_MAX_DURATION_MS = 450;
+
         private float downX;
         private float downY;
         private boolean guardArmed;
+        // NagramX (#interface-style): with no glass bubble end behind it, a glyph resting half inside the
+        // scroll fade reads as a disabled button. MD3 lets the finger scroll freely, then eases the rest
+        // position to one where both viewport edges fall in a button's padding.
+        private final boolean snapToButtons = InterfaceStyleController.applyComposer();
+        private boolean touching;
+        private ValueAnimator snapAnimator;
+        private final Runnable settleCheck = this::snapToNearestRest;
+        private final android.widget.Scroller flingProjector;
 
         ComposerMiddleScrollView(Context context) {
             super(context);
+            flingProjector = new android.widget.Scroller(context);
+        }
+
+        @Override
+        public boolean dispatchTouchEvent(MotionEvent ev) {
+            if (snapToButtons) {
+                int action = ev.getActionMasked();
+                if (action == MotionEvent.ACTION_DOWN) {
+                    touching = true;
+                    removeCallbacks(settleCheck);
+                    cancelSnap();
+                } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                    touching = false;
+                    scheduleSettle();
+                }
+            }
+            return super.dispatchTouchEvent(ev);
+        }
+
+        // A fling is projected to where the platform scroller would stop, then eased to the nearest clear rest
+        // from there, so there is never a native fling left running for the snap to fight.
+        @Override
+        public void fling(int velocityX) {
+            View content = getChildAt(0);
+            if (!snapToButtons || content == null) {
+                super.fling(velocityX);
+                return;
+            }
+            removeCallbacks(settleCheck);
+            int maxScroll = Math.max(0, content.getWidth() - getWidth());
+            flingProjector.fling(getScrollX(), 0, velocityX, 0, 0, maxScroll, 0, 0);
+            int projected = flingProjector.getFinalX();
+            int duration = flingProjector.getDuration();
+            flingProjector.forceFinished(true);
+            animateTo(nearestRest(content, projected, maxScroll), Math.max(SNAP_DURATION_MS, Math.min(FLING_MAX_DURATION_MS, duration)));
+        }
+
+        @Override
+        protected void onLayout(boolean changed, int l, int t, int r, int b) {
+            super.onLayout(changed, l, t, r, b);
+            if (snapToButtons && !touching) {
+                scheduleSettle();
+            }
+        }
+
+        @Override
+        protected void onDetachedFromWindow() {
+            removeCallbacks(settleCheck);
+            cancelSnap();
+            super.onDetachedFromWindow();
+        }
+
+        private void scheduleSettle() {
+            removeCallbacks(settleCheck);
+            postDelayed(settleCheck, SNAP_SETTLE_DELAY_MS);
+        }
+
+        private void cancelSnap() {
+            if (snapAnimator != null) {
+                ValueAnimator animator = snapAnimator;
+                snapAnimator = null;
+                animator.cancel();
+            }
+        }
+
+        // Runs after a release without a fling, or a layout pass; a fling settles itself in fling().
+        private void snapToNearestRest() {
+            View content = getChildAt(0);
+            if (touching || snapAnimator != null || content == null) {
+                return;
+            }
+            int maxScroll = Math.max(0, content.getWidth() - getWidth());
+            animateTo(nearestRest(content, getScrollX(), maxScroll), SNAP_DURATION_MS);
+        }
+
+        private int nearestRest(View content, int from, int maxScroll) {
+            from = Math.max(0, Math.min(maxScroll, from));
+            if (maxScroll == 0) {
+                return 0;
+            }
+            // The logical start is where the row rests on its own (see pinMiddleToStart), so it always counts.
+            int target = LocaleController.isRTL ? maxScroll : 0;
+            int bestDistance = Math.abs(from - target);
+            java.util.List<View> leaves = leaves(content);
+            int logicalEnd = LocaleController.isRTL ? 0 : maxScroll;
+            if (Math.abs(from - logicalEnd) < bestDistance && isRestClear(leaves, content, logicalEnd, maxScroll)) {
+                bestDistance = Math.abs(from - logicalEnd);
+                target = logicalEnd;
+            }
+            // Every button's own edge is a candidate for either end of the viewport, since the send-as and
+            // bot buttons are not the width of a regular cell.
+            for (int pass = 0; pass < 2; pass++) {
+                for (View leaf : leaves) {
+                    int edge = Math.round(leafLeft(content, leaf)) + (pass == 0 ? 0 : leaf.getWidth());
+                    int candidate = pass == 0 ? edge : edge - getWidth();
+                    if (candidate <= 0 || candidate >= maxScroll) {
+                        continue;
+                    }
+                    int distance = Math.abs(from - candidate);
+                    if (distance < bestDistance && isRestClear(leaves, content, candidate, maxScroll)) {
+                        bestDistance = distance;
+                        target = candidate;
+                    }
+                }
+            }
+            return target;
+        }
+
+        private void animateTo(int target, int duration) {
+            int current = getScrollX();
+            cancelSnap();
+            if (target == current) {
+                return;
+            }
+            ValueAnimator animator = ValueAnimator.ofInt(current, target);
+            animator.setDuration(duration);
+            animator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
+            animator.addUpdateListener(a -> scrollTo((int) a.getAnimatedValue(), 0));
+            animator.addListener(new AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    if (snapAnimator == animation) {
+                        snapAnimator = null;
+                    }
+                }
+            });
+            snapAnimator = animator;
+            animator.start();
+        }
+        // A rest position is clear when no glyph reaches into a fade that is actually showing: the start
+        // fade only while there is content before, the end fade only while there is content after.
+        private boolean isRestClear(java.util.List<View> leaves, View content, int scrollX, int maxScroll) {
+            int fade = getHorizontalFadingEdgeLength();
+            int start = scrollX;
+            int end = scrollX + getWidth();
+            for (View leaf : leaves) {
+                float left = leafLeft(content, leaf);
+                float glyphLeft = left + leaf.getPaddingLeft();
+                float glyphRight = left + leaf.getWidth() - leaf.getPaddingRight();
+                if (glyphRight <= glyphLeft) {
+                    continue;
+                }
+                if (glyphLeft < start + (scrollX > 0 ? fade : 0) && glyphRight > start) {
+                    return false;
+                }
+                if (glyphRight > end - (scrollX < maxScroll ? fade : 0) && glyphLeft < end) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private final java.util.ArrayList<View> leafBuffer = new java.util.ArrayList<>();
+
+        private java.util.List<View> leaves(View content) {
+            leafBuffer.clear();
+            collectLeaves(content, leafBuffer);
+            return leafBuffer;
+        }
+
+        private static void collectLeaves(View view, java.util.List<View> out) {
+            if (view instanceof CollapsingLinearLayout || view instanceof SlidingLinearLayout) {
+                ViewGroup group = (ViewGroup) view;
+                for (int i = 0; i < group.getChildCount(); i++) {
+                    View child = group.getChildAt(i);
+                    if (child.getVisibility() == VISIBLE && child.getWidth() > 0) {
+                        collectLeaves(child, out);
+                    }
+                }
+            } else {
+                out.add(view);
+            }
+        }
+
+        private static float leafLeft(View content, View leaf) {
+            float x = 0;
+            for (View v = leaf; v != null && v != content; v = (View) v.getParent()) {
+                x += v.getLeft() + v.getTranslationX();
+            }
+            return x;
         }
 
         @Override
