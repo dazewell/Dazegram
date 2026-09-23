@@ -13489,8 +13489,9 @@ public class ChatActivity extends BaseFragment implements
         if (isInsideContainer && parentChatActivity == null) {
             paddingBottom = AndroidUtilities.navigationBarHeight;
         } else {
+            // NagramX: getInputBubbleHeight() is the island plus the MD3 Composer bar's reach above it.
             paddingBottom = blurredViewBottomOffset + chatInputViewsContainer.getInputBubbleBottomLift() + dp(7)
-                + inputIslandHeightCurrent
+                + chatInputViewsContainer.getInputBubbleHeight()
                 + getTopicTabsSideSize(TopicsTabsView.Position.BOTTOM)
                 + windowInsetsStateHolder.getAnimatedMaxBottomInset();
         }
