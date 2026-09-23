@@ -61,7 +61,7 @@ search/folder rows do not install their own MD3 backgrounds; search-type tabs
 keep only a full-bounds child clip, the search field keeps its rounded control
 background, and the independently animated temporary panel reuses the same
 dialogs provider (`DialogsActivity.java:4966-4972`, `:5059-5060`,
-`:5407-5410`; `SearchTabsAndFiltersLayout.java:15-59`;
+`:5407-5415`; `SearchTabsAndFiltersLayout.java:15-59`;
 `BlurredBackgroundProviderImpl.java:53-72`).
 Chat-side strips use the same chat-header flag through `ChatActivity` and the
 component flat hooks (`ChatActivity.java:8627-8636`, `:9901-9907`,
