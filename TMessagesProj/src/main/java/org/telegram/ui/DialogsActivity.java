@@ -932,6 +932,33 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         private Rect blurBounds = new Rect();
 
+        private String naxSmokeLast;
+
+        private String naxSmokeBottom(View v) {
+            if (v == null) return "null";
+            return v.getVisibility() + "@" + Math.round(v.getY()) + "+" + v.getHeight() + "a" + Math.round(v.getAlpha() * 100);
+        }
+
+        private void naxSmokeGeometry(int top, float rawBottom, float surfaceBottom) {
+            String first = "none";
+            if (viewPages != null && viewPages[0] != null && viewPages[0].listView != null) {
+                DialogsRecyclerView lv = viewPages[0].listView;
+                View c = lv.getChildAt(0);
+                if (c != null) {
+                    first = (lv.getChildAdapterPosition(c)) + ":" + c.getClass().getSimpleName() + "@" + Math.round(viewPages[0].getY() + lv.getY() + c.getY()) + "+" + c.getHeight();
+                }
+                first += " page=" + Math.round(viewPages[0].getY()) + " lv=" + Math.round(lv.getY()) + " pad=" + lv.getPaddingTop() + " off=" + Math.round(lv.getViewOffset());
+            }
+            String s = "top=" + top + " full=" + getActionBarFullHeight() + " add=" + Math.round(naxTopSurfaceAdditionalHeight) + " raw=" + Math.round(rawBottom) + " cap=" + Math.round(surfaceBottom)
+                    + " search=" + searchAnimationProgress + " first=" + first
+                    + " ab=" + naxSmokeBottom(actionBar) + " tabs=" + naxSmokeBottom(filterTabsView) + " stf=" + naxSmokeBottom(searchTabsAndFiltersLayout)
+                    + " fsf=" + naxSmokeBottom(fragmentSearchField) + " tpl=" + naxSmokeBottom(topPanelLayout) + " dp=" + AndroidUtilities.density;
+            if (!s.equals(naxSmokeLast)) {
+                naxSmokeLast = s;
+                android.util.Log.e("NAX_SMOKE_interface-style", s);
+            }
+        }
+
         @Override
         protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
             if (child == blurredView) {
@@ -958,6 +985,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     }
                 }
                 naxTopSurfaceBottom = surfaceBottom;
+                naxSmokeGeometry(top, bottom, surfaceBottom);
                 // NagramX: use the real frosted source only when the drawable can sample it;
                 // older or blur-disabled paths keep the opaque MD3 fallback.
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
