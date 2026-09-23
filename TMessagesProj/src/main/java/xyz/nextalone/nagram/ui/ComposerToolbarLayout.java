@@ -78,6 +78,9 @@ public final class ComposerToolbarLayout extends FrameLayout {
     private static final int MIN_CELL_FLOOR = 36;
     private static final int MD3_MIN_TARGET = 48;
     private static final int MD3_STATE_LAYER = 40;
+    private static final int MD3_ROW_TOP_GAP = 8;
+    private static final int MD3_GROUP_GAP = 8;
+    private static final int MD3_SCROLL_EDGE = 8;
     private static final int ICON_GLYPH = 24;
     private static final int GLASS_INSET = 4;
     private static final int GLASS_DRAW_INSET = 2;
@@ -129,7 +132,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         middleScrollView = new ComposerMiddleScrollView(context);
         middleScrollView.setHorizontalScrollBarEnabled(false);
         middleScrollView.setHorizontalFadingEdgeEnabled(true);
-        middleScrollView.setFadingEdgeLength(AndroidUtilities.dp(12));
+        middleScrollView.setFadingEdgeLength(AndroidUtilities.dp(InterfaceStyleController.applyComposer() ? MD3_SCROLL_EDGE : 12));
         middleScrollView.setFillViewport(false);
         middleScrollView.setFocusable(false);
         middleScrollView.setFocusableInTouchMode(false);
@@ -413,6 +416,16 @@ public final class ComposerToolbarLayout extends FrameLayout {
     public static int height() {
         // NagramX (#interface-style): MD3 never shrinks a target below 48dp, so the row can't drop below
         // the height whose slot box holds one; see the spacing comment for why the box has to fit the cell.
+        // The extra top gap is the input row's bottom padding, kept inside this view so the divider the
+        // composer bar draws at the row's top lands a full 8dp under the field.
+        if (InterfaceStyleController.applyComposer()) {
+            return rowHeight() + MD3_ROW_TOP_GAP;
+        }
+        return Math.round(BASE_HEIGHT * scale());
+    }
+
+    /** Height of the button row itself, without the MD3 gap above it. */
+    public static int rowHeight() {
         if (InterfaceStyleController.applyComposer()) {
             return Math.max(BASE_HEIGHT, Math.round(BASE_HEIGHT * scale()));
         }
@@ -759,13 +772,13 @@ public final class ComposerToolbarLayout extends FrameLayout {
             setClipToPadding(true);
             // Snapshot the scale-derived geometry once, before anything measures, lays out or draws, so
             // every later read is the same sample (see the field comment).
-            geometryHeightDp = height();
+            geometryHeightDp = rowHeight();
             geometryInsetDp = glassInset();
             geometryDrawInsetDp = glassDrawInset();
             // The gap between two neighbouring bubbles, reserved in layout so the glass separates the
             // button cells. 2 x the box inset (8dp at 100%), scale-derived and frozen with the rest of
-            // the geometry.
-            gapPx = 2 * AndroidUtilities.dp(geometryInsetDp);
+            // the geometry. MD3 has no bubbles to separate, only groups, and keeps that at a flat 8dp.
+            gapPx = InterfaceStyleController.applyComposer() ? AndroidUtilities.dp(MD3_GROUP_GAP) : 2 * AndroidUtilities.dp(geometryInsetDp);
             // Vertical inset only. The row keeps glassInset() (4dp at 100%) of top and bottom padding so
             // its slots still measure to the unpacked cell (see the height comment above) and each bubble
             // sits lifted off the row edge vertically. The horizontal component is deliberately zero:
@@ -889,7 +902,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
             // Set here, guarded like the clip toggle below so it only writes when it actually changes, and
             // re-derived each pass rather than frozen. Measured into middleContent's width, so it flows
             // through middleViewportWidth and the reserved gaps stay correct.
-            int middleInset = middleContentSideInset();
+            int middleInset = InterfaceStyleController.applyComposer() ? 0 : middleContentSideInset();
             if (middleContent.getPaddingLeft() != middleInset || middleContent.getPaddingRight() != middleInset) {
                 middleContent.setPadding(middleInset, 0, middleInset, 0);
             }
@@ -922,6 +935,14 @@ public final class ComposerToolbarLayout extends FrameLayout {
             // occupied one takes content plus padding into its window (capped by the width the row has left).
             int desiredMiddleWidth = occMiddle ? middleWidth : 0;
             int middleViewportWidth = Math.min(desiredMiddleWidth, Math.max(0, panelWidth - horizontalPadding - startWidth - endWidth - reservedGaps));
+            if (InterfaceStyleController.applyComposer() && middleViewportWidth < desiredMiddleWidth) {
+                // NagramX (#interface-style): with no bubble end to clear, a half-faded glyph at the scroll
+                // edge reads as disabled. Show whole cells only, plus at most the fade's width of the next
+                // cell, which is still inside its padding and so holds no ink.
+                int cellPx = AndroidUtilities.dp(buttonSize());
+                int wholeCells = cellPx > 0 ? middleViewportWidth / cellPx * cellPx : middleViewportWidth;
+                middleViewportWidth = wholeCells + Math.min(AndroidUtilities.dp(MD3_SCROLL_EDGE), middleViewportWidth - wholeCells);
+            }
 
             middleScrollView.measure(MeasureSpec.makeMeasureSpec(middleViewportWidth, MeasureSpec.EXACTLY), heightSpec);
             // A control fading out inside the middle group sits past the viewport edge, so only clip once the
