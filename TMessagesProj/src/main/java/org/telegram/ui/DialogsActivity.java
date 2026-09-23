@@ -952,7 +952,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 float surfaceBottom = Math.max(surfaceTop, bottom);
                 // NagramX: never let the bar cover the first row at rest; the tab strip's padded height can reach past the list's reserved top.
                 if (searchAnimationProgress == 0 && viewPages != null && viewPages[0] != null && viewPages[0].listView != null && viewPages[0].getVisibility() == VISIBLE) {
-                    final float listContentTop = viewPages[0].getY() + viewPages[0].listView.getY() + viewPages[0].listView.getPaddingTop();
+                    final float listContentTop = viewPages[0].getY() + viewPages[0].listView.getY() + viewPages[0].listView.getPaddingTop() + viewPages[0].listView.getViewOffset();
                     if (listContentTop > surfaceTop) {
                         surfaceBottom = Math.min(surfaceBottom, listContentTop);
                     }

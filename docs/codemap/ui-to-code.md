@@ -55,7 +55,10 @@ Dialogs MD3 is owned by `DialogsActivity.ContentView`, not by each row.
 Search modes, while `drawChild(...)` paints one translucent frosted surface
 above scrolling rows and below the top controls when the RenderEffect source is
 available; unsupported or blur-disabled paths retain the opaque fallback.
-`updateContextViewPosition()` supplies its animated tab extent
+`updateContextViewPosition()` supplies its animated tab extent, and outside
+search the bottom is clamped to the first page's list content top (padding plus
+the stories-overscroll view offset), because the padded tab strip measures
+taller than the list reserves and otherwise covers the first row
 (`DialogsActivity.java:593-600`, `:936-997`, `:6841-6887`). The
 search/folder rows do not install their own MD3 backgrounds; search-type tabs
 keep only a full-bounds child clip, the search field keeps its rounded control
