@@ -82,7 +82,7 @@ Style buttons (Bold, Italic, Monospace, Strikethrough, Underline, Spoiler, Quote
 
 ### Send and mic inside the input <!-- #composer-input -->
 
-Send and the mic sit inside the text pill, drawn slightly in from its rounded end so a thin ring of glass shows around them.
+Send and the mic sit inside the text pill, drawn slightly in from its rounded end so a thin ring of glass shows around them. The Material Design 3 composer puts them just outside the field instead.
 
 ### Composer toolbar layout editor <!-- #composer-layout --> <!-- #composer-layout-tap-toggle --> <!-- #composer-leading-2slot -->
 
@@ -106,7 +106,7 @@ The toolbar row can be scaled from 75% to 125% in 5% steps. A second slider sets
 
 ### Interface style <!-- #interface-style --> <!-- #composer-transparency -->
 
-NagramX Settings → General has an Interface Style page for switching between Liquid Glass and Material Design 3. MD3 gives chat headers, chat-list top regions, bottom navigation, and in-chat floating or pill buttons their Material treatments while keeping search rounded. Each surface has its own Apply to toggle, and Panel dividers, on by default, draw a thin line where panels meet content. Unsupported devices show MD3 and disable Liquid Glass.
+NagramX Settings → General → Interface Style switches between Liquid Glass and Material Design 3. MD3 gives chat headers, chat-list top regions, bottom navigation, in-chat buttons and the composer their Material treatments; the composer becomes one flat bar. Each surface has its own Apply to toggle, and Panel dividers, on by default, draw a thin line where panels meet content. Unsupported devices show MD3 and disable Liquid Glass.
 
 ### Quick schedule button <!-- #quick-schedule -->
 
