@@ -10,29 +10,45 @@ NagramX Settings → General's Interface Style row opens
 (`NekoGeneralSettingsActivity.java:221-222`). The page does not own a second
 style enum: `InterfaceStyleController.isMaterialDesign3()` derives MD3 from the
 existing Liquid Glass setting and support gate
-(`InterfaceStyleController.java:9-10`). The page writes Liquid Glass with
+(`InterfaceStyleController.java:12-13`). The page writes Liquid Glass with
 `LiteMode.toggleFlag(...)` and reloads the interface
-(`InterfaceStyleActivity.java:170-175`).
+(`InterfaceStyleActivity.java:242-247`).
 
 The shared Blur strength row is visible in both styles because composer glass
-already consumes it (`InterfaceStyleActivity.java:213-215,347-352`;
-`ComposerGlassProvider.java:70-71`; `NaConfig.kt:1534-1537`). MD3-only rows are
+already consumes it (`InterfaceStyleActivity.java:285-287,430-442`;
+`ComposerGlassProvider.java:74-75`; `NaConfig.kt:1540-1542`). MD3-only rows are
 visible only after the Material Design 3 radio is selected
-(`InterfaceStyleActivity.java:216-241`). The Apply to rows expose Chat header, Chat list top bar, Buttons, Composer, and
-Bottom navigation (`InterfaceStyleActivity.java:328-351`). Chat header, chat
-list top bar, Buttons, Composer, and Bottom navigation have render consumers;
-Classic/Day header colour remains a settings-only gate for a later slice
-(`InterfaceStyleActivity.java:128-129,370-372`; `ComposerGlassProvider.java:23-114`).
+(`InterfaceStyleActivity.java:288-302`). The Apply to rows expose Chat header,
+Chat list top bar, Buttons, Bottom navigation, and Panel dividers; the Composer
+row is assigned only when `COMPOSER_STYLE_AVAILABLE` is true, so it is hidden
+while the Composer rebuild is deferred (`InterfaceStyleActivity.java:289-295,406-428`;
+`InterfaceStyleController.java:28-32`). Chat header, chat list top bar, Buttons,
+and Bottom navigation have render consumers; Composer's stored config/provider
+path still exists but `applyComposer()` is gated off by
+`COMPOSER_STYLE_AVAILABLE = false`, while Classic/Day header colours are hidden
+by `MATCH_CLASSIC_DAY_HEADER_AVAILABLE = false`
+(`NaConfig.kt:1431-1435`; `ComposerGlassProvider.java:16-25,78-80`;
+`InterfaceStyleController.java:28-44`).
+
+Panel dividers are a shipped MD3 row: `NaConfig` stores
+`interfaceStylePanelDividers`, and `InterfaceStyleController.panelDividers()`
+gates the render paths (`NaConfig.kt:1455-1459`;
+`InterfaceStyleController.java:39-40`; `InterfaceStyleActivity.java:426-428`).
+It draws `Theme.dividerPaint` hairlines at the MainTabs wrapper top edge, at
+Dialogs' captured top-surface bottom after `super.dispatchDraw(...)`, and under
+ChatActivity's header group after `super.dispatchDraw(...)`
+(`MainTabsActivity.java:436-442`; `DialogsActivity.java:1177-1182`;
+`ChatActivity.java:19590-19597`).
 
 Chat/action-bar surfaces use the existing account-aware
 `topPanelChatActivity(...)` colour logic, but `ChatActivity` calls the
 chat-only `chatHeaderPanel(...)` wrapper so MD3 can also remove glass
 stroke/shadow without changing Community/Admin/SearchTags users of the generic
-provider (`BlurredBackgroundProviderImpl.java:194-220`;
-`ChatActivity.java:5392`). `ActionBar` still stays in glass mode for title and
+provider (`BlurredBackgroundProviderImpl.java:197-220`;
+`ChatActivity.java:5394`). `ActionBar` still stays in glass mode for title and
 status layout, but the chat-only setup flag makes MD3 draw the main glass
 drawable full-bounds and suppress the separate back/menu pills
-(`ActionBar.java:207`, `:2387-2461`).
+(`ActionBar.java:207,242-245`, `:2387-2464`).
 
 Dialogs MD3 is owned by `DialogsActivity.ContentView`, not by each row.
 `getDialogsTopSurfaceColorKey()` selects the pre-Glass theme role for normal and
@@ -40,30 +56,31 @@ Search modes, while `drawChild(...)` paints one translucent frosted surface
 above scrolling rows and below the top controls when the RenderEffect source is
 available; unsupported or blur-disabled paths retain the opaque fallback.
 `updateContextViewPosition()` supplies its animated tab extent
-(`DialogsActivity.java:593-600`, `:941-968`, `:6867-6874`). The
+(`DialogsActivity.java:593-600`, `:936-990`, `:6834-6880`). The
 search/folder rows do not install their own MD3 backgrounds; search-type tabs
 keep only a full-bounds child clip, the search field keeps its rounded control
 background, and the independently animated temporary panel reuses the same
-dialogs provider (`DialogsActivity.java:4963-4972`, `:5052-5060`,
-`:5400-5410`; `SearchTabsAndFiltersLayout.java:15-59`;
+dialogs provider (`DialogsActivity.java:4966-4972`, `:5059-5060`,
+`:5407-5410`; `SearchTabsAndFiltersLayout.java:15-59`;
 `BlurredBackgroundProviderImpl.java:53-72`).
 Chat-side strips use the same chat-header flag through `ChatActivity` and the
-component flat hooks (`ChatActivity.java:8627-8630`, `:9896-9900`,
-`:11153-11155`, `:52132-52135`;
+component flat hooks (`ChatActivity.java:8627-8636`, `:9901-9907`,
+`:11159-11162`, `:52162-52170`;
 `ChatActivityTopPanelLayout.java:37-89`;
 `DialogsActivityTopPanelLayout.java:36-82`; `TopicsTabsView.java:485-498`).
 Pinned-message content uses explicit MD3 keylines at creation and at both
 runtime image/no-image updates. Its close, list, progress and action states
 also derive their drawn trailing edge from the header avatar keyline while
 retaining the clickable icons' 36×48dp targets; Liquid Glass keeps the original
-geometry (`ChatActivity.java:12710-12718`, `:12823-12948`,
-`:30968-30987`).
+geometry (`ChatActivity.java:12717-12724`, `:12826-12949`,
+`:30980-31008`).
 
 Chat header and tag-search providers use the same shared blur-strength alpha
 for translucent MD3 surfaces and fall back to opaque theme roles below the
 RenderEffect/API/blur gate (`BlurredBackgroundProviderImpl.java:211-250`;
-`NaConfig.kt:1534-1537`). The filter-tab tonal pill and Classic/Day
-header-color switch remain separate follow-up slices.
+`NaConfig.kt:1540-1542`). The filter-tab tonal pill remains a separate
+follow-up slice, and the Classic/Day header-colour switch is hidden until it has
+a render consumer.
 
 *(Established 2026-09-22, during `#interface-style`.)*
 
@@ -75,14 +92,14 @@ theme colour, sizing and animation in place, but raises the borderless selected
 pill alpha through `InterfaceStyleController.filterTabSelectorAlpha(...)` when
 `applyChatListTopBar()` is true; `tabStyleStroke` still keeps the existing
 full-opacity stroked chip (`FilterTabsView.java:1644-1663`;
-`InterfaceStyleController.java:8-10,36-42`).
+`InterfaceStyleController.java:12-21,46-53`).
 
 Dialogs search tabs opt into the same alpha through their own
 `ViewPagerFixed.TabsView` flag. The flag defaults off, so the shared bubble
 selector keeps hashtag/search and bookmark tabs on their existing
-`tabStyleStroke` behavior (`DialogsActivity.java:7816-7818`;
-`ViewPagerFixed.java:1512,1544-1546,2066-2079`). Other tab strips keep their
-own `tabStyleStroke` behavior independently (`ScrollSlidingTextTabStrip.java:772`).
+`tabStyleStroke` behavior (`DialogsActivity.java:7822-7824`;
+`ViewPagerFixed.java:1509,1545-1546,2066-2082`). Other tab strips keep their
+own `tabStyleStroke` behavior independently (`ScrollSlidingTextTabStrip.java:772-777`).
 
 *(Established 2026-09-22, during `#interface-style`.)*
 
@@ -90,7 +107,8 @@ own `tabStyleStroke` behavior independently (`ScrollSlidingTextTabStrip.java:772
 
 The Bottom navigation setting reaches the real global navigation bar through
 `MainTabsActivity.createView()` and the shared geometry helper
-(`MainTabsActivity.java:346-449`; `MainTabsHelper.java:26-31,61-66`). MD3 uses a
+(`MainTabsActivity.java:346-462`; `MainTabsHelper.java:14-18,27-42`). MD3 uses an
+80dp bar, or 64dp when bottom-navigation titles are hidden, and uses a
 dedicated provider so the existing `mainTabs()` provider remains unchanged for
 attach/statistics surfaces (`BlurredBackgroundProviderImpl.java:21-35,37-48`).
 `MainTabsLayout` fills the available width only in this scoped mode, and
@@ -99,19 +117,23 @@ tab geometry (`MainTabsLayout.java:50-95`; `GlassTabView.java:145-187`).
 
 *(Established 2026-09-22, during `#interface-style`.)*
 
-## Composer and Buttons Apply to split the chat glass provider family
+## Buttons Apply ships while Composer path is gated off
 
-The Interface Style Composer switch is stored in `NaConfig` and exposed only
-for MD3 by `InterfaceStyleActivity` (`NaConfig.kt:1431-1437`;
-`InterfaceStyleActivity.java:115-123,221-244,328-356`). The real chat uses a
-Buttons-role provider for side controls, selected-message actions, channel
-buttons, and instant-camera buttons, while the Composer provider owns the input
-island, under-keyboard panel, top-panel close satellite, and tools row
-(`ChatActivity.java:4202-4203,5412-5423,7993,8937,8977,9275,12048`;
+The Interface Style Composer switch is stored in `NaConfig`, but
+`InterfaceStyleActivity` assigns and binds its row only when
+`InterfaceStyleController.COMPOSER_STYLE_AVAILABLE` is true; because that
+constant is currently false, the row is hidden and `applyComposer()` always
+returns false (`NaConfig.kt:1431-1435`; `InterfaceStyleController.java:28-32`;
+`InterfaceStyleActivity.java:293,418-420`). The real chat uses a Buttons-role
+provider for side controls, selected-message actions, channel buttons, and
+instant-camera buttons, while the Composer provider/config path still exists
+for the input island, under-keyboard panel, top-panel close satellite, and
+tools row but is deferred until the full MD3 Composer rebuild
+(`ChatActivity.java:4202-4203,5413-5416,8938`;
 `ChatActivityEnterView.java:18959-18965`). The button role applies flat opaque
-MD3 colour at the shared colour-provider chokepoint; the Composer role skips
-toolbar glass when its flat MD3 input treatment is active
-(`ComposerGlassProvider.java:67-114`; `ComposerToolbarLayout.java:223-226`).
+MD3 colour at the shared colour-provider chokepoint; the Composer role has the
+same branch but cannot become active while `applyComposer()` is gated off
+(`ComposerGlassProvider.java:67-80`; `ComposerToolbarLayout.java:223-226`).
 Story controls and Dialogs floating buttons use separate providers and remain
 follow-up parity, not part of this chat-provider slice (`PeerStoriesView.java:549`;
 `FragmentFloatingButton.java:164-168`).
