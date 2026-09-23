@@ -832,6 +832,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         private Paint actionBarSearchPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private boolean naxTopSurfaceDrawn;
+        // NagramX: carries the painted MD3 surface edge from drawChild to the divider in dispatchDraw.
         private float naxTopSurfaceBottom;
         private float naxTopSurfaceAdditionalHeight;
 
