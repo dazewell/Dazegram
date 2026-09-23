@@ -689,6 +689,8 @@ public class ChatActivityEnterView extends FrameLayout implements
     private static final float COMPOSER_TEXT_OPTICAL_OFFSET = 0.5f;
     // How far the send/mic control is drawn inside its slot, so a ring of the input's glass stays visible around it.
     private static final int COMPOSER_PRIMARY_INSET = 3;
+    // NagramX (#interface-style): the MD3 Composer draws its send circle at 40dp, off the field rather than in it.
+    private final int composerPrimaryInset = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyComposer() ? 2 : COMPOSER_PRIMARY_INSET;
     private boolean composerPrimaryGeometryPosted;
     private boolean composerPrimaryReady;
 
@@ -3186,7 +3188,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             // and leaves the same ring of input glass around it. The drawable is shared, so scale it down here
             // rather than resizing the asset. Padding is an int, so round the disc's own float inset to the
             // nearest pixel instead of dp()'s ceil, or the outline lands half a pixel tighter than the disc.
-            final int outlineInset = Math.round(dpf2(COMPOSER_PRIMARY_INSET));
+            final int outlineInset = Math.round(dpf2(composerPrimaryInset));
             sendOutlineView.setScaleType(ImageView.ScaleType.FIT_CENTER);
             sendOutlineView.setPadding(outlineInset, outlineInset, outlineInset, outlineInset);
         } else {
@@ -3249,7 +3251,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             // NagramX (#composer-input): the column's controls draw inside their slots, so tell the tracker how
             // far in and let it publish the drawn edge. Round the disc's own float inset rather than taking
             // dp()'s ceil, so the reserved column ends exactly where the control starts.
-            inputSatellites.setContentInset(Math.round(dpf2(COMPOSER_PRIMARY_INSET)));
+            inputSatellites.setContentInset(Math.round(dpf2(composerPrimaryInset)));
         }
         audioVideoButtonContainer = new FrameLayout(context) {
 
@@ -3522,7 +3524,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     // Drawing the disc a few dp inside its DEFAULT_HEIGHT slot keeps a ring of the pill's own
                     // glass visible all around it, so the control reads as sitting in the pill rather than
                     // capping it. The disc keeps the slot's centre, so the icon on top of it doesn't move.
-                    final float margin = composerToolbarEnabled ? dpf2(COMPOSER_PRIMARY_INSET) : 0;
+                    final float margin = composerToolbarEnabled ? dpf2(composerPrimaryInset) : 0;
                     final float size = dpf2(DEFAULT_HEIGHT) - 2 * margin;
                     final float r = size / 2f;
                     paint.setColor(getThemedColor(Theme.key_chat_messagePanelSend));
@@ -3831,7 +3833,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         sendButton.setContentDescription(getString(R.string.Send));
         sendButton.setSoundEffectsEnabled(false);
         if (composerToolbarEnabled) {
-            sendButton.setBackgroundInset(dpf2(COMPOSER_PRIMARY_INSET));
+            sendButton.setBackgroundInset(dpf2(composerPrimaryInset));
         }
         sendButton.setScaleX(0.1f);
         sendButton.setScaleY(0.1f);
@@ -3851,7 +3853,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         sendButtonBlockedByTypingView = new SendButtonBlockedByTypingView(context, resourcesProvider);
         sendButtonBlockedByTypingView.setVisibility(View.INVISIBLE);
         if (composerToolbarEnabled) {
-            sendButtonBlockedByTypingView.setBackgroundInset(dpf2(COMPOSER_PRIMARY_INSET));
+            sendButtonBlockedByTypingView.setBackgroundInset(dpf2(composerPrimaryInset));
         }
         sendButtonBlockedByTypingView.setOnClickListener(v -> {
             if (streamingState == BotForumHelper.SteamingSendButtonState.STOP) {
@@ -4338,7 +4340,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         };
         doneButton.setContentDescription(getString(R.string.EditMessage));
         if (composerToolbarEnabled) {
-            doneButton.setBackgroundInset(dpf2(COMPOSER_PRIMARY_INSET));
+            doneButton.setBackgroundInset(dpf2(composerPrimaryInset));
         }
         if (bounceable) {
             ScaleStateListAnimator.apply(doneButton);
