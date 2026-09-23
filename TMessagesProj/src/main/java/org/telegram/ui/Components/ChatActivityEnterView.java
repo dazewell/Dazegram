@@ -3523,7 +3523,8 @@ public class ChatActivityEnterView extends FrameLayout implements
                     // NagramX (#composer-input): the mic slot sits inside the text pill, at its trailing end.
                     // Drawing the disc a few dp inside its DEFAULT_HEIGHT slot keeps a ring of the pill's own
                     // glass visible all around it, so the control reads as sitting in the pill rather than
-                    // capping it. The disc keeps the slot's centre, so the icon on top of it doesn't move.
+                    // capping it. The disc keeps the slot's centre, so the icon on top of it doesn't move. The MD3
+                    // Composer draws its field short of this slot, so there the disc sits outside the field.
                     final float margin = composerToolbarEnabled ? dpf2(composerPrimaryInset) : 0;
                     final float size = dpf2(DEFAULT_HEIGHT) - 2 * margin;
                     final float r = size / 2f;
