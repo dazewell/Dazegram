@@ -56,9 +56,9 @@ Search modes, while `drawChild(...)` paints one translucent frosted surface
 above scrolling rows and below the top controls when the RenderEffect source is
 available; unsupported or blur-disabled paths retain the opaque fallback.
 `updateContextViewPosition()` supplies its animated tab extent, trimmed by the
-same `dp(5)` the list's top padding subtracts, since the full padded strip
-covers the first row by that much (`DialogsActivity.java:2175-2185`)
-(`DialogsActivity.java:593-600`, `:936-990`, `:6834-6881`). The
+same `dp(5)` the list's top padding subtracts, and not by the search field's
+tab lift, since rows start there in both states (`DialogsActivity.java:2175-2185`)
+(`DialogsActivity.java:593-600`, `:936-990`, `:6834-6883`). The
 search/folder rows do not install their own MD3 backgrounds; search-type tabs
 keep only a full-bounds child clip, the search field keeps its rounded control
 background, and the independently animated temporary panel reuses the same
@@ -99,7 +99,7 @@ full-opacity stroked chip (`FilterTabsView.java:1644-1663`;
 Dialogs search tabs opt into the same alpha through their own
 `ViewPagerFixed.TabsView` flag. The flag defaults off, so the shared bubble
 selector keeps hashtag/search and bookmark tabs on their existing
-`tabStyleStroke` behavior (`DialogsActivity.java:7823-7825`;
+`tabStyleStroke` behavior (`DialogsActivity.java:7824-7826`;
 `ViewPagerFixed.java:1509,1545-1546,2066-2082`). Other tab strips keep their
 own `tabStyleStroke` behavior independently (`ScrollSlidingTextTabStrip.java:772-777`).
 

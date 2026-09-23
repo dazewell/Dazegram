@@ -6875,9 +6875,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (fragmentView != null) {
             final float visibleFilterTabsHeight = filterTabsView == null
                 ? 0
-                : Math.max(0, (filterTabsView.getMeasuredHeight() - dp(5)) * filtersTabVisibility - searchOffset);
+                : Math.max(0, (filterTabsView.getMeasuredHeight() - dp(5)) * filtersTabVisibility);
             // NagramX: reuse current animation state so the parent surface follows visible tab rows;
-            // the list reserves the strip minus dp(5) (DialogsRecyclerView.onMeasure), so stop there too.
+            // rows start at the strip minus dp(5) (DialogsRecyclerView.onMeasure) whether or not the
+            // search field lifts the strip, so the surface ignores searchOffset.
             ((ContentView) fragmentView).naxTopSurfaceAdditionalHeight =
                 searchTabsHeight * searchAnimationProgress + visibleFilterTabsHeight;
         }
