@@ -63,6 +63,7 @@ public final class ComposerMd3Surface {
     private View channelButtons;
     private View actionButtons;
     private float barTop = Float.MAX_VALUE;
+    private boolean barVisible;
     private View host;
     private BlurredBackgroundDrawable frost;
     private int frostAccount;
@@ -157,7 +158,8 @@ public final class ComposerMd3Surface {
     }
 
     public boolean contains(float x, float y) {
-        return y >= barTop;
+        // Same rule as the island glass: only a fully shown bar takes touches.
+        return barVisible && y >= barTop;
     }
 
     /** How far the bar reaches above the island's pill: the field's own growth plus the padding above it. */
@@ -182,6 +184,11 @@ public final class ComposerMd3Surface {
         final float inputFactor = visibility(enterView);
         final float channelFactor = visibility(channelButtons);
         final float actionFactor = visibility(actionButtons);
+        // ChatActivity fades the island out both for the selection bar, which the bar keeps hosting, and for
+        // modes like adding a poll option, which hide the composer outright. Dividing the selection share out
+        // of the island's alpha leaves only the second kind, so the cross-fade into selection never dims it.
+        final float barFactor = actionFactor >= 1f ? 1f : Math.max(actionFactor, Math.min(1f, alpha / (1f - actionFactor)));
+        barVisible = barFactor >= 1f;
         final int surface = surfaceColor();
         final int container = containerOverlay();
         final int outlineVariant = outlineVariantColor(surface);
@@ -194,17 +201,23 @@ public final class ComposerMd3Surface {
         final float fieldBottom = pill.bottom + dp(FIELD_GROW) * inputFactor;
         barTop = pill.top - pillTranslation - topOverhang();
 
-        if (frosted()) {
-            frost.setBounds(0, Math.round(barTop), width, height);
-            frost.draw(canvas);
-        } else {
-            fillPaint.setColor(surface);
-            canvas.drawRect(0, barTop, width, height, fillPaint);
+        final int frostAlpha = Math.round(255 * barFactor);
+        if (frost != null && frost.getAlpha() != frostAlpha) {
+            // Only on a change: every setAlpha re-records the blur's display list.
+            frost.setAlpha(frostAlpha);
         }
-
-        if (dividers) {
-            dividerPaint.setColor(outlineVariant);
-            canvas.drawRect(0, barTop, width, barTop + divider, dividerPaint);
+        if (barFactor > 0) {
+            if (frosted()) {
+                frost.setBounds(0, Math.round(barTop), width, height);
+                frost.draw(canvas);
+            } else {
+                fillPaint.setColor(Theme.multAlpha(surface, barFactor));
+                canvas.drawRect(0, barTop, width, height, fillPaint);
+            }
+            if (dividers) {
+                dividerPaint.setColor(Theme.multAlpha(outlineVariant, barFactor));
+                canvas.drawRect(0, barTop, width, barTop + divider, dividerPaint);
+            }
         }
 
         if (actionFactor > 0 && actionButtons != null) {
