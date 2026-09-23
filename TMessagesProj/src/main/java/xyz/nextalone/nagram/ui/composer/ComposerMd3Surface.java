@@ -3,13 +3,19 @@ package xyz.nextalone.nagram.ui.composer;
 import static org.telegram.messenger.AndroidUtilities.dp;
 
 import android.graphics.Canvas;
+import android.graphics.ColorFilter;
 import android.graphics.Paint;
+import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.drawable.Drawable;
 import android.view.View;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.core.graphics.ColorUtils;
 
+import org.telegram.messenger.LocaleController;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.ChatActivityEnterView;
 
@@ -25,7 +31,9 @@ import xyz.nextalone.nagram.ui.ComposerToolbarLayout;
  */
 public final class ComposerMd3Surface {
     private static final float CONTAINER_ON_SURFACE_BLEND = 0.06f;
-    private static final int SELECTED_STATE_ALPHA = 41;
+    private static final int STRIP_RADIUS = 12;
+    private static final int STRIP_ACCENT = 3;
+    private static final int STRIP_FIELD_GAP = 2;
     private static final int FIELD_RADIUS = 24;
     private static final int FIELD_GROW = 4;
     private static final int FIELD_SEND_GAP = 6;
@@ -73,10 +81,6 @@ public final class ComposerMd3Surface {
         return Theme.getColor(Theme.key_chat_messagePanelSend, resourcesProvider);
     }
 
-    public int selectedStateColor() {
-        return ColorUtils.setAlphaComponent(primaryColor(), SELECTED_STATE_ALPHA);
-    }
-
     private int outlineVariantColor(int surface) {
         return InterfaceStyleController.panelDividerPaint(surface, resourcesProvider).getColor();
     }
@@ -108,8 +112,9 @@ public final class ComposerMd3Surface {
         final float divider = Math.max(1, dp(0.66f));
         final boolean dividers = InterfaceStyleController.panelDividers();
 
-        final float topViewHeight = enterView != null ? enterView.getTopViewHeight() * enterView.getTopViewEnterProgress() : 0;
-        final float fieldTop = pill.top + topViewHeight - dp(FIELD_GROW) * inputFactor;
+        final float topViewProgress = enterView != null ? enterView.getTopViewEnterProgress() : 0;
+        final float topViewHeight = enterView != null ? Math.max(0, enterView.getTopViewHeight()) * topViewProgress : 0;
+        final float fieldTop = pill.top + topViewHeight - dp(FIELD_GROW) * inputFactor * (1f - topViewProgress);
         barTop = Math.min(pill.top - pillTranslation, fieldTop) - dp(BAR_TOP_PADDING);
 
         fillPaint.setColor(surface);
@@ -139,15 +144,35 @@ public final class ComposerMd3Surface {
             drawHost(canvas, container, alpha * channelFactor);
         }
 
+        if (drawPill && inputFactor > 0 && topViewHeight > dp(STRIP_FIELD_GAP)) {
+            // Reply, edit, forward and link preview all share this top view, so one strip covers them.
+            final float stripAlpha = alpha * inputFactor * topViewProgress;
+            rect.set(pill.left, pill.top, pill.right, pill.top + topViewHeight - dp(STRIP_FIELD_GAP));
+            final float radius = Math.min(dp(STRIP_RADIUS), rect.height() / 2f);
+            fillPaint.setColor(Theme.multAlpha(container, stripAlpha));
+            canvas.drawRoundRect(rect, radius, radius, fillPaint);
+            canvas.save();
+            canvas.clipRect(rect.left, rect.top, rect.left + dp(STRIP_ACCENT), rect.bottom);
+            fillPaint.setColor(Theme.multAlpha(primaryColor(), stripAlpha));
+            canvas.drawRoundRect(rect, radius, radius, fillPaint);
+            canvas.restore();
+        }
+
         if (drawPill && inputFactor > 0) {
+            float fieldLeft = pill.left;
             float fieldRight = pill.right;
             final int primaryEndInset = enterView.getComposerPrimaryEndInset();
             if (primaryEndInset > 0) {
-                fieldRight = Math.min(fieldRight, enterView.getRight() - primaryEndInset - dp(FIELD_SEND_GAP));
+                // The send column follows LocaleController.isRTL, not the layout direction.
+                if (LocaleController.isRTL) {
+                    fieldLeft = Math.max(fieldLeft, enterView.getLeft() + primaryEndInset + dp(FIELD_SEND_GAP));
+                } else {
+                    fieldRight = Math.min(fieldRight, enterView.getRight() - primaryEndInset - dp(FIELD_SEND_GAP));
+                }
             }
             final boolean focused = enterView.getEditField() != null && enterView.getEditField().isFocused();
             final float strokeWidth = dp(focused ? 2 : 1);
-            rect.set(pill.left, fieldTop, fieldRight, pill.bottom);
+            rect.set(fieldLeft, fieldTop, fieldRight, pill.bottom);
             final float radius = Math.min(dp(FIELD_RADIUS), rect.height() / 2f);
             fillPaint.setColor(Theme.multAlpha(surface, alpha * inputFactor));
             canvas.drawRoundRect(rect, radius, radius, fillPaint);
@@ -172,6 +197,59 @@ public final class ComposerMd3Surface {
         final float radius = Math.min(dp(HOST_RADIUS), rect.height() / 2f);
         fillPaint.setColor(Theme.multAlpha(color, alpha));
         canvas.drawRoundRect(rect, radius, radius, fillPaint);
+    }
+
+    /** The layout editor's stand-in for the bar: surface above {@code toolsTop}, the tools band below. */
+    public static Drawable previewBar(int toolsTop) {
+        final ComposerMd3Surface surface = new ComposerMd3Surface(null);
+        return new PreviewDrawable() {
+            @Override
+            public void draw(@NonNull Canvas canvas) {
+                final Rect bounds = getBounds();
+                surface.fillPaint.setColor(surface.surfaceColor());
+                canvas.drawRect(bounds, surface.fillPaint);
+                surface.fillPaint.setColor(surface.containerColor());
+                canvas.drawRect(bounds.left, bounds.top + toolsTop, bounds.right, bounds.bottom, surface.fillPaint);
+            }
+        };
+    }
+
+    /** The layout editor's outlined field, stopping {@code endReserve} short of its end for the send circle. */
+    public static Drawable previewField(int endReserve) {
+        final ComposerMd3Surface surface = new ComposerMd3Surface(null);
+        return new PreviewDrawable() {
+            @Override
+            public void draw(@NonNull Canvas canvas) {
+                final Rect bounds = getBounds();
+                final int surfaceColor = surface.surfaceColor();
+                final float strokeWidth = dp(1);
+                // Gravity.END puts the preview's send circle on the right even in RTL: the app does not
+                // declare supportsRtl.
+                surface.rect.set(bounds.left, bounds.top, bounds.right - endReserve, bounds.bottom);
+                final float radius = Math.min(dp(FIELD_RADIUS), surface.rect.height() / 2f);
+                surface.fillPaint.setColor(surfaceColor);
+                canvas.drawRoundRect(surface.rect, radius, radius, surface.fillPaint);
+                surface.rect.inset(strokeWidth / 2f, strokeWidth / 2f);
+                surface.strokePaint.setStrokeWidth(strokeWidth);
+                surface.strokePaint.setColor(surface.outlineVariantColor(surfaceColor));
+                canvas.drawRoundRect(surface.rect, radius - strokeWidth / 2f, radius - strokeWidth / 2f, surface.strokePaint);
+            }
+        };
+    }
+
+    private abstract static class PreviewDrawable extends Drawable {
+        @Override
+        public void setAlpha(int alpha) {
+        }
+
+        @Override
+        public void setColorFilter(@Nullable ColorFilter colorFilter) {
+        }
+
+        @Override
+        public int getOpacity() {
+            return PixelFormat.TRANSLUCENT;
+        }
     }
 
     private static float visibility(View view) {

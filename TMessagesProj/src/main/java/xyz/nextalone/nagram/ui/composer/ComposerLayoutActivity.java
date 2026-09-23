@@ -131,6 +131,8 @@ public class ComposerLayoutActivity extends BaseFragment {
     private static final int PREVIEW_HEADER_HEIGHT = 40;
     private static final int PREVIEW_INPUT_GAP = 2;
     private static final int PREVIEW_INPUT_HEIGHT = 44;
+    private static final int PREVIEW_FIELD_SEND_GAP = 6;
+    private static final int PREVIEW_BAR_TOP_PADDING = 6;
     private static final int PREVIEW_PADDING = 12;
     /** Matches ChatActivityEnterView.COMPOSER_PRIMARY_INSET - the real send button's own background inset
      * inside its DEFAULT_HEIGHT slot, kept in step so the preview's placeholder end-margin lines up with
@@ -1332,6 +1334,7 @@ public class ComposerLayoutActivity extends BaseFragment {
         /** Retained so addMockInput can glass the placeholder pill with the same wallpaper sample the
          * toolbar bubbles use, rather than the flat GradientDrawable it painted before. */
         private BlurredBackgroundDrawableViewFactory glassFactory;
+        private Drawable md3Bar;
 
         PreviewCell(Context context) {
             super(context);
@@ -1416,7 +1419,10 @@ public class ComposerLayoutActivity extends BaseFragment {
             FrameLayout body = new FrameLayout(getContext());
             BlurredBackgroundDrawable bodyDrawable = glassFactory.create(body, bodyGlassColor);
             bodyDrawable.setRadius(InterfaceStyleController.applyComposer() ? 0 : dp(PREVIEW_INPUT_HEIGHT / 2f));
-            body.setBackground(bodyDrawable);
+            // The MD3 field stops short of the send circle, whose drawn left edge is PREVIEW_INPUT_HEIGHT
+            // in from the end once its own inset and margin cancel out.
+            body.setBackground(InterfaceStyleController.applyComposer()
+                    ? ComposerMd3Surface.previewField(dp(PREVIEW_INPUT_HEIGHT + PREVIEW_FIELD_SEND_GAP)) : bodyDrawable);
             body.setFocusable(false);
             body.setClickable(false);
             body.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
@@ -1554,6 +1560,13 @@ public class ComposerLayoutActivity extends BaseFragment {
                 canvas.drawColor(Theme.getColor(Theme.key_windowBackgroundWhite));
             } else {
                 drawWallpaper(canvas, wallpaper);
+            }
+            if (InterfaceStyleController.applyComposer()) {
+                if (md3Bar == null) {
+                    md3Bar = ComposerMd3Surface.previewBar(dp(PREVIEW_BAR_TOP_PADDING + PREVIEW_INPUT_HEIGHT + PREVIEW_INPUT_GAP));
+                }
+                md3Bar.setBounds(0, stage.getTop() - dp(PREVIEW_BAR_TOP_PADDING), getMeasuredWidth(), getMeasuredHeight());
+                md3Bar.draw(canvas);
             }
             shadowDrawable.setBounds(0, 0, getMeasuredWidth(), getMeasuredHeight());
             shadowDrawable.draw(canvas);
