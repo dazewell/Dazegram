@@ -517,7 +517,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         o.setBlur(true);
         o.translate(0, -dp(4));
         o.setGravity(Gravity.LEFT);
-        final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(28), getThemedColor(Theme.key_windowBackgroundWhite));
+        final ShapeDrawable bg = naxTabScrimBackground(); // NagramX
         bg.getPaint().setShadowLayer(dp(6), 0, dp(1), Theme.multAlpha(0xFF000000, 0.15f));
         o.setScrimViewBackground(bg);
         o.show();
@@ -543,7 +543,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         }
         o.setBlur(true);
         o.translate(0, -dp(4));
-        final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(28), getThemedColor(Theme.key_windowBackgroundWhite));
+        final ShapeDrawable bg = naxTabScrimBackground(); // NagramX
         bg.getPaint().setShadowLayer(dp(6), 0, dp(1), Theme.multAlpha(0xFF000000, 0.15f));
         o.setScrimViewBackground(bg);
         o.show();
@@ -605,7 +605,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 //        o.setBlur(true);
         o.translate(-dp(8), -dp(4));
         o.setMaxHeight(Math.min(dp(560), Math.max(dp(320), AndroidUtilities.displaySize.y - dp(120))));
-        final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(28), getThemedColor(Theme.key_windowBackgroundWhite));
+        final ShapeDrawable bg = naxTabScrimBackground(); // NagramX
         bg.getPaint().setShadowLayer(dp(6), 0, dp(1), Theme.multAlpha(0xFF000000, 0.15f));
         o.setScrimViewBackground(bg);
         o.setGravity(Gravity.LEFT);
@@ -762,7 +762,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
         o.setBlur(true);
         o.translate(0, -dp(4));
-        final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(28), getThemedColor(Theme.key_windowBackgroundWhite));
+        final ShapeDrawable bg = naxTabScrimBackground(); // NagramX
         bg.getPaint().setShadowLayer(dp(6), 0, dp(1), Theme.multAlpha(0xFF000000, 0.15f));
         o.setScrimViewBackground(bg);
         o.show();
@@ -1467,10 +1467,21 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         com.radolyn.ayugram.eventschedule.MessageTriggersMenu.addTo(o, this);
     }
 
+    // NagramX: an MD3 tab spans a third of the bar, so a full-bounds card reaches the screen edge; hug indicator and label instead.
+    private ShapeDrawable naxTabScrimBackground() {
+        final int color = getThemedColor(Theme.key_windowBackgroundWhite);
+        if (!md3BottomNavigation) {
+            return Theme.createRoundRectDrawable(dp(28), color);
+        }
+        final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(20), color);
+        bg.setIntrinsicWidth(dp(96));
+        bg.setIntrinsicHeight(dp(64));
+        return bg;
+    }
     private void setupPopupMenuStyle(ItemOptions options) {
         options.setBlur(true);
         options.translate(0, -dp(4));
-        final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(28), getThemedColor(Theme.key_windowBackgroundWhite));
+        final ShapeDrawable bg = naxTabScrimBackground(); // NagramX
         bg.getPaint().setShadowLayer(dp(6), 0, dp(1), Theme.multAlpha(0xFF000000, 0.15f));
         options.setScrimViewBackground(bg);
     }
