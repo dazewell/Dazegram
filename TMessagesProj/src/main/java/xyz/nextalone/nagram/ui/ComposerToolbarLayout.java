@@ -83,9 +83,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
     private static final float MD3_GLYPH_BASE = 8, MD3_GLYPH_PER_SCALE = 16;
     private static final int MD3_SPACING_SQUEEZE = 4;
     private static final int MD3_CELL_FLOOR = 36;
-    private static final int MD3_ROW_TOP_GAP = 4;
     private static final int MD3_GROUP_GAP = 8;
-    private static final int MD3_SCROLL_EDGE = 8;
     private static final int ICON_GLYPH = 24;
     private static final int GLASS_INSET = 4;
     private static final int GLASS_DRAW_INSET = 2;
@@ -136,8 +134,10 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
         middleScrollView = new ComposerMiddleScrollView(context);
         middleScrollView.setHorizontalScrollBarEnabled(false);
-        middleScrollView.setHorizontalFadingEdgeEnabled(true);
-        middleScrollView.setFadingEdgeLength(AndroidUtilities.dp(InterfaceStyleController.applyComposer() ? MD3_SCROLL_EDGE : 12));
+        // NagramX (#interface-style): MD3 hard-clips the strip. A glyph dimmed by the fade reads as disabled,
+        // while a clipped one just says there is more to scroll.
+        middleScrollView.setHorizontalFadingEdgeEnabled(!InterfaceStyleController.applyComposer());
+        middleScrollView.setFadingEdgeLength(AndroidUtilities.dp(12));
         middleScrollView.setFillViewport(false);
         middleScrollView.setFocusable(false);
         middleScrollView.setFocusableInTouchMode(false);
@@ -162,7 +162,6 @@ public final class ComposerToolbarLayout extends FrameLayout {
         endSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
 
         controls.setSlots(startSlot, middleScrollView, middle, endSlot);
-        controls.setJustifiedSlot(orderedSlot);
         middle.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
             if (right - left != oldRight - oldLeft) {
                 pinMiddleToStart();
@@ -420,16 +419,6 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * layout params it is given.
      */
     public static int height() {
-        // NagramX (#interface-style): the extra top gap is the input row's bottom padding, kept inside this
-        // view so the tools row starts 4dp under the field.
-        if (InterfaceStyleController.applyComposer()) {
-            return rowHeight() + MD3_ROW_TOP_GAP;
-        }
-        return Math.round(BASE_HEIGHT * scale());
-    }
-
-    /** Height of the button row itself, without the MD3 gap above it. */
-    public static int rowHeight() {
         if (InterfaceStyleController.applyComposer()) {
             return Math.round(MD3_ROW_BASE + MD3_ROW_PER_SCALE * scale());
         }
@@ -792,7 +781,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
             setClipToPadding(true);
             // Snapshot the scale-derived geometry once, before anything measures, lays out or draws, so
             // every later read is the same sample (see the field comment).
-            geometryHeightDp = rowHeight();
+            geometryHeightDp = height();
             geometryInsetDp = glassInset();
             geometryDrawInsetDp = glassDrawInset();
             // The gap between two neighbouring bubbles, reserved in layout so the glass separates the
@@ -820,33 +809,6 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
         int rowHeightDp() {
             return geometryHeightDp;
-        }
-
-        // The ordered buttons of the scrolling group, the only cells MD3 widens; the pinned send-as and bot
-        // buttons ahead of them keep their own widths.
-        private ViewGroup justifiedSlot;
-
-        void setJustifiedSlot(ViewGroup slot) {
-            justifiedSlot = slot;
-        }
-
-        private void justifyMiddleCells(int widthPx, int extraPx) {
-            if (justifiedSlot == null) {
-                return;
-            }
-            for (int i = 0; i < justifiedSlot.getChildCount(); i++) {
-                View child = justifiedSlot.getChildAt(i);
-                ViewGroup.LayoutParams lp = child.getLayoutParams();
-                int width = widthPx;
-                if (extraPx > 0 && child.getVisibility() != GONE) {
-                    width++;
-                    extraPx--;
-                }
-                if (lp != null && lp.width != width) {
-                    lp.width = width;
-                    child.forceLayout();
-                }
-            }
         }
 
         void setSlots(CollapsingLinearLayout startSlot, HorizontalScrollView middleScrollView, LinearLayout middleContent, CollapsingLinearLayout endSlot) {
@@ -958,10 +920,6 @@ public final class ComposerToolbarLayout extends FrameLayout {
             if (middleContent.getPaddingLeft() != middleInset || middleContent.getPaddingRight() != middleInset) {
                 middleContent.setPadding(middleInset, 0, middleInset, 0);
             }
-            boolean md3 = InterfaceStyleController.applyComposer();
-            if (md3) {
-                justifyMiddleCells(AndroidUtilities.dp(buttonSize()), 0);
-            }
             middleContent.measure(unboundedWidthSpec, heightSpec);
 
             int startWidth = startSlot.getMeasuredWidth();
@@ -991,29 +949,6 @@ public final class ComposerToolbarLayout extends FrameLayout {
             // occupied one takes content plus padding into its window (capped by the width the row has left).
             int desiredMiddleWidth = occMiddle ? middleWidth : 0;
             int middleViewportWidth = Math.min(desiredMiddleWidth, Math.max(0, panelWidth - horizontalPadding - startWidth - endWidth - reservedGaps));
-            if (md3 && middleViewportWidth < desiredMiddleWidth && justifiedSlot != null) {
-                // NagramX (#interface-style): a half-faded glyph at the scroll edge reads as disabled, and
-                // trimming the viewport to whole cells leaves a dead strip before the trailing group. So a
-                // whole number of equal slots spans the viewport exactly: whichever of the two nearest counts
-                // bends the cell least, as long as a slot never gets more than 4dp narrower than the cell.
-                int cellPx = AndroidUtilities.dp(buttonSize());
-                int minSlotPx = Math.max(AndroidUtilities.dp(MD3_CELL_FLOOR), cellPx - AndroidUtilities.dp(MD3_SPACING_SQUEEZE));
-                int orderedWidth = Math.max(0, middleViewportWidth - (middleContent.getMeasuredWidth() - justifiedSlot.getMeasuredWidth()));
-                int fewer = Math.max(1, orderedWidth / cellPx);
-                int more = fewer + 1;
-                int cells = fewer;
-                if (orderedWidth / more >= minSlotPx && cellPx - orderedWidth / more < orderedWidth / fewer - cellPx) {
-                    cells = more;
-                }
-                int slotPx = Math.max(minSlotPx, orderedWidth / cells);
-                // The leftover pixels go one each to the first cells, so the ones on screen at rest add up
-                // to the viewport exactly.
-                int extraPx = Math.max(0, orderedWidth - cells * slotPx);
-                justifyMiddleCells(slotPx, extraPx);
-                middleContent.measure(unboundedWidthSpec, heightSpec);
-                middleWidth = middleContent.getMeasuredWidth();
-                middleViewportWidth = Math.min(middleViewportWidth, middleWidth - justifiedSlot.getMeasuredWidth() + cells * slotPx + extraPx);
-            }
 
             middleScrollView.measure(MeasureSpec.makeMeasureSpec(middleViewportWidth, MeasureSpec.EXACTLY), heightSpec);
             // A control fading out inside the middle group sits past the viewport edge, so only clip once the
@@ -1855,204 +1790,12 @@ public final class ComposerToolbarLayout extends FrameLayout {
     // strip closes the chat instead. Claiming the touch on ACTION_DOWN, whenever the strip has content
     // to scroll to, closes that gap.
     private static final class ComposerMiddleScrollView extends HorizontalScrollView {
-        private static final int SNAP_SETTLE_DELAY_MS = 60;
-        private static final int SNAP_DURATION_MS = 180;
-        private static final int FLING_MAX_DURATION_MS = 450;
-
         private float downX;
         private float downY;
         private boolean guardArmed;
-        // NagramX (#interface-style): with no glass bubble end behind it, a glyph resting half inside the
-        // scroll fade reads as a disabled button. MD3 lets the finger scroll freely, then eases the rest
-        // position to one where both viewport edges fall in a button's padding.
-        private final boolean snapToButtons = InterfaceStyleController.applyComposer();
-        private boolean touching;
-        private ValueAnimator snapAnimator;
-        private final Runnable settleCheck = this::snapToNearestRest;
-        private final android.widget.Scroller flingProjector;
 
         ComposerMiddleScrollView(Context context) {
             super(context);
-            flingProjector = new android.widget.Scroller(context);
-        }
-
-        @Override
-        public boolean dispatchTouchEvent(MotionEvent ev) {
-            if (snapToButtons) {
-                int action = ev.getActionMasked();
-                if (action == MotionEvent.ACTION_DOWN) {
-                    touching = true;
-                    removeCallbacks(settleCheck);
-                    cancelSnap();
-                } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
-                    touching = false;
-                    scheduleSettle();
-                }
-            }
-            return super.dispatchTouchEvent(ev);
-        }
-
-        // A fling is projected to where the platform scroller would stop, then eased to the nearest clear rest
-        // from there, so there is never a native fling left running for the snap to fight.
-        @Override
-        public void fling(int velocityX) {
-            View content = getChildAt(0);
-            if (!snapToButtons || content == null) {
-                super.fling(velocityX);
-                return;
-            }
-            removeCallbacks(settleCheck);
-            int maxScroll = Math.max(0, content.getWidth() - getWidth());
-            flingProjector.fling(getScrollX(), 0, velocityX, 0, 0, maxScroll, 0, 0);
-            int projected = flingProjector.getFinalX();
-            int duration = flingProjector.getDuration();
-            flingProjector.forceFinished(true);
-            animateTo(nearestRest(content, projected, maxScroll), Math.max(SNAP_DURATION_MS, Math.min(FLING_MAX_DURATION_MS, duration)));
-        }
-
-        @Override
-        protected void onLayout(boolean changed, int l, int t, int r, int b) {
-            super.onLayout(changed, l, t, r, b);
-            if (snapToButtons && !touching) {
-                scheduleSettle();
-            }
-        }
-
-        @Override
-        protected void onDetachedFromWindow() {
-            removeCallbacks(settleCheck);
-            cancelSnap();
-            super.onDetachedFromWindow();
-        }
-
-        private void scheduleSettle() {
-            removeCallbacks(settleCheck);
-            postDelayed(settleCheck, SNAP_SETTLE_DELAY_MS);
-        }
-
-        private void cancelSnap() {
-            if (snapAnimator != null) {
-                ValueAnimator animator = snapAnimator;
-                snapAnimator = null;
-                animator.cancel();
-            }
-        }
-
-        // Runs after a release without a fling, or a layout pass; a fling settles itself in fling().
-        private void snapToNearestRest() {
-            View content = getChildAt(0);
-            if (touching || snapAnimator != null || content == null) {
-                return;
-            }
-            int maxScroll = Math.max(0, content.getWidth() - getWidth());
-            animateTo(nearestRest(content, getScrollX(), maxScroll), SNAP_DURATION_MS);
-        }
-
-        private int nearestRest(View content, int from, int maxScroll) {
-            from = Math.max(0, Math.min(maxScroll, from));
-            if (maxScroll == 0) {
-                return 0;
-            }
-            // The logical start is where the row rests on its own (see pinMiddleToStart), so it always counts.
-            int target = LocaleController.isRTL ? maxScroll : 0;
-            int bestDistance = Math.abs(from - target);
-            java.util.List<View> leaves = leaves(content);
-            int logicalEnd = LocaleController.isRTL ? 0 : maxScroll;
-            if (Math.abs(from - logicalEnd) < bestDistance && isRestClear(leaves, content, logicalEnd, maxScroll)) {
-                bestDistance = Math.abs(from - logicalEnd);
-                target = logicalEnd;
-            }
-            // Every button's own edge is a candidate for either end of the viewport, since the send-as and
-            // bot buttons are not the width of a regular cell.
-            for (int pass = 0; pass < 2; pass++) {
-                for (View leaf : leaves) {
-                    int edge = Math.round(leafLeft(content, leaf)) + (pass == 0 ? 0 : leaf.getWidth());
-                    int candidate = pass == 0 ? edge : edge - getWidth();
-                    if (candidate <= 0 || candidate >= maxScroll) {
-                        continue;
-                    }
-                    int distance = Math.abs(from - candidate);
-                    if (distance < bestDistance && isRestClear(leaves, content, candidate, maxScroll)) {
-                        bestDistance = distance;
-                        target = candidate;
-                    }
-                }
-            }
-            return target;
-        }
-
-        private void animateTo(int target, int duration) {
-            int current = getScrollX();
-            cancelSnap();
-            if (target == current) {
-                return;
-            }
-            ValueAnimator animator = ValueAnimator.ofInt(current, target);
-            animator.setDuration(duration);
-            animator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
-            animator.addUpdateListener(a -> scrollTo((int) a.getAnimatedValue(), 0));
-            animator.addListener(new AnimatorListenerAdapter() {
-                @Override
-                public void onAnimationEnd(Animator animation) {
-                    if (snapAnimator == animation) {
-                        snapAnimator = null;
-                    }
-                }
-            });
-            snapAnimator = animator;
-            animator.start();
-        }
-        // A rest position is clear when no glyph reaches into a fade that is actually showing: the start
-        // fade only while there is content before, the end fade only while there is content after.
-        private boolean isRestClear(java.util.List<View> leaves, View content, int scrollX, int maxScroll) {
-            int fade = getHorizontalFadingEdgeLength();
-            int start = scrollX;
-            int end = scrollX + getWidth();
-            for (View leaf : leaves) {
-                float left = leafLeft(content, leaf);
-                float glyphLeft = left + leaf.getPaddingLeft();
-                float glyphRight = left + leaf.getWidth() - leaf.getPaddingRight();
-                if (glyphRight <= glyphLeft) {
-                    continue;
-                }
-                if (glyphLeft < start + (scrollX > 0 ? fade : 0) && glyphRight > start) {
-                    return false;
-                }
-                if (glyphRight > end - (scrollX < maxScroll ? fade : 0) && glyphLeft < end) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        private final java.util.ArrayList<View> leafBuffer = new java.util.ArrayList<>();
-
-        private java.util.List<View> leaves(View content) {
-            leafBuffer.clear();
-            collectLeaves(content, leafBuffer);
-            return leafBuffer;
-        }
-
-        private static void collectLeaves(View view, java.util.List<View> out) {
-            if (view instanceof CollapsingLinearLayout || view instanceof SlidingLinearLayout) {
-                ViewGroup group = (ViewGroup) view;
-                for (int i = 0; i < group.getChildCount(); i++) {
-                    View child = group.getChildAt(i);
-                    if (child.getVisibility() == VISIBLE && child.getWidth() > 0) {
-                        collectLeaves(child, out);
-                    }
-                }
-            } else {
-                out.add(view);
-            }
-        }
-
-        private static float leafLeft(View content, View leaf) {
-            float x = 0;
-            for (View v = leaf; v != null && v != content; v = (View) v.getParent()) {
-                x += v.getLeft() + v.getTranslationX();
-            }
-            return x;
         }
 
         @Override
