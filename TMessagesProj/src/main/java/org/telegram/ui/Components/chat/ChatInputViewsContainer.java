@@ -281,6 +281,11 @@ public class ChatInputViewsContainer extends FrameLayout {
     }
 
     public float getInputBubbleHeight() {
+        // NagramX: the MD3 Composer bar starts above the pill, and everything laid out against the composer
+        // (the message list's bottom padding, side buttons, fades) has to clear the bar, not the pill.
+        if (md3Surface != null && inputBubbleHeight > 0) {
+            return inputBubbleHeight + md3Surface.topOverhang();
+        }
         return inputBubbleHeight;
     }
 

@@ -115,6 +115,11 @@ public final class ComposerMd3Surface {
         return y >= barTop;
     }
 
+    /** How far the bar reaches above the island's pill: the field's own growth plus the padding above it. */
+    public int topOverhang() {
+        return dp(BAR_TOP_PADDING + FIELD_GROW);
+    }
+
     /**
      * @param pill            the island's visible pill in container coordinates, including its slide offset
      * @param pillTranslation the vertical slide the pill carries while selection mode takes the island over
@@ -142,7 +147,7 @@ public final class ComposerMd3Surface {
         final float topViewHeight = enterView != null ? Math.max(0, enterView.getTopViewHeight()) * topViewProgress : 0;
         final float fieldTop = pill.top + topViewHeight - dp(FIELD_GROW) * inputFactor * (1f - topViewProgress);
         final float fieldBottom = pill.bottom + dp(FIELD_GROW) * inputFactor;
-        barTop = Math.min(pill.top - pillTranslation, fieldTop) - dp(BAR_TOP_PADDING);
+        barTop = pill.top - pillTranslation - topOverhang();
 
         fillPaint.setColor(surface);
         canvas.drawRect(0, barTop, width, height, fillPaint);
