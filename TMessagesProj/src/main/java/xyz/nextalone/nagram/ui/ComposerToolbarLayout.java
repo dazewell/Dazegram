@@ -76,9 +76,14 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * toolbar was scaled up, because the radius was in raw dp and the cell was not.
      */
     private static final int MIN_CELL_FLOOR = 36;
-    private static final int MD3_MIN_TARGET = 48;
-    private static final int MD3_STATE_LAYER = 40;
-    private static final int MD3_ROW_TOP_GAP = 8;
+    // MD3 sizes run linearly through the 75/100/125% anchors: row and cell 40/48/56dp, state layer 32/40/48dp,
+    // glyph 20/24/28dp. Spacing takes up to 4dp off the cell width, never off the row.
+    private static final float MD3_ROW_BASE = 16, MD3_ROW_PER_SCALE = 32;
+    private static final float MD3_STATE_BASE = 8, MD3_STATE_PER_SCALE = 32;
+    private static final float MD3_GLYPH_BASE = 8, MD3_GLYPH_PER_SCALE = 16;
+    private static final int MD3_SPACING_SQUEEZE = 4;
+    private static final int MD3_CELL_FLOOR = 36;
+    private static final int MD3_ROW_TOP_GAP = 4;
     private static final int MD3_GROUP_GAP = 8;
     private static final int MD3_SCROLL_EDGE = 8;
     private static final int ICON_GLYPH = 24;
@@ -415,10 +420,8 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * layout params it is given.
      */
     public static int height() {
-        // NagramX (#interface-style): MD3 never shrinks a target below 48dp, so the row can't drop below
-        // the height whose slot box holds one; see the spacing comment for why the box has to fit the cell.
-        // The extra top gap is the input row's bottom padding, kept inside this view so the divider the
-        // composer bar draws at the row's top lands a full 8dp under the field.
+        // NagramX (#interface-style): the extra top gap is the input row's bottom padding, kept inside this
+        // view so the tools row starts 4dp under the field.
         if (InterfaceStyleController.applyComposer()) {
             return rowHeight() + MD3_ROW_TOP_GAP;
         }
@@ -428,9 +431,17 @@ public final class ComposerToolbarLayout extends FrameLayout {
     /** Height of the button row itself, without the MD3 gap above it. */
     public static int rowHeight() {
         if (InterfaceStyleController.applyComposer()) {
-            return Math.max(BASE_HEIGHT, Math.round(BASE_HEIGHT * scale()));
+            return Math.round(MD3_ROW_BASE + MD3_ROW_PER_SCALE * scale());
         }
         return Math.round(BASE_HEIGHT * scale());
+    }
+
+    /** The glyph factor applyIconBox multiplies ICON_GLYPH by, before any per-button optical correction. */
+    private static float glyphScale() {
+        if (InterfaceStyleController.applyComposer()) {
+            return (MD3_GLYPH_BASE + MD3_GLYPH_PER_SCALE * scale()) / ICON_GLYPH;
+        }
+        return scale();
     }
 
     /**
@@ -446,6 +457,10 @@ public final class ComposerToolbarLayout extends FrameLayout {
     }
 
     private static int packedCellDp(float scale, int spacingPercent) {
+        if (InterfaceStyleController.applyComposer()) {
+            float squeeze = MD3_SPACING_SQUEEZE * (SPACING_MAX - spacingPercent) / (float) (SPACING_MAX - SPACING_MIN);
+            return Math.round(MD3_ROW_BASE + MD3_ROW_PER_SCALE * scale - squeeze);
+        }
         return Math.round(BASE_BUTTON_SIZE * scale * (spacingPercent / 100f));
     }
 
@@ -456,8 +471,12 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * floor with it instead of starving that glyph.
      */
     private static int minCellDp(float scale) {
+        if (InterfaceStyleController.applyComposer()) {
+            int widestGlyph = (int) Math.ceil((MD3_GLYPH_BASE + MD3_GLYPH_PER_SCALE * scale) * ComposerButtons.maxIconScale());
+            return Math.max(MD3_CELL_FLOOR, widestGlyph);
+        }
         int widestGlyph = (int) Math.ceil(ICON_GLYPH * ComposerButtons.maxIconScale() * scale);
-        return Math.max(InterfaceStyleController.applyComposer() ? MD3_MIN_TARGET : MIN_CELL_FLOOR, widestGlyph);
+        return Math.max(MIN_CELL_FLOOR, widestGlyph);
     }
 
     /**
@@ -479,10 +498,10 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * made worse by sizing the circle the same way.
      */
     public static Drawable panelSelector(int color) {
-        // NagramX (#interface-style): MD3 draws a 40dp state layer inside the 48dp target, so neighbours
-        // keep 8dp between their circles; the size slider scales that circle, never the target.
+        // NagramX (#interface-style): MD3 draws a state layer 8dp narrower than the row, and at least 4dp
+        // narrower than a squeezed cell so neighbouring circles never touch.
         if (InterfaceStyleController.applyComposer()) {
-            float radius = Math.min(MD3_STATE_LAYER * scale(), buttonSize() - (MD3_MIN_TARGET - MD3_STATE_LAYER)) / 2f;
+            float radius = Math.min(MD3_STATE_BASE + MD3_STATE_PER_SCALE * scale(), buttonSize() - MD3_SPACING_SQUEEZE) / 2f;
             return Theme.createSelectorDrawable(color, Theme.RIPPLE_MASK_CIRCLE_20DP, AndroidUtilities.dp(radius));
         }
         return Theme.createSelectorDrawable(color, Theme.RIPPLE_MASK_CIRCLE_20DP,
@@ -529,7 +548,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * every button and this is all the enter view has to call.
      */
     public static void applyPanelIconBox(View view) {
-        applyPanelIconBox(view, scale());
+        applyPanelIconBox(view, glyphScale());
     }
 
     /**
@@ -539,7 +558,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * call site.
      */
     public static void applyPanelIconBox(View view, int resourceId) {
-        applyPanelIconBox(view, ComposerButtons.iconScaleForResource(resourceId) * scale());
+        applyPanelIconBox(view, ComposerButtons.iconScaleForResource(resourceId) * glyphScale());
     }
 
     private static void applyPanelIconBox(View view, float iconScale) {
@@ -623,7 +642,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         // ink renders the same pixels in RTL, and the per-glyph offset baked into the fork vectors is
         // physical canvas geometry, not reading order. Switching to setPaddingRelative would mirror the
         // inset in RTL and reintroduce exactly the decentring this change removes.
-        applyPanelIconBox(view, ComposerButtons.iconScaleForKey(key) * scale());
+        applyPanelIconBox(view, ComposerButtons.iconScaleForKey(key) * glyphScale());
     }
 
     // The panel and its slots react to the same layout passes, so they share one settle schedule and start
@@ -794,7 +813,9 @@ public final class ComposerToolbarLayout extends FrameLayout {
             // MD3: the enter view already holds the row 7dp off the screen edge; one more dp puts the first and
             // last targets on the composer's 8dp keyline.
             int sidePadding = InterfaceStyleController.applyComposer() ? AndroidUtilities.dp(1) : 0;
-            setPaddingRelative(sidePadding, AndroidUtilities.dp(geometryInsetDp), sidePadding, AndroidUtilities.dp(geometryInsetDp));
+            // MD3 cells are as tall as the row, so there is no vertical inset to keep.
+            int verticalPadding = InterfaceStyleController.applyComposer() ? 0 : AndroidUtilities.dp(geometryInsetDp);
+            setPaddingRelative(sidePadding, verticalPadding, sidePadding, verticalPadding);
         }
 
         int rowHeightDp() {
@@ -971,14 +992,20 @@ public final class ComposerToolbarLayout extends FrameLayout {
             int desiredMiddleWidth = occMiddle ? middleWidth : 0;
             int middleViewportWidth = Math.min(desiredMiddleWidth, Math.max(0, panelWidth - horizontalPadding - startWidth - endWidth - reservedGaps));
             if (md3 && middleViewportWidth < desiredMiddleWidth && justifiedSlot != null) {
-                // NagramX (#interface-style): with no bubble end to clear, a half-faded glyph at the scroll
-                // edge reads as disabled, and trimming the viewport to whole cells left a dead strip before
-                // the trailing group. Widen the scrolling cells instead, so a whole number of them spans the
-                // viewport exactly and the fade lands in their padding.
+                // NagramX (#interface-style): a half-faded glyph at the scroll edge reads as disabled, and
+                // trimming the viewport to whole cells leaves a dead strip before the trailing group. So a
+                // whole number of equal slots spans the viewport exactly: whichever of the two nearest counts
+                // bends the cell least, as long as a slot never gets more than 4dp narrower than the cell.
                 int cellPx = AndroidUtilities.dp(buttonSize());
+                int minSlotPx = Math.max(AndroidUtilities.dp(MD3_CELL_FLOOR), cellPx - AndroidUtilities.dp(MD3_SPACING_SQUEEZE));
                 int orderedWidth = Math.max(0, middleViewportWidth - (middleContent.getMeasuredWidth() - justifiedSlot.getMeasuredWidth()));
-                int cells = Math.max(1, orderedWidth / cellPx);
-                int slotPx = Math.max(cellPx, orderedWidth / cells);
+                int fewer = Math.max(1, orderedWidth / cellPx);
+                int more = fewer + 1;
+                int cells = fewer;
+                if (orderedWidth / more >= minSlotPx && cellPx - orderedWidth / more < orderedWidth / fewer - cellPx) {
+                    cells = more;
+                }
+                int slotPx = Math.max(minSlotPx, orderedWidth / cells);
                 // The leftover pixels go one each to the first cells, so the ones on screen at rest add up
                 // to the viewport exactly.
                 int extraPx = Math.max(0, orderedWidth - cells * slotPx);
