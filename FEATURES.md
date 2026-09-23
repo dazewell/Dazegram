@@ -100,7 +100,7 @@ Cut, Copy, and Paste are available as composer toolbar buttons, added through th
 
 ### Composer toolbar size <!-- #composer-scale --> <!-- #composer-spacing -->
 
-The toolbar row can be scaled from 75% to 125% in 5% steps. A second slider sets icon spacing, packing buttons closer without shrinking them. Its tightest step puts the buttons' press circles edge to edge; steps below that grey out so icons can't overlap.
+The toolbar row can be scaled from 75% to 125% in 5% steps. A second slider sets icon spacing, packing buttons closer without shrinking them. Its tightest step puts the buttons' press circles edge to edge; steps below that grey out so icons can't overlap. The Material Design 3 composer keeps 48dp targets, so there spacing only tightens above 100%.
 
 <img height="260" alt="Toolbar size slider set to 90 percent above an Icon spacing slider set to 87 percent, each with its explanation below" src="docs/images/features/composer-toolbar-sliders.png" />
 
