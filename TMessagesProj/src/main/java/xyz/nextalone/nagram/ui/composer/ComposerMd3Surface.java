@@ -21,7 +21,6 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.ChatActivityEnterView;
 
 import xyz.nextalone.nagram.helpers.InterfaceStyleController;
-import xyz.nextalone.nagram.ui.ComposerToolbarLayout;
 
 /**
  * NagramX (#interface-style): the flat MD3 Composer. ChatActivity's ChatInputViewsContainer hands its
@@ -152,11 +151,6 @@ public final class ComposerMd3Surface {
         fillPaint.setColor(surface);
         canvas.drawRect(0, barTop, width, height, fillPaint);
 
-        if (dividers && toolsInset > 0 && inputFactor > 0) {
-            final float toolsTop = pill.bottom + toolsInset - dp(ComposerToolbarLayout.rowHeight());
-            dividerPaint.setColor(Theme.multAlpha(outlineVariant, alpha * inputFactor));
-            canvas.drawRect(0, toolsTop, width, toolsTop + divider, dividerPaint);
-        }
         if (dividers) {
             dividerPaint.setColor(outlineVariant);
             canvas.drawRect(0, barTop, width, barTop + divider, dividerPaint);
@@ -227,8 +221,8 @@ public final class ComposerMd3Surface {
         canvas.drawRoundRect(rect, radius, radius, fillPaint);
     }
 
-    /** The layout editor's stand-in for the bar, with the tools-row divider {@code toolsTop} below its top. */
-    public static Drawable previewBar(int toolsTop) {
+    /** The layout editor's stand-in for the bar. */
+    public static Drawable previewBar() {
         final ComposerMd3Surface surface = new ComposerMd3Surface(null);
         return new PreviewDrawable() {
             @Override
@@ -241,7 +235,6 @@ public final class ComposerMd3Surface {
                     final float divider = Math.max(1, dp(0.66f));
                     surface.dividerPaint.setColor(surface.outlineVariantColor(surfaceColor));
                     canvas.drawRect(bounds.left, bounds.top, bounds.right, bounds.top + divider, surface.dividerPaint);
-                    canvas.drawRect(bounds.left, bounds.top + toolsTop, bounds.right, bounds.top + toolsTop + divider, surface.dividerPaint);
                 }
             }
         };

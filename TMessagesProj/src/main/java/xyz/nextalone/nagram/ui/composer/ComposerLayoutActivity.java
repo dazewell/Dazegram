@@ -1564,8 +1564,7 @@ public class ComposerLayoutActivity extends BaseFragment {
             }
             if (InterfaceStyleController.applyComposer()) {
                 if (md3Bar == null) {
-                    md3Bar = ComposerMd3Surface.previewBar(dp(PREVIEW_BAR_TOP_PADDING + PREVIEW_INPUT_HEIGHT + PREVIEW_INPUT_GAP
-                            + ComposerToolbarLayout.height() - ComposerToolbarLayout.rowHeight()));
+                    md3Bar = ComposerMd3Surface.previewBar();
                 }
                 md3Bar.setBounds(0, stage.getTop() - dp(PREVIEW_BAR_TOP_PADDING), getMeasuredWidth(), getMeasuredHeight());
                 md3Bar.draw(canvas);
