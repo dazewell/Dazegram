@@ -129,17 +129,23 @@ the painted bar (`ChatInputViewsContainer.java:42-43`, `:349-360`, `:441`).
 `DialogsActivity` and `GiftMessageBottomSheet` never get a surface, so they keep
 their glass.
 
-The surface paints one full-width bar in the panel colour from 8dp above the
-field to the physical bottom edge, with the gated dividers
-(`ComposerMd3Surface.java:130-162`). The bar reaches `topOverhang()` above the
-island pill (`:119-121`), so `getInputBubbleHeight()` adds it and everything laid
+The surface paints one full-width bar from 4dp above the field to the physical
+bottom edge, with the gated top divider and no divider between the input and
+tools rows (`ComposerMd3Surface.java:175-208`). Like the MD3 chat header it is
+frosted when the chat has a frosted source and blur is enabled for the account,
+at `NaConfig.interfaceStyleBlurAlpha()`, and opaque otherwise (`:113-139`,
+`:197-203`). It gets its own factory over that source because the shared frosted
+factory can hand out drawables with the Liquid Glass shader
+(`ChatActivity.java:5409-5412`; `BlurredBackgroundDrawableViewFactory.java:81-85`).
+The bar reaches `topOverhang()` above the
+island pill (`ComposerMd3Surface.java:164-166`), so `getInputBubbleHeight()` adds it and everything laid
 out against the composer, including the message list padding, clears the bar
-(`ChatInputViewsContainer.java:283-290`; `ChatActivity.java:13492-13494`). The
-view fades picked by `ChatActivity` decide what sits on the island: a host pill
-for the channel row or the selection bar, or the outlined field (`:165-173`,
-`:189-212`). In a channel the
+(`ChatInputViewsContainer.java:283-290`; `ChatActivity.java:13495-13497`). The
+view fades picked by `ChatActivity` decide what sits on the island: a 6% tonal
+host pill for the channel row or the selection bar, or the unfilled outlined
+field (`ComposerMd3Surface.java:210-218`, `:234-256`). In a channel the
 Join/Mute fill was never the Buttons provider's. It is the island glass shrunk
-to the button run by `setInputBubbleOffsets` (`ChatActivity.java:9349`), because
+to the button run by `setInputBubbleOffsets` (`ChatActivity.java:9352`), because
 `ChatActivityChannelButtonsLayout.setupDrawableForContainer()` (`:155`) is only
 called from `ChannelAdminLogActivity.java:1511`. Dropping the island glass
 without painting that run is what blanked channel chats in #409.
@@ -149,16 +155,17 @@ The field stops short of the send column using the existing
 `getTopViewHeight()` and `getTopViewEnterProgress()` (`:17928`, `:308`). MD3
 draws the send circle at 40dp through `composerPrimaryInset` (`:693`).
 
-The tools row keeps its Liquid Glass geometry unless MD3 is on. Then the row
-never drops below 56dp and carries an 8dp gap above it, cells never drop below
-48dp, groups sit 8dp apart, the ripple is a 40dp circle that the size slider
-scales, and an overflowing Scrolling zone widens its cells evenly to fill the
-viewport (`ComposerToolbarLayout.java:417-434`, `:460`, `:481`, `:973-989`).
+The tools row keeps its Liquid Glass geometry unless MD3 is on. Then size runs
+the row, cell, state layer and glyph linearly through 40/48/56dp rows at
+75/100/125%, spacing takes up to 4dp off the cell width, groups sit 8dp apart,
+and an overflowing Scrolling zone fits whichever nearest whole slot count bends
+the cell least, never more than 4dp narrower (`ComposerToolbarLayout.java:81-86`,
+`:422-446`, `:459-477`, `:500-505`, `:994-1015`).
 After a scroll or fling the zone eases to the nearest rest whose edges fall in
-button padding (`:1830`, `:1871-1885`, `:1924`). `attachGlass` still clears the
-bubbles under MD3, now with the bar painted behind them (`:229`). The layout
-editor draws the same bar and field (`ComposerLayoutActivity.java:1426`,
-`:1565-1571`). Buttons-role surfaces keep
+button padding (`:1857`, `:1898-1912`, `:1951`). `attachGlass` still clears the
+bubbles under MD3, now with the bar painted behind them (`:234-236`). The layout
+editor draws the same frosted bar and unfilled field (`ComposerLayoutActivity.java:1426`,
+`:1569`). Buttons-role surfaces keep
 their own provider (`ChatActivity.java:4202-4203`). Story controls and Dialogs
 floating buttons remain separate follow-up parity (`PeerStoriesView.java:549`;
 `FragmentFloatingButton.java:164-168`).
