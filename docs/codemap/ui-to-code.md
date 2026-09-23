@@ -57,12 +57,12 @@ above scrolling rows and below the top controls when the RenderEffect source is
 available; unsupported or blur-disabled paths retain the opaque fallback.
 `updateContextViewPosition()` supplies its animated tab extent, trimmed by the
 same `dp(5)` the list's top padding subtracts, and not by the search field's
-tab lift, since rows start there in both states (`DialogsActivity.java:2175-2185`)
+tab lift, since rows start there in both states at rest (during animations the surface is the shorter of the two) (`DialogsActivity.java:2175-2185`)
 (`DialogsActivity.java:593-600`, `:936-990`, `:6834-6883`). The
 search/folder rows do not install their own MD3 backgrounds; search-type tabs
 keep only a full-bounds child clip, the search field keeps its rounded control
 background, and the independently animated temporary panel reuses the same
-dialogs provider (`DialogsActivity.java:4966-4972`, `:5059-5060`,
+dialogs provider (`DialogsActivity.java:4966-4972`, `:5059-5061`,
 `:5407-5415`; `SearchTabsAndFiltersLayout.java:15-59`;
 `BlurredBackgroundProviderImpl.java:53-72`).
 Chat-side strips use the same chat-header flag through `ChatActivity` and the
