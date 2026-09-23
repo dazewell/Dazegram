@@ -37,9 +37,16 @@ public class ChatInputViewsContainer extends FrameLayout {
     private final View fadeView;
     private final FrameLayout inputIslandBubbleContainer;
     private final FrameLayout inAppKeyboardBubbleContainer;
+    // NagramX: only ChatActivity's composer opts in, so other hosts of this container keep the glass radii under MD3.
+    private final boolean flatComposer;
 
     public ChatInputViewsContainer(@NonNull Context context) {
+        this(context, false);
+    }
+
+    public ChatInputViewsContainer(@NonNull Context context, boolean flatComposer) {
         super(context);
+        this.flatComposer = flatComposer;
 
         inputIslandBubbleContainer = new FrameLayout(context);
         addView(inputIslandBubbleContainer,
@@ -82,13 +89,14 @@ public class ChatInputViewsContainer extends FrameLayout {
     public void setInputIslandBubbleDrawable(BlurredBackgroundDrawable drawable) {
         blurredBackgroundDrawable = drawable;
         blurredBackgroundDrawable.setPadding(dp(7));
-        blurredBackgroundDrawable.setRadius(dp(INPUT_BUBBLE_RADIUS));
+        blurredBackgroundDrawable.setRadius(composerRadius(INPUT_BUBBLE_RADIUS));
     }
 
     public void setUnderKeyboardBackgroundDrawable(BlurredBackgroundDrawable drawable) {
         underKeyboardBackgroundDrawable = drawable;
         underKeyboardBackgroundDrawable.enableInAppKeyboardOptimization();
-        underKeyboardBackgroundDrawable.setRadius(dp(INPUT_KEYBOARD_RADIUS), dp(INPUT_KEYBOARD_RADIUS), 0, 0);
+        int radius = composerRadius(INPUT_KEYBOARD_RADIUS);
+        underKeyboardBackgroundDrawable.setRadius(radius, radius, 0, 0);
         underKeyboardBackgroundDrawable.setThickness(dp(32));
         underKeyboardBackgroundDrawable.setIntensity(0.4f);
     }
@@ -134,6 +142,10 @@ public class ChatInputViewsContainer extends FrameLayout {
     private final Path underKeyboardPath = new Path();
 
     private int currentBlurredHeight;
+    private int composerRadius(int radius) {
+        return flatComposer && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyComposer() ? 0 : dp(radius);
+    }
+
     private void checkBlurredHeight(boolean force) {
         checkViewsPositions();
 
@@ -145,7 +157,7 @@ public class ChatInputViewsContainer extends FrameLayout {
         updateInputBubbleGeometry();
 
         if (changed || force) {
-            final int r = dp(INPUT_KEYBOARD_RADIUS);
+            final int r = composerRadius(INPUT_KEYBOARD_RADIUS);
             tmpRectF.set(0, getMeasuredHeight() - imeBottomInset, getMeasuredWidth(), getMeasuredHeight());
             underKeyboardPath.rewind();
             underKeyboardPath.addRoundRect(tmpRectF, new float[] {r, r, r, r, 0, 0, 0, 0}, Path.Direction.CW);
@@ -184,7 +196,9 @@ public class ChatInputViewsContainer extends FrameLayout {
                     rightBottomRadius = bottomRight == null ? 0 : bottomRight.getRadius();
                 }
             }
-            underKeyboardBackgroundDrawable.setRadius(dp(INPUT_KEYBOARD_RADIUS), dp(INPUT_KEYBOARD_RADIUS), rightBottomRadius, leftBottomRadius, true);
+            int radius = composerRadius(INPUT_KEYBOARD_RADIUS);
+            underKeyboardBackgroundDrawable.setRadius(radius, radius,
+                    radius == 0 ? 0 : rightBottomRadius, radius == 0 ? 0 : leftBottomRadius, true);
         }
     }
 

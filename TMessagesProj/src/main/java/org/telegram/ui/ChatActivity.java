@@ -517,6 +517,7 @@ public class ChatActivity extends BaseFragment implements
     private final WindowInsetsStateHolder windowInsetsStateHolder = new WindowInsetsStateHolder(this::checkInsets);
 
     private BlurredBackgroundColorProviderThemed blurredBackgroundColorProvider;
+    private BlurredBackgroundColorProviderThemed composerGlassColorProvider;
     private BlurredBackgroundColorProviderThemed blurredBackgroundColorProviderWhite;
 
     private final ReferenceList<View> glassAttachedViews = new ReferenceList<>();
@@ -4196,9 +4197,10 @@ public class ChatActivity extends BaseFragment implements
         Timer t = Timer.create("ChatActivity.createView");
         ChatsHelper chatsHelper = ChatsHelper.getInstance(currentAccount);
 
-        // NagramX: named class (not anonymous) so it can also implement BlurredBackgroundProvider and
-        // carry the composer's stronger drop shadow + pinned stroke widths - see ComposerGlassProvider.
-        blurredBackgroundColorProvider = new xyz.nextalone.nagram.ui.composer.ComposerGlassProvider(currentAccount, themeDelegate, true);
+        // NagramX: named class (not anonymous) so it can carry role-specific Interface Style gates through
+        // BlurredBackgroundProvider's shadow/stroke hooks - see ComposerGlassProvider.
+        blurredBackgroundColorProvider = new xyz.nextalone.nagram.ui.composer.ComposerGlassProvider(currentAccount, themeDelegate, true, xyz.nextalone.nagram.ui.composer.ComposerGlassProvider.ROLE_BUTTON);
+        composerGlassColorProvider = new xyz.nextalone.nagram.ui.composer.ComposerGlassProvider(currentAccount, themeDelegate, true, xyz.nextalone.nagram.ui.composer.ComposerGlassProvider.ROLE_COMPOSER);
         blurredBackgroundColorProviderWhite = new BlurredBackgroundColorProviderThemed(themeDelegate, Theme.key_windowBackgroundWhite) {
             @Override
             public int getBackgroundColor() {
@@ -5389,7 +5391,7 @@ public class ChatActivity extends BaseFragment implements
         contentView.setOccupyStatusBar(!inBubbleMode && !isInsideContainer && !inPreviewMode);
 
         // NagramX: chat-only provider can flatten MD3 header chrome without changing other topPanelChatActivity consumers.
-        actionBar.setupGlass(glassBackgroundDrawableFactory, BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate), ChatObject.isForum(currentChat), xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader());
+        actionBar.setupGlass(glassBackgroundDrawableFactory, BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null), ChatObject.isForum(currentChat), xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader());
         actionBar.setChatAvatarContainer(avatarContainer);
         avatarContainer.setActionBar(actionBar);
 
@@ -5402,18 +5404,22 @@ public class ChatActivity extends BaseFragment implements
             actionBar.setForcedMenuMinWidth(dp(46));
         }
 
-        chatInputViewsContainer = new ChatInputViewsContainer(context);
+        chatInputViewsContainer = new ChatInputViewsContainer(context, true);
         chatInputViewsContainer.setClipChildren(false);
         chatInputViewsContainer.setWindowInsetsProvider(windowInsetsStateHolder);
-        chatInputViewsContainer.setInputIslandBubbleDrawable(
-            glassBackgroundDrawableFactory.create(chatInputViewsContainer, blurredBackgroundColorProvider));
+        // NagramX: keep Composer input surfaces on their own provider so the Apply Composer gate
+        // cannot flatten satellite, action, channel, or camera button surfaces using the shared provider.
+        BlurredBackgroundDrawable composerInputDrawable =
+            glassBackgroundDrawableFactory.create(chatInputViewsContainer, composerGlassColorProvider);
+        chatInputViewsContainer.setInputIslandBubbleDrawable(composerInputDrawable);
         BlurredBackgroundDrawable underKeyboardBackgroundDrawable =
-            glassBackgroundDrawableFactoryFrosted.create(chatInputViewsContainer, blurredBackgroundColorProvider);
+            glassBackgroundDrawableFactoryFrosted.create(chatInputViewsContainer, composerGlassColorProvider);
         // NagramX: this panel's own clip optimisation (enableInAppKeyboardOptimization, applied right
-        // below by setUnderKeyboardBackgroundDrawable) cuts shadow at the shape's own top edge, so the
-        // composer's stronger shadow would clip in a straight line under the in-app keyboard sheet. Hold
-        // it at the pre-existing geometry instead of inheriting ComposerGlassProvider's radius.
-        underKeyboardBackgroundDrawable.setShadowParams(AndroidUtilities.dpf2(1), 0, AndroidUtilities.dpf2(1 / 3f));
+        // below by setUnderKeyboardBackgroundDrawable) cuts the glass shadow at the shape's own top
+        // edge. Keep the old shadow only when Composer is not using the flat MD3 surface.
+        if (!xyz.nextalone.nagram.helpers.InterfaceStyleController.applyComposer()) {
+            underKeyboardBackgroundDrawable.setShadowParams(AndroidUtilities.dpf2(1), 0, AndroidUtilities.dpf2(1 / 3f));
+        }
         chatInputViewsContainer.setUnderKeyboardBackgroundDrawable(underKeyboardBackgroundDrawable);
 
 
@@ -8626,7 +8632,7 @@ public class ChatActivity extends BaseFragment implements
             // NagramX: the tag strip follows the MD3 chat-header surface geometry.
             final boolean naxFlatChatHeader = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader();
             hashtagSearchTabs.setBackground(glassBackgroundDrawableFactory.create(hashtagSearchTabs)
-                .setColorProvider(BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, resourceProvider))
+                .setColorProvider(BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, resourceProvider, glassBackgroundSourceFrostedRenderNode != null))
                 .setRadius(naxFlatChatHeader ? 0 : dp(18)).setPadding(naxFlatChatHeader ? 0 : dp(7f)));
 
             contentView.addView(hashtagSearchTabs, LayoutHelper.createFrameMarginPx(LayoutHelper.MATCH_PARENT, 50, Gravity.FILL_HORIZONTAL | Gravity.TOP, 0, -dp(5), 0, 0));
@@ -8928,7 +8934,8 @@ public class ChatActivity extends BaseFragment implements
         chatActivityEnterView.setMinimumHeight(AndroidUtilities.dp(51));
         chatActivityEnterView.setAllowStickersAndGifs(true, true, currentEncryptedChat == null || AndroidUtilities.getPeerLayerVersion(currentEncryptedChat.layer) >= 46);
         chatActivityEnterView.shouldDrawBackground = false;
-        chatActivityEnterView.setInputSatelliteGlassFactory(glassBackgroundDrawableFactory, blurredBackgroundColorProvider);
+        // NagramX: the reply/edit close satellite and composer tools belong to the Composer gate, not Buttons.
+        chatActivityEnterView.setInputSatelliteGlassFactory(glassBackgroundDrawableFactory, composerGlassColorProvider);
         if (textToSet != null) {
             chatActivityEnterView.setFieldText(textToSet);
             textToSet = null;
@@ -9886,14 +9893,14 @@ public class ChatActivity extends BaseFragment implements
             actionBarSearchTags.setVisibility(View.GONE);
             actionBarSearchTags.setBlurredFactory(
                 glassBackgroundDrawableFactory,
-                BlurredBackgroundProviderImpl.topPanelChatActivityTags(currentAccount, resourceProvider)
+                BlurredBackgroundProviderImpl.topPanelChatActivityTags(currentAccount, resourceProvider, glassBackgroundSourceFrostedRenderNode != null)
             );
             contentView.addView(actionBarSearchTags, LayoutHelper.createFrameMarginPx(LayoutHelper.MATCH_PARENT, 38, Gravity.FILL_HORIZONTAL | Gravity.TOP, 0, -dp(3), 0, 0));
         }
 
         checkUi_topPanelLayoutWidth();
         topPanelLayout.setBlurredBackground(glassBackgroundDrawableFactory.create(topPanelLayout)
-            .setColorProvider(BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate))
+            .setColorProvider(BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null))
             .setRadius(xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : dp(18))
             .setPadding(xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : dp(7)));
         // NagramX: MD3 top panels are full-width bars rather than inset Liquid Glass cards.
@@ -11151,8 +11158,8 @@ public class ChatActivity extends BaseFragment implements
 
         // NagramX: topic tab chrome is part of the chat-header surface for Interface Style.
         final boolean naxFlatChatHeader = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader();
-        topicsTabs.setSideMenuBackgroundDrawable(glassBackgroundDrawableFactory.create(topicsTabs, BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate)), naxFlatChatHeader);
-        topicsTabs.setTopMenuBackgroundDrawable(glassBackgroundDrawableFactory.create(topicsTabs, BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate)), naxFlatChatHeader);
+        topicsTabs.setSideMenuBackgroundDrawable(glassBackgroundDrawableFactory.create(topicsTabs, BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null)), naxFlatChatHeader);
+        topicsTabs.setTopMenuBackgroundDrawable(glassBackgroundDrawableFactory.create(topicsTabs, BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null)), naxFlatChatHeader);
 
         int index = 8;
         topicsTabs.setCurrentTopic(getTopicId());
@@ -19067,7 +19074,11 @@ public class ChatActivity extends BaseFragment implements
             }
 
             final BlurredBackgroundSource source = wallpaperBitmapProvider.updateSourceFromBackgroundViewDrawable(drawable);
-            final int statusBarColor = wallpaperBitmapProvider.getStatusBarColor(source);
+            int statusBarColor = wallpaperBitmapProvider.getStatusBarColor(source);
+            // NagramX: an MD3 header paints its own mostly opaque surface over the wallpaper, so icon contrast must follow that composite.
+            if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader()) {
+                statusBarColor = ColorUtils.compositeColors(BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null).getBackgroundColor(), ColorUtils.setAlphaComponent(statusBarColor, 255));
+            }
             final float statusBarBrightness = AndroidUtilities.computePerceivedBrightness(statusBarColor);
             final int navigationBarColor = wallpaperBitmapProvider.getNavigationBarColor(source);
             final float navigationBarBrightness = AndroidUtilities.computePerceivedBrightness(navigationBarColor);
@@ -19577,6 +19588,14 @@ public class ChatActivity extends BaseFragment implements
                 canvas.scale(s, s, getMeasuredWidth() / 2f, getMeasuredHeight() / 2f);
             }
             super.dispatchDraw(canvas);
+            // NagramX: MD3 hairline under the whole header group, following the pinned panel as it grows and collapses.
+            if (actionBar != null && actionBar.getVisibility() == VISIBLE && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() && xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividers()) {
+                float naxHeaderBottom = actionBar.getTranslationY() + actionBar.getMeasuredHeight() + (actionBarSearchTags != null ? actionBarSearchTags.getCurrentHeight() : 0) + (hashtagSearchTabs != null ? hashtagSearchTabs.getCurrentHeight() : 0) + (inPreviewMode ? AndroidUtilities.statusBarHeight : 0);
+                if (topPanelLayout != null && topPanelLayout.getMetadata().getTotalVisibility() > 0) {
+                    naxHeaderBottom = Math.max(naxHeaderBottom, topPanelLayout.getY() + topPanelLayout.getMetadata().getTotalHeight());
+                }
+                canvas.drawRect(0, naxHeaderBottom, getMeasuredWidth(), naxHeaderBottom + Math.max(1, AndroidUtilities.dp(0.66f)), xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividerPaint(xyz.nextalone.nagram.helpers.InterfaceStyleController.chatHeaderSurfaceColor(themeDelegate), themeDelegate));
+            }
             //if (fragmentContextView != null && fragmentContextView.isCallStyle()) {
             //    float alpha = (blurredView != null && blurredView.getVisibility() == View.VISIBLE) ? 1f - blurredView.getAlpha() : 1f;
             //    if (alpha > 0) {
@@ -46273,6 +46292,9 @@ public class ChatActivity extends BaseFragment implements
         ThemeDescription.ThemeDescriptionDelegate selectedBackgroundDelegate = () -> {
             if (blurredBackgroundColorProvider != null) {
                 blurredBackgroundColorProvider.updateColors();
+            }
+            if (composerGlassColorProvider != null) {
+                composerGlassColorProvider.updateColors();
             }
             if (blurredBackgroundColorProviderWhite != null) {
                 blurredBackgroundColorProviderWhite.updateColors();

@@ -10,22 +10,24 @@ import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundProvider
 import org.telegram.ui.Components.blur3.drawable.color.impl.BlurredBackgroundProviderImpl;
 
 import xyz.nextalone.nagram.NaConfig;
+import xyz.nextalone.nagram.helpers.InterfaceStyleController;
 
 /**
- * NagramX: color provider for the composer glass family (the input pill, the under-keyboard
- * panel, the toolbar row and everything else fed the one blurredBackgroundColorProvider instance
- * in ChatActivity, plus the settings-screen live preview in ComposerLayoutActivity). Named (not
- * anonymous) so it can implement BlurredBackgroundProvider on top of BlurredBackgroundColorProviderThemed -
- * only a concrete type can add methods beyond what its superclass declares, and BlurredBackgroundDrawable.
- * setColorProvider only picks up the shadow/stroke overrides below when the provider implements that
- * richer interface. Carries a stronger drop shadow than the base class default so the panels read as
- * floating above the chat (dazewell's ask), while pinning the stroke width so upgrading to the richer
- * interface doesn't also silently change stroke (setColorProvider applies both from the same block).
+ * NagramX: color provider for the composer glass family. ChatActivity keeps one default instance
+ * for glass button surfaces and a composer instance for the input island, satellite close button,
+ * and under-keyboard panel. Named (not anonymous) so it can implement BlurredBackgroundProvider on
+ * top of BlurredBackgroundColorProviderThemed; BlurredBackgroundDrawable.setColorProvider only
+ * picks up the shadow/stroke overrides below through that richer interface.
  */
 public class ComposerGlassProvider extends BlurredBackgroundColorProviderThemed implements BlurredBackgroundProvider {
+    public static final int ROLE_DEFAULT = 0;
+    public static final int ROLE_COMPOSER = 1;
+    public static final int ROLE_BUTTON = 2;
+
     private final int currentAccount;
     private final Theme.ResourcesProvider resourcesProvider;
     private final boolean gateOnBlurEnabled;
+    private final int role;
 
     /**
      * @param gateOnBlurEnabled whether getBackgroundColor() should fall back to an opaque panel
@@ -37,10 +39,15 @@ public class ComposerGlassProvider extends BlurredBackgroundColorProviderThemed 
      *                          nobody asked for in this pass.
      */
     public ComposerGlassProvider(int currentAccount, Theme.ResourcesProvider resourcesProvider, boolean gateOnBlurEnabled) {
+        this(currentAccount, resourcesProvider, gateOnBlurEnabled, ROLE_DEFAULT);
+    }
+
+    public ComposerGlassProvider(int currentAccount, Theme.ResourcesProvider resourcesProvider, boolean gateOnBlurEnabled, int role) {
         super(resourcesProvider, Theme.key_chat_messagePanelBackground);
         this.currentAccount = currentAccount;
         this.resourcesProvider = resourcesProvider;
         this.gateOnBlurEnabled = gateOnBlurEnabled;
+        this.role = role;
     }
 
     // NagramX: theme-mode "dark", not perceived-brightness "dark" - used by getBackgroundColor() and
@@ -56,12 +63,21 @@ public class ComposerGlassProvider extends BlurredBackgroundColorProviderThemed 
 
     @Override
     public int getBackgroundColor() {
+        NaConfig.migrateComposerGlassTransparency(isDarkTheme());
+        if (isFlatMd3()) {
+            return ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider), 255);
+        }
         if (gateOnBlurEnabled && !BlurredBackgroundProviderImpl.checkBlurEnabled(currentAccount, resourcesProvider)) {
             return ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider), 255);
         }
 
-        // NagramX: dropped upstream's light-theme alpha 216 override — light and dark theme now each read their own configured pass-through (see NaConfig.composerGlassAlpha), read live rather than cached so an auto night mode flip picks up the right one without reopening the chat
-        return Theme.multAlpha(Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider), NaConfig.composerGlassAlpha(isDarkTheme()));
+        // NagramX: composer glass shares Interface Style's blur-strength value, capped to its old 0-50% pass-through band in NaConfig so the pill cannot disappear into the wallpaper.
+        return Theme.multAlpha(Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider), NaConfig.interfaceStyleBlurAlpha());
+    }
+
+    private boolean isFlatMd3() {
+        return role == ROLE_COMPOSER && InterfaceStyleController.applyComposer()
+                || role == ROLE_BUTTON && InterfaceStyleController.applyButtons();
     }
 
     // NagramX: light-theme shadow alpha bumped from the base class's 0x20000000 for the stronger 3D
@@ -69,6 +85,9 @@ public class ComposerGlassProvider extends BlurredBackgroundColorProviderThemed 
     // change once light theme has been judged on device.
     @Override
     public int getShadowColor() {
+        if (isFlatMd3()) {
+            return 0;
+        }
         return isDarkTheme() ? 0 : 0x30000000;
     }
 
@@ -84,11 +103,17 @@ public class ComposerGlassProvider extends BlurredBackgroundColorProviderThemed 
     // getBackgroundColor() above.
     @Override
     public int getStrokeColorTop() {
+        if (isFlatMd3()) {
+            return 0;
+        }
         return isDark() ? 0x28FFFFFF : 0xFFFFFFFF;
     }
 
     @Override
     public int getStrokeColorBottom() {
+        if (isFlatMd3()) {
+            return 0;
+        }
         return isDark() ? 0x14FFFFFF : 0xFFFFFFFF;
     }
 

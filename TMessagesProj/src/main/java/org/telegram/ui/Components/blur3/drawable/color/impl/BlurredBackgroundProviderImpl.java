@@ -34,6 +34,20 @@ public class BlurredBackgroundProviderImpl {
             .build();
     }
 
+    // NagramX: Keep the MD3 navigation surface separate so attach/statistics keep the glass provider.
+    public static BlurredBackgroundProvider mainTabsBottomNavigation(Theme.ResourcesProvider resourcesProvider) {
+        return new BlurredBackgroundProviderBuilder(resourcesProvider)
+            .setBackgroundColor((r, isDark) -> Theme.multAlpha(
+                Theme.getColor(Theme.key_windowBackgroundWhite, r),
+                xyz.nextalone.nagram.NaConfig.interfaceStyleBlurAlpha()
+            ))
+            .setStrokeColorTop(0, 0)
+            .setStrokeColorBottom(0, 0)
+            .setShadowColor(0, 0)
+            .setStrokeWidth(0, 0)
+            .build();
+    }
+
     public static BlurredBackgroundProvider topPanel(Theme.ResourcesProvider resourcesProvider) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
             .setBackgroundColor((r, isDark) -> {
@@ -52,10 +66,13 @@ public class BlurredBackgroundProviderImpl {
 
     // NagramX: DialogsActivity needs an Interface Style branch without changing the many unrelated
     // generic topPanel consumers such as media pickers and shared-media tabs.
-    public static BlurredBackgroundProvider dialogsTopPanel(Theme.ResourcesProvider resourcesProvider) {
+    public static BlurredBackgroundProvider dialogsTopPanel(int currentAccount, Theme.ResourcesProvider resourcesProvider) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
             .setBackgroundColor((r, isDark) -> {
                 if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()) {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && checkBlurEnabled(currentAccount, resourcesProvider)) {
+                        return Theme.multAlpha(Theme.getColor(Theme.key_actionBarDefault, r), xyz.nextalone.nagram.NaConfig.interfaceStyleBlurAlpha());
+                    }
                     return ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_actionBarDefault, r), 255);
                 }
                 final float alpha = LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS) ? 0.85f : 0.76f;
@@ -181,22 +198,26 @@ public class BlurredBackgroundProviderImpl {
         return topPanelChatActivity(UserConfig.selectedAccount, resourcesProvider);
     }
 
-    public static BlurredBackgroundProvider chatHeaderPanel(int currentAccount, Theme.ResourcesProvider resourcesProvider) {
-        return topPanelChatActivity(currentAccount, resourcesProvider, true);
+    public static BlurredBackgroundProvider chatHeaderPanel(int currentAccount, Theme.ResourcesProvider resourcesProvider, boolean frostedSourceAvailable) {
+        return topPanelChatActivity(currentAccount, resourcesProvider, true, frostedSourceAvailable);
     }
 
     // NagramX: account-aware overload so bubble chats (which run under a
     // notification's account, not the globally selected one) evaluate blur
     // eligibility against the right account's config.
     public static BlurredBackgroundProvider topPanelChatActivity(int currentAccount, Theme.ResourcesProvider resourcesProvider) {
-        return topPanelChatActivity(currentAccount, resourcesProvider, false);
+        return topPanelChatActivity(currentAccount, resourcesProvider, false, false);
     }
 
-    private static BlurredBackgroundProvider topPanelChatActivity(int currentAccount, Theme.ResourcesProvider resourcesProvider, boolean flatMd3Chrome) {
+    private static BlurredBackgroundProvider topPanelChatActivity(int currentAccount, Theme.ResourcesProvider resourcesProvider, boolean flatMd3Chrome, boolean frostedSourceAvailable) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
                 .setBackgroundColor((r, isDark) -> {
                     // NagramX: MD3 keeps the pre-Glass theme colour instead of the glass target tint.
-                    if (flatMd3Chrome && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() || !checkBlurEnabled(currentAccount, resourcesProvider)) {
+                    final boolean md3Header = flatMd3Chrome && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader();
+                    if (md3Header && frostedSourceAvailable && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && checkBlurEnabled(currentAccount, resourcesProvider)) {
+                        return Theme.multAlpha(Theme.getColor(isDark ? Theme.key_actionBarDefault : Theme.key_chat_topPanelBackground, r), xyz.nextalone.nagram.NaConfig.interfaceStyleBlurAlpha());
+                    }
+                    if (md3Header || !checkBlurEnabled(currentAccount, resourcesProvider)) {
                         return ColorUtils.setAlphaComponent(Theme.getColor(isDark ?
                             Theme.key_actionBarDefault : Theme.key_chat_topPanelBackground, r), 255);
                     }
@@ -214,16 +235,20 @@ public class BlurredBackgroundProviderImpl {
     }
 
     public static BlurredBackgroundProvider topPanelChatActivityTags(Theme.ResourcesProvider resourcesProvider) {
-        return topPanelChatActivityTags(UserConfig.selectedAccount, resourcesProvider);
+        return topPanelChatActivityTags(UserConfig.selectedAccount, resourcesProvider, false);
     }
 
     // NagramX: same account-aware fix as topPanelChatActivity, for the
     // hashtag/tag search strip that shares its blur-eligibility check.
-    public static BlurredBackgroundProvider topPanelChatActivityTags(int currentAccount, Theme.ResourcesProvider resourcesProvider) {
+    public static BlurredBackgroundProvider topPanelChatActivityTags(int currentAccount, Theme.ResourcesProvider resourcesProvider, boolean frostedSourceAvailable) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
             .setBackgroundColor((r, isDark) -> {
                 // NagramX: the tag/search strip is visually part of the chat header surface.
-                if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() || !checkBlurEnabled(currentAccount, resourcesProvider)) {
+                final boolean md3Header = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader();
+                if (md3Header && frostedSourceAvailable && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && checkBlurEnabled(currentAccount, resourcesProvider)) {
+                    return Theme.multAlpha(Theme.getColor(isDark ? Theme.key_actionBarDefault : Theme.key_chat_topPanelBackground, r), xyz.nextalone.nagram.NaConfig.interfaceStyleBlurAlpha());
+                }
+                if (md3Header || !checkBlurEnabled(currentAccount, resourcesProvider)) {
                     return ColorUtils.setAlphaComponent(Theme.getColor(isDark ?
                             Theme.key_actionBarDefault : Theme.key_chat_topPanelBackground, r), 255);
                 }

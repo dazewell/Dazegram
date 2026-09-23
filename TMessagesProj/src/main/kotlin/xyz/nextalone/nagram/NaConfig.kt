@@ -1428,6 +1428,18 @@ object NaConfig {
             ConfigItem.configTypeBool,
             true
         )
+    val interfaceStyleApplyComposer =
+        addConfig(
+            "InterfaceStyleApplyComposer",
+            ConfigItem.configTypeBool,
+            false
+        )
+    val interfaceStyleApplyBottomNavigation =
+        addConfig(
+            "InterfaceStyleApplyBottomNavigation",
+            ConfigItem.configTypeBool,
+            true
+        )
     val interfaceStyleBlurStrength =
         addConfig(
             "InterfaceStyleBlurStrength",
@@ -1437,6 +1449,12 @@ object NaConfig {
     val interfaceStyleMatchClassicDayHeader =
         addConfig(
             "InterfaceStyleMatchClassicDayHeader",
+            ConfigItem.configTypeBool,
+            true
+        )
+    val interfaceStylePanelDividers =
+        addConfig(
+            "InterfaceStylePanelDividers",
             ConfigItem.configTypeBool,
             true
         )
@@ -1518,28 +1536,58 @@ object NaConfig {
             ConfigItem.configTypeInt,
             100 // percent; slider range 75..100 in 1% steps, tighter-only (see ComposerToolbarLayout)
         )
-    val composerGlassLight =
-        addConfig(
-            "ComposerGlassLight",
-            ConfigItem.configTypeInt,
-            25 // percent pass-through; slider range 0..50 in 5% steps (see ComposerLayoutActivity)
-        )
-    val composerGlassDark =
-        addConfig(
-            "ComposerGlassDark",
-            ConfigItem.configTypeInt,
-            25 // percent pass-through; slider range 0..50 in 5% steps (see ComposerLayoutActivity)
-        )
-
-    /**
-     * Converts the stored pass-through percent (higher = more wallpaper visible) into the opacity
-     * Theme.multAlpha expects (higher = more opaque, i.e. less wallpaper visible) - the field the
-     * composer glass provider actually multiplies the panel color's own alpha by.
-     */
     @JvmStatic
-    fun composerGlassAlpha(dark: Boolean): Float {
-        val percent = (if (dark) composerGlassDark else composerGlassLight).Int().coerceIn(0, 50)
+    fun interfaceStyleBlurAlpha(): Float {
+        val percent = interfaceStyleBlurStrength.Int().coerceIn(0, 100) / 2f
         return 1f - percent / 100f
+    }
+
+    @Volatile
+    private var composerGlassTransparencyMigrated = false
+
+    // NagramX: caller supplies theme mode because Theme may not be ready during NaConfig init.
+    @JvmStatic
+    fun migrateComposerGlassTransparency(preferDark: Boolean) {
+        if (composerGlassTransparencyMigrated) {
+            return
+        }
+        synchronized(sync) {
+            if (composerGlassTransparencyMigrated) {
+                return
+            }
+            val preferredComposerGlassKey = if (preferDark) "ComposerGlassDark" else "ComposerGlassLight"
+            val fallbackComposerGlassKey = if (preferDark) "ComposerGlassLight" else "ComposerGlassDark"
+            val hasLegacyComposerGlass = getPreferences().contains(preferredComposerGlassKey) || getPreferences().contains(fallbackComposerGlassKey)
+            val legacyComposerGlassValue =
+                legacyComposerGlassValue(preferredComposerGlassKey)
+                    ?: legacyComposerGlassValue(fallbackComposerGlassKey)
+                    ?: if (hasLegacyComposerGlass) 25 else null
+            if (!getPreferences().contains(interfaceStyleBlurStrength.key) && legacyComposerGlassValue != null) {
+                interfaceStyleBlurStrength.setConfigInt(
+                    (legacyComposerGlassValue * 2).coerceIn(0, 100)
+                )
+            }
+            if (hasLegacyComposerGlass) {
+                getPreferences().edit {
+                    remove("ComposerGlassLight")
+                    remove("ComposerGlassDark")
+                }
+            }
+            composerGlassTransparencyMigrated = true
+        }
+    }
+
+    private fun legacyComposerGlassValue(key: String): Int? {
+        if (!getPreferences().contains(key)) {
+            return null
+        }
+        // NagramX: old fork builds could leave this key present with a non-int value.
+        return try {
+            getPreferences().getInt(key, 25).coerceIn(0, 50)
+        } catch (e: ClassCastException) {
+            FileLog.e(e)
+            null
+        }
     }
 
     val inputTextSize =

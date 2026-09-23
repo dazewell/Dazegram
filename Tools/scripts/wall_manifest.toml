@@ -464,14 +464,6 @@ crop = [0, 548, 1070, 1440]
 # teal sliver of the chat behind the screen.
 
 [[figure]]
-output = "composer-transparency-sliders.png"
-source = "composer-layout-editor-sliders.png"
-crop = [0, 1425, 1080, 2070]
-# The per-theme composer glass transparency sliders, light and dark. Bottom
-# stops at the card edge: the explanatory paragraph below it runs off the
-# bottom of the capture itself, so there is no crop that ends it cleanly.
-
-[[figure]]
 output = "fullscreen-input-on.png"
 source = "fullscreen-input-expanded.png"
 crop = [0, 175, 1080, 1327]

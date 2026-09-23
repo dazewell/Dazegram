@@ -104,15 +104,9 @@ The toolbar row can be scaled from 75% to 125% in 5% steps. A second slider sets
 
 <img height="260" alt="Toolbar size slider set to 90 percent above an Icon spacing slider set to 87 percent, each with its explanation below" src="docs/images/features/composer-toolbar-sliders.png" />
 
-### Composer glass transparency <!-- #composer-transparency -->
+### Interface style <!-- #interface-style --> <!-- #composer-transparency -->
 
-Light and dark theme each get their own slider (0–50%, default 25%) in the layout editor for how much wallpaper shows through the composer's glass — the message field, its icon row, the floating buttons over the message list, and a channel's bottom bar. Takes effect when you leave the editor; nothing changes while chat blur is off.
-
-<img height="220" alt="separate transparency sliders for light and dark theme, set to 35 and 15 percent, both on a 0 to 50 percent scale" src="docs/images/features/composer-transparency-sliders.png" />
-
-### Interface style <!-- #interface-style -->
-
-NagramX Settings → General has an Interface Style page for switching between Liquid Glass and Material Design 3. MD3 gives chat headers and chat-list top regions one opaque edge-to-edge theme-colour surface while keeping search controls rounded, with switches for each supported area. Unsupported devices show Material Design 3 and disable Liquid Glass.
+NagramX Settings → General has an Interface Style page for switching between Liquid Glass and Material Design 3. MD3 gives chat headers, chat-list top regions, bottom navigation, and in-chat floating or pill buttons their Material treatments while keeping search rounded. Each surface has its own Apply to toggle, and Panel dividers, on by default, draw a thin line where panels meet content. Unsupported devices show MD3 and disable Liquid Glass.
 
 ### Quick schedule button <!-- #quick-schedule -->
 

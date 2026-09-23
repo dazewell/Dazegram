@@ -1506,6 +1506,7 @@ public class ViewPagerFixed extends FrameLayout {
         private TabsViewDelegate delegate;
 
         private int selectorType;
+        private boolean interfaceStyleChatListTabSelector;
         private int currentPosition;
         private int selectedTabId = -1;
         private int allTabsWidth;
@@ -1539,6 +1540,10 @@ public class ViewPagerFixed extends FrameLayout {
             this.selectorColorKey = selectorColorKey;
             this.backgroundColorKey = backgroundColorKey;
             selectorDrawable.setColor(Theme.getColor(tabLineColorKey, resourcesProvider));
+        }
+
+        public void setInterfaceStyleChatListTabSelector(boolean interfaceStyleChatListTabSelector) {
+            this.interfaceStyleChatListTabSelector = interfaceStyleChatListTabSelector;
         }
 
         private int prevLayoutWidth;
@@ -2073,7 +2078,8 @@ public class ViewPagerFixed extends FrameLayout {
                                 (int) (indicatorX - dp(TAB_INTERNAL_PADDING) - add), y,
                                 (int) (indicatorX + indicatorWidth + dp(TAB_INTERNAL_PADDING) + add),
                                 y + dp(28));
-                            selectorDrawable.setAlpha(NaConfig.INSTANCE.getTabStyleStroke().Bool() ? 255 : 31);
+                            // NagramX: Dialogs marks its search tabs so this shared selector does not alter hashtag or bookmark tabs.
+                            selectorDrawable.setAlpha(interfaceStyleChatListTabSelector ? xyz.nextalone.nagram.helpers.InterfaceStyleController.filterTabSelectorAlpha(NaConfig.INSTANCE.getTabStyleStroke().Bool()) : NaConfig.INSTANCE.getTabStyleStroke().Bool() ? 255 : 31);
                             selectorDrawable.draw(canvas);
                         } else {
                             selectorDrawable.setBounds(indicatorX, (int) (height - AndroidUtilities.dpr(4) + hideProgress * AndroidUtilities.dpr(4)), indicatorX + indicatorWidth, (int) (height + hideProgress * AndroidUtilities.dpr(4)));

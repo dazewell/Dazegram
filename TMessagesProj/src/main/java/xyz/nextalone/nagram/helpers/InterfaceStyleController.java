@@ -1,10 +1,18 @@
 package xyz.nextalone.nagram.helpers;
 
+import android.graphics.Paint;
+
+import androidx.core.graphics.ColorUtils;
+
 import org.telegram.messenger.LiteMode;
+import org.telegram.ui.ActionBar.Theme;
 
 import xyz.nextalone.nagram.NaConfig;
 
 public class InterfaceStyleController {
+    private static final int FILTER_TAB_SELECTOR_ALPHA_LEGACY = 31;
+    private static final int FILTER_TAB_SELECTOR_ALPHA_MD3 = 46;
+    private static final int FILTER_TAB_SELECTOR_ALPHA_STROKE = 255;
 
     public static boolean isMaterialDesign3() {
         return !(LiteMode.isLiquidGlassSupported() && LiteMode.isEnabledSetting(LiteMode.FLAG_LIQUID_GLASS));
@@ -16,5 +24,50 @@ public class InterfaceStyleController {
 
     public static boolean applyChatListTopBar() {
         return isMaterialDesign3() && NaConfig.INSTANCE.getInterfaceStyleApplyChatListTopBar().Bool();
+    }
+
+    public static boolean applyButtons() {
+        return isMaterialDesign3() && NaConfig.INSTANCE.getInterfaceStyleApplyButtons().Bool();
+    }
+
+    // The flat MD3 Composer is being rebuilt as its own layout; until it lands the stored switch is ignored.
+    public static final boolean COMPOSER_STYLE_AVAILABLE = false;
+
+    public static boolean applyComposer() {
+        return COMPOSER_STYLE_AVAILABLE && isMaterialDesign3() && NaConfig.INSTANCE.getInterfaceStyleApplyComposer().Bool();
+    }
+
+    public static boolean applyBottomNavigation() {
+        return isMaterialDesign3() && NaConfig.INSTANCE.getInterfaceStyleApplyBottomNavigation().Bool();
+    }
+
+    public static boolean panelDividers() {
+        return isMaterialDesign3() && NaConfig.INSTANCE.getInterfaceStylePanelDividers().Bool();
+    }
+
+    // Panel colors has no render consumer yet, so its section stays hidden.
+    public static final boolean MATCH_CLASSIC_DAY_HEADER_AVAILABLE = false;
+
+    public static int filterTabSelectorAlpha(boolean strokeStyle) {
+        if (strokeStyle) {
+            return FILTER_TAB_SELECTOR_ALPHA_STROKE;
+        }
+        return applyChatListTopBar() ? FILTER_TAB_SELECTOR_ALPHA_MD3 : FILTER_TAB_SELECTOR_ALPHA_LEGACY;
+    }
+
+    private static final float PANEL_DIVIDER_ON_SURFACE_BLEND = 0.12f;
+    private static final Paint panelDividerPaint = new Paint();
+
+    // MD3 outline-variant: the surface the line sits on, nudged 12% towards its text colour.
+    // Theme dividers are pure black in Night/AMOLED, which is far too loud for a panel edge.
+    public static Paint panelDividerPaint(int surfaceColor, Theme.ResourcesProvider resourcesProvider) {
+        final int onSurface = Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider);
+        panelDividerPaint.setColor(ColorUtils.blendARGB(ColorUtils.setAlphaComponent(surfaceColor, 255), ColorUtils.setAlphaComponent(onSurface, 255), PANEL_DIVIDER_ON_SURFACE_BLEND));
+        return panelDividerPaint;
+    }
+
+    public static int chatHeaderSurfaceColor(Theme.ResourcesProvider resourcesProvider) {
+        final boolean isDark = resourcesProvider != null ? resourcesProvider.isDark() : Theme.isCurrentThemeDark();
+        return Theme.getColor(isDark ? Theme.key_actionBarDefault : Theme.key_chat_topPanelBackground, resourcesProvider);
     }
 }

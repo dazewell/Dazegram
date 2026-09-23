@@ -133,6 +133,8 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     private boolean hasGestureSelectedOverride;
     private float gestureSelectedOverride;
     private boolean skipDrawSelector;
+    // NagramX: MD3 navigation owns a tonal indicator while other GlassTabView users keep the glass selector.
+    private boolean md3NavigationIndicator;
 
     public void setGestureSelectedOverride(float gestureSelectedOverride, boolean allow) {
         this.gestureSelectedOverride = gestureSelectedOverride;
@@ -147,6 +149,15 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
         }
     }
 
+    public void setMd3NavigationIndicator(boolean md3NavigationIndicator) {
+        if (this.md3NavigationIndicator != md3NavigationIndicator) {
+            this.md3NavigationIndicator = md3NavigationIndicator;
+            // NagramX: MD3 puts the label 4dp below the 32dp indicator that wraps the icon.
+            textView.setLayoutParams(LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 0, md3NavigationIndicator ? 36 : 28.33f, 0, 0));
+            invalidate();
+        }
+    }
+
     @Override
     protected void dispatchDraw(@NonNull Canvas canvas) {
         final float viewWidth = hasVisualWidth ? visualWidth : getWidth();
@@ -154,13 +165,21 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
         if (selectedFactor > 0 && !skipDrawSelector) {
             final float alpha = AnimatorUtils.DECELERATE_INTERPOLATOR.getInterpolation(selectedFactor);
 
-            paintCounterBackground.setColor(Theme.multAlpha(colorSelected, 0.09f * alpha));
-            tmpRectF.set(0, 0, viewWidth, getHeight());
-            final float r = Math.min(tmpRectF.width(), tmpRectF.height()) / 2f;
-            final float s = lerp(0.6f, 1, selectedFactor) * MathUtils.clamp(attachScale, 0, 1);
             canvas.save();
-            canvas.scale(s, s, tmpRectF.centerX(), tmpRectF.centerY());
-            canvas.drawRoundRect(tmpRectF, r, r, paintCounterBackground);
+            paintCounterBackground.setColor(Theme.multAlpha(colorSelected, (md3NavigationIndicator ? 0.18f : 0.09f) * alpha));
+            if (md3NavigationIndicator) {
+                final float indicatorWidth = Math.min(dp(64), viewWidth - dp(8));
+                final float indicatorHeight = dp(32);
+                final float top = isCompact ? (getHeight() - indicatorHeight) / 2f : 0;
+                tmpRectF.set((viewWidth - indicatorWidth) / 2f, top, (viewWidth + indicatorWidth) / 2f, top + indicatorHeight);
+                canvas.drawRoundRect(tmpRectF, indicatorHeight / 2f, indicatorHeight / 2f, paintCounterBackground);
+            } else {
+                tmpRectF.set(0, 0, viewWidth, getHeight());
+                final float r = Math.min(tmpRectF.width(), tmpRectF.height()) / 2f;
+                final float s = lerp(0.6f, 1, selectedFactor) * MathUtils.clamp(attachScale, 0, 1);
+                canvas.scale(s, s, tmpRectF.centerX(), tmpRectF.centerY());
+                canvas.drawRoundRect(tmpRectF, r, r, paintCounterBackground);
+            }
             canvas.restore();
         }
 
@@ -685,6 +704,7 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     }
 
     public void setMainTabsCompact(boolean compact) {
+        isCompact = compact;
         if (textView.getVisibility() == (compact ? GONE : VISIBLE)) {
             return;
         }
@@ -740,7 +760,6 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     // compact/non-compact) so the indicator never replaces the label a screen reader would
     // otherwise get for free from the child TextView.
     private void refreshContentDescription(boolean compact) {
-        isCompact = compact;
         boolean hasBadge = counterDrawable != null;
         CharSequence label = hasBadge || compact ? textView.getText() : null;
         if (hasBadge) {

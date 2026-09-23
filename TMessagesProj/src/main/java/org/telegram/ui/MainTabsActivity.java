@@ -348,6 +348,8 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         Bulletin.addDelegate(contentView, getBulletinDelegate());
         tabletLayout = false;
 
+        // NagramX: snapshot the setting for this rebuilt navigation view; the toggle rebuilds the activity.
+        md3BottomNavigation = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyBottomNavigation();
         final boolean compact = MainTabsHelper.isMainTabsHideTitleStyle();
         final int mainTabsMargin = MainTabsHelper.getMainTabsMargin();
         final boolean hideContacts = MainTabsHelper.isContactsTabHidden();
@@ -355,10 +357,18 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
         tabsView = new MainTabsLayout(context, resourceProvider);
         tabsView.setClipChildren(false);
-        final int paddingH = dp(mainTabsMargin + 4);
-        final int paddingV = dp(mainTabsMargin + 4);
-        tabsView.setPadding(paddingH, paddingV, paddingH, paddingV);
-        tabsView.setMaxWidth(dp(328 + DialogsActivity.MAIN_TABS_MARGIN * 2));
+        final int paddingH = md3BottomNavigation ? 0 : dp(mainTabsMargin + 4);
+        final int paddingV = md3BottomNavigation ? 0 : dp(mainTabsMargin + 4);
+        if (md3BottomNavigation) {
+            // NagramX: MD3 insets the tabs vertically inside the 80dp bar instead of the legacy outer margin.
+            final int indicatorTop = dp(compact ? MainTabsHelper.MD3_NAVIGATION_INDICATOR_TOP_COMPACT : MainTabsHelper.MD3_NAVIGATION_INDICATOR_TOP);
+            tabsView.setPadding(0, indicatorTop, 0, compact ? indicatorTop : 0);
+        } else {
+            tabsView.setPadding(paddingH, paddingV, paddingH, paddingV);
+        }
+        // NagramX: MD3 navigation is full-width; the legacy pill keeps its capped geometry.
+        tabsView.setMaxWidth(md3BottomNavigation ? 0 : dp(328 + DialogsActivity.MAIN_TABS_MARGIN * 2));
+        tabsView.setFillWidth(md3BottomNavigation);
 
         tabs = new GlassTabView[5];
         tabs[INDEX_CHATS] = GlassTabView.createMainTab(context, resourceProvider, GlassTabView.TabAnimation.CHATS, R.string.MainTabsChats);
@@ -372,6 +382,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         tabs[INDEX_PROFILE].setOnLongClickListener(this::openAccountSelector);
         for (GlassTabView tab : tabs) {
             tab.setMainTabsCompact(compact);
+            tab.setMd3NavigationIndicator(md3BottomNavigation);
         }
 
         tabsView.addTabToIgnoreClick(tabs[INDEX_CHATS]);
@@ -421,10 +432,37 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         iBlur3FactoryGlass.setSourceRootView(viewPositionWatcher, contentView);
         iBlur3FactoryGlass.setLiquidGlassEffectAllowed(LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS));
 
-        tabsViewBackground = iBlur3FactoryGlass.create(tabsView, BlurredBackgroundProviderImpl.mainTabs(resourceProvider));
-        tabsViewBackground.setRadius(dp(MainTabsHelper.getMainTabsHeight() / 2f));
-        tabsViewBackground.setPadding(dp(mainTabsMargin - 0.334f));
-        tabsView.setBackground(tabsViewBackground);
+        // NagramX: the MD3 provider belongs on the wrapper so system insets remain part of the surface.
+        tabsViewWrapper = new FrameLayout(context) {
+            @Override
+            protected void dispatchDraw(Canvas canvas) {
+                super.dispatchDraw(canvas);
+                // NagramX: MD3 hairline where the bar meets content; drawn here so it follows the bar's translation and alpha.
+                if (md3BottomNavigation && xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividers()) {
+                    canvas.drawRect(0, 0, getWidth(), Math.max(1, AndroidUtilities.dp(0.66f)), xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividerPaint(getThemedColor(Theme.key_windowBackgroundWhite), getResourceProvider()));
+                }
+            }
+        };
+        tabsViewWrapper.setOnClickListener(v -> {});
+        tabsViewWrapper.addView(tabsView, LayoutHelper.createFrame(
+            tabsViewWidth < 0 ? LayoutHelper.MATCH_PARENT : tabsViewWidth,
+            MainTabsHelper.getMainTabsHeightWithMargins(),
+            Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL
+        ));
+        tabsViewWrapper.setClipToPadding(false);
+
+        tabsViewBackground = iBlur3FactoryGlass.create(
+            md3BottomNavigation ? tabsViewWrapper : tabsView,
+            md3BottomNavigation ? BlurredBackgroundProviderImpl.mainTabsBottomNavigation(resourceProvider) : BlurredBackgroundProviderImpl.mainTabs(resourceProvider)
+        );
+        tabsViewBackground.setRadius(md3BottomNavigation ? 0 : dp(MainTabsHelper.getMainTabsHeight() / 2f));
+        tabsViewBackground.setPadding(md3BottomNavigation ? 0 : dp(mainTabsMargin - 0.334f));
+        // NagramX: hide the owner of the background in MD3; legacy mode keeps the original tab fade.
+        if (md3BottomNavigation) {
+            tabsViewWrapper.setBackground(tabsViewBackground);
+        } else {
+            tabsView.setBackground(tabsViewBackground);
+        }
 
         BlurredBackgroundDrawableViewFactory iBlur3FactoryFade = new BlurredBackgroundDrawableViewFactory(iBlur3SourceColor);
         iBlur3FactoryFade.setSourceRootView(viewPositionWatcher, contentView);
@@ -436,10 +474,6 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
         contentView.addView(fadeView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 0, Gravity.BOTTOM));
 
-        tabsViewWrapper = new FrameLayout(context);
-        tabsViewWrapper.setOnClickListener(v -> {});
-        tabsViewWrapper.addView(tabsView, LayoutHelper.createFrame(tabsViewWidth, MainTabsHelper.getMainTabsHeightWithMargins(), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL));
-        tabsViewWrapper.setClipToPadding(false);
         contentView.addView(tabsViewWrapper, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM));
 
         updateLayoutWrapper = new UpdateLayoutWrapper(context);
@@ -483,7 +517,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         o.setBlur(true);
         o.translate(0, -dp(4));
         o.setGravity(Gravity.LEFT);
-        final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(28), getThemedColor(Theme.key_windowBackgroundWhite));
+        final ShapeDrawable bg = naxTabScrimBackground(); // NagramX
         bg.getPaint().setShadowLayer(dp(6), 0, dp(1), Theme.multAlpha(0xFF000000, 0.15f));
         o.setScrimViewBackground(bg);
         o.show();
@@ -509,7 +543,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         }
         o.setBlur(true);
         o.translate(0, -dp(4));
-        final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(28), getThemedColor(Theme.key_windowBackgroundWhite));
+        final ShapeDrawable bg = naxTabScrimBackground(); // NagramX
         bg.getPaint().setShadowLayer(dp(6), 0, dp(1), Theme.multAlpha(0xFF000000, 0.15f));
         o.setScrimViewBackground(bg);
         o.show();
@@ -571,7 +605,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 //        o.setBlur(true);
         o.translate(-dp(8), -dp(4));
         o.setMaxHeight(Math.min(dp(560), Math.max(dp(320), AndroidUtilities.displaySize.y - dp(120))));
-        final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(28), getThemedColor(Theme.key_windowBackgroundWhite));
+        final ShapeDrawable bg = naxTabScrimBackground(); // NagramX
         bg.getPaint().setShadowLayer(dp(6), 0, dp(1), Theme.multAlpha(0xFF000000, 0.15f));
         o.setScrimViewBackground(bg);
         o.setGravity(Gravity.LEFT);
@@ -728,7 +762,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
         o.setBlur(true);
         o.translate(0, -dp(4));
-        final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(28), getThemedColor(Theme.key_windowBackgroundWhite));
+        final ShapeDrawable bg = naxTabScrimBackground(); // NagramX
         bg.getPaint().setShadowLayer(dp(6), 0, dp(1), Theme.multAlpha(0xFF000000, 0.15f));
         o.setScrimViewBackground(bg);
         o.show();
@@ -993,6 +1027,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
     private int navigationBarHeight;
     private int insetLeft;
     private int insetRight;
+    private boolean md3BottomNavigation;
 
     @NonNull
     @Override
@@ -1170,13 +1205,15 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
     private void checkUi_tabsPosition() {
         if (tabsView == null) return;
         if (NaConfig.INSTANCE.getHideBottomNavigationBar().Bool()) {
+            tabsViewWrapper.setVisibility(View.GONE);
             tabsView.setVisibility(View.GONE);
             return;
         }
+        tabsViewWrapper.setVisibility(View.VISIBLE);
         final boolean isUpdateLayoutVisible = updateLayoutWrapper.isUpdateLayoutVisible();
         final int updateLayoutHeight = isUpdateLayoutVisible ? dp(UpdateLayoutWrapper.HEIGHT) : 0;
         final int normalY = -(updateLayoutHeight);
-        final int hiddenY = normalY + dp(MainTabsHelper.isMainTabsHideTitleStyle() ? 30 : 40);
+        final int hiddenY = normalY + (md3BottomNavigation ? tabsViewWrapper.getHeight() : dp(MainTabsHelper.isMainTabsHideTitleStyle() ? 30 : 40));
 
         final float factor = animatorTabsVisible.getFloatValue();
         final float scale = lerp(0.85f, 1f, factor);
@@ -1184,8 +1221,17 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         tabsViewWrapper.setTranslationY(lerp(hiddenY, normalY, factor));
         tabsView.setClickable(factor > 1);
         tabsView.setEnabled(factor > 1);
-        tabsView.setAlpha(factor);
-        tabsView.setVisibility(factor > 0 ? View.VISIBLE : View.GONE);
+        if (md3BottomNavigation) {
+            // NagramX: the wrapper animates as a whole; undo any child state left by Hide bottom navigation or the classic path.
+            tabsView.setAlpha(1f);
+            tabsView.setVisibility(View.VISIBLE);
+            tabsViewWrapper.setAlpha(factor);
+            tabsViewWrapper.setVisibility(factor > 0 ? View.VISIBLE : View.GONE);
+        } else {
+            tabsViewWrapper.setAlpha(1f);
+            tabsView.setAlpha(factor);
+            tabsView.setVisibility(factor > 0 ? View.VISIBLE : View.GONE);
+        }
     }
 
     private void checkUi_callTabVisible(boolean callTabsVisible, boolean animated) {
@@ -1276,7 +1322,8 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                 accountSwitchHint.setCloseButton(true);
                 accountSwitchHint.setText(getString(R.string.SwitchAccountHint));
                 accountSwitchHint.setJoint(1, -translate + 7.33f);
-                contentView.addView(accountSwitchHint, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 100, Gravity.BOTTOM | Gravity.FILL_HORIZONTAL, 0, 0, 0, DialogsActivity.MAIN_TABS_HEIGHT_WITH_MARGINS));
+                // NagramX: the hint must clear whichever navigation geometry is active, including the taller MD3 bar.
+                contentView.addView(accountSwitchHint, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 100, Gravity.BOTTOM | Gravity.FILL_HORIZONTAL, 0, 0, 0, MainTabsHelper.getMainTabsHeightWithMargins()));
                 accountSwitchHint.setOnHiddenListener(() -> AndroidUtilities.removeFromParent(accountSwitchHint));
                 accountSwitchHint.setDuration(8000);
                 accountSwitchHint.show();
@@ -1420,10 +1467,37 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         com.radolyn.ayugram.eventschedule.MessageTriggersMenu.addTo(o, this);
     }
 
+    // NagramX: an MD3 tab spans a third of the bar and ItemOptions centres a sized card on the whole tab view,
+    // but the indicator and label sit at its top; pin the card 8dp above the indicator so it hugs them.
+    private ShapeDrawable naxTabScrimBackground() {
+        final int color = getThemedColor(Theme.key_windowBackgroundWhite);
+        if (!md3BottomNavigation) {
+            return Theme.createRoundRectDrawable(dp(28), color);
+        }
+        final boolean compact = MainTabsHelper.isMainTabsHideTitleStyle();
+        final float r = dp(20);
+        final ShapeDrawable bg = new ShapeDrawable(new android.graphics.drawable.shapes.RoundRectShape(new float[]{r, r, r, r, r, r, r, r}, null, null)) {
+            @Override
+            public void draw(@NonNull Canvas canvas) {
+                if (compact) {
+                    super.draw(canvas);
+                    return;
+                }
+                canvas.save();
+                canvas.translate(0, -dp(8) - getBounds().top);
+                super.draw(canvas);
+                canvas.restore();
+            }
+        };
+        bg.getPaint().setColor(color);
+        bg.setIntrinsicWidth(dp(96));
+        bg.setIntrinsicHeight(dp(compact ? 48 : 68));
+        return bg;
+    }
     private void setupPopupMenuStyle(ItemOptions options) {
         options.setBlur(true);
         options.translate(0, -dp(4));
-        final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(28), getThemedColor(Theme.key_windowBackgroundWhite));
+        final ShapeDrawable bg = naxTabScrimBackground(); // NagramX
         bg.getPaint().setShadowLayer(dp(6), 0, dp(1), Theme.multAlpha(0xFF000000, 0.15f));
         options.setScrimViewBackground(bg);
     }

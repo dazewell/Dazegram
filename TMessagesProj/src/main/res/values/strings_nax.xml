@@ -342,7 +342,21 @@
     <string name="InterfaceStyleApplyChatHeaderInfo">The bar at the top of chats and similar screens.</string>
     <string name="InterfaceStyleApplyChatListTopBar">Chat list top bar</string>
     <string name="InterfaceStyleApplyChatListTopBarInfo">Search, filters, and the top panel in the chat list.</string>
-    <string name="InterfaceStyleInfo">Material Design 3 uses flat theme colors for supported panels. More surfaces will appear here as they get render support.</string>
+    <string name="InterfaceStyleApplyButtons">Buttons</string>
+    <string name="InterfaceStyleApplyButtonsInfo">Floating and pill-shaped buttons in chats.</string>
+    <string name="InterfaceStyleApplyComposer">Composer</string>
+    <string name="InterfaceStyleApplyComposerInfo">The message field and under-keyboard surface in chats, with a flat Material Design 3 treatment.</string>
+    <string name="InterfaceStyleApplyBottomNavigation">Bottom navigation</string>
+    <string name="InterfaceStyleApplyBottomNavigationInfo">The Chats, Settings, and Profile bar at the bottom of the screen.</string>
+    <string name="InterfaceStyleBlurStrength">Blur strength</string>
+    <string name="InterfaceStyleBlurStrengthAccDescr">Blur strength</string>
+    <string name="InterfaceStyleBlurStrengthInfo">How much of the content behind shows through chat headers, the chat list top bar, bottom navigation, and the message field.</string>
+    <string name="InterfaceStylePanelDividers">Panel dividers</string>
+    <string name="InterfaceStylePanelDividersInfo">A thin line where headers and the bottom navigation meet the content.</string>
+    <string name="InterfaceStylePanelColorsHeader">Panel colors</string>
+    <string name="InterfaceStyleMatchClassicDayHeader">Match Classic and Day header color</string>
+    <string name="InterfaceStyleMatchClassicDayHeaderInfo">Will use the old Classic and Day theme panel color for MD3 chat headers once that color slice lands.</string>
+    <string name="InterfaceStyleInfo">Material Design 3 panels take their colors from your current theme.</string>
     <string name="SaveDeletedExclusionMenu">Save Deleted</string>
     <string name="SaveDeletedExcluded">Exclude</string>
     <string name="MarkdownParser">Markdown Parser</string>
@@ -695,11 +709,6 @@
     <string name="ComposerSpacingInfoOverridden">Your saved %1$d%% will come back once Toolbar size is bigger, but moving Icon spacing now replaces it.</string>
     <string name="ComposerSpacingInfoOverriddenLocked">Your saved %1$d%% will come back once Toolbar size is bigger.</string>
     <string name="ComposerSpacingInfoNoRoom">Icon spacing can\'t move at this Toolbar size. Make Toolbar size bigger to use this slider.</string>
-    <string name="ComposerGlassLight">Transparency in light theme</string>
-    <string name="ComposerGlassLightAccDescr">Transparency in light theme</string>
-    <string name="ComposerGlassDark">Transparency in dark theme</string>
-    <string name="ComposerGlassDarkAccDescr">Transparency in dark theme</string>
-    <string name="ComposerGlassInfo">Sets how much wallpaper shows through the composer\'s glass: the message field, its icon row, the button clusters beside it, the instant-camera controls, the floating buttons over the message list (page down, mentions, reactions), and a channel\'s bottom bar. The preview always uses your current theme, so only that theme\'s slider visibly changes it. Has no effect in chats while chat blur is off.</string>
     <!-- Passcode setup safety #passcode-setup-safety -->
     <string name="PasscodePanicCodeConfirm">Re-enter your Panic Code</string>
     <string name="PasscodeSetForAccount">Set passcode for %1$s</string>

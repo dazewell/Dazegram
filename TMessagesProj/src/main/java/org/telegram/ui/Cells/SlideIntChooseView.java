@@ -112,6 +112,10 @@ public class SlideIntChooseView extends FrameLayout {
                         whenChanged.run(value);
                     }
                 }
+                // NagramX: rest the thumb on the value it reports instead of between steps.
+                if (stop && snapToValue) {
+                    seekBarView.setProgress(getProgress(value), true);
+                }
             }
 
             @Override
@@ -138,6 +142,27 @@ public class SlideIntChooseView extends FrameLayout {
     private Utilities.Callback<Integer> whenChanged;
     private Options options;
     private CharSequence label;
+    // NagramX: opt-in so upstream sliders keep their free-resting thumb.
+    private boolean snapToValue;
+
+    public void setSnapToValue(boolean snapToValue) {
+        this.snapToValue = snapToValue;
+    }
+
+    public void updateColors() {
+        // NagramX: fork settings pages reuse this upstream slider; theme changes must refresh labels
+        // that were previously coloured only in the constructor.
+        minText.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText, resourcesProvider));
+        valueText.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteValueText, resourcesProvider));
+        if (options != null) {
+            maxText.setTextColor(Theme.getColor(value >= options.getMax() ? Theme.key_windowBackgroundWhiteValueText : Theme.key_windowBackgroundWhiteGrayText, resourcesProvider));
+        } else {
+            maxText.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText, resourcesProvider));
+        }
+        // NagramX: the slider track caches this themed color in the constructor too.
+        seekBarView.setOuterColor(Theme.getColor(Theme.key_player_progress, resourcesProvider));
+        seekBarView.invalidate();
+    }
 
     public void setLabel(CharSequence label) {
         this.label = label;

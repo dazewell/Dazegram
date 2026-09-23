@@ -36,6 +36,7 @@ import java.util.HashSet;
 import java.util.Map;
 
 import xyz.nextalone.nagram.NaConfig;
+import xyz.nextalone.nagram.helpers.InterfaceStyleController;
 import xyz.nextalone.nagram.ui.composer.ComposerButtons;
 import xyz.nextalone.nagram.ui.composer.ComposerLayout;
 
@@ -220,6 +221,10 @@ public final class ComposerToolbarLayout extends FrameLayout {
     }
 
     public void attachGlass(BlurredBackgroundDrawableViewFactory factory, BlurredBackgroundColorProvider colorProvider) {
+        if (InterfaceStyleController.applyComposer()) {
+            controls.clearGlass();
+            return;
+        }
         controls.attachGlass(factory, colorProvider);
     }
 
@@ -799,6 +804,11 @@ public final class ComposerToolbarLayout extends FrameLayout {
                 // -1 so the first drawGlass pass always writes the clamped radius (see bubbleRadius).
                 bubbleRadius[i] = -1f;
             }
+            invalidate();
+        }
+
+        void clearGlass() {
+            bubbles = null;
             invalidate();
         }
 

@@ -600,6 +600,13 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         return ColorUtils.setAlphaComponent(getThemedColor(getDialogsTopSurfaceColorKey()), 255);
     }
 
+    // NagramX: reloadInterface rebuilds this view without reconstructing these final factories.
+    private void refreshDialogsLiquidGlassFactories() {
+        boolean liquidGlass = LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS);
+        iBlur3FactoryFrostedLiquidGlass.setLiquidGlassEffectAllowed(liquidGlass);
+        iBlur3FactoryLiquidGlass.setLiquidGlassEffectAllowed(liquidGlass);
+    }
+
     private @Nullable ImageView actionModeCloseView;
     private NumberTextView selectedDialogsCountTextView;
     private final ArrayList<View> actionModeViews = new ArrayList<>();
@@ -825,6 +832,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         private Paint actionBarSearchPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private boolean naxTopSurfaceDrawn;
+        // NagramX: carries the painted MD3 surface edge from drawChild to the divider in dispatchDraw.
+        private float naxTopSurfaceBottom;
         private float naxTopSurfaceAdditionalHeight;
 
         public ContentView(Context context) {
@@ -939,7 +948,27 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 naxTopSurfaceDrawn = true;
                 final int top = inPreviewMode ? AndroidUtilities.statusBarHeight : getActionBarTop();
                 final float bottom = top + getActionBarFullHeight() + naxTopSurfaceAdditionalHeight;
-                canvas.drawRect(0, Math.max(0, top), getMeasuredWidth(), Math.max(top, bottom), actionBarDefaultPaint);
+                final float surfaceTop = Math.max(0, top);
+                final float surfaceBottom = Math.max(surfaceTop, bottom);
+                naxTopSurfaceBottom = surfaceBottom;
+                // NagramX: use the real frosted source only when the drawable can sample it;
+                // older or blur-disabled paths keep the opaque MD3 fallback.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                        && SharedConfig.chatBlurEnabled()
+                        && iBlur3SourceGlassFrosted != null
+                        && canvas.isHardwareAccelerated()
+                        && BlurredBackgroundProviderImpl.checkBlurEnabled(currentAccount, resourceProvider)) {
+                    iBlur3SourceGlassFrosted.draw(canvas, 0, surfaceTop, getMeasuredWidth(), surfaceBottom);
+                    final int oldColor = actionBarDefaultPaint.getColor();
+                    final int oldAlpha = actionBarDefaultPaint.getAlpha();
+                    actionBarDefaultPaint.setColor(getDialogsTopSurfaceColor());
+                    actionBarDefaultPaint.setAlpha(Math.round(255f * xyz.nextalone.nagram.NaConfig.interfaceStyleBlurAlpha()));
+                    canvas.drawRect(0, surfaceTop, getMeasuredWidth(), surfaceBottom, actionBarDefaultPaint);
+                    actionBarDefaultPaint.setColor(oldColor);
+                    actionBarDefaultPaint.setAlpha(oldAlpha);
+                } else {
+                    canvas.drawRect(0, surfaceTop, getMeasuredWidth(), surfaceBottom, actionBarDefaultPaint);
+                }
             }
             boolean result;
             if (child == viewPages[0] || (viewPages.length > 1 && child == viewPages[1]) || child == topPanelLayout || child == filterTabsView) {
@@ -1148,6 +1177,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             super.dispatchDraw(canvas);
             if (!xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()) {
                 drawHeaderShadow(canvas, top + actionBarHeight);
+            } else if (naxTopSurfaceDrawn && xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividers()) {
+                // NagramX: after the children so no page or tab strip covers the MD3 hairline.
+                canvas.drawRect(0, naxTopSurfaceBottom, getMeasuredWidth(), naxTopSurfaceBottom + Math.max(1, AndroidUtilities.dp(0.66f)), xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividerPaint(getDialogsTopSurfaceColor(), resourceProvider));
             }
 
             /*if (fragmentContextView != null && fragmentContextView.isCallStyle()) {
@@ -3333,6 +3365,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         wasDrawn = false;
         pacmanAnimation = null;
         filterTabsView = null;
+        refreshDialogsLiquidGlassFactories();
         selectedDialogs.clear();
 
         additionNavigationBarHeight = hasMainTabs && !NaConfig.INSTANCE.getHideBottomNavigationBar().Bool() ? dp(MainTabsHelper.getMainTabsHeightWithMargins()) : 0;
@@ -4936,7 +4969,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         // NagramX: MD3 tabs inherit the parent surface instead of drawing another panel.
         if (!naxFlatChatListTopBar) {
-            BlurredBackgroundDrawable searchTabsViewBackground = iBlur3FactoryLiquidGlass.create(searchTabsAndFiltersLayout, BlurredBackgroundProviderImpl.dialogsTopPanel(resourceProvider));
+            BlurredBackgroundDrawable searchTabsViewBackground = iBlur3FactoryLiquidGlass.create(searchTabsAndFiltersLayout, BlurredBackgroundProviderImpl.dialogsTopPanel(currentAccount, resourceProvider));
             searchTabsViewBackground.setRadius(dp(18));
             searchTabsViewBackground.setPadding(dp(6.666f));
             searchTabsAndFiltersLayout.setBlurredBackground(searchTabsViewBackground);
@@ -5025,7 +5058,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
             BlurredBackgroundDrawable topPanelLayoutBackground = iBlur3FactoryLiquidGlass.create(topPanelLayout)
                 // NagramX: animated banners retain their drawable but share the parent surface color.
-                .setColorProvider(BlurredBackgroundProviderImpl.dialogsTopPanel(resourceProvider))
+                .setColorProvider(BlurredBackgroundProviderImpl.dialogsTopPanel(currentAccount, resourceProvider))
                 .setPadding(naxFlatChatListTopBar ? 0 : dp(7));
 
             topPanelLayout.setPadding(dp(11), dp(21), dp(11), dp(21));
@@ -5375,7 +5408,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             filterTabsView.setPadding(0, dp(7), 0, dp(7));
             // NagramX: MD3 folder tabs inherit the parent surface instead of drawing another panel.
             if (!naxFlatChatListTopBar) {
-                BlurredBackgroundDrawable filterTabsViewBackground = iBlur3FactoryLiquidGlass.create(filterTabsView, BlurredBackgroundProviderImpl.dialogsTopPanel(resourceProvider));
+                BlurredBackgroundDrawable filterTabsViewBackground = iBlur3FactoryLiquidGlass.create(filterTabsView, BlurredBackgroundProviderImpl.dialogsTopPanel(currentAccount, resourceProvider));
                 filterTabsViewBackground.setRadius(dp(18));
                 filterTabsViewBackground.setPadding(dp(6.666f));
                 filterTabsView.setBlurredBackground(filterTabsViewBackground);
@@ -5385,7 +5418,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         // NagramX: MD3 keeps the field's rounded control fill; the parent owns the outer surface.
         if (fragmentSearchField != null && !naxFlatChatListTopBar) {
-            fragmentSearchField.setupBlurredBackground(iBlur3FactoryLiquidGlass.create(fragmentSearchField, BlurredBackgroundProviderImpl.dialogsTopPanel(resourceProvider)));
+            fragmentSearchField.setupBlurredBackground(iBlur3FactoryLiquidGlass.create(fragmentSearchField, BlurredBackgroundProviderImpl.dialogsTopPanel(currentAccount, resourceProvider)));
         }
 
         dialogStoriesCell = new DialogStoriesCell(context, this, currentAccount, isArchive() ? DialogStoriesCell.TYPE_ARCHIVE : DialogStoriesCell.TYPE_DIALOGS) {
@@ -6842,8 +6875,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (fragmentView != null) {
             final float visibleFilterTabsHeight = filterTabsView == null
                 ? 0
-                : Math.max(0, filterTabsView.getMeasuredHeight() * filtersTabVisibility - searchOffset);
-            // NagramX: reuse current animation state so the parent surface follows visible tab rows.
+                : Math.max(0, (filterTabsView.getMeasuredHeight() - dp(5)) * filtersTabVisibility);
+            // NagramX: reuse current animation state so the parent surface follows visible tab rows;
+            // rows start at the strip minus dp(5) (DialogsRecyclerView.onMeasure) whether or not the
+            // search field lifts the strip, so the surface ignores searchOffset.
             ((ContentView) fragmentView).naxTopSurfaceAdditionalHeight =
                 searchTabsHeight * searchAnimationProgress + visibleFilterTabsHeight;
         }
@@ -7787,6 +7822,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
             if (searchTabsView == null && searchViewPager != null && !onlyDialogsAdapter && communityId == 0) {
                 searchTabsView = searchViewPager.createTabsView(false, ViewPagerFixed.SELECTOR_TYPE_BUBBLE_STYLE);
+                // NagramX: the shared bubble selector also draws chat hashtag and bookmark tabs outside this top-bar setting.
+                searchTabsView.setInterfaceStyleChatListTabSelector(true);
                 searchTabsAndFiltersLayout.addView(searchTabsView, 0, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL));
             } else if (searchTabsAndFiltersLayout != null && onlyDialogsAdapter && communityId == 0) {
                 AndroidUtilities.removeFromParent(searchTabsView);
