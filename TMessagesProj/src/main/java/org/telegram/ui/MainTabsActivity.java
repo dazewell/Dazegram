@@ -439,7 +439,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                 super.dispatchDraw(canvas);
                 // NagramX: MD3 hairline where the bar meets content; drawn here so it follows the bar's translation and alpha.
                 if (md3BottomNavigation && xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividers()) {
-                    canvas.drawRect(0, 0, getWidth(), Math.max(1, AndroidUtilities.dp(0.66f)), Theme.dividerPaint);
+                    canvas.drawRect(0, 0, getWidth(), Math.max(1, AndroidUtilities.dp(0.66f)), xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividerPaint(getThemedColor(Theme.key_windowBackgroundWhite), getResourceProvider()));
                 }
             }
         };

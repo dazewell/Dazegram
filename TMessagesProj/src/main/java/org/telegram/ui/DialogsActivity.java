@@ -1179,7 +1179,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 drawHeaderShadow(canvas, top + actionBarHeight);
             } else if (naxTopSurfaceDrawn && xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividers()) {
                 // NagramX: after the children so no page or tab strip covers the MD3 hairline.
-                canvas.drawRect(0, naxTopSurfaceBottom, getMeasuredWidth(), naxTopSurfaceBottom + Math.max(1, AndroidUtilities.dp(0.66f)), Theme.dividerPaint);
+                canvas.drawRect(0, naxTopSurfaceBottom, getMeasuredWidth(), naxTopSurfaceBottom + Math.max(1, AndroidUtilities.dp(0.66f)), xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividerPaint(getDialogsTopSurfaceColor(), resourceProvider));
             }
 
             /*if (fragmentContextView != null && fragmentContextView.isCallStyle()) {

@@ -1,6 +1,11 @@
 package xyz.nextalone.nagram.helpers;
 
+import android.graphics.Paint;
+
+import androidx.core.graphics.ColorUtils;
+
 import org.telegram.messenger.LiteMode;
+import org.telegram.ui.ActionBar.Theme;
 
 import xyz.nextalone.nagram.NaConfig;
 
@@ -48,5 +53,21 @@ public class InterfaceStyleController {
             return FILTER_TAB_SELECTOR_ALPHA_STROKE;
         }
         return applyChatListTopBar() ? FILTER_TAB_SELECTOR_ALPHA_MD3 : FILTER_TAB_SELECTOR_ALPHA_LEGACY;
+    }
+
+    private static final float PANEL_DIVIDER_ON_SURFACE_BLEND = 0.12f;
+    private static final Paint panelDividerPaint = new Paint();
+
+    // MD3 outline-variant: the surface the line sits on, nudged 12% towards its text colour.
+    // Theme dividers are pure black in Night/AMOLED, which is far too loud for a panel edge.
+    public static Paint panelDividerPaint(int surfaceColor, Theme.ResourcesProvider resourcesProvider) {
+        final int onSurface = Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider);
+        panelDividerPaint.setColor(ColorUtils.blendARGB(ColorUtils.setAlphaComponent(surfaceColor, 255), ColorUtils.setAlphaComponent(onSurface, 255), PANEL_DIVIDER_ON_SURFACE_BLEND));
+        return panelDividerPaint;
+    }
+
+    public static int chatHeaderSurfaceColor(Theme.ResourcesProvider resourcesProvider) {
+        final boolean isDark = resourcesProvider != null ? resourcesProvider.isDark() : Theme.isCurrentThemeDark();
+        return Theme.getColor(isDark ? Theme.key_actionBarDefault : Theme.key_chat_topPanelBackground, resourcesProvider);
     }
 }

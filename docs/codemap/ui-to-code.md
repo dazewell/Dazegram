@@ -10,7 +10,7 @@ NagramX Settings → General's Interface Style row opens
 (`NekoGeneralSettingsActivity.java:221-222`). The page does not own a second
 style enum: `InterfaceStyleController.isMaterialDesign3()` derives MD3 from the
 existing Liquid Glass setting and support gate
-(`InterfaceStyleController.java:12-13`). The page writes Liquid Glass with
+(`InterfaceStyleController.java:17-18`). The page writes Liquid Glass with
 `LiteMode.toggleFlag(...)` and reloads the interface
 (`InterfaceStyleActivity.java:242-247`).
 
@@ -22,19 +22,19 @@ visible only after the Material Design 3 radio is selected
 Chat list top bar, Buttons, Bottom navigation, and Panel dividers; the Composer
 row is assigned only when `COMPOSER_STYLE_AVAILABLE` is true, so it is hidden
 while the Composer rebuild is deferred (`InterfaceStyleActivity.java:289-295,406-428`;
-`InterfaceStyleController.java:28-32`). Chat header, chat list top bar, Buttons,
+`InterfaceStyleController.java:33-37`). Chat header, chat list top bar, Buttons,
 and Bottom navigation have render consumers; Composer's stored config/provider
 path still exists but `applyComposer()` is gated off by
 `COMPOSER_STYLE_AVAILABLE = false`, while Classic/Day header colours are hidden
 by `MATCH_CLASSIC_DAY_HEADER_AVAILABLE = false`
 (`NaConfig.kt:1431-1435`; `ComposerGlassProvider.java:16-25,78-80`;
-`InterfaceStyleController.java:28-44`).
+`InterfaceStyleController.java:33-49`).
 
 Panel dividers are a shipped MD3 row: `NaConfig` stores
 `interfaceStylePanelDividers`, and `InterfaceStyleController.panelDividers()`
 gates the render paths (`NaConfig.kt:1455-1459`;
-`InterfaceStyleController.java:39-40`; `InterfaceStyleActivity.java:426-428`).
-It draws `Theme.dividerPaint` hairlines at the MainTabs wrapper top edge, at
+`InterfaceStyleController.java:44-45`; `InterfaceStyleActivity.java:426-428`).
+It draws hairlines coloured as MD3 outline-variant (the local surface blended 12% towards `key_windowBackgroundWhiteBlackText`, `InterfaceStyleController.java:63-72`, because Night/AMOLED `key_divider` is pure black) at the MainTabs wrapper top edge, at
 Dialogs' captured top-surface bottom after `super.dispatchDraw(...)`, and under
 ChatActivity's header group after `super.dispatchDraw(...)`
 (`MainTabsActivity.java:436-442`; `DialogsActivity.java:1177-1182`;
@@ -92,7 +92,7 @@ theme colour, sizing and animation in place, but raises the borderless selected
 pill alpha through `InterfaceStyleController.filterTabSelectorAlpha(...)` when
 `applyChatListTopBar()` is true; `tabStyleStroke` still keeps the existing
 full-opacity stroked chip (`FilterTabsView.java:1644-1663`;
-`InterfaceStyleController.java:12-21,46-53`).
+`InterfaceStyleController.java:17-26,51-58`).
 
 Dialogs search tabs opt into the same alpha through their own
 `ViewPagerFixed.TabsView` flag. The flag defaults off, so the shared bubble
@@ -123,7 +123,7 @@ The Interface Style Composer switch is stored in `NaConfig`, but
 `InterfaceStyleActivity` assigns and binds its row only when
 `InterfaceStyleController.COMPOSER_STYLE_AVAILABLE` is true; because that
 constant is currently false, the row is hidden and `applyComposer()` always
-returns false (`NaConfig.kt:1431-1435`; `InterfaceStyleController.java:28-32`;
+returns false (`NaConfig.kt:1431-1435`; `InterfaceStyleController.java:33-37`;
 `InterfaceStyleActivity.java:293,418-420`). The real chat uses a Buttons-role
 provider for side controls, selected-message actions, channel buttons, and
 instant-camera buttons, while the Composer provider/config path still exists

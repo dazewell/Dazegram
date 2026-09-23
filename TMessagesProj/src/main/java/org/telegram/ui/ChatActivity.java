@@ -19594,7 +19594,7 @@ public class ChatActivity extends BaseFragment implements
                 if (topPanelLayout != null && topPanelLayout.getMetadata().getTotalVisibility() > 0) {
                     naxHeaderBottom = Math.max(naxHeaderBottom, topPanelLayout.getY() + topPanelLayout.getMetadata().getTotalHeight());
                 }
-                canvas.drawRect(0, naxHeaderBottom, getMeasuredWidth(), naxHeaderBottom + Math.max(1, AndroidUtilities.dp(0.66f)), Theme.dividerPaint);
+                canvas.drawRect(0, naxHeaderBottom, getMeasuredWidth(), naxHeaderBottom + Math.max(1, AndroidUtilities.dp(0.66f)), xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividerPaint(xyz.nextalone.nagram.helpers.InterfaceStyleController.chatHeaderSurfaceColor(themeDelegate), themeDelegate));
             }
             //if (fragmentContextView != null && fragmentContextView.isCallStyle()) {
             //    float alpha = (blurredView != null && blurredView.getVisibility() == View.VISIBLE) ? 1f - blurredView.getAlpha() : 1f;
