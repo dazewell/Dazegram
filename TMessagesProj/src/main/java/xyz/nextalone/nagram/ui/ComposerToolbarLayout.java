@@ -809,15 +809,21 @@ public final class ComposerToolbarLayout extends FrameLayout {
             justifiedSlot = slot;
         }
 
-        private void justifyMiddleCells(int widthPx) {
+        private void justifyMiddleCells(int widthPx, int extraPx) {
             if (justifiedSlot == null) {
                 return;
             }
             for (int i = 0; i < justifiedSlot.getChildCount(); i++) {
-                ViewGroup.LayoutParams lp = justifiedSlot.getChildAt(i).getLayoutParams();
-                if (lp != null && lp.width != widthPx) {
-                    lp.width = widthPx;
-                    justifiedSlot.getChildAt(i).forceLayout();
+                View child = justifiedSlot.getChildAt(i);
+                ViewGroup.LayoutParams lp = child.getLayoutParams();
+                int width = widthPx;
+                if (extraPx > 0 && child.getVisibility() != GONE) {
+                    width++;
+                    extraPx--;
+                }
+                if (lp != null && lp.width != width) {
+                    lp.width = width;
+                    child.forceLayout();
                 }
             }
         }
@@ -933,7 +939,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
             }
             boolean md3 = InterfaceStyleController.applyComposer();
             if (md3) {
-                justifyMiddleCells(AndroidUtilities.dp(buttonSize()));
+                justifyMiddleCells(AndroidUtilities.dp(buttonSize()), 0);
             }
             middleContent.measure(unboundedWidthSpec, heightSpec);
 
@@ -973,10 +979,13 @@ public final class ComposerToolbarLayout extends FrameLayout {
                 int orderedWidth = Math.max(0, middleViewportWidth - (middleContent.getMeasuredWidth() - justifiedSlot.getMeasuredWidth()));
                 int cells = Math.max(1, orderedWidth / cellPx);
                 int slotPx = Math.max(cellPx, orderedWidth / cells);
-                justifyMiddleCells(slotPx);
+                // The leftover pixels go one each to the first cells, so the ones on screen at rest add up
+                // to the viewport exactly.
+                int extraPx = Math.max(0, orderedWidth - cells * slotPx);
+                justifyMiddleCells(slotPx, extraPx);
                 middleContent.measure(unboundedWidthSpec, heightSpec);
                 middleWidth = middleContent.getMeasuredWidth();
-                middleViewportWidth = Math.min(middleViewportWidth, middleWidth - justifiedSlot.getMeasuredWidth() + cells * slotPx);
+                middleViewportWidth = Math.min(middleViewportWidth, middleWidth - justifiedSlot.getMeasuredWidth() + cells * slotPx + extraPx);
             }
 
             middleScrollView.measure(MeasureSpec.makeMeasureSpec(middleViewportWidth, MeasureSpec.EXACTLY), heightSpec);
