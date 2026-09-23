@@ -37,7 +37,7 @@ gates the render paths (`NaConfig.kt:1455-1459`;
 It draws hairlines coloured as MD3 outline-variant (the local surface blended 12% towards `key_windowBackgroundWhiteBlackText`, `InterfaceStyleController.java:63-72`, because Night/AMOLED `key_divider` is pure black) at the MainTabs wrapper top edge, at
 Dialogs' captured top-surface bottom after `super.dispatchDraw(...)`, and under
 ChatActivity's header group after `super.dispatchDraw(...)`
-(`MainTabsActivity.java:436-442`; `DialogsActivity.java:1184-1189`;
+(`MainTabsActivity.java:436-442`; `DialogsActivity.java:1177-1182`;
 `ChatActivity.java:19590-19597`).
 
 Chat/action-bar surfaces use the existing account-aware
@@ -55,15 +55,14 @@ Dialogs MD3 is owned by `DialogsActivity.ContentView`, not by each row.
 Search modes, while `drawChild(...)` paints one translucent frosted surface
 above scrolling rows and below the top controls when the RenderEffect source is
 available; unsupported or blur-disabled paths retain the opaque fallback.
-`updateContextViewPosition()` supplies its animated tab extent, and outside
-search the bottom is clamped to the first page's list content top (padding plus
-the stories-overscroll view offset), because the padded tab strip measures
-taller than the list reserves and otherwise covers the first row
-(`DialogsActivity.java:593-600`, `:936-997`, `:6841-6887`). The
+`updateContextViewPosition()` supplies its animated tab extent, trimmed by the
+same `dp(5)` the list's top padding subtracts, since the full padded strip
+covers the first row by that much (`DialogsActivity.java:2175-2185`)
+(`DialogsActivity.java:593-600`, `:936-990`, `:6834-6881`). The
 search/folder rows do not install their own MD3 backgrounds; search-type tabs
 keep only a full-bounds child clip, the search field keeps its rounded control
 background, and the independently animated temporary panel reuses the same
-dialogs provider (`DialogsActivity.java:4973-4979`, `:5066-5067`,
+dialogs provider (`DialogsActivity.java:4966-4972`, `:5059-5060`,
 `:5407-5415`; `SearchTabsAndFiltersLayout.java:15-59`;
 `BlurredBackgroundProviderImpl.java:53-72`).
 Chat-side strips use the same chat-header flag through `ChatActivity` and the
@@ -100,7 +99,7 @@ full-opacity stroked chip (`FilterTabsView.java:1644-1663`;
 Dialogs search tabs opt into the same alpha through their own
 `ViewPagerFixed.TabsView` flag. The flag defaults off, so the shared bubble
 selector keeps hashtag/search and bookmark tabs on their existing
-`tabStyleStroke` behavior (`DialogsActivity.java:7829-7831`;
+`tabStyleStroke` behavior (`DialogsActivity.java:7823-7825`;
 `ViewPagerFixed.java:1509,1545-1546,2066-2082`). Other tab strips keep their
 own `tabStyleStroke` behavior independently (`ScrollSlidingTextTabStrip.java:772-777`).
 
