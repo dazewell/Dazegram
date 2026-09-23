@@ -45,13 +45,12 @@ import xyz.nextalone.nagram.helpers.InterfaceStyleController;
  */
 public final class ComposerMd3Surface {
     private static final float CONTAINER_ON_SURFACE_BLEND = 0.06f;
-    private static final float FIELD_ON_SURFACE_BLEND = 0.04f;
-    // Over a frosted island the field is its own tone laid at this opacity, which takes away 60% of what the
-    // blur still shows: at the default strength that is the island's 75% tint made 90%, one step denser.
-    private static final float FIELD_OVER_FROST = 0.6f;
+    // Painted opaque, so the field reads one step above the 6% strip whatever the frost behind it.
+    private static final float FIELD_ON_SURFACE_BLEND = 0.08f;
     private static final int STRIP_RADIUS = 10;
     private static final int STRIP_ACCENT = 3;
-    private static final int STRIP_FIELD_GAP = 6;
+    // Inset top and bottom inside the 48dp top view, which centres the strip on the upstream close button.
+    private static final int STRIP_INSET = 3;
     // Island radius minus the 3dp margin, so the field and the reply strip sit concentric in the island.
     private static final int FIELD_RADIUS = 10;
     // The field is drawn this far inside the 44dp text row top and bottom, so it is 42dp and shares the
@@ -62,8 +61,13 @@ public final class ComposerMd3Surface {
     private static final int ISLAND_PADDING = 2;
     private static final int FIELD_SIDE_INSET = 3;
     private static final int FIELD_SEND_GAP = 8;
-    // The send circle's top corner sits about 4dp inside the island, which caps the radius near 13dp.
+    // The send circle's top sits about 5dp inside the island, which caps the radius near 13dp.
     private static final int ISLAND_RADIUS = 13;
+    // Resting on the nav bar the lower corners grow toward the display curve, but past this the tools row's
+    // first and last ripples would clip.
+    private static final int BOTTOM_RADIUS_MAX = 15;
+    // The island's send side reaches this far past the pill, so the send circle clears its edge.
+    private static final int SEND_OVERHANG = 4;
     private static final int SHADOW_RADIUS = 4;
     private static final int SHADOW_DY = 2;
     private static final int SHADOW_ALPHA = 77;
@@ -157,10 +161,6 @@ public final class ComposerMd3Surface {
         return ColorUtils.blendARGB(surfaceColor(), onSurface, FIELD_ON_SURFACE_BLEND);
     }
 
-    private static float fieldOpacity(boolean frosted) {
-        return frosted ? FIELD_OVER_FROST : 1f;
-    }
-
     private int shadowColor() {
         return ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_chat_messagePanelShadow, resourcesProvider), SHADOW_ALPHA);
     }
@@ -195,7 +195,7 @@ public final class ComposerMd3Surface {
         final RoundedCorner left = insets.getRoundedCorner(RoundedCorner.POSITION_BOTTOM_LEFT);
         final RoundedCorner right = insets.getRoundedCorner(RoundedCorner.POSITION_BOTTOM_RIGHT);
         final int display = Math.max(left == null ? 0 : left.getRadius(), right == null ? 0 : right.getRadius());
-        final float nested = display - island.left;
+        final float nested = Math.min(display - island.left, dp(BOTTOM_RADIUS_MAX));
         if (display <= 0 || nested <= base) {
             return base;
         }
@@ -256,9 +256,9 @@ public final class ComposerMd3Surface {
         }
         if (inputFactor > 0) {
             weight += inputFactor;
-            left += pill.left * inputFactor;
+            left += (pill.left - (LocaleController.isRTL ? dp(SEND_OVERHANG) : 0)) * inputFactor;
             top += (pill.top - pad) * inputFactor;
-            right += pill.right * inputFactor;
+            right += (pill.right + (LocaleController.isRTL ? 0 : dp(SEND_OVERHANG))) * inputFactor;
             bottom += (pill.bottom + toolsInset + pad) * inputFactor;
         }
         if (channelFactor > 0) {
@@ -309,7 +309,7 @@ public final class ComposerMd3Surface {
         // The channel and selection runs have no field of their own, so the island itself takes the tone.
         final float runFactor = Math.max(actionFactor, drawPill ? alpha * channelFactor : 0);
         if (runFactor > 0) {
-            fillPaint.setColor(Theme.multAlpha(fieldColor(), runFactor * fieldOpacity(frosted)));
+            fillPaint.setColor(Theme.multAlpha(fieldColor(), runFactor));
             canvas.drawPath(islandPath, fillPaint);
         }
 
@@ -328,10 +328,10 @@ public final class ComposerMd3Surface {
             }
         }
 
-        if (drawPill && inputFactor > 0 && topViewHeight > dp(STRIP_FIELD_GAP)) {
+        if (drawPill && inputFactor > 0 && topViewHeight > dp(STRIP_INSET * 2)) {
             // Reply, edit, forward and link preview all share this top view, so one strip covers them.
             final float stripAlpha = alpha * inputFactor * topViewProgress;
-            rect.set(columnLeft, pill.top + dp(FIELD_INSET), columnRight, pill.top + topViewHeight - dp(STRIP_FIELD_GAP));
+            rect.set(columnLeft, pill.top + dp(STRIP_INSET), columnRight, pill.top + topViewHeight - dp(STRIP_INSET));
             final float stripRadius = Math.min(dp(STRIP_RADIUS), rect.height() / 2f);
             fillPaint.setColor(Theme.multAlpha(container, stripAlpha));
             canvas.drawRoundRect(rect, stripRadius, stripRadius, fillPaint);
@@ -345,7 +345,7 @@ public final class ComposerMd3Surface {
         if (drawPill && inputFactor > 0) {
             rect.set(columnLeft, pill.top + topViewHeight + dp(FIELD_INSET), columnRight, pill.bottom - dp(FIELD_INSET));
             final float fieldRadius = Math.min(dp(FIELD_RADIUS), rect.height() / 2f);
-            fillPaint.setColor(Theme.multAlpha(fieldColor(), alpha * inputFactor * fieldOpacity(frosted)));
+            fillPaint.setColor(Theme.multAlpha(fieldColor(), alpha * inputFactor));
             canvas.drawRoundRect(rect, fieldRadius, fieldRadius, fillPaint);
         }
         if (underKeyboard != null) {
@@ -401,7 +401,7 @@ public final class ComposerMd3Surface {
                 // declare supportsRtl.
                 surface.rect.set(bounds.left + dp(FIELD_SIDE_INSET), bounds.top + dp(FIELD_INSET), bounds.right - endReserve, bounds.bottom - dp(FIELD_INSET));
                 final float radius = Math.min(dp(FIELD_RADIUS), surface.rect.height() / 2f);
-                surface.fillPaint.setColor(Theme.multAlpha(surface.fieldColor(), fieldOpacity(true)));
+                surface.fillPaint.setColor(surface.fieldColor());
                 canvas.drawRoundRect(surface.rect, radius, radius, surface.fillPaint);
             }
         };

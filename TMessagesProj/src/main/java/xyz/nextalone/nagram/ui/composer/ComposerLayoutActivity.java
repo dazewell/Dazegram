@@ -132,7 +132,6 @@ public class ComposerLayoutActivity extends BaseFragment {
     private static final int PREVIEW_INPUT_GAP = 2;
     private static final int PREVIEW_INPUT_HEIGHT = 44;
     private static final int PREVIEW_FIELD_SEND_GAP = 8;
-    private static final int PREVIEW_MD3_SEND_INSET_DP = 2;
     private static final int PREVIEW_PADDING = 12;
     /** Matches ChatActivityEnterView.COMPOSER_PRIMARY_INSET - the real send button's own background inset
      * inside its DEFAULT_HEIGHT slot, kept in step so the preview's placeholder end-margin lines up with
@@ -1458,7 +1457,7 @@ public class ComposerLayoutActivity extends BaseFragment {
 
             ChatActivityEnterView.SendButton send = new ChatActivityEnterView.SendButton(
                     getContext(), R.drawable.send_plane_24, null, true);
-            send.setBackgroundInset(dp(InterfaceStyleController.applyComposer() ? PREVIEW_MD3_SEND_INSET_DP : SEND_BUTTON_INSET_DP));
+            send.setBackgroundInset(dp(SEND_BUTTON_INSET_DP));
             send.setFocusable(false);
             send.setClickable(false);
             send.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);

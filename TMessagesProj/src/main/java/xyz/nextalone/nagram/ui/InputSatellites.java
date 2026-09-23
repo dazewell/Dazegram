@@ -95,7 +95,9 @@ public final class InputSatellites {
     }
 
     public void drawFill(Canvas canvas, View view) {
-        if (factory == null) {
+        // NagramX (#interface-style): the MD3 island is the surface under these controls, so they draw as plain
+        // icon buttons on it rather than on a glass disc of their own.
+        if (factory == null || xyz.nextalone.nagram.helpers.InterfaceStyleController.applyComposer()) {
             return;
         }
         for (int i = 0; i < fills.size(); i++) {
