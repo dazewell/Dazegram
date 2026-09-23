@@ -371,6 +371,7 @@ public class InterfaceStyleActivity extends BaseFragment {
                 view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
             } else if (viewType == TYPE_SLIDER) {
                 view = new SlideIntChooseView(context, null);
+                ((SlideIntChooseView) view).setSnapToValue(true);
                 view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
             } else {
                 view = new RadioButtonCell(context);
