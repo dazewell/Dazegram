@@ -5405,6 +5405,8 @@ public class ChatActivity extends BaseFragment implements
         }
 
         chatInputViewsContainer = new ChatInputViewsContainer(context, true);
+        // NagramX: the MD3 Composer replaces the island and under-keyboard glass with one flat bar.
+        chatInputViewsContainer.md3Surface = xyz.nextalone.nagram.ui.composer.ComposerMd3Surface.createIfEnabled(themeDelegate);
         chatInputViewsContainer.setClipChildren(false);
         chatInputViewsContainer.setWindowInsetsProvider(windowInsetsStateHolder);
         // NagramX: keep Composer input surfaces on their own provider so the Apply Composer gate
@@ -9348,6 +9350,10 @@ public class ChatActivity extends BaseFragment implements
         });
 
         chatInputBubbleContainer.addView(bottomChannelButtonsLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 56, Gravity.BOTTOM, 0, 0, 0, (44 - 56) / 2));
+        // NagramX: the MD3 Composer reads these three views' fades to choose between field and host pill.
+        if (chatInputViewsContainer.md3Surface != null) {
+            chatInputViewsContainer.md3Surface.bind(chatActivityEnterView, bottomChannelButtonsLayout, actionsButtonsLayout);
+        }
 
         bottomOverlayStartButton = new TextView(context) {
             CellFlickerDrawable cellFlickerDrawable;

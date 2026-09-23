@@ -39,6 +39,7 @@ public class ChatInputViewsContainer extends FrameLayout {
     private final FrameLayout inAppKeyboardBubbleContainer;
     // NagramX: only ChatActivity's composer opts in, so other hosts of this container keep the glass radii under MD3.
     private final boolean flatComposer;
+    public xyz.nextalone.nagram.ui.composer.ComposerMd3Surface md3Surface;
 
     public ChatInputViewsContainer(@NonNull Context context) {
         this(context, false);
@@ -340,10 +341,15 @@ public class ChatInputViewsContainer extends FrameLayout {
         tmpRect.inset(0, -dp(7));
         tmpRect.offset(0, blurTop + (int) bubbleInputTranlationY);
         blurredBackgroundDrawable.setBounds(tmpRect);
-        if (drawInputBackground)
+        // NagramX: the MD3 Composer paints one flat bar instead. Both drawables keep their bounds, since
+        // the in-app keyboard clip below and the touch capture still read them.
+        if (md3Surface != null) {
+            md3Surface.draw(canvas, getMeasuredWidth(), getMeasuredHeight(), blurredBackgroundDrawable.getPaddedBounds(), bubbleInputTranlationY,
+                blurredBackgroundDrawable.getAlpha(), appliedInputBubbleBottomInset, drawInputBackground, needDrawInAppKeyboard ? underKeyboardBackgroundDrawable.getBounds() : null);
+        } else if (drawInputBackground)
             blurredBackgroundDrawable.draw(canvas);
 
-        if (needDrawInAppKeyboard) {
+        if (needDrawInAppKeyboard && md3Surface == null) {
             underKeyboardBackgroundDrawable.draw(canvas);
         }
 
@@ -425,7 +431,8 @@ public class ChatInputViewsContainer extends FrameLayout {
             final int y = (int) event.getY();
 
             captured = blurredBackgroundDrawable != null && blurredBackgroundDrawable.getAlpha() == 255 && inputBubbleFullBounds.contains(x, y)
-                || underKeyboardBackgroundDrawable != null && underKeyboardBackgroundDrawable.getBounds().contains(x, y);
+                || underKeyboardBackgroundDrawable != null && underKeyboardBackgroundDrawable.getBounds().contains(x, y)
+                || md3Surface != null && md3Surface.contains(x, y);
 
         }
         if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
