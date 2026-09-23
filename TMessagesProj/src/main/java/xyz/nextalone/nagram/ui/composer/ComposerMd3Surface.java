@@ -11,7 +11,6 @@ import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.ViewTreeObserver;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -45,12 +44,13 @@ public final class ComposerMd3Surface {
     private static final int STRIP_RADIUS = 12;
     private static final int STRIP_ACCENT = 3;
     private static final int STRIP_FIELD_GAP = 6;
-    private static final int FIELD_RADIUS = 24;
-    // The field outgrows the 44dp text row by this much on each side, so it is 48dp and shares the row's
+    private static final int FIELD_RADIUS = 20;
+    // The field is drawn this far inside the 44dp text row on each side, so it is 40dp and shares the row's
     // centre with the send circle.
-    private static final int FIELD_GROW = 2;
+    private static final int FIELD_INSET = 2;
     private static final int FIELD_SEND_GAP = 8;
-    private static final int BAR_TOP_PADDING = 4;
+    // The input section is the 44dp text row plus this much above and below it.
+    private static final int BAR_TOP_PADDING = 2;
     private static final int HOST_RADIUS = 22;
 
     private final Theme.ResourcesProvider resourcesProvider;
@@ -64,14 +64,8 @@ public final class ComposerMd3Surface {
     private View actionButtons;
     private float barTop = Float.MAX_VALUE;
     private boolean barVisible;
-    private View host;
     private BlurredBackgroundDrawable frost;
     private int frostAccount;
-    private final ViewTreeObserver.OnGlobalFocusChangeListener focusListener = (oldFocus, newFocus) -> {
-        if (host != null) {
-            host.invalidate();
-        }
-    };
 
     public ComposerMd3Surface(Theme.ResourcesProvider resourcesProvider) {
         this.resourcesProvider = resourcesProvider;
@@ -84,26 +78,10 @@ public final class ComposerMd3Surface {
 
     // The island shows one of these at a time; their alpha is how ChatActivity cross-fades between them,
     // so it is also how this surface decides between the field and a host pill.
-    public void bind(View host, ChatActivityEnterView enterView, View channelButtons, View actionButtons) {
-        this.host = host;
+    public void bind(ChatActivityEnterView enterView, View channelButtons, View actionButtons) {
         this.enterView = enterView;
         this.channelButtons = channelButtons;
         this.actionButtons = actionButtons;
-        // The focus ring is painted by the host, and a focus change only redraws the edit text itself.
-        host.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
-            @Override
-            public void onViewAttachedToWindow(@NonNull View v) {
-                v.getViewTreeObserver().addOnGlobalFocusChangeListener(focusListener);
-            }
-
-            @Override
-            public void onViewDetachedFromWindow(@NonNull View v) {
-                v.getViewTreeObserver().removeOnGlobalFocusChangeListener(focusListener);
-            }
-        });
-        if (host.isAttachedToWindow()) {
-            host.getViewTreeObserver().addOnGlobalFocusChangeListener(focusListener);
-        }
     }
 
     /**
@@ -162,9 +140,9 @@ public final class ComposerMd3Surface {
         return barVisible && y >= barTop;
     }
 
-    /** How far the bar reaches above the island's pill: the field's own growth plus the padding above it. */
+    /** How far the bar reaches above the island's pill. */
     public int topOverhang() {
-        return dp(BAR_TOP_PADDING + FIELD_GROW);
+        return dp(BAR_TOP_PADDING);
     }
 
     /**
@@ -197,8 +175,8 @@ public final class ComposerMd3Surface {
 
         final float topViewProgress = enterView != null ? enterView.getTopViewEnterProgress() : 0;
         final float topViewHeight = enterView != null ? Math.max(0, enterView.getTopViewHeight()) * topViewProgress : 0;
-        final float fieldTop = pill.top + topViewHeight - dp(FIELD_GROW) * inputFactor * (1f - topViewProgress);
-        final float fieldBottom = pill.bottom + dp(FIELD_GROW) * inputFactor;
+        final float fieldTop = pill.top + topViewHeight + dp(FIELD_INSET) * inputFactor;
+        final float fieldBottom = pill.bottom - dp(FIELD_INSET) * inputFactor;
         barTop = pill.top - pillTranslation - topOverhang();
 
         final int frostAlpha = Math.round(255 * barFactor);
@@ -256,14 +234,13 @@ public final class ComposerMd3Surface {
                     fieldRight = Math.min(fieldRight, enterView.getRight() - primaryEndInset - dp(FIELD_SEND_GAP));
                 }
             }
-            final boolean focused = enterView.getEditField() != null && enterView.getEditField().isFocused();
-            final float strokeWidth = dp(focused ? 2 : 1);
+            final float strokeWidth = dp(1);
             rect.set(fieldLeft, fieldTop, fieldRight, fieldBottom);
             final float radius = Math.min(dp(FIELD_RADIUS), rect.height() / 2f);
             // No fill: the field sits on the bar's own surface, frosted or not, and its outline is the edge.
             rect.inset(strokeWidth / 2f, strokeWidth / 2f);
             strokePaint.setStrokeWidth(strokeWidth);
-            strokePaint.setColor(Theme.multAlpha(focused ? primaryColor() : outlineVariant, alpha * inputFactor));
+            strokePaint.setColor(Theme.multAlpha(outlineVariant, alpha * inputFactor));
             final float strokeRadius = Math.max(0, radius - strokeWidth / 2f);
             canvas.drawRoundRect(rect, strokeRadius, strokeRadius, strokePaint);
         }
@@ -326,7 +303,7 @@ public final class ComposerMd3Surface {
                 final float strokeWidth = dp(1);
                 // Gravity.END puts the preview's send circle on the right even in RTL: the app does not
                 // declare supportsRtl.
-                surface.rect.set(bounds.left, bounds.top, bounds.right - endReserve, bounds.bottom);
+                surface.rect.set(bounds.left, bounds.top + dp(FIELD_INSET), bounds.right - endReserve, bounds.bottom - dp(FIELD_INSET));
                 final float radius = Math.min(dp(FIELD_RADIUS), surface.rect.height() / 2f);
                 surface.rect.inset(strokeWidth / 2f, strokeWidth / 2f);
                 surface.strokePaint.setStrokeWidth(strokeWidth);
