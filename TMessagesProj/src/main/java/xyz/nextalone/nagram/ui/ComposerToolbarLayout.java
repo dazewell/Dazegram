@@ -136,9 +136,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
         middleScrollView = new ComposerMiddleScrollView(context);
         middleScrollView.setHorizontalScrollBarEnabled(false);
-        // NagramX (#interface-style): MD3 hard-clips the strip. A glyph dimmed by the fade reads as disabled,
-        // while a clipped one just says there is more to scroll.
-        middleScrollView.setHorizontalFadingEdgeEnabled(!InterfaceStyleController.applyComposer());
+        middleScrollView.setHorizontalFadingEdgeEnabled(true);
         middleScrollView.setFadingEdgeLength(AndroidUtilities.dp(12));
         middleScrollView.setFillViewport(false);
         middleScrollView.setFocusable(false);
