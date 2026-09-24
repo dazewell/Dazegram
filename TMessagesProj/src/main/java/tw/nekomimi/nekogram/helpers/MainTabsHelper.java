@@ -11,10 +11,11 @@ public final class MainTabsHelper {
     public static final int FILTER_TABS_HEIGHT = 36;
     public static final int TAB_WIDTH = 80;
     public static final int TAB_PADDING = 4;
-    // MD3 navigation bar: 80dp container, 12dp above the 32dp indicator; icon-only bars keep 16dp around it.
-    public static final int MD3_NAVIGATION_HEIGHT = 80;
+    // MD3 navigation: a 64dp panel either way. With titles the 32dp indicator sits 8dp from the top with the label
+    // 2dp under it, M3's short-bar layout; icon-only panels keep 16dp around it.
+    public static final int MD3_NAVIGATION_HEIGHT = 64;
     public static final int MD3_NAVIGATION_HEIGHT_COMPACT = 64;
-    public static final int MD3_NAVIGATION_INDICATOR_TOP = 12;
+    public static final int MD3_NAVIGATION_INDICATOR_TOP = 8;
     public static final int MD3_NAVIGATION_INDICATOR_TOP_COMPACT = 16;
     // MD3 navigation floats as a stadium this far above the nav inset. It is the outer margin every
     // consumer already reads, so lists, the Dialogs FAB and bulletins clear the panel through it.
@@ -22,7 +23,10 @@ public final class MainTabsHelper {
     public static final int MD3_NAVIGATION_SIDE_GAP = 9;
     // The Liquid Glass pill's own cap.
     public static final int MD3_NAVIGATION_MAX_WIDTH = 328 + MAIN_TABS_MARGIN * 2;
-    public static final int MD3_NAVIGATION_INDICATOR_WIDTH = 64;
+    public static final int MD3_NAVIGATION_INDICATOR_WIDTH = 56;
+    public static final int MD3_NAVIGATION_INDICATOR_WIDTH_COMPACT = 64;
+    // The long-press card sits this far inside the panel, so its radius is the panel's less this and the two nest.
+    public static final int MD3_NAVIGATION_SCRIM_INSET = 4;
 
     private MainTabsHelper() {
     }
@@ -33,8 +37,12 @@ public final class MainTabsHelper {
         return isMainTabsHideTitleStyle() ? MD3_NAVIGATION_INDICATOR_TOP_COMPACT : MD3_NAVIGATION_INDICATOR_TOP;
     }
 
+    public static int getMd3NavigationIndicatorWidth() {
+        return isMainTabsHideTitleStyle() ? MD3_NAVIGATION_INDICATOR_WIDTH_COMPACT : MD3_NAVIGATION_INDICATOR_WIDTH;
+    }
+
     public static float getMd3NavigationWidth() {
-        final float tab = 2 * md3NavigationEdgeGap() + MD3_NAVIGATION_INDICATOR_WIDTH;
+        final float tab = 2 * md3NavigationEdgeGap() + getMd3NavigationIndicatorWidth();
         return Math.min(MD3_NAVIGATION_MAX_WIDTH, tab * getFragmentsCount());
     }
 
@@ -45,8 +53,9 @@ public final class MainTabsHelper {
             return 0;
         }
         final float gap = md3NavigationEdgeGap();
-        final float tab = (getMd3NavigationWidth() - 2 * gap - MD3_NAVIGATION_INDICATOR_WIDTH) / (count - 1);
-        return Math.max(0, gap + MD3_NAVIGATION_INDICATOR_WIDTH / 2f - tab / 2f);
+        final int indicator = getMd3NavigationIndicatorWidth();
+        final float tab = (getMd3NavigationWidth() - 2 * gap - indicator) / (count - 1);
+        return Math.max(0, gap + indicator / 2f - tab / 2f);
     }
 
     public static boolean isMainTabsHideTitleStyle() {

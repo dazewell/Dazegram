@@ -363,7 +363,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             // NagramX: MD3 insets the tabs inside the floating panel, which the background draws mainTabsMargin in from tabsView.
             final int indicatorTop = dp(compact ? MainTabsHelper.MD3_NAVIGATION_INDICATOR_TOP_COMPACT : MainTabsHelper.MD3_NAVIGATION_INDICATOR_TOP);
             final int side = dp(mainTabsMargin + MainTabsHelper.getMd3NavigationContentPadding());
-            tabsView.setPadding(side, dp(mainTabsMargin) + indicatorTop, side, dp(mainTabsMargin) + (compact ? indicatorTop : 0));
+            tabsView.setPadding(side, dp(mainTabsMargin) + indicatorTop, side, dp(mainTabsMargin) + indicatorTop);
         } else {
             tabsView.setPadding(paddingH, paddingV, paddingH, paddingV);
         }
@@ -1470,31 +1470,19 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         com.radolyn.ayugram.eventschedule.MessageTriggersMenu.addTo(o, this);
     }
 
-    // NagramX: an MD3 tab spans a third of the bar and ItemOptions centres a sized card on the whole tab view,
-    // but the indicator and label sit at its top; pin the card 8dp above the indicator so it hugs them.
+    // NagramX: under MD3 each tab spans the panel's height less its indicator gap top and bottom, so ItemOptions,
+    // which centres the card on the tab, centres it on the panel. The card is a stadium inset a few dp inside the
+    // panel's own, so a lifted edge tab never crosses the panel's curve.
     private ShapeDrawable naxTabScrimBackground() {
         final int color = getThemedColor(Theme.key_windowBackgroundWhite);
         if (!md3BottomNavigation) {
             return Theme.createRoundRectDrawable(dp(28), color);
         }
-        final boolean compact = MainTabsHelper.isMainTabsHideTitleStyle();
-        final float r = dp(20);
-        final ShapeDrawable bg = new ShapeDrawable(new android.graphics.drawable.shapes.RoundRectShape(new float[]{r, r, r, r, r, r, r, r}, null, null)) {
-            @Override
-            public void draw(@NonNull Canvas canvas) {
-                if (compact) {
-                    super.draw(canvas);
-                    return;
-                }
-                canvas.save();
-                canvas.translate(0, -dp(8) - getBounds().top);
-                super.draw(canvas);
-                canvas.restore();
-            }
-        };
-        bg.getPaint().setColor(color);
-        bg.setIntrinsicWidth(dp(96));
-        bg.setIntrinsicHeight(dp(compact ? 48 : 68));
+        final int inset = MainTabsHelper.MD3_NAVIGATION_SCRIM_INSET;
+        final int height = MainTabsHelper.getMainTabsHeight() - inset * 2;
+        final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(height / 2f), color);
+        bg.setIntrinsicWidth(Math.max(dp(height), tabs[INDEX_CHATS].getWidth() - dp(inset * 2)));
+        bg.setIntrinsicHeight(dp(height));
         return bg;
     }
     private void setupPopupMenuStyle(ItemOptions options) {

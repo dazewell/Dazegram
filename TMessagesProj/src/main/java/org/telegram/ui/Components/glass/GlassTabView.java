@@ -152,8 +152,8 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     public void setMd3NavigationIndicator(boolean md3NavigationIndicator) {
         if (this.md3NavigationIndicator != md3NavigationIndicator) {
             this.md3NavigationIndicator = md3NavigationIndicator;
-            // NagramX: MD3 puts the label 4dp below the 32dp indicator that wraps the icon.
-            textView.setLayoutParams(LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 0, md3NavigationIndicator ? 36 : 28.33f, 0, 0));
+            // NagramX: MD3 puts the label 2dp below the 32dp indicator that wraps the icon, M3's short-bar layout.
+            textView.setLayoutParams(LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 0, md3NavigationIndicator ? 34 : 28.33f, 0, 0));
             invalidate();
         }
     }
@@ -168,7 +168,7 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
             canvas.save();
             paintCounterBackground.setColor(Theme.multAlpha(colorSelected, (md3NavigationIndicator ? 0.18f : 0.09f) * alpha));
             if (md3NavigationIndicator) {
-                final float indicatorWidth = Math.min(dp(64), viewWidth - dp(8));
+                final float indicatorWidth = Math.min(dp(tw.nekomimi.nekogram.helpers.MainTabsHelper.getMd3NavigationIndicatorWidth()), viewWidth - dp(8));
                 final float indicatorHeight = dp(32);
                 final float top = isCompact ? (getHeight() - indicatorHeight) / 2f : 0;
                 tmpRectF.set((viewWidth - indicatorWidth) / 2f, top, (viewWidth + indicatorWidth) / 2f, top + indicatorHeight);

@@ -98,7 +98,8 @@ public class MainTabsLayout extends AnimatedLinearLayout {
             }
         }
 
-        applyPassTextSize(chosenPass);
+        // NagramX: the 64dp MD3 panel leaves room for its label only at the smallest pass, whatever the width.
+        applyPassTextSize(fillWidth ? PASS_TEXT_SIZES_DP.length - 1 : chosenPass);
 
         final int tabPadding = dp(PASS_PADDINGS_DP[chosenPass]);
         final int maxTabTextWidthIfEq = (maxTotalWidthForTabs / Math.max(1, visibleChildCount)) - tabPadding * 2;
