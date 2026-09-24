@@ -4849,6 +4849,10 @@ public class ChatActivity extends BaseFragment implements
             invalidateMessagesVisiblePart();
             checkUi_messagesSearchListPadding();
             checkUi_topFade();
+            // NagramX: the MD3 expanded input stops below this panel, so its budget follows the panel's animation.
+            if (chatInputViewsContainer != null && chatInputViewsContainer.md3Surface != null && chatActivityEnterView != null && chatActivityEnterView.isMessageEditExpanded()) {
+                checkUi_expandedInputBudget();
+            }
         });
         if (avatarContainer != null) {
             avatarContainer.onDestroy();
