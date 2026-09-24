@@ -270,7 +270,8 @@ public class ChatInputViewsContainer extends FrameLayout {
     // Everything anchored to the island's bottom reads this rather than the raw constant, so the pill, its
     // children and the buttons parked beside them stay on the same edge.
     public float getInputBubbleBottomLift() {
-        return dp(INPUT_BUBBLE_BOTTOM) - inputBubbleBottomLiftReduction;
+        // NagramX (#interface-style): the MD3 island floats a little higher, clear of the curved screen corners.
+        return dp(INPUT_BUBBLE_BOTTOM) - inputBubbleBottomLiftReduction + (md3Surface != null ? md3Surface.extraLift() : 0);
     }
 
     public void setInputBubbleOffsets(float left, float right) {

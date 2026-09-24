@@ -15,6 +15,7 @@ import android.view.RoundedCorner;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
+import android.widget.FrameLayout;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -29,6 +30,7 @@ import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundProvider
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundProviderBuilder;
 import org.telegram.ui.Components.blur3.drawable.color.impl.BlurredBackgroundProviderImpl;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSource;
+import org.telegram.ui.Components.chat.ChatInputViewsContainer;
 import org.telegram.ui.Components.chat.ViewPositionWatcher;
 
 import me.vkryl.core.reference.ReferenceList;
@@ -47,6 +49,11 @@ public final class ComposerMd3Surface {
     private static final float CONTAINER_ON_SURFACE_BLEND = 0.06f;
     // Painted opaque, so the field reads one step above the 6% strip whatever the frost behind it.
     private static final float FIELD_ON_SURFACE_BLEND = 0.08f;
+    // Lightening reads weaker per percent than darkening, so a dark theme's field takes a bigger step.
+    private static final float FIELD_ON_SURFACE_BLEND_DARK = 0.14f;
+    // The composer keeps this share of the blur the Blur strength setting asks for, so a bright bubble passing
+    // under it cannot glow through: the 0.5-1 alpha range becomes 0.65-1.
+    private static final float FROST_SHARE = 0.7f;
     private static final int STRIP_RADIUS = 10;
     private static final int STRIP_ACCENT = 3;
     // Inset top and bottom inside the 48dp top view, which centres the strip on the upstream close button.
@@ -69,10 +76,14 @@ public final class ComposerMd3Surface {
     private static final int SHADOW_RADIUS = 4;
     private static final int SHADOW_DY = 2;
     private static final int SHADOW_ALPHA = 77;
-    // The pill's padded bounds already sit this far in from the container, so a selection island uses it too.
+    // The pill's padded bounds already sit this far in from the island's children, so a selection island uses it too.
     private static final int SIDE_INSET = 7;
-    // The stock 9dp lift less the island's 2dp bottom padding: the gap the island rests at over the nav bar.
-    private static final int ISLAND_LIFT = 7;
+    // Every island child is held this much further in from the screen sides than the stock 7dp, so the island
+    // sits 9dp from each edge.
+    private static final int SIDE_EXTRA = 2;
+    // Added to the stock 9dp lift. Less the island's 2dp bottom padding, the island rests this far above the nav bar.
+    private static final int EXTRA_LIFT = 5;
+    private static final int ISLAND_LIFT = 12;
 
     private final Theme.ResourcesProvider resourcesProvider;
     private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -102,8 +113,11 @@ public final class ComposerMd3Surface {
 
     // The island shows one of these at a time; their alpha is how ChatActivity cross-fades between them,
     // so it is also how this surface decides which run the island wraps. The host supplies the window insets.
-    public void bind(View host, ChatActivityEnterView enterView, View channelButtons, View actionButtons) {
+    public void bind(ChatInputViewsContainer host, ChatActivityEnterView enterView, View channelButtons, View actionButtons) {
         this.host = host;
+        final FrameLayout island = host.getInputIslandBubbleContainer();
+        island.setClipToPadding(false);
+        island.setPadding(dp(SIDE_EXTRA), 0, dp(SIDE_EXTRA), 0);
         this.enterView = enterView;
         this.channelButtons = channelButtons;
         this.actionButtons = actionButtons;
@@ -131,7 +145,7 @@ public final class ComposerMd3Surface {
     // No stroke, and a soft shadow in the theme's own panel-shadow colour, so the island reads as lifted.
     private BlurredBackgroundProvider frostProvider() {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
-                .setBackgroundColor((r, isDark) -> Theme.multAlpha(surfaceColor(), NaConfig.interfaceStyleBlurAlpha()))
+                .setBackgroundColor((r, isDark) -> Theme.multAlpha(surfaceColor(), frostAlpha()))
                 .setStrokeColorTop(0, 0)
                 .setStrokeColorBottom(0, 0)
                 .setShadowColor((r, isDark) -> shadowColor())
@@ -156,7 +170,8 @@ public final class ComposerMd3Surface {
     /** An opaque tonal container one step above the surface: darker in a light theme, lighter in a dark one. */
     private int fieldColor() {
         final int onSurface = ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider), 255);
-        return ColorUtils.blendARGB(surfaceColor(), onSurface, FIELD_ON_SURFACE_BLEND);
+        final boolean dark = resourcesProvider != null ? resourcesProvider.isDark() : Theme.isCurrentThemeDark();
+        return ColorUtils.blendARGB(surfaceColor(), onSurface, dark ? FIELD_ON_SURFACE_BLEND_DARK : FIELD_ON_SURFACE_BLEND);
     }
 
     private int shadowColor() {
@@ -205,6 +220,15 @@ public final class ComposerMd3Surface {
         return base + (nested - base) * t;
     }
 
+    private static float frostAlpha() {
+        return 1f - (1f - NaConfig.interfaceStyleBlurAlpha()) * FROST_SHARE;
+    }
+
+    /** How much higher than the stock lift the island floats, so it keeps clear of the screen's curved corners. */
+    public int extraLift() {
+        return dp(EXTRA_LIFT);
+    }
+
     /** How far the island reaches above the pill. */
     public int topOverhang() {
         return dp(ISLAND_PADDING);
@@ -236,6 +260,9 @@ public final class ComposerMd3Surface {
         final int surface = surfaceColor();
         final int container = containerOverlay();
         final float pad = dp(ISLAND_PADDING);
+        // The pill is drawn from the container's edges, but its children sit SIDE_EXTRA further in.
+        final float pillLeft = pill.left + dp(SIDE_EXTRA);
+        final float pillRight = pill.right - dp(SIDE_EXTRA);
 
         final float topViewProgress = enterView != null ? enterView.getTopViewEnterProgress() : 0;
         final float topViewHeight = enterView != null ? Math.max(0, enterView.getTopViewHeight()) * topViewProgress : 0;
@@ -249,23 +276,23 @@ public final class ComposerMd3Surface {
         final float plainFactor = Math.max(0, 1f - inputFactor - channelFactor - actionFactor);
         if (plainFactor > 0) {
             weight += plainFactor;
-            left += pill.left * plainFactor;
+            left += pillLeft * plainFactor;
             top += (pill.top - pad) * plainFactor;
-            right += pill.right * plainFactor;
+            right += pillRight * plainFactor;
             bottom += (pill.bottom + pad) * plainFactor;
         }
         if (inputFactor > 0) {
             weight += inputFactor;
-            left += pill.left * inputFactor;
+            left += pillLeft * inputFactor;
             top += (pill.top - pad) * inputFactor;
-            right += pill.right * inputFactor;
+            right += pillRight * inputFactor;
             bottom += (pill.bottom + toolsInset + pad) * inputFactor;
         }
         if (channelFactor > 0) {
             weight += channelFactor;
-            left += pill.left * channelFactor;
+            left += pillLeft * channelFactor;
             top += (pill.top - pad) * channelFactor;
-            right += pill.right * channelFactor;
+            right += pillRight * channelFactor;
             bottom += (pill.bottom + pad) * channelFactor;
         }
         if (actionFactor > 0 && actionButtons != null) {
@@ -314,8 +341,8 @@ public final class ComposerMd3Surface {
         }
 
         // The field and the reply strip share one column: both stop where the send and close controls begin.
-        float columnLeft = pill.left + dp(FIELD_SIDE_INSET);
-        float columnRight = pill.right - dp(FIELD_SIDE_INSET);
+        float columnLeft = pillLeft + dp(FIELD_SIDE_INSET);
+        float columnRight = pillRight - dp(FIELD_SIDE_INSET);
         if (enterView != null) {
             final int primaryEndInset = enterView.getComposerPrimaryEndInset();
             if (primaryEndInset > 0) {
