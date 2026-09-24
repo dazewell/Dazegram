@@ -48,7 +48,10 @@ public final class MainTabsHelper {
 
     public static float getMd3NavigationWidth() {
         final float tab = 2 * md3NavigationEdgeGap() + getMd3NavigationIndicatorWidth();
-        return Math.min(MD3_NAVIGATION_MAX_WIDTH, tab * getFragmentsCount());
+        // A narrow screen can hold less than the cap; the padding is derived from this width, so it must be the
+        // width the panel really gets.
+        final float screen = org.telegram.messenger.AndroidUtilities.displaySize.x / org.telegram.messenger.AndroidUtilities.density - 2 * MD3_NAVIGATION_SIDE_GAP;
+        return Math.min(Math.min(MD3_NAVIGATION_MAX_WIDTH, screen), tab * getFragmentsCount());
     }
 
     /** Side padding inside the panel that puts the edge indicators {@link #md3NavigationEdgeGap()} from its side. */
