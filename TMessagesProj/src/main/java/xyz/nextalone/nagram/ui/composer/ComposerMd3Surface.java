@@ -55,6 +55,8 @@ public final class ComposerMd3Surface {
     // The composer keeps this share of the blur the Blur strength setting asks for, so a bright bubble passing
     // under it cannot glow through: the 0.5-1 alpha range becomes 0.65-1.
     private static final float FROST_SHARE = 0.7f;
+    // With any Blur strength set, the field lets a hint of the frost through; at zero it stays solid.
+    private static final float FIELD_OVER_FROST = 0.88f;
     private static final int STRIP_RADIUS = 10;
     private static final int STRIP_ACCENT = 3;
     // Inset top and bottom inside the 48dp top view, which centres the strip on the upstream close button.
@@ -231,6 +233,10 @@ public final class ComposerMd3Surface {
         return base + (nested - base) * t;
     }
 
+    private static float fieldOpacity(boolean frosted) {
+        return frosted && NaConfig.INSTANCE.getInterfaceStyleBlurStrength().Int() > 0 ? FIELD_OVER_FROST : 1f;
+    }
+
     private static float frostAlpha() {
         return 1f - (1f - NaConfig.interfaceStyleBlurAlpha()) * FROST_SHARE;
     }
@@ -363,7 +369,7 @@ public final class ComposerMd3Surface {
         // The channel and selection runs have no field of their own, so the island itself takes the tone.
         final float runFactor = Math.max(actionFactor, drawPill ? alpha * channelFactor : 0);
         if (runFactor > 0) {
-            fillPaint.setColor(Theme.multAlpha(fieldColor(), runFactor));
+            fillPaint.setColor(Theme.multAlpha(fieldColor(), runFactor * fieldOpacity(frosted)));
             canvas.drawPath(islandPath, fillPaint);
         }
 
@@ -399,7 +405,7 @@ public final class ComposerMd3Surface {
         if (drawPill && inputFactor > 0) {
             rect.set(columnLeft, pill.top + topViewHeight + dp(FIELD_INSET), columnRight, pill.bottom - dp(FIELD_INSET));
             final float fieldRadius = Math.min(dp(FIELD_RADIUS), rect.height() / 2f);
-            fillPaint.setColor(Theme.multAlpha(fieldColor(), alpha * inputFactor));
+            fillPaint.setColor(Theme.multAlpha(fieldColor(), alpha * inputFactor * fieldOpacity(frosted)));
             canvas.drawRoundRect(rect, fieldRadius, fieldRadius, fillPaint);
         }
         if (underKeyboard != null) {
@@ -455,7 +461,7 @@ public final class ComposerMd3Surface {
                 // declare supportsRtl.
                 surface.rect.set(bounds.left + dp(FIELD_SIDE_INSET), bounds.top + dp(FIELD_INSET), bounds.right - endReserve, bounds.bottom - dp(FIELD_INSET));
                 final float radius = Math.min(dp(FIELD_RADIUS), surface.rect.height() / 2f);
-                surface.fillPaint.setColor(surface.fieldColor());
+                surface.fillPaint.setColor(Theme.multAlpha(surface.fieldColor(), fieldOpacity(true)));
                 canvas.drawRoundRect(surface.rect, radius, radius, surface.fillPaint);
             }
         };
