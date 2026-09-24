@@ -50,8 +50,8 @@ import xyz.nextalone.nagram.helpers.InterfaceStyleController;
  */
 public final class ComposerMd3Surface {
     private static final float CONTAINER_ON_SURFACE_BLEND = 0.06f;
-    // Laid over the island like the strip, one step above its 6%. On an opaque island this is the same pixel
-    // as an opaque blend of the surface; on the frost it tints what shows through instead of hiding it.
+    // Laid over the island like the strip, one step above its 6%. On an opaque island this matches an opaque
+    // blend of the surface to within alpha rounding; on the frost it tints what shows through instead of hiding it.
     private static final float FIELD_ON_SURFACE_BLEND = 0.08f;
     // Lightening reads weaker per percent than darkening, so a dark theme's field takes a bigger step.
     private static final float FIELD_ON_SURFACE_BLEND_DARK = 0.14f;
