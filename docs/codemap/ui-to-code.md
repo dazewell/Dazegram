@@ -136,9 +136,9 @@ shadow in `key_chat_messagePanelShadow` (`ComposerMd3Surface.java:65`,
 bottom overlay text) each give the island a rect, and the cross-fade weights
 ease between them (`:243-278`). Resting on the nav bar its lower corners grow toward
 the display's rounded corner, capped at 15dp, easing back to 13dp as the
-keyboard lifts it (`:186-206`). Like the MD3 chat header it is frosted when
+keyboard lifts it (`:184-206`). Like the MD3 chat header it is frosted when
 the chat has a frosted source and blur is enabled for the account, at
-`NaConfig.interfaceStyleBlurAlpha()`, and opaque otherwise (`:119-146`). It gets
+`NaConfig.interfaceStyleBlurAlpha()`, and opaque otherwise (`:117-144`). It gets
 its own factory over that source because the shared frosted factory can hand
 out drawables with the Liquid Glass shader (`ChatActivity.java:5409-5412`;
 `BlurredBackgroundDrawableViewFactory.java:81-85`). MD3 keeps the stock 9dp
@@ -161,9 +161,10 @@ without painting that run is what blanked channel chats in #409.
 The field stops short of the send column using the existing
 `getComposerPrimaryEndInset()`, on the left under `LocaleController.isRTL`
 (`ChatActivityEnterView.java:18929`). The reply strip reads
-`getTopViewHeight()` and `getTopViewEnterProgress()` (`:17926`, `:308`). On the
-send side the island reaches 4dp past the pill so the stock 38dp send circle
-clears its edge (`ComposerMd3Surface.java:259-261`).
+`getTopViewHeight()` and `getTopViewEnterProgress()` (`:17926`, `:308`). Both sides of
+the island sit on the pill's 7dp inset, so the stock 38dp send circle keeps the
+same 3dp margin as the field; the bottom-corner nesting reads the tighter side
+(`ComposerMd3Surface.java:196-198`).
 
 The tools row keeps its Liquid Glass geometry unless MD3 is on. Then size runs
 the row, cell, state layer and glyph linearly through 40/48/56dp rows at
