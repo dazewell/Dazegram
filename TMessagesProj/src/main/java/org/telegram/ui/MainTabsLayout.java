@@ -143,9 +143,15 @@ public class MainTabsLayout extends AnimatedLinearLayout {
         if (fillWidth && visibleChildCount > 0) {
             // NagramX: MD3 navigation gives every tab the same cell, so its indicators keep an even pitch and the
             // edge ones sit exactly as far from the panel's side as MainTabsHelper's padding puts them.
-            final float cell = maxTotalWidthForTabs / (float) visibleChildCount;
+            final int cell = maxTotalWidthForTabs / visibleChildCount;
+            int remainder = maxTotalWidthForTabs - cell * visibleChildCount;
             for (int a = 0, N = getChildCount(); a < N; a++) {
-                tabsTextWidthWithMargin[a] = isViewVisible(getChildAt(a)) ? cell : 0;
+                if (!isViewVisible(getChildAt(a))) {
+                    tabsTextWidthWithMargin[a] = 0;
+                    continue;
+                }
+                // Whole pixels that add up to the width exactly, so a capped panel never measures past its cap.
+                tabsTextWidthWithMargin[a] = cell + (remainder-- > 0 ? 1 : 0);
             }
         }
 
