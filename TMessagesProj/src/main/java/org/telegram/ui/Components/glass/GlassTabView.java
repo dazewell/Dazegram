@@ -198,7 +198,9 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
 
             final float gap = dpf2(1.33f);
             final float cx = viewWidth / 2f + dpf2(11);
-            final float cy = dpf2(10);
+            // NagramX: MD3's indicator sits 4dp around the icon, so the badge drops 2dp to align with the icon's top
+            // and keep that 4dp from the indicator's edge instead of crowding it.
+            final float cy = dpf2(md3NavigationIndicator ? 12 : 10);
             final float height = dpf2(16);
             final float width = Math.max(height, counter.getCurrentWidth() + dp(8));
             final float rOuter = dpf2(9.333f);
