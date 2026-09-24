@@ -20290,7 +20290,9 @@ public class ChatActivity extends BaseFragment implements
                 } else if (child == instantCameraView) {
                     int contentWidthSpec = View.MeasureSpec.makeMeasureSpec(widthSize, View.MeasureSpec.EXACTLY);
                     int contentHeightSpec = View.MeasureSpec.makeMeasureSpec(allHeight, View.MeasureSpec.EXACTLY);
-                    final int recorderBottomChrome = (int) inputIslandHeightTarget + dp(9 + 3);
+                    final int recorderBottomChrome = (int) inputIslandHeightTarget + dp(9 + 3)
+                        // NagramX: the MD3 island floats higher and reaches past its pill, so the camera controls sit above that.
+                        + (chatInputViewsContainer != null && chatInputViewsContainer.md3Surface != null ? chatInputViewsContainer.md3Surface.reachAboveStock() : 0);
                     instantCameraView.setInternalPadding(windowInsetsStateHolder.getCurrentMaxBottomInset()
                         + recorderBottomChrome,
                         // NagramX: second value is the same padding without the soft keyboard, which is what
@@ -20305,7 +20307,8 @@ public class ChatActivity extends BaseFragment implements
                     int contentHeightSpec = View.MeasureSpec.makeMeasureSpec(allHeight
                         - windowInsetsStateHolder.getCurrentMaxBottomInset()
                         - (int) inputIslandHeightTarget
-                        - dp(9 + 3), View.MeasureSpec.EXACTLY);
+                        - dp(9 + 3)
+                        - (chatInputViewsContainer != null && chatInputViewsContainer.md3Surface != null ? chatInputViewsContainer.md3Surface.reachAboveStock() : 0), View.MeasureSpec.EXACTLY);
                     child.measure(contentWidthSpec, contentHeightSpec);
                 } else if (child == emptyViewContainer) {
                     int contentWidthSpec = View.MeasureSpec.makeMeasureSpec(widthSize, View.MeasureSpec.EXACTLY);

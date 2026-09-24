@@ -302,6 +302,11 @@ public final class ComposerMd3Surface {
         return dp(ISLAND_PADDING);
     }
 
+    /** How much higher the island's top sits than a Liquid Glass pill's: the extra lift plus its reach above the pill. */
+    public int reachAboveStock() {
+        return extraLift() + topOverhang();
+    }
+
     /**
      * How much less room the expanded input gets than a Liquid Glass one: the extra lift, the island's reach
      * above its pill, and whatever panel the header shows under the action bar, so it never slides under it.
@@ -309,7 +314,7 @@ public final class ComposerMd3Surface {
      * handed back so the gap under the header matches the island's 9dp side gaps.
      */
     public int expandedInputTrim(int headerPanelHeight) {
-        return extraLift() + topOverhang() + Math.max(0, headerPanelHeight) - dp(EXPANDED_HEADROOM_RETURN);
+        return reachAboveStock() + Math.max(0, headerPanelHeight) - dp(EXPANDED_HEADROOM_RETURN);
     }
 
     /**
