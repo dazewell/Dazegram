@@ -51,3 +51,4 @@ if (-not (Test-BranchFormat $Branch)) {
 }
 
 Write-Host "Branch '$Branch' matches the required format."
+exit 0
