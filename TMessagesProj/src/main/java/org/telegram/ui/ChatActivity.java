@@ -10035,6 +10035,10 @@ public class ChatActivity extends BaseFragment implements
         if (actionBar != null && actionBar.getVisibility() == View.VISIBLE) {
             budget -= actionBar.getMeasuredHeight();
         }
+        // NagramX: the MD3 island floats higher and reaches past its pill, and must stop below the pinned panel.
+        if (chatInputViewsContainer != null && chatInputViewsContainer.md3Surface != null) {
+            budget -= chatInputViewsContainer.md3Surface.expandedInputTrim(topPanelLayout != null && topPanelLayout.getMetadata().getTotalVisibility() > 0 ? Math.round(topPanelLayout.getMetadata().getTotalHeight()) : 0);
+        }
         final boolean inputMethodVisible = windowInsetsStateHolder.getInsets(WindowInsetsCompat.Type.ime()).bottom > 0
             || windowInsetsStateHolder.inAppViewIsVisible();
         chatActivityEnterView.updateExpandedInputBudget(budget, inputMethodVisible);

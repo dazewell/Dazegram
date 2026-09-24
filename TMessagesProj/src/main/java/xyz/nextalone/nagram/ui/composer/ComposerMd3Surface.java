@@ -244,6 +244,14 @@ public final class ComposerMd3Surface {
     }
 
     /**
+     * How much less room the expanded input gets than a Liquid Glass one: the extra lift, the island's reach
+     * above its pill, and whatever panel the header shows under the action bar, so it never slides under it.
+     */
+    public int expandedInputTrim(int headerPanelHeight) {
+        return extraLift() + topOverhang() + Math.max(0, headerPanelHeight);
+    }
+
+    /**
      * @param pill            the island's visible pill in container coordinates, including its slide offset
      * @param pillTranslation the vertical slide the pill carries while selection mode takes the island over
      * @param pillAlpha       the island's own fade, 0-255
