@@ -11,9 +11,7 @@ import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
-import android.os.Build;
 import android.view.MotionEvent;
-import android.view.RoundedCorner;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
@@ -22,6 +20,7 @@ import android.widget.FrameLayout;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.graphics.ColorUtils;
+import androidx.core.view.WindowInsetsCompat;
 
 import org.telegram.messenger.LocaleController;
 import org.telegram.ui.ActionBar.Theme;
@@ -41,8 +40,9 @@ import xyz.nextalone.nagram.helpers.InterfaceStyleController;
 
 /**
  * NagramX (#interface-style): the MD3 Composer. ChatActivity's ChatInputViewsContainer hands its draw pass
- * here instead of painting the glass island and under-keyboard drawables. The composer becomes one floating
- * island, frosted and lightly shadowed: a tonal field with the send column beside it and the tools row
+ * here instead of painting the glass island and under-keyboard drawables. The composer becomes one island,
+ * frosted and lightly shadowed, docked as a sheet while it rests on the nav bar and floating once the keyboard
+ * lifts it: a tonal field with the send column beside it and the tools row
  * under it, or a tonal island around whichever action run replaces the input. The under-keyboard panel
  * stays docked and opaque.
  * Colours are read from the chat's theme on every draw. Only the frost drawable's alpha and corner radius are kept
@@ -77,9 +77,11 @@ public final class ComposerMd3Surface {
     private static final int SEND_TARGET_REACH = 2;
     // The send circle's top sits about 5dp inside the island, which caps the radius near 13dp.
     private static final int ISLAND_RADIUS = 13;
-    // Resting on the nav bar the lower corners grow toward the display curve, but past this the tools row's
-    // first and last ripples would clip.
-    private static final int BOTTOM_RADIUS_MAX = 15;
+    // Docked, the island's sides move 9dp out, so the send circle sits 14dp from the edge and a rounder top
+    // corner still clears it.
+    private static final int SHEET_RADIUS = 20;
+    // How far the keyboard or emoji panel lifts the island before the sheet has fully turned back into it.
+    private static final int SHEET_MORPH = 48;
     private static final int SHADOW_RADIUS = 4;
     private static final int SHADOW_DY = 2;
     private static final int SHADOW_ALPHA = 77;
@@ -100,7 +102,6 @@ public final class ComposerMd3Surface {
     private static final int EXTRA_LIFT = 5;
     // Measured on device: with the full trim the expanded island sat about 18dp under the header, twice its side gap.
     private static final int EXPANDED_HEADROOM_RETURN = 9;
-    private static final int ISLAND_LIFT = 12;
 
     private final Theme.ResourcesProvider resourcesProvider;
     private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -114,7 +115,7 @@ public final class ComposerMd3Surface {
     private final Rect islandBounds = new Rect();
     private final float[] islandRadii = new float[8];
     private final Path islandPath = new Path();
-    private float frostBottomRadius = -1;
+    private float frostTopRadius = -1, frostBottomRadius = -1;
     private final RectF sendSlot = new RectF();
     private float touchShiftX, touchShiftY;
     private float appliedShiftX, appliedShiftY;
@@ -123,7 +124,7 @@ public final class ComposerMd3Surface {
     private View channelButtons;
     private View actionButtons;
     private boolean barVisible;
-    private View host;
+    private ChatInputViewsContainer host;
     private BlurredBackgroundDrawable frost;
     private int frostAccount;
 
@@ -255,32 +256,23 @@ public final class ComposerMd3Surface {
     }
 
     /**
-     * Resting on the nav bar, the island's lower corners nest in the display's own rounded corners instead of
-     * cutting across the screen curve. As the keyboard or emoji panel lifts it away they ease back to the top
-     * radius, over the same distance as the curve is tall.
+     * 1 while the island rests on the nav bar, where it docks as a sheet running to the screen's sides and bottom
+     * so no edge cuts across the display's rounded corners; 0 once the keyboard or emoji panel has lifted it
+     * {@link #SHEET_MORPH} clear, where it floats as an island again.
      */
-    private float bottomRadius(int height) {
-        final float base = dp(ISLAND_RADIUS);
-        if (Build.VERSION.SDK_INT < 31 || host == null) {
-            return base;
+    private float dockFactor() {
+        if (host == null) {
+            return 0;
         }
         final WindowInsets insets = host.getRootWindowInsets();
         if (insets == null) {
-            return base;
+            return 0;
         }
-        final RoundedCorner left = insets.getRoundedCorner(RoundedCorner.POSITION_BOTTOM_LEFT);
-        final RoundedCorner right = insets.getRoundedCorner(RoundedCorner.POSITION_BOTTOM_RIGHT);
-        final int display = Math.max(left == null ? 0 : left.getRadius(), right == null ? 0 : right.getRadius());
-        // The tighter side decides, so neither corner cuts into the display curve.
-        final float sideGap = Math.min(island.left, host.getWidth() - island.right);
-        final float nested = Math.min(display - sideGap, dp(BOTTOM_RADIUS_MAX));
-        if (display <= 0 || nested <= base) {
-            return base;
-        }
-        final float restingGap = insets.getInsets(WindowInsets.Type.navigationBars()).bottom + dp(ISLAND_LIFT);
-        final float lifted = Math.max(0, height - island.bottom - restingGap);
-        final float t = Math.max(0, 1f - lifted / display);
-        return base + (nested - base) * t;
+        // The same resting inset WindowInsetsStateHolder builds the container's bottom inset from, so the difference
+        // below is exactly the keyboard's or emoji panel's share of it.
+        final int rest = WindowInsetsCompat.toWindowInsetsCompat(insets, host).getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()).bottom;
+        final float lifted = host.getMeasuredHeight() - rest - host.getInputBubbleBottomLift() - host.getInputBubbleBottom();
+        return Math.max(0, Math.min(1, 1f - lifted / dp(SHEET_MORPH)));
     }
 
     private static float frostAlpha() {
@@ -381,8 +373,15 @@ public final class ComposerMd3Surface {
             bottom += (pill.bottom - pillTranslation + pad) * actionFactor;
         }
         island.set(left / weight, top / weight, right / weight, bottom / weight);
-        final float radius = Math.min(dp(ISLAND_RADIUS), island.height() / 2f);
-        final float bottomRadius = Math.min(bottomRadius(height), island.height() / 2f);
+        // Docked, only the top edge stays where the island's is: the sides and bottom run off the screen.
+        final float dock = dockFactor();
+        if (dock > 0) {
+            island.left -= island.left * dock;
+            island.right += (width - island.right) * dock;
+            island.bottom += (height - island.bottom) * dock;
+        }
+        final float radius = Math.min(dp(ISLAND_RADIUS) + dp(SHEET_RADIUS - ISLAND_RADIUS) * dock, island.height() / 2f);
+        final float bottomRadius = Math.min(dp(ISLAND_RADIUS) * (1f - dock), island.height() / 2f);
         islandRadii[0] = islandRadii[1] = islandRadii[2] = islandRadii[3] = radius;
         islandRadii[4] = islandRadii[5] = islandRadii[6] = islandRadii[7] = bottomRadius;
         islandPath.rewind();
@@ -396,9 +395,10 @@ public final class ComposerMd3Surface {
         final boolean frosted = frosted();
         if (barFactor > 0) {
             if (frosted) {
-                if (frostBottomRadius != bottomRadius) {
+                if (frostTopRadius != radius || frostBottomRadius != bottomRadius) {
+                    frostTopRadius = radius;
                     frostBottomRadius = bottomRadius;
-                    frost.setRadius(dp(ISLAND_RADIUS), dp(ISLAND_RADIUS), bottomRadius, bottomRadius);
+                    frost.setRadius(radius, radius, bottomRadius, bottomRadius);
                 }
                 island.roundOut(islandBounds);
                 frost.setBounds(islandBounds);
