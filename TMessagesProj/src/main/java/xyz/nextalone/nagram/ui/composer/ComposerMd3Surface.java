@@ -66,8 +66,6 @@ public final class ComposerMd3Surface {
     // Resting on the nav bar the lower corners grow toward the display curve, but past this the tools row's
     // first and last ripples would clip.
     private static final int BOTTOM_RADIUS_MAX = 15;
-    // The island's send side reaches this far past the pill, so the send circle clears its edge.
-    private static final int SEND_OVERHANG = 4;
     private static final int SHADOW_RADIUS = 4;
     private static final int SHADOW_DY = 2;
     private static final int SHADOW_ALPHA = 77;
@@ -195,7 +193,9 @@ public final class ComposerMd3Surface {
         final RoundedCorner left = insets.getRoundedCorner(RoundedCorner.POSITION_BOTTOM_LEFT);
         final RoundedCorner right = insets.getRoundedCorner(RoundedCorner.POSITION_BOTTOM_RIGHT);
         final int display = Math.max(left == null ? 0 : left.getRadius(), right == null ? 0 : right.getRadius());
-        final float nested = Math.min(display - island.left, dp(BOTTOM_RADIUS_MAX));
+        // The tighter side decides, so neither corner cuts into the display curve.
+        final float sideGap = Math.min(island.left, host.getWidth() - island.right);
+        final float nested = Math.min(display - sideGap, dp(BOTTOM_RADIUS_MAX));
         if (display <= 0 || nested <= base) {
             return base;
         }
@@ -256,9 +256,9 @@ public final class ComposerMd3Surface {
         }
         if (inputFactor > 0) {
             weight += inputFactor;
-            left += (pill.left - (LocaleController.isRTL ? dp(SEND_OVERHANG) : 0)) * inputFactor;
+            left += pill.left * inputFactor;
             top += (pill.top - pad) * inputFactor;
-            right += (pill.right + (LocaleController.isRTL ? 0 : dp(SEND_OVERHANG))) * inputFactor;
+            right += pill.right * inputFactor;
             bottom += (pill.bottom + toolsInset + pad) * inputFactor;
         }
         if (channelFactor > 0) {
