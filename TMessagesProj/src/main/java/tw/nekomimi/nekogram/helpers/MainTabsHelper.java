@@ -17,7 +17,7 @@ public final class MainTabsHelper {
     public static final int MD3_NAVIGATION_HEIGHT_COMPACT = 64;
     public static final int MD3_NAVIGATION_INDICATOR_TOP = 8;
     public static final int MD3_NAVIGATION_INDICATOR_TOP_COMPACT = 16;
-    // MD3 navigation floats as a stadium this far above the nav inset. It is the outer margin every
+    // MD3 navigation floats this far above the nav inset. It is the outer margin every
     // consumer already reads, so lists, the Dialogs FAB and bulletins clear the panel through it.
     public static final int MD3_NAVIGATION_LIFT = 12;
     public static final int MD3_NAVIGATION_SIDE_GAP = 9;
@@ -25,8 +25,13 @@ public final class MainTabsHelper {
     public static final int MD3_NAVIGATION_MAX_WIDTH = 328 + MAIN_TABS_MARGIN * 2;
     public static final int MD3_NAVIGATION_INDICATOR_WIDTH = 56;
     public static final int MD3_NAVIGATION_INDICATOR_WIDTH_COMPACT = 64;
-    // The long-press card sits this far inside the panel, so its radius is the panel's less this and the two nest.
+    // Panel, long-press card and indicator are one family of rounded rectangles, each this inset inside the
+    // one around it with its radius smaller by the same amount: 18, 14 and 10dp. With titles the edge
+    // indicators sit two insets from the panel's top and side, so all three nest there exactly.
+    public static final int MD3_NAVIGATION_RADIUS = 18;
     public static final int MD3_NAVIGATION_SCRIM_INSET = 4;
+    public static final int MD3_NAVIGATION_SCRIM_RADIUS = MD3_NAVIGATION_RADIUS - MD3_NAVIGATION_SCRIM_INSET;
+    public static final int MD3_NAVIGATION_INDICATOR_RADIUS = MD3_NAVIGATION_SCRIM_RADIUS - MD3_NAVIGATION_SCRIM_INSET;
 
     private MainTabsHelper() {
     }

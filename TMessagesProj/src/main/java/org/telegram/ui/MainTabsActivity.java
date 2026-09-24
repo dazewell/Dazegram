@@ -462,7 +462,8 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             tabsView,
             md3BottomNavigation ? BlurredBackgroundProviderImpl.mainTabsBottomNavigation(currentAccount, resourceProvider) : BlurredBackgroundProviderImpl.mainTabs(resourceProvider)
         );
-        tabsViewBackground.setRadius(dp(MainTabsHelper.getMainTabsHeight() / 2f));
+        // NagramX: MD3 draws the panel as a rounded rectangle that the long-press card and indicator nest inside.
+        tabsViewBackground.setRadius(dp(md3BottomNavigation ? MainTabsHelper.MD3_NAVIGATION_RADIUS : MainTabsHelper.getMainTabsHeight() / 2f));
         // NagramX: the MD3 panel is drawn exactly its margin in from tabsView, the edge every consumer lays out against.
         tabsViewBackground.setPadding(dp(md3BottomNavigation ? mainTabsMargin : mainTabsMargin - 0.334f));
         tabsView.setBackground(tabsViewBackground);
@@ -1471,8 +1472,8 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
     }
 
     // NagramX: under MD3 each tab spans the panel's height less its indicator gap top and bottom, so ItemOptions,
-    // which centres the card on the tab, centres it on the panel. The card is a stadium inset a few dp inside the
-    // panel's own, so a lifted edge tab never crosses the panel's curve.
+    // which centres the card on the tab, centres it on the panel. The card is inset inside the panel with a radius
+    // smaller by that inset, so a lifted edge tab nests in the panel's corner instead of crossing it.
     private ShapeDrawable naxTabScrimBackground() {
         final int color = getThemedColor(Theme.key_windowBackgroundWhite);
         if (!md3BottomNavigation) {
@@ -1480,7 +1481,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         }
         final int inset = MainTabsHelper.MD3_NAVIGATION_SCRIM_INSET;
         final int height = MainTabsHelper.getMainTabsHeight() - inset * 2;
-        final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(height / 2f), color);
+        final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(MainTabsHelper.MD3_NAVIGATION_SCRIM_RADIUS), color);
         bg.setIntrinsicWidth(Math.max(dp(height), tabs[INDEX_CHATS].getWidth() - dp(inset * 2)));
         bg.setIntrinsicHeight(dp(height));
         return bg;

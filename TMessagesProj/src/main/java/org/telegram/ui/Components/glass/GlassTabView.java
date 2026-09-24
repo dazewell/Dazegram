@@ -172,7 +172,9 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
                 final float indicatorHeight = dp(32);
                 final float top = isCompact ? (getHeight() - indicatorHeight) / 2f : 0;
                 tmpRectF.set((viewWidth - indicatorWidth) / 2f, top, (viewWidth + indicatorWidth) / 2f, top + indicatorHeight);
-                canvas.drawRoundRect(tmpRectF, indicatorHeight / 2f, indicatorHeight / 2f, paintCounterBackground);
+                // NagramX: a rounded rectangle, not a stadium, so it nests in the MD3 panel's family of corners.
+                final float indicatorRadius = dp(tw.nekomimi.nekogram.helpers.MainTabsHelper.MD3_NAVIGATION_INDICATOR_RADIUS);
+                canvas.drawRoundRect(tmpRectF, indicatorRadius, indicatorRadius, paintCounterBackground);
             } else {
                 tmpRectF.set(0, 0, viewWidth, getHeight());
                 final float r = Math.min(tmpRectF.width(), tmpRectF.height()) / 2f;
