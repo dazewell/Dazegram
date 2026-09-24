@@ -5161,10 +5161,13 @@ public class ChatActivityEnterView extends FrameLayout implements
     protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
         boolean clip = child == topView || child == textFieldContainer;
         if (clip) {
-            final float separatorY = getMeasuredHeight() - animatorInputFieldHeight.getFactor();
+            // NagramX: getHeight(), not getMeasuredHeight(). ChatActivity measures this view outside its
+            // parent's pass, and a later frame can replay a stale size from the measure cache with no layout
+            // after it. The children are drawn at the laid-out height, so that is the one to clip against.
+            final float separatorY = getHeight() - animatorInputFieldHeight.getFactor();
             canvas.save();
             if (child == textFieldContainer) {
-                canvas.clipRect(0, separatorY, getMeasuredWidth(), getMeasuredHeight());
+                canvas.clipRect(0, separatorY, getMeasuredWidth(), getHeight());
             }
             if (child == topView) {
                 canvas.clipRect(0, 0, getMeasuredWidth(), separatorY);
@@ -17842,6 +17845,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         super.onLayout(changed, left, top, right, bottom);
+        if (changed) {
+            checkUi_TopViewVisibility(); // NagramX: re-place the reply panel against the height just applied
+        }
         if (botCommandLastPosition != -1 && botCommandsMenuContainer != null) {
             LinearLayoutManager layoutManager = (LinearLayoutManager) botCommandsMenuContainer.listView.getLayoutManager();
             if (layoutManager != null) {
@@ -19042,7 +19048,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         final float visibility = animatorTopViewVisibility.getFloatValue();
 
         if (topView != null) {
-            final float y = getMeasuredHeight() - animatorInputFieldHeight.getFactor();
+            // NagramX: the laid-out height, for the same reason as the clip in drawChild. onLayout re-runs this
+            // once the new height is applied, since measure calls it first.
+            final float y = getHeight() - animatorInputFieldHeight.getFactor();
 
             topView.setTranslationY(y - topView.getMeasuredHeight() * visibility);
             topView.setVisibility(visibility > 0 ? VISIBLE : GONE);

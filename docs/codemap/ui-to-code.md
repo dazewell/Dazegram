@@ -149,7 +149,7 @@ hand out drawables with the Liquid Glass shader
 MD3 keeps the stock 9dp lift plus 5dp, so the island rests 12dp clear of the
 nav bar, keyboard and docked emoji panel (`ComposerMd3Surface.java:100-101`,
 `:296-298`; `ChatInputViewsContainer.java:272-275`;
-`ChatActivityEnterView.java:18913-18918`). The island reaches `topOverhang()`
+`ChatActivityEnterView.java:18919-18924`). The island reaches `topOverhang()`
 above the pill (`ComposerMd3Surface.java:301-303`), so `getInputBubbleHeight()`
 adds it and everything laid out against the composer, including the message
 list padding, clears it (`ChatInputViewsContainer.java:284-291`;
@@ -174,8 +174,10 @@ called from `ChannelAdminLogActivity.java:1511`. Dropping the island glass
 without painting that run is what blanked channel chats in #409. The field stops
 short of the send column using the existing `getComposerPrimaryEndInset()`, on
 the left under `LocaleController.isRTL` (`ComposerMd3Surface.java:434-454`;
-`ChatActivityEnterView.java:18929`). The reply strip reads `getTopViewHeight()`
-and `getTopViewEnterProgress()` (`ComposerMd3Surface.java:350-351`). The circle keeps its stock 44dp slot, but a press in the 2dp band around it is shifted into the slot for the whole gesture, giving a 48dp target (`ComposerMd3Surface.java:226-256`; `ChatInputViewsContainer.java:433-442`).
+`ChatActivityEnterView.java:18935`). The reply strip reads `getTopViewHeight()`
+and `getTopViewEnterProgress()` (`ComposerMd3Surface.java:350-351`), while the
+reply content is placed against the enter view's laid-out height; see
+upstream-traps, "The enter view's measured height can drift". The circle keeps its stock 44dp slot, but a press in the 2dp band around it is shifted into the slot for the whole gesture, giving a 48dp target (`ComposerMd3Surface.java:226-256`; `ChatInputViewsContainer.java:433-442`).
 
 The tools row keeps its Liquid Glass geometry unless MD3 is on. Then size runs
 the row, cell, state layer and glyph linearly through 40/48/56dp rows at
@@ -229,14 +231,14 @@ never meant to change.
 
 ## The composer Send button has two long-press menus, not one
 
-`ChatActivityEnterView.onSendLongClick` (`ChatActivityEnterView.java:5760`)
+`ChatActivityEnterView.onSendLongClick` (`ChatActivityEnterView.java:5763`)
 branches on `isStories || (empty text && a pending forward is attached)`
-(`ChatActivityEnterView.java:5765`). When true, it builds a cached
+(`ChatActivityEnterView.java:5768`). When true, it builds a cached
 `ActionBarPopupWindow`/`ActionBarMenuSubItem` popup (`sendPopupLayout`,
 built once and reused across long-presses). Everything else — ordinary typed
 text in an in-app chat, which is what most users hit — falls through to a
 second, completely separate menu built fresh every time from
-`ItemOptions`/`MessageSendPreview` (`ChatActivityEnterView.java:6196`
+`ItemOptions`/`MessageSendPreview` (`ChatActivityEnterView.java:6199`
 onward). The two duplicate the same three rows (schedule, send-when-online,
 silent) with near-identical eligibility conditions computed independently in
 each branch — a change to the ordinary composer's long-press menu only needs
@@ -249,7 +251,7 @@ Stories or an empty-caption forward-in-progress, both edge cases relative to
 ### Both branches now arm all three per-action rows, not just `ItemOptions`
 
 `#remember-send-action`'s master switch is inserted into **both** branches of
-`onSendLongClick` (starts `ChatActivityEnterView.java:5760`) — the `ItemOptions`
+`onSendLongClick` (starts `ChatActivityEnterView.java:5763`) — the `ItemOptions`
 menu (built from `ItemOptions.makeOptions` at `:6196`) and the cached
 `sendPopupLayout` popup. The three per-action rows (schedule/send-when-online/
 silent) also now arm in **both** branches: the cached popup's three pre-existing
@@ -284,7 +286,7 @@ click handler.
 ### The Remember master toggle is the one thing deliberately wired into both
 
 `#remember-send-action`'s master switch is inserted into **both** branches of
-`onSendLongClick` (starts `ChatActivityEnterView.java:5760`) — the `ItemOptions`
+`onSendLongClick` (starts `ChatActivityEnterView.java:5763`) — the `ItemOptions`
 menu (built from `ItemOptions.makeOptions` at `:6196`) and the cached
 `sendPopupLayout` popup — while the three per-action rows
 (schedule/send-when-online/silent) now arm in both branches too, per the
@@ -416,17 +418,17 @@ before the `OPTION_EDIT` branch runs (`org/telegram/ui/Components/RecyclerListVi
 `org/telegram/ui/ChatActivity.java:2188-2293`). `setEditingMessageObject` consumes
 and unconditionally clears that armed offset at entry, before any early return, so
 a stale offset can never leak into an unrelated `setFieldText` call
-(`org/telegram/ui/Components/ChatActivityEnterView.java:12267-12283`). Only the two
+(`org/telegram/ui/Components/ChatActivityEnterView.java:12270-12286`). Only the two
 edit-fill call sites -- the inline call and the 200ms-delayed field-refresh runnable
 -- route through the edit-only `setFieldTextForEdit(...)` entry point, which carries
 the pre-transform rendered text and offset alongside the field text
-(`org/telegram/ui/Components/ChatActivityEnterView.java:12386-12424`, `:12875-12877`).
+(`org/telegram/ui/Components/ChatActivityEnterView.java:12389-12427`, `:12878-12880`).
 That entry point validates the offset against the field before applying it -- the
 selection is rejected and falls back to end-of-text if the rendered text no longer
 matches what the field contains after `restoreFormatedDateEntities(...)`, or if the
 offset is out of bounds; every other `setFieldText` caller always lands at
 end-of-text with no dependency on this state at all
-(`org/telegram/ui/Components/ChatActivityEnterView.java:12879-12901`).
+(`org/telegram/ui/Components/ChatActivityEnterView.java:12882-12904`).
 
 The tap offset itself is taken from the text layout hit test in `ChatMessageCell`,
 matching the existing word-boundary behavior and clamping emoji spans before the
@@ -624,9 +626,9 @@ from the toolbar's bulk reschedule button below.
 
 Long-pressing the message input bar's Send button in a chat opens the schedule
 sheet through `ChatActivityEnterView.onSendLongClick`
-(`ChatActivityEnterView.java:5564`), whose "Schedule Message" popup item calls
+(`ChatActivityEnterView.java:5567`), whose "Schedule Message" popup item calls
 `AlertsCreator.createScheduleDatePickerDialog`
-(`ChatActivityEnterView.java:5619`). That call enters the 4-arg overload at
+(`ChatActivityEnterView.java:5622`). That call enters the 4-arg overload at
 `AlertsCreator.java:4410` and funnels through five more delegating overloads —
 `:4430` → `:4434` → `:4438` → `:4456` → `:4474` — into the terminal
 implementation at `:4480`, where every schedule sheet is actually built.
@@ -906,7 +908,7 @@ them gives it a real hosting fragment and a real chat to key state on:
   argument (stored in the `parentFragment` field, declared
   `ChatActivityEnterView.java:811` as `ChatActivity parentFragment`) and later
   (`ChatActivity.java:8894`) calls `setDialogId(long, int)`
-  (`ChatActivityEnterView.java:8237`) with the real chat's dialogId. This is
+  (`ChatActivityEnterView.java:8240`) with the real chat's dialogId. This is
   the only call site where `parentFragment` is ever non-null and `dialog_id`
   (`ChatActivityEnterView.java:812`) is ever the actual open chat.
 - `DialogsActivity.java:5075` (forward/share comment field),

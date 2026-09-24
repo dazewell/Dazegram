@@ -190,6 +190,30 @@ the card below the keyboard-open viewport bottom.
 
 *(Established 2026-09-09, `#eventschedule`.)*
 
+## The enter view's measured height can drift from its laid-out height
+
+`ChatActivity`'s fragment view measures `chatActivityEnterView` itself
+(`ChatActivity.java:20252`) although its real parent is
+`chatInputBubbleContainer` (`:8963`), so the view is measured with two different
+specs in one pass. A later traversal can hit the view's measure cache for the
+fragment's spec and restore an older size without calling `onMeasure`, while
+the real parent skips measuring and laying it out. A device trace showed
+`getMeasuredHeight()` drop from 459 to 416 mid-animation with `getHeight()` still
+459 and no `onMeasure` or `onLayout` in between, and it stayed that way until the
+next relayout. Why the fragment's spec resolves one line shorter is inferred,
+not traced.
+
+The reply panel's translation and the field's clip read `getHeight()` for that
+reason, and `onLayout` re-places the panel once a new height lands
+(`ChatActivityEnterView.java:5167`, `:17849`, `:19053`). Measure-time code still
+wants the measured height; any other draw-time reader has to be traced before it
+is switched. Signature: with a reply
+open and the field growing, the reply content rides above its strip and the
+bottom of the field (the MD3 tools row) is cut by the same amount until the next
+keystroke that relays out.
+
+*(Established 2026-09-24, `#interface-style-fix`.)*
+
 ## clipChild has no inverted-rect guard, unlike its background-drawing sibling
 
 `drawSectionBackground` guards against an inverted `rectTmp` before using it
@@ -1241,13 +1265,13 @@ completion state and leave a partially held, partially sent album.
 
 `ChatActivityEnterView` builds a fresh `MessageObject.SendAnimationData` for a
 normal (non-forwarding) text send before constructing the params
-(`ChatActivityEnterView.java:9624-9626`), and `of(...)` stores it verbatim
+(`ChatActivityEnterView.java:9627-9629`), and `of(...)` stores it verbatim
 (`SendMessagesHelper.java:12537`). It is a transient UI fly-in hint — the
 composer's on-screen x/y/width/height — carrying no part of the sent message,
 but it is set on ~100% of composer sends. Any allowlist/denylist that treats an
 unrecognised non-default `SendMessageParams` field as "not an ordinary text
 send" must exclude `sendAnimationData` (and `updateStickersOrder`, a local
-recent-emoji reorder flag, `ChatActivityEnterView.java:9646`) or it rejects
+recent-emoji reorder flag, `ChatActivityEnterView.java:9649`) or it rejects
 every real message.
 
 Cost if missed: Ghost Hold's fail-closed backstop `onlyPersistedFieldsSet`
