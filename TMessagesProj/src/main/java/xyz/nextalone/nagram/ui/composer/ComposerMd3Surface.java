@@ -59,6 +59,7 @@ public final class ComposerMd3Surface {
     private static final float FIELD_OVER_FROST = 0.88f;
     private static final int STRIP_RADIUS = 10;
     private static final int STRIP_ACCENT = 3;
+    private static final int STRIP_ACCENT_INSET = 6;
     // Inset top and bottom inside the 48dp top view, which centres the strip on the upstream close button.
     private static final int STRIP_INSET = 3;
     // Island radius minus the 3dp margin, so the field and the reply strip sit concentric in the island.
@@ -399,11 +400,12 @@ public final class ComposerMd3Surface {
             final float stripRadius = Math.min(dp(STRIP_RADIUS), rect.height() / 2f);
             fillPaint.setColor(Theme.multAlpha(container, stripAlpha));
             canvas.drawRoundRect(rect, stripRadius, stripRadius, fillPaint);
-            canvas.save();
-            canvas.clipRect(rect.left, rect.top, rect.left + dp(STRIP_ACCENT), rect.bottom);
+            // The accent is its own rounded bar inside the strip, so the strip's corners stay as round as the field's
+            // instead of being cut square by a sliver of accent colour.
+            final float accentInset = dp(STRIP_ACCENT_INSET);
+            rect.set(rect.left + accentInset, rect.top + accentInset, rect.left + accentInset + dp(STRIP_ACCENT), rect.bottom - accentInset);
             fillPaint.setColor(Theme.multAlpha(primaryColor(), stripAlpha));
-            canvas.drawRoundRect(rect, stripRadius, stripRadius, fillPaint);
-            canvas.restore();
+            canvas.drawRoundRect(rect, rect.width() / 2f, rect.width() / 2f, fillPaint);
         }
 
         if (drawPill && inputFactor > 0) {
