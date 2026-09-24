@@ -148,7 +148,7 @@ view, the channel buttons and the selection bar to it (`ChatActivity.java:5413-5
 drawing the island and under-keyboard glass. It still sets both drawables'
 bounds, because the in-app keyboard clip and touch capture read them, and touch
 capture also covers the painted island (`ChatInputViewsContainer.java:43`,
-`:331-350`, `:353-361`, `:454`). `DialogsActivity` and `GiftMessageBottomSheet` never get a
+`:338-357`, `:360-368`, `:461`). `DialogsActivity` and `GiftMessageBottomSheet` never get a
 surface, so they keep their glass.
 
 The surface paints one island: the 44dp text row and the tools row
@@ -186,6 +186,16 @@ recorder's bottom chrome and its overlay add the same reach
 (`ComposerMd3Surface.java:303-305`, `:313-314`; `ChatActivity.java:10042-10045`, `:4852-4855`,
 `:20293-20295`, `:20309-20311`).
 
+The pull-to-next hint ("Pull up to go to the next unread channel") is text only,
+centred between the two `top`/`bottom` values it is given
+(`ChatPullingDownDrawable.java:751`). The pull fades every bottom view out
+(`ChatActivity.java:52343-52345`), and the island collapses to the plain pill.
+With the composer toolbar on, `inputBubbleHeight` still counts the tools row, but
+the pill as drawn leaves it out (`ChatInputViewsContainer.java:347`). The hint
+therefore takes its bottom from `getInputBubbleDrawnBottom()`, not
+`getInputBubbleBottom()`, or the text lands on the pill's bottom edge, in Liquid
+Glass as well as MD3 (`ChatInputViewsContainer.java:304-306`; `ChatActivity.java:20082`).
+
 Channel and selection runs tone the island itself (`ComposerMd3Surface.java:428-432`).
 The input gets a 42dp field with a concentric 10dp radius, an on-surface tint at 8% (14% in
 dark themes) laid over the island like the reply strip's 6%, so the frost shows
@@ -203,7 +213,7 @@ the left under `LocaleController.isRTL` (`ComposerMd3Surface.java:435-455`;
 `ChatActivityEnterView.java:18935`). The reply strip reads `getTopViewHeight()`
 and `getTopViewEnterProgress()` (`ComposerMd3Surface.java:347-348`), while the
 reply content is placed against the enter view's laid-out height; see
-upstream-traps, "The enter view's measured height can drift". The circle keeps its stock 44dp slot, but a press in the 2dp band around it is shifted into the slot for the whole gesture, giving a 48dp target (`ComposerMd3Surface.java:226-256`; `ChatInputViewsContainer.java:433-442`).
+upstream-traps, "The enter view's measured height can drift". The circle keeps its stock 44dp slot, but a press in the 2dp band around it is shifted into the slot for the whole gesture, giving a 48dp target (`ComposerMd3Surface.java:226-256`; `ChatInputViewsContainer.java:440-449`).
 
 The tools row keeps its Liquid Glass geometry unless MD3 is on. Then size runs
 the row, cell, state layer and glyph linearly through 40/48/56dp rows at
