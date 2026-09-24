@@ -116,7 +116,7 @@ padding, the Dialogs FAB, bulletins and the blur-capture rect
 so they clear the lifted panel with no code of their own. Negative side margins
 put the panel 9dp from the screen, capped at the pill's 344dp; with few tabs it
 narrows so the edge indicators keep the same gap from the panel's side as from
-its top (`MainTabsHelper.java:30-52`; `MainTabsLayout.java:143-150`). The panel is too round for the display
+its top (`MainTabsHelper.java:30-52`; `MainTabsLayout.java:143-156`). The panel is too round for the display
 curve to cut, so unlike the composer it needs no corner nesting.
 `mainTabsBottomNavigation()` frosts at the Blur strength alpha while blur is
 enabled for the account and is opaque otherwise, with the composer's shadow and
