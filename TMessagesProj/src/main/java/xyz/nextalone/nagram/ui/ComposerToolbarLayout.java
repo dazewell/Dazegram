@@ -5,6 +5,7 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.os.SystemClock;
@@ -84,6 +85,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
     private static final int MD3_SPACING_SQUEEZE = 4;
     private static final int MD3_CELL_FLOOR = 36;
     private static final int MD3_GROUP_GAP = 8;
+    private static final int MD3_SEAM_HEIGHT = 24;
     private static final int ICON_GLYPH = 24;
     private static final int GLASS_INSET = 4;
     private static final int GLASS_DRAW_INSET = 2;
@@ -1136,6 +1138,28 @@ public final class ComposerToolbarLayout extends FrameLayout {
         protected void dispatchDraw(Canvas canvas) {
             drawGlass(canvas);
             super.dispatchDraw(canvas);
+            drawLeadingSeam(canvas);
+        }
+
+        private final Paint seamPaint = new Paint();
+
+        // NagramX (#interface-style): MD3 marks where the fixed leading group ends and the clipped scrolling
+        // strip begins with a hairline centred in the gap between them, so the cut reads as a seam.
+        private void drawLeadingSeam(Canvas canvas) {
+            if (!InterfaceStyleController.applyComposer() || leadingMiddleGapPx <= 0
+                    || startSlot.getWidth() <= 0 || middleScrollView.getWidth() <= 0) {
+                return;
+            }
+            final float x = getLayoutDirection() == LAYOUT_DIRECTION_RTL
+                    ? (startSlot.getLeft() + middleScrollView.getRight()) / 2f
+                    : (startSlot.getRight() + middleScrollView.getLeft()) / 2f;
+            final float width = Math.max(1, AndroidUtilities.dp(0.66f));
+            final float half = AndroidUtilities.dp(MD3_SEAM_HEIGHT) / 2f;
+            final float centre = getHeight() / 2f;
+            final int surface = Theme.getColor(Theme.key_chat_messagePanelBackground);
+            seamPaint.setColor(InterfaceStyleController.panelDividerPaint(surface, null).getColor());
+            seamPaint.setAlpha(Math.round(seamPaint.getAlpha() * Math.min(startSlot.getAlpha(), middleScrollView.getAlpha())));
+            canvas.drawRect(x - width / 2f, centre - half, x + width / 2f, centre + half, seamPaint);
         }
 
         private void drawGlass(Canvas canvas) {

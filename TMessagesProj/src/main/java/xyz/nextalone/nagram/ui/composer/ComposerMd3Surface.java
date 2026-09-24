@@ -1,6 +1,7 @@
 package xyz.nextalone.nagram.ui.composer;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
+import static org.telegram.messenger.AndroidUtilities.dpf2;
 
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
@@ -76,6 +77,8 @@ public final class ComposerMd3Surface {
     private static final int SHADOW_RADIUS = 4;
     private static final int SHADOW_DY = 2;
     private static final int SHADOW_ALPHA = 77;
+    private static final int DARK_EDGE_TOP = 0x28FFFFFF;
+    private static final int DARK_EDGE_BOTTOM = 0x14FFFFFF;
     // The pill's padded bounds already sit this far in from the island's children, so a selection island uses it too.
     private static final int SIDE_INSET = 7;
     // Every island child is held this much further in from the screen sides than the stock 7dp, so the island
@@ -88,6 +91,10 @@ public final class ComposerMd3Surface {
     private final Theme.ResourcesProvider resourcesProvider;
     private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint dividerPaint = new Paint();
+    private final Paint edgePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    {
+        edgePaint.setStyle(Paint.Style.STROKE);
+    }
     private final RectF rect = new RectF();
     private final RectF island = new RectF();
     private final Rect islandBounds = new Rect();
@@ -142,12 +149,14 @@ public final class ComposerMd3Surface {
         frostAccount = account;
     }
 
-    // No stroke, and a soft shadow in the theme's own panel-shadow colour, so the island reads as lifted.
+    // A soft shadow in the theme's own panel-shadow colour lifts the island. On a dark theme the shadow vanishes
+    // into the wallpaper, so a faint light edge, brighter on top, traces it instead.
     private BlurredBackgroundProvider frostProvider() {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
                 .setBackgroundColor((r, isDark) -> Theme.multAlpha(surfaceColor(), frostAlpha()))
-                .setStrokeColorTop(0, 0)
-                .setStrokeColorBottom(0, 0)
+                .setStrokeColorTop(0, DARK_EDGE_TOP)
+                .setStrokeColorBottom(0, DARK_EDGE_BOTTOM)
+                .setStrokeWidth(dpf2(1), dpf2(1))
                 .setShadowColor((r, isDark) -> shadowColor())
                 .setShadowLayer(dp(SHADOW_RADIUS), 0, dp(SHADOW_DY))
                 .build();
@@ -330,6 +339,14 @@ public final class ComposerMd3Surface {
                 fillPaint.setShadowLayer(dp(SHADOW_RADIUS), 0, dp(SHADOW_DY), Theme.multAlpha(shadowColor(), barFactor));
                 canvas.drawPath(islandPath, fillPaint);
                 fillPaint.clearShadowLayer();
+                if (resourcesProvider != null ? resourcesProvider.isDark() : Theme.isCurrentThemeDark()) {
+                    final float edge = dpf2(1);
+                    edgePaint.setStrokeWidth(edge);
+                    edgePaint.setColor(Theme.multAlpha(DARK_EDGE_TOP, barFactor));
+                    BlurredBackgroundDrawable.drawStroke(canvas, island.left, island.top, island.right, island.bottom, islandRadii, edge, true, edgePaint);
+                    edgePaint.setColor(Theme.multAlpha(DARK_EDGE_BOTTOM, barFactor));
+                    BlurredBackgroundDrawable.drawStroke(canvas, island.left, island.top, island.right, island.bottom, islandRadii, edge, false, edgePaint);
+                }
             }
         }
 
