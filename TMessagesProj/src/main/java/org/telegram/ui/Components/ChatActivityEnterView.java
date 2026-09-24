@@ -2727,6 +2727,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         this.resourcesProvider = resourcesProvider;
         this.isChat = isChat;
         this.composerToolbarEnabled = composerToolbarEnabled;
+        if (composerToolbarEnabled) {
+            xyz.nextalone.nagram.ui.composer.ComposerGrowProbe.begin();
+        }
 
         smoothKeyboard = isChat && !AndroidUtilities.isInMultiwindow && (fragment == null || !fragment.isInBubbleMode());
         dotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -2797,6 +2800,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 } else {
                     animatorInputFieldHeight.forceFactor(height);
                 }
+                xyz.nextalone.nagram.ui.composer.ComposerGrowProbe.site = 1;
                 checkUi_TopViewVisibility();
             }
 
@@ -8419,6 +8423,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     public void onDestroy() {
+        if (composerToolbarEnabled) {
+            xyz.nextalone.nagram.ui.composer.ComposerGrowProbe.end();
+        }
         if (composerFormattingActions != null) {
             composerFormattingActions.onDestroy();
         }
@@ -17742,8 +17749,11 @@ public class ChatActivityEnterView extends FrameLayout implements
     int botCommandLastPosition = -1;
     int botCommandLastTop;
 
+    private int naxProbeHeightBefore;
+
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        naxProbeHeightBefore = getMeasuredHeight();
         int wasHeight = textFieldContainer.getMeasuredHeight();
         if (!composerToolbarEnabled && botCommandsMenuButton != null && botCommandsMenuButton.getTag() != null) {
             botCommandsMenuButton.measure(widthMeasureSpec, heightMeasureSpec);
@@ -17818,7 +17828,11 @@ public class ChatActivityEnterView extends FrameLayout implements
 //        }
 
         checkUi_IslandTotalHeight();
+        xyz.nextalone.nagram.ui.composer.ComposerGrowProbe.site = 2;
         checkUi_TopViewVisibility();
+        if (composerToolbarEnabled && topView != null && topView.getVisibility() == VISIBLE) {
+            xyz.nextalone.nagram.ui.composer.ComposerGrowProbe.measured(this, naxProbeHeightBefore);
+        }
 
         if (!composerToolbarEnabled && wasHeight > 0 && textFieldContainer.getMeasuredHeight() != wasHeight) {
             for (int i = 0; i < 2; ++i) {
@@ -17842,6 +17856,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         super.onLayout(changed, left, top, right, bottom);
+        if (composerToolbarEnabled && topView != null && topView.getVisibility() == VISIBLE) {
+            xyz.nextalone.nagram.ui.composer.ComposerGrowProbe.laidOut(this, changed, top, bottom);
+        }
         if (botCommandLastPosition != -1 && botCommandsMenuContainer != null) {
             LinearLayoutManager layoutManager = (LinearLayoutManager) botCommandsMenuContainer.listView.getLayoutManager();
             if (layoutManager != null) {
@@ -19010,9 +19027,11 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         if (id == ANIMATOR_ID_INPUT_FIELD_HEIGHT) {
             checkUi_IslandTotalHeight();
+            xyz.nextalone.nagram.ui.composer.ComposerGrowProbe.site = 3;
             checkUi_TopViewVisibility();
         } else if (id == ANIMATOR_ID_TOP_VIEW_VISIBILITY) {
             checkUi_IslandTotalHeight();
+            xyz.nextalone.nagram.ui.composer.ComposerGrowProbe.site = 4;
             checkUi_TopViewVisibility();
         } else if (id == ANIMATOR_ID_BLOCKED_BY_BOT_TYPING) {
             sendButtonBlockedByTypingView.setAlpha(factor);
@@ -19046,6 +19065,10 @@ public class ChatActivityEnterView extends FrameLayout implements
 
             topView.setTranslationY(y - topView.getMeasuredHeight() * visibility);
             topView.setVisibility(visibility > 0 ? VISIBLE : GONE);
+            if (composerToolbarEnabled) {
+                xyz.nextalone.nagram.ui.composer.ComposerGrowProbe.topView(this, animatorInputFieldHeight.getFactor(), animatorInputFieldHeight.getToFactor(),
+                    topView, visibility, textFieldContainer, messageEditTextContainer, composerToolbar, currentIslandTotalHeight, currentIslandTotalHeightTarget);
+            }
         }
 
         resizeForTopView(visibility > 0);

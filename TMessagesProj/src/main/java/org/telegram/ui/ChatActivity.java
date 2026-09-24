@@ -52039,6 +52039,10 @@ public class ChatActivity extends BaseFragment implements
         chatInputViewsContainer.setInputBubbleHeight(inputIslandHeightCurrent);
         chatInputViewsContainer.setInputBubbleBottomInset(chatActivityEnterView != null ? chatActivityEnterView.getInputBubbleBottomInset() : 0);
         chatInputViewsContainer.setInputBubbleBottomLiftReduction(calculateInputIslandBottomLiftReduction());
+        if (chatActivityEnterView != null && chatActivityEnterView.getTopViewHeight() > 0 && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyComposer()) {
+            xyz.nextalone.nagram.ui.composer.ComposerGrowProbe.island(inputIslandHeightCurrent, inputIslandHeightTarget, chatActivityEnterView.getIslandTotalHeight(false),
+                chatActivityEnterView, chatInputViewsContainer, chatInputViewsContainer.getInputBubbleTop(), chatInputViewsContainer.getInputBubbleBottom(), chatInputViewsContainer.getInputBubbleHeight());
+        }
         updatePagedownButtonsPosition();
         updateBotforumTabsBottomMargin();
         checkUi_botMenuPosition();
