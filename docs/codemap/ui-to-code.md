@@ -109,14 +109,14 @@ The Bottom navigation setting reaches the real global navigation through
 (`MainTabsActivity.java:352-372`, `:436-469`; `MainTabsHelper.java:14-34`).
 MD3 reuses the Liquid Glass attachment: the background sits on `tabsView`,
 drawn `getMainTabsMargin()` in from it, so the panel is 64dp tall with or
-without titles. That margin is 12dp under MD3 (`MainTabsHelper.java:77-79`),
+without titles. That margin is 12dp under MD3 (`MainTabsHelper.java:80-82`),
 and every consumer already measures to it: list padding, the Dialogs FAB,
 bulletins and the blur-capture rect (`MainTabsActivity.java:221-223`;
 `DialogsActivity.java:3109-3110`, `:14711-14712`), so they clear the lifted
 panel with no code of their own. Negative side margins put the panel 9dp from
 the screen, capped at the pill's 344dp; with few tabs it narrows so the edge
 indicators keep the same gap from the panel's side as from its top
-(`MainTabsHelper.java:49-63`; `MainTabsLayout.java:144-157`). With titles the
+(`MainTabsHelper.java:49-66`; `MainTabsLayout.java:144-157`). With titles the
 label is fixed at the 10sp pass, 2dp under a 56×32 indicator
 (`MainTabsLayout.java:101-102`; `GlassTabView.java:152-157`, `:171-178`).
 Panel, long-press card and indicator are rounded rectangles of 18, 14 and 10dp,
