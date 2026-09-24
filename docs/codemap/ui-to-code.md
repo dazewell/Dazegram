@@ -34,7 +34,7 @@ gates the render paths (`NaConfig.kt:1455-1459`;
 It draws hairlines coloured as MD3 outline-variant (the local surface blended 12% towards `key_windowBackgroundWhiteBlackText`, `InterfaceStyleController.java:60-66`, because Night/AMOLED `key_divider` is pure black) at
 Dialogs' captured top-surface bottom after `super.dispatchDraw(...)`, and under
 ChatActivity's header group after `super.dispatchDraw(...)`
-(`DialogsActivity.java:1177-1182`; `ChatActivity.java:19596-19603`). The
+(`DialogsActivity.java:1177-1182`; `ChatActivity.java:19608-19616`). The
 floating bottom navigation never meets content edge to edge, so it draws none.
 
 Chat/action-bar surfaces use the existing account-aware
@@ -116,7 +116,7 @@ padding, the Dialogs FAB, bulletins and the blur-capture rect
 so they clear the lifted panel with no code of their own. Negative side margins
 put the panel 9dp from the screen, capped at the pill's 344dp; with few tabs it
 narrows so the edge indicators keep the same gap from the panel's side as from
-its top (`MainTabsHelper.java:30-52`). The panel is too round for the display
+its top (`MainTabsHelper.java:30-52`; `MainTabsLayout.java:143-150`). The panel is too round for the display
 curve to cut, so unlike the composer it needs no corner nesting.
 `mainTabsBottomNavigation()` frosts at the Blur strength alpha while blur is
 enabled for the account and is opaque otherwise, with the composer's shadow and
