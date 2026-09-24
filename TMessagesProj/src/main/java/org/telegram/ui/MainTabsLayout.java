@@ -98,7 +98,8 @@ public class MainTabsLayout extends AnimatedLinearLayout {
             }
         }
 
-        applyPassTextSize(chosenPass);
+        // NagramX: the 64dp MD3 panel leaves room for its label only at the smallest pass, whatever the width.
+        applyPassTextSize(fillWidth ? PASS_TEXT_SIZES_DP.length - 1 : chosenPass);
 
         final int tabPadding = dp(PASS_PADDINGS_DP[chosenPass]);
         final int maxTabTextWidthIfEq = (maxTotalWidthForTabs / Math.max(1, visibleChildCount)) - tabPadding * 2;
@@ -138,6 +139,20 @@ public class MainTabsLayout extends AnimatedLinearLayout {
 
             for (int a = 0, N = getChildCount(); a < N; a++) {
                 tabsTextWidthWithMargin[a] += growP * tabsWeight[a];
+            }
+        }
+        if (fillWidth && visibleChildCount > 0) {
+            // NagramX: MD3 navigation gives every tab the same cell, so its indicators keep an even pitch and the
+            // edge ones sit exactly as far from the panel's side as MainTabsHelper's padding puts them.
+            final int cell = maxTotalWidthForTabs / visibleChildCount;
+            int remainder = maxTotalWidthForTabs - cell * visibleChildCount;
+            for (int a = 0, N = getChildCount(); a < N; a++) {
+                if (!isViewVisible(getChildAt(a))) {
+                    tabsTextWidthWithMargin[a] = 0;
+                    continue;
+                }
+                // Whole pixels that add up to the width exactly, so a capped panel never measures past its cap.
+                tabsTextWidthWithMargin[a] = cell + (remainder-- > 0 ? 1 : 0);
             }
         }
 

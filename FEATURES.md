@@ -106,7 +106,7 @@ The toolbar row can be scaled from 75% to 125% in 5% steps. A second slider sets
 
 ### Interface style <!-- #interface-style --> <!-- #composer-transparency -->
 
-NagramX Settings → General → Interface Style switches between Liquid Glass and Material Design 3. MD3 gives chat headers, chat-list top regions, bottom navigation, in-chat buttons and the composer their Material treatments; the composer becomes one floating, frosted island. Each surface has its own Apply to toggle, and Panel dividers, on by default, draw a thin line where panels meet content. Unsupported devices show MD3 and disable Liquid Glass.
+NagramX Settings → General → Interface Style picks Liquid Glass or Material Design 3. MD3 gives chat headers, chat-list top regions, bottom navigation, in-chat buttons and the composer their Material treatments; the composer and bottom navigation float as frosted islands. Each surface has its own Apply to toggle, and Panel dividers, on by default, draw a line where panels meet content. Unsupported devices show MD3 and disable Liquid Glass.
 
 ### Quick schedule button <!-- #quick-schedule -->
 
