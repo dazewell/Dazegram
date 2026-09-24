@@ -106,18 +106,23 @@ own `tabStyleStroke` behavior independently (`ScrollSlidingTextTabStrip.java:772
 
 The Bottom navigation setting reaches the real global navigation through
 `MainTabsActivity.createView()` and the shared geometry helper
-(`MainTabsActivity.java:352-372`, `:436-468`; `MainTabsHelper.java:14-25`).
+(`MainTabsActivity.java:352-372`, `:436-468`; `MainTabsHelper.java:14-29`).
 MD3 reuses the Liquid Glass attachment: the background sits on `tabsView`,
-drawn `getMainTabsMargin()` in from it, with radius height/2, so the panel is an
-80dp stadium (64dp with titles hidden). That margin is 12dp under MD3
-(`MainTabsHelper.java:63-66`), and every consumer already measures to it: list
+drawn `getMainTabsMargin()` in from it, with radius height/2, so the panel is a
+64dp stadium with or without titles. That margin is 12dp under MD3
+(`MainTabsHelper.java:72-74`), and every consumer already measures to it: list
 padding, the Dialogs FAB, bulletins and the blur-capture rect
 (`MainTabsActivity.java:221-223`; `DialogsActivity.java:3109-3110`, `:14711-14712`),
 so they clear the lifted panel with no code of their own. Negative side margins
 put the panel 9dp from the screen, capped at the pill's 344dp; with few tabs it
 narrows so the edge indicators keep the same gap from the panel's side as from
-its top (`MainTabsHelper.java:30-52`; `MainTabsLayout.java:143-156`). The panel is too round for the display
-curve to cut, so unlike the composer it needs no corner nesting.
+its top (`MainTabsHelper.java:44-58`; `MainTabsLayout.java:144-157`). With
+titles the label is fixed at the 10sp pass, 2dp under a 56×32 indicator
+(`MainTabsLayout.java:101-102`; `GlassTabView.java:152-157`, `:171-175`). The
+panel is too round for the display curve to cut, so unlike the composer it needs
+no corner nesting. The long-press card is a stadium 4dp inside the panel's, and
+tabs are padded symmetrically so ItemOptions, which centres it on the tab,
+centres it on the panel (`MainTabsActivity.java:1473-1487`).
 `mainTabsBottomNavigation()` frosts at the Blur strength alpha while blur is
 enabled for the account and is opaque otherwise, with the composer's shadow and
 a dark-only light edge that `BlurredBackgroundDrawable` hides with the Glare
@@ -125,7 +130,7 @@ switch like every other stroke (`BlurredBackgroundProviderImpl.java:37-55`;
 `BlurredBackgroundDrawable.java:701-702`). `mainTabs()` stays the attach and
 statistics provider. The wrapper passes touches in the side gaps through to the
 list (`MainTabsActivity.java:436-446`). `GlassTabView` draws the selected tonal
-indicator without changing Liquid Glass tab geometry (`GlassTabView.java:165-176`).
+indicator without changing Liquid Glass tab geometry.
 
 *(Established 2026-09-22, during `#interface-style`.)*
 
