@@ -20079,7 +20079,7 @@ public class ChatActivity extends BaseFragment implements
             if (pullingDownDrawable != null && pullingDownDrawable.needDrawBottomPanel()) {
                 int top, bottom;
                 top = (int) chatInputViewsContainer.getInputBubbleTop();
-                bottom = (int) chatInputViewsContainer.getInputBubbleBottom();
+                bottom = (int) chatInputViewsContainer.getInputBubbleDrawnBottom(); // NagramX: the pull fades the input out to the bare pill, so centre on that, not on the toolbar row under it.
 
                 top -= (int) ((pullingDownAnimateToActivity == null ? 0 : pullingDownAnimateToActivity.pullingBottomOffset) * pullingDownAnimateProgress);
                 if (actionBar.isSearchFieldVisible() || !shouldHideBottomForGesture()) {
