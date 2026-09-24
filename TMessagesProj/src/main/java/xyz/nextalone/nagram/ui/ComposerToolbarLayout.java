@@ -1144,22 +1144,35 @@ public final class ComposerToolbarLayout extends FrameLayout {
         private final Paint seamPaint = new Paint();
 
         // NagramX (#interface-style): MD3 marks where the fixed leading group ends and the clipped scrolling
-        // strip begins with a hairline centred in the gap between them, so the cut reads as a seam.
+        // strip begins with a hairline centred in the gap between them, so the cut reads as a seam. The trailing
+        // end gets one too while the strip overflows, the only time that end is a cut rather than open space.
         private void drawLeadingSeam(Canvas canvas) {
-            if (!InterfaceStyleController.applyComposer() || leadingMiddleGapPx <= 0
-                    || startSlot.getWidth() <= 0 || middleScrollView.getWidth() <= 0) {
+            if (!InterfaceStyleController.applyComposer() || middleScrollView.getWidth() <= 0) {
                 return;
             }
-            final float x = getLayoutDirection() == LAYOUT_DIRECTION_RTL
-                    ? (startSlot.getLeft() + middleScrollView.getRight()) / 2f
-                    : (startSlot.getRight() + middleScrollView.getLeft()) / 2f;
+            final boolean rtl = getLayoutDirection() == LAYOUT_DIRECTION_RTL;
             final float width = Math.max(1, AndroidUtilities.dp(0.66f));
             final float half = AndroidUtilities.dp(MD3_SEAM_HEIGHT) / 2f;
             final float centre = getHeight() / 2f;
             final int surface = Theme.getColor(Theme.key_chat_messagePanelBackground);
-            seamPaint.setColor(InterfaceStyleController.panelDividerPaint(surface, null).getColor());
-            seamPaint.setAlpha(Math.round(seamPaint.getAlpha() * Math.min(startSlot.getAlpha(), middleScrollView.getAlpha())));
-            canvas.drawRect(x - width / 2f, centre - half, x + width / 2f, centre + half, seamPaint);
+            final int color = InterfaceStyleController.panelDividerPaint(surface, null).getColor();
+            if (leadingMiddleGapPx > 0 && startSlot.getWidth() > 0) {
+                final float x = rtl
+                        ? (startSlot.getLeft() + middleScrollView.getRight()) / 2f
+                        : (startSlot.getRight() + middleScrollView.getLeft()) / 2f;
+                seamPaint.setColor(color);
+                seamPaint.setAlpha(Math.round(seamPaint.getAlpha() * Math.min(startSlot.getAlpha(), middleScrollView.getAlpha())));
+                canvas.drawRect(x - width / 2f, centre - half, x + width / 2f, centre + half, seamPaint);
+            }
+            final View content = middleScrollView.getChildAt(0);
+            if (content != null && content.getWidth() > middleScrollView.getWidth() && endSlot.getWidth() > 0) {
+                final float x = rtl
+                        ? middleScrollView.getLeft() - gapPx / 2f
+                        : middleScrollView.getRight() + gapPx / 2f;
+                seamPaint.setColor(color);
+                seamPaint.setAlpha(Math.round(seamPaint.getAlpha() * Math.min(endSlot.getAlpha(), middleScrollView.getAlpha())));
+                canvas.drawRect(x - width / 2f, centre - half, x + width / 2f, centre + half, seamPaint);
+            }
         }
 
         private void drawGlass(Canvas canvas) {
