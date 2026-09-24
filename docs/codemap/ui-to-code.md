@@ -130,7 +130,7 @@ the painted bar (`ChatInputViewsContainer.java:42-43`, `:349-360`, `:441`).
 their glass.
 
 The surface paints one floating island: the 44dp text row and the tools row
-plus 2dp all round, 9dp from each screen side (its children sit 2dp inside the stock 7dp), radius 13dp, with a soft
+plus 2dp all round, 9dp from each screen side (its children sit 4dp inside the stock 7dp), radius 13dp, with a soft
 shadow in `key_chat_messagePanelShadow` (`ComposerMd3Surface.java:72`,
 `:244-334`). The channel run, the selection bar and the plain pill (search, the
 bottom overlay text) each give the island a rect, and the cross-fade weights
@@ -162,8 +162,8 @@ The field stops short of the send column using the existing
 `getComposerPrimaryEndInset()`, on the left under `LocaleController.isRTL`
 (`ChatActivityEnterView.java:18929`). The reply strip reads
 `getTopViewHeight()` and `getTopViewEnterProgress()` (`:17926`, `:308`). Both sides of
-the island sit the same 9dp in, so the stock 38dp send circle keeps the
-same 3dp margin as the field; the bottom-corner nesting reads the tighter side
+the island sit the same 9dp in, and its children 2dp further, so the stock 38dp
+send circle clears the island's side and top by the same 5dp; the bottom-corner nesting reads the tighter side
 (`ComposerMd3Surface.java:211-213`).
 
 The tools row keeps its Liquid Glass geometry unless MD3 is on. Then size runs
