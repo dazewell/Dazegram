@@ -130,29 +130,29 @@ the painted bar (`ChatInputViewsContainer.java:42-43`, `:349-360`, `:441`).
 their glass.
 
 The surface paints one floating island: the 44dp text row and the tools row
-plus 2dp all round, in the pill's own 7dp side inset, radius 13dp, with a soft
-shadow in `key_chat_messagePanelShadow` (`ComposerMd3Surface.java:65`,
-`:220-307`). The channel run, the selection bar and the plain pill (search, the
+plus 2dp all round, 9dp from each screen side (its children sit 2dp inside the stock 7dp), radius 13dp, with a soft
+shadow in `key_chat_messagePanelShadow` (`ComposerMd3Surface.java:72`,
+`:244-334`). The channel run, the selection bar and the plain pill (search, the
 bottom overlay text) each give the island a rect, and the cross-fade weights
-ease between them (`:243-278`). Resting on the nav bar its lower corners grow toward
+ease between them (`:270-305`). Resting on the nav bar its lower corners grow toward
 the display's rounded corner, capped at 15dp, easing back to 13dp as the
-keyboard lifts it (`:184-206`). Like the MD3 chat header it is frosted when
+keyboard lifts it (`:199-221`). Like the MD3 chat header it is frosted when
 the chat has a frosted source and blur is enabled for the account, at
-`NaConfig.interfaceStyleBlurAlpha()`, and opaque otherwise (`:117-144`). It gets
+`NaConfig.interfaceStyleBlurAlpha()`, and opaque otherwise (`:131-158`). It gets
 its own factory over that source because the shared frosted factory can hand
 out drawables with the Liquid Glass shader (`ChatActivity.java:5409-5412`;
 `BlurredBackgroundDrawableViewFactory.java:81-85`). MD3 keeps the stock 9dp
-lift, so the island floats clear of the nav bar, keyboard and docked emoji
-panel (`ChatActivityEnterView.java:18913-18918`). The island reaches
-`topOverhang()` above the pill (`ComposerMd3Surface.java:209-211`), so
+lift plus 5dp, so the island rests 12dp clear of the nav bar, keyboard and docked
+emoji panel (`ChatInputViewsContainer.java:272-275`) (`ChatActivityEnterView.java:18913-18918`). The island reaches
+`topOverhang()` above the pill (`ComposerMd3Surface.java:233-235`), so
 `getInputBubbleHeight()` adds it and everything laid out against the composer,
 including the message list padding, clears it
 (`ChatInputViewsContainer.java:283-290`; `ChatActivity.java:13495-13497`).
 Channel and selection runs tone the island itself. The input gets a 42dp field
 with a concentric 10dp radius, an opaque 8% tone, and no focus ring. The
 reply strip shares its column and is centred on the upstream close button,
-which under MD3 draws without its glass disc (`ComposerMd3Surface.java:49`,
-`:310-350`; `InputSatellites.java:97-102`).In a channel the
+which under MD3 draws without its glass disc (`ComposerMd3Surface.java:51`,
+`:337-377`; `InputSatellites.java:97-102`). In a channel the
 Join/Mute fill was never the Buttons provider's. It is the island glass shrunk
 to the button run by `setInputBubbleOffsets` (`ChatActivity.java:9352`), because
 `ChatActivityChannelButtonsLayout.setupDrawableForContainer()` (`:155`) is only
@@ -162,9 +162,9 @@ The field stops short of the send column using the existing
 `getComposerPrimaryEndInset()`, on the left under `LocaleController.isRTL`
 (`ChatActivityEnterView.java:18929`). The reply strip reads
 `getTopViewHeight()` and `getTopViewEnterProgress()` (`:17926`, `:308`). Both sides of
-the island sit on the pill's 7dp inset, so the stock 38dp send circle keeps the
+the island sit the same 9dp in, so the stock 38dp send circle keeps the
 same 3dp margin as the field; the bottom-corner nesting reads the tighter side
-(`ComposerMd3Surface.java:196-198`).
+(`ComposerMd3Surface.java:211-213`).
 
 The tools row keeps its Liquid Glass geometry unless MD3 is on. Then size runs
 the row, cell, state layer and glyph linearly through 40/48/56dp rows at
