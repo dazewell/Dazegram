@@ -24,8 +24,9 @@ try {
         exit 2
     }
 
+    $global:LASTEXITCODE = 0
     $BranchOutput = & (Join-Path $PSScriptRoot 'test-branch-name.ps1') -Branch $ExpectedBranch 2>&1
-    if ($LASTEXITCODE -ne 0) {
+    if ($global:LASTEXITCODE -ne 0) {
         Write-Host "::error::Expected branch '$ExpectedBranch' does not meet the branch-name rule."
         exit 2
     }
