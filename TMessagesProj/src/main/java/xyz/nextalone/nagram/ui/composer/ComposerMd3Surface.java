@@ -77,9 +77,6 @@ public final class ComposerMd3Surface {
     private static final int SEND_TARGET_REACH = 2;
     // The send circle's top sits about 5dp inside the island, which caps the radius near 13dp.
     private static final int ISLAND_RADIUS = 13;
-    // Docked, the island's sides move 9dp out, so the send circle sits 14dp from the edge and a rounder top
-    // corner still clears it.
-    private static final int SHEET_RADIUS = 20;
     // How far the keyboard or emoji panel lifts the island before the sheet has fully turned back into it.
     private static final int SHEET_MORPH = 48;
     private static final int SHADOW_RADIUS = 4;
@@ -256,7 +253,7 @@ public final class ComposerMd3Surface {
     }
 
     /**
-     * 1 while the island rests on the nav bar, where it docks as a sheet running to the screen's sides and bottom
+     * 1 while the island rests on the nav bar, where it docks as a sheet running down to the screen's bottom edge
      * so no edge cuts across the display's rounded corners; 0 once the keyboard or emoji panel has lifted it
      * {@link #SHEET_MORPH} clear, where it floats as an island again.
      */
@@ -373,14 +370,10 @@ public final class ComposerMd3Surface {
             bottom += (pill.bottom - pillTranslation + pad) * actionFactor;
         }
         island.set(left / weight, top / weight, right / weight, bottom / weight);
-        // Docked, only the top edge stays where the island's is: the sides and bottom run off the screen.
+        // Docked, the island keeps its width and runs down off the screen, so it has no bottom edge to show.
         final float dock = dockFactor();
-        if (dock > 0) {
-            island.left -= island.left * dock;
-            island.right += (width - island.right) * dock;
-            island.bottom += (height - island.bottom) * dock;
-        }
-        final float radius = Math.min(dp(ISLAND_RADIUS) + dp(SHEET_RADIUS - ISLAND_RADIUS) * dock, island.height() / 2f);
+        island.bottom += (height - island.bottom) * dock;
+        final float radius = Math.min(dp(ISLAND_RADIUS), island.height() / 2f);
         final float bottomRadius = Math.min(dp(ISLAND_RADIUS) * (1f - dock), island.height() / 2f);
         islandRadii[0] = islandRadii[1] = islandRadii[2] = islandRadii[3] = radius;
         islandRadii[4] = islandRadii[5] = islandRadii[6] = islandRadii[7] = bottomRadius;
