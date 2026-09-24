@@ -79,6 +79,8 @@ public final class ComposerMd3Surface {
     private static final int ISLAND_RADIUS = 13;
     // How far the keyboard or emoji panel lifts the island before the sheet has fully turned back into it.
     private static final int SHEET_MORPH = 48;
+    // Docked, the tools row's bottom sits this far above the nav bar in place of the floating lift.
+    private static final int DOCKED_LIFT = 4;
     private static final int SHADOW_RADIUS = 4;
     private static final int SHADOW_DY = 2;
     private static final int SHADOW_ALPHA = 77;
@@ -95,8 +97,9 @@ public final class ComposerMd3Surface {
     // The selection bar fills its padded parent edge to edge, so its island edge is measured from the bar itself:
     // the pill inset, plus the island's extra inset, less the padding the bar already sits inside.
     private static final int ACTION_RUN_SIDE_INSET = PILL_INSET + ISLAND_EXTRA - CHILD_SIDE_PADDING;
-    // Added to the stock 9dp lift. Less the island's 2dp bottom padding, the island rests this far above the nav bar.
-    private static final int EXTRA_LIFT = 5;
+    // Added to the stock 9dp lift so the floating island, less its 2dp bottom padding, clears the keyboard by the
+    // same 9dp it clears the screen sides.
+    private static final int EXTRA_LIFT = ISLAND_PADDING;
     // Measured on device: with the full trim the expanded island sat about 18dp under the header, twice its side gap.
     private static final int EXPANDED_HEADROOM_RETURN = 9;
 
@@ -257,7 +260,7 @@ public final class ComposerMd3Surface {
      * so no edge cuts across the display's rounded corners; 0 once the keyboard or emoji panel has lifted it
      * {@link #SHEET_MORPH} clear, where it floats as an island again.
      */
-    private float dockFactor() {
+    private float dockFactor(float maxBottomInset) {
         if (host == null) {
             return 0;
         }
@@ -268,15 +271,25 @@ public final class ComposerMd3Surface {
         // The same resting inset WindowInsetsStateHolder builds the container's bottom inset from, so the difference
         // below is exactly the keyboard's or emoji panel's share of it.
         final int rest = WindowInsetsCompat.toWindowInsetsCompat(insets, host).getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()).bottom;
-        final float lifted = host.getMeasuredHeight() - rest - host.getInputBubbleBottomLift() - host.getInputBubbleBottom();
-        return Math.max(0, Math.min(1, 1f - lifted / dp(SHEET_MORPH)));
+        return Math.max(0, Math.min(1, 1f - (maxBottomInset - rest) / dp(SHEET_MORPH)));
+    }
+
+    /**
+     * What the island adds to the stock lift for the container's current bottom inset. Floating it is
+     * {@link #extraLift()}; docked there are no corners left to clear, so the tools row sits
+     * {@link #DOCKED_LIFT} above the nav bar instead.
+     */
+    public float liftAboveStock(float maxBottomInset) {
+        final float dock = dockFactor(maxBottomInset);
+        final float docked = dp(DOCKED_LIFT) - dp(ChatInputViewsContainer.INPUT_BUBBLE_BOTTOM);
+        return extraLift() + (docked - extraLift()) * dock;
     }
 
     private static float frostAlpha() {
         return 1f - (1f - NaConfig.interfaceStyleBlurAlpha()) * FROST_SHARE;
     }
 
-    /** How much higher than the stock lift the island floats, so it keeps clear of the screen's curved corners. */
+    /** How much higher than the stock lift the floating island sits, so its gap to the keyboard matches its side gaps. */
     public int extraLift() {
         return dp(EXTRA_LIFT);
     }
@@ -371,7 +384,7 @@ public final class ComposerMd3Surface {
         }
         island.set(left / weight, top / weight, right / weight, bottom / weight);
         // Docked, the island keeps its width and runs down off the screen, so it has no bottom edge to show.
-        final float dock = dockFactor();
+        final float dock = dockFactor(height - host.getInputBubbleBottom() - host.getInputBubbleBottomLift());
         island.bottom += (height - island.bottom) * dock;
         final float radius = Math.min(dp(ISLAND_RADIUS), island.height() / 2f);
         final float bottomRadius = Math.min(dp(ISLAND_RADIUS) * (1f - dock), island.height() / 2f);
