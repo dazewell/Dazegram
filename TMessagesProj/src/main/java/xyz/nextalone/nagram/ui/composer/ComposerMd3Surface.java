@@ -77,8 +77,8 @@ public final class ComposerMd3Surface {
     private static final int SEND_TARGET_REACH = 2;
     // The send circle's top sits about 5dp inside the island, which caps the radius near 13dp.
     private static final int ISLAND_RADIUS = 13;
-    // How far the keyboard or emoji panel lifts the island before the sheet has fully turned back into it.
-    private static final int SHEET_MORPH = 48;
+    // Most of a keyboard's rise, so the island visibly lifts off the sheet rather than snapping at the start.
+    private static final int SHEET_MORPH = 160;
     // Docked, the tools row's bottom sits this far above the nav bar in place of the floating lift.
     private static final int DOCKED_LIFT = 4;
     private static final int SHADOW_RADIUS = 4;

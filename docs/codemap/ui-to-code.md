@@ -163,7 +163,7 @@ each give the island a rect, and the cross-fade weights ease between them
 and top, runs down to the screen's bottom edge and its bottom corners go
 square, so no edge crosses the display's rounded corners. `dockFactor()` measures the lift as the container's bottom inset less
 the resting system-bar and cutout inset `WindowInsetsStateHolder` builds it from,
-and eases back to the floating island over the first 48dp the keyboard or
+and eases back to the floating island over the first 160dp the keyboard or
 emoji panel lifts it (`ComposerMd3Surface.java:263-275`, `:386-390`; `WindowInsetsStateHolder.java:91-92`). Like the MD3 chat header it is
 frosted when the chat has a frosted source and blur is enabled for the account,
 keeping 70% of the Blur strength setting, and opaque otherwise (`:156-185`). It
