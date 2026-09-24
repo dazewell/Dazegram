@@ -29,6 +29,9 @@ import org.telegram.ui.Components.ScaleStateListAnimator;
 import org.telegram.ui.Components.SeekBarView;
 import org.telegram.ui.Stories.recorder.HintView2;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.Calendar;
 
 import xyz.nextalone.nagram.NaConfig;
@@ -43,9 +46,12 @@ public final class ScheduleTimeHelper {
     // pickable between them.
     private static final int DEFAULT_SCHEDULE_MONTH_STEP_COUNT = 12;
     private static final int DEFAULT_SCHEDULE_STEP_COUNT = DEFAULT_SCHEDULE_FIRST_MONTH_STEP + DEFAULT_SCHEDULE_MONTH_STEP_COUNT;
+    // Month steps are stored and labelled as these minute counts, but the time they land on is
+    // worked out with calendar months in getTargetTimeFromStep, not from these numbers.
     private static final int DEFAULT_SCHEDULE_ONE_MONTH_MINUTES = 30 * 24 * 60;
-    // 12 months lands on a calendar year (365 days) rather than 12*30, matching the day wheel's cap.
     private static final int DEFAULT_SCHEDULE_TWELVE_MONTHS_MINUTES = 365 * 24 * 60;
+    // The day wheel's last value.
+    private static final int MAX_SCHEDULE_DAYS = 365;
     private static final long SEND_WHEN_ONLINE_DATE = 0x7FFFFFFEL;
     // The day wheel stops at 365, so an offset past that could never be picked again.
     private static final int MAX_REMEMBERED_MINUTES = 365 * 24 * 60;
@@ -71,7 +77,9 @@ public final class ScheduleTimeHelper {
     public static long getInitialTargetTime(long currentDate) {
         if (shouldUseDefaultSchedule(currentDate)) {
             final int remembered = getRememberedMinutes();
-            return getTargetTimeFromNow(remembered > 0 ? remembered : getSliderMinutes());
+            return remembered > 0
+                    ? getTargetTimeFromNow(remembered)
+                    : getTargetTimeFromStep(getDefaultScheduleStep(NaConfig.INSTANCE.getDefaultScheduledTime().Int()));
         }
         // A message that already has a time keeps it: a reschedule sheet still opens on the time set
         // on the message, it only feeds what's confirmed back into the remembered offset.
@@ -126,10 +134,6 @@ public final class ScheduleTimeHelper {
         if (NaConfig.INSTANCE.getRememberedScheduleOffset().Int() != 0) {
             NaConfig.INSTANCE.getRememberedScheduleOffset().setConfigInt(0);
         }
-    }
-
-    private static int getSliderMinutes() {
-        return getDefaultScheduleMinutes(getDefaultScheduleStep(NaConfig.INSTANCE.getDefaultScheduledTime().Int()));
     }
 
     /**
@@ -320,12 +324,9 @@ public final class ScheduleTimeHelper {
     }
 
     public static void setPickersFromTargetTime(long targetTime, Calendar calendar, NumberPicker dayPicker, NumberPicker hourPicker, NumberPicker minutePicker) {
-        calendar.setTimeInMillis(System.currentTimeMillis());
-        calendar.set(Calendar.MINUTE, 0);
-        calendar.set(Calendar.SECOND, 0);
-        calendar.set(Calendar.MILLISECOND, 0);
-        calendar.set(Calendar.HOUR_OF_DAY, 0);
-        int days = (int) ((targetTime - calendar.getTimeInMillis()) / (24 * 60 * 60 * 1000));
+        // Counted in local dates: dividing by 24h would be an hour off across a DST change and push a
+        // late-evening target onto the next day's wheel entry.
+        int days = getDaysBetween(System.currentTimeMillis(), targetTime);
         if (days >= 0) {
             calendar.setTimeInMillis(targetTime);
             minutePicker.setValue(calendar.get(Calendar.MINUTE));
@@ -431,7 +432,7 @@ public final class ScheduleTimeHelper {
                         updateRemember.run(true);
                     }
                 }
-                setPickersFromTargetTime(getTargetTimeFromNow(minutes), calendar, dayPicker, hourPicker, minutePicker);
+                setPickersFromTargetTime(getTargetTimeFromStep(step), calendar, dayPicker, hourPicker, minutePicker);
                 onPickersChanged.run();
                 if (rescheduleMode) {
                     // NagramX: this sheet is only moving one already-scheduled message, never the
@@ -526,6 +527,40 @@ public final class ScheduleTimeHelper {
 
     private static long getTargetTimeFromNow(int minutes) {
         return roundUpToScheduleMinute(System.currentTimeMillis() + (long) minutes * 60 * 1000L);
+    }
+
+    /**
+     * Minute and hour steps are a plain duration from now. Day and month steps keep the current
+     * wall-clock time, so a DST change in between doesn't move the hour, and months are calendar
+     * months (same date N months on) rather than 30-day blocks.
+     */
+    private static long getTargetTimeFromStep(int step) {
+        step = Utilities.clamp(step, DEFAULT_SCHEDULE_STEP_COUNT - 1, 0);
+        if (step <= DEFAULT_SCHEDULE_LAST_HOUR_STEP) {
+            return getTargetTimeFromNow(getDefaultScheduleMinutes(step));
+        }
+        // Truncated rather than rounded up: rounding at 23:59:30 would tip the target onto the next date.
+        final long now = System.currentTimeMillis() / 60000L * 60000L;
+        final Calendar calendar = Calendar.getInstance();
+        calendar.setTimeInMillis(now);
+        if (step < DEFAULT_SCHEDULE_FIRST_MONTH_STEP) {
+            calendar.add(Calendar.DAY_OF_YEAR, step - DEFAULT_SCHEDULE_LAST_HOUR_STEP);
+        } else {
+            calendar.add(Calendar.MONTH, step - DEFAULT_SCHEDULE_FIRST_MONTH_STEP + 1);
+            // A year that spans Feb 29 is 366 days, one past the day wheel.
+            if (getDaysBetween(now, calendar.getTimeInMillis()) > MAX_SCHEDULE_DAYS) {
+                calendar.setTimeInMillis(now);
+                calendar.add(Calendar.DAY_OF_YEAR, MAX_SCHEDULE_DAYS);
+            }
+        }
+        return calendar.getTimeInMillis();
+    }
+
+    private static int getDaysBetween(long from, long to) {
+        final ZoneId zone = ZoneId.systemDefault();
+        return (int) ChronoUnit.DAYS.between(
+                Instant.ofEpochMilli(from).atZone(zone).toLocalDate(),
+                Instant.ofEpochMilli(to).atZone(zone).toLocalDate());
     }
 
     private static long roundUpToScheduleMinute(long time) {
