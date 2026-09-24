@@ -1594,7 +1594,7 @@ object NaConfig {
         addConfig(
             "InputTextSize",
             ConfigItem.configTypeInt,
-            18 // dp; slider range 14..20 (see NekoChatSettingsActivity)
+            18 // dp; slider range 14..20 (see ComposerLayoutActivity)
         )
     val physicalKeyboardHotkeys =
         addConfig(

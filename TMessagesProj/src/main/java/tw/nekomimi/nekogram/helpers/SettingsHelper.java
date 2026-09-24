@@ -149,6 +149,12 @@ public class SettingsHelper {
                 items.add(result);
             }
         }
+        // NagramX (#input-text-size): this slider lives on the Composer Toolbar screen, which the row
+        // walk above can't see, so it gets its own entry to stay findable. 14000 sits past the base
+        // guids the settings screens use.
+        items.add(new SettingsSearchResult(14000, getString(R.string.InputTextSize), n_title,
+                getString(R.string.ComposerLayoutTitle), R.drawable.msg_customize,
+                () -> callback.presentFragment(new xyz.nextalone.nagram.ui.composer.ComposerLayoutActivity())));
         return items;
     }
 }

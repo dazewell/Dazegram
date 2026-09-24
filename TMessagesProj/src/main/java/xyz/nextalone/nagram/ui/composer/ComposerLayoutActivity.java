@@ -84,9 +84,19 @@ public class ComposerLayoutActivity extends BaseFragment {
      * the Leading header answer with a slider's sentinel zone.
      */
     private static final int TYPE_SLIDER_HEADER = 7;
+    /** Its own type for the same reason TYPE_SPACING has one: no slider row may inherit another's
+     * options or floor through recycling. */
+    private static final int TYPE_TEXT_SIZE = 8;
     /** Sentinel "zones" for the slider groups, so one header/footer lookup serves all of them. */
     private static final int GROUP_SCALE = -1;
     private static final int GROUP_SPACING = -2;
+    private static final int GROUP_TEXT_SIZE = -3;
+
+    /** The clamp ChatActivityEnterView.getInputTextSizeDp() applies, and NaConfig.inputTextSize's default. */
+    private static final int TEXT_SIZE_MIN = 14;
+    private static final int TEXT_SIZE_MAX = 20;
+    private static final int TEXT_SIZE_DEFAULT = 18;
+    private static final int[] TEXT_SIZE_STEPS = {14, 15, 16, 17, 18, 19, 20};
 
     private static final int SCALE_MIN = 75;
     private static final int SCALE_MAX = 125;
@@ -374,6 +384,10 @@ public class ComposerLayoutActivity extends BaseFragment {
         // than something the user only finds after scrolling past twenty draggable rows. Each slider
         // is titled: two unlabelled percentage bars stacked together are indistinguishable, and
         // SlideIntChooseView.setLabel() only feeds the accessibility description, never the screen.
+        // Text size comes first because the field sits above the toolbar in the preview.
+        items.add(new Item(TYPE_SLIDER_HEADER, GROUP_TEXT_SIZE, null));
+        items.add(new Item(TYPE_TEXT_SIZE, GROUP_TEXT_SIZE, null));
+        items.add(new Item(TYPE_INFO, GROUP_TEXT_SIZE, null));
         items.add(new Item(TYPE_SLIDER_HEADER, GROUP_SCALE, null));
         items.add(new Item(TYPE_SCALE, GROUP_SCALE, null));
         items.add(new Item(TYPE_INFO, GROUP_SCALE, null));
@@ -502,6 +516,7 @@ public class ComposerLayoutActivity extends BaseFragment {
         ComposerLayout.reset();
         NaConfig.INSTANCE.getComposerToolbarScale().setConfigInt(100);
         NaConfig.INSTANCE.getComposerToolbarSpacing().setConfigInt(100);
+        NaConfig.INSTANCE.getInputTextSize().setConfigInt(TEXT_SIZE_DEFAULT);
         lastSaved = ComposerLayout.snapshot();
         buildItems(lastSaved);
         if (adapter != null) {
@@ -568,6 +583,7 @@ public class ComposerLayoutActivity extends BaseFragment {
                 // there silently skips the theme-refresh fix for it, with no compile error.
                 case TYPE_SCALE:
                 case TYPE_SPACING:
+                case TYPE_TEXT_SIZE:
                     view = new SlideIntChooseView(context, null);
                     view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     break;
@@ -692,6 +708,19 @@ public class ComposerLayoutActivity extends BaseFragment {
                     // stick at all.
                     spacingView.setMinValueAllowed(spacingFloor());
                     break;
+                case TYPE_TEXT_SIZE:
+                    SlideIntChooseView textSizeView = (SlideIntChooseView) holder.itemView;
+                    textSizeView.setLabel(LocaleController.getString(R.string.InputTextSize));
+                    textSizeView.set(currentTextSize(), textSizeOptions(), value -> {
+                        if (value == NaConfig.INSTANCE.getInputTextSize().Int()) {
+                            return;
+                        }
+                        // No toolbar rebuild: an open chat re-reads this in ChatActivityEnterView.onResume.
+                        NaConfig.INSTANCE.getInputTextSize().setConfigInt(value);
+                        updatePreview();
+                    });
+                    textSizeView.setMinValueAllowed(TEXT_SIZE_MIN);
+                    break;
                 case TYPE_SLIDER_HEADER:
                     ((HeaderCell) holder.itemView).setText(LocaleController.getString(sliderHeaderText(item.zone)));
                     break;
@@ -724,6 +753,8 @@ public class ComposerLayoutActivity extends BaseFragment {
                 return LocaleController.getString(R.string.ComposerScaleInfo);
             case GROUP_SPACING:
                 return spacingFooterText();
+            case GROUP_TEXT_SIZE:
+                return LocaleController.getString(R.string.InputTextSizeInfo);
             case ComposerButtons.ZONE_START:
                 return LocaleController.getString(R.string.ComposerZoneLeadingInfo);
             case ComposerButtons.ZONE_MIDDLE:
@@ -774,6 +805,8 @@ public class ComposerLayoutActivity extends BaseFragment {
         switch (zone) {
             case GROUP_SPACING:
                 return R.string.ComposerSpacing;
+            case GROUP_TEXT_SIZE:
+                return R.string.InputTextSize;
             default:
                 return R.string.ComposerScale;
         }
@@ -1011,6 +1044,15 @@ public class ComposerLayoutActivity extends BaseFragment {
     private static SlideIntChooseView.Options scaleOptions() {
         return SlideIntChooseView.Options.make(0, SCALE_STEPS, 1,
                 (type, value) -> value + "%");
+    }
+
+    private static SlideIntChooseView.Options textSizeOptions() {
+        return SlideIntChooseView.Options.make(0, TEXT_SIZE_STEPS, 1,
+                (type, value) -> String.valueOf(value));
+    }
+
+    private static int currentTextSize() {
+        return Math.max(TEXT_SIZE_MIN, Math.min(TEXT_SIZE_MAX, NaConfig.INSTANCE.getInputTextSize().Int()));
     }
 
     private static int currentScale() {
@@ -1428,13 +1470,13 @@ public class ComposerLayoutActivity extends BaseFragment {
                     LayoutHelper.MATCH_PARENT, PREVIEW_INPUT_HEIGHT, Gravity.TOP | Gravity.START));
 
             TextView hint = new TextView(getContext());
-            hint.setText(LocaleController.getString(R.string.Message));
-            // Mirrors the real field's own text size (NaConfig-driven, defaults to 18dp) rather than a
-            // hardcoded preview constant, so a user who bumped their message text size sees that reflected
-            // here too instead of the preview silently drifting from what the real field will show.
-            hint.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,
-                    Math.max(14, Math.min(20, NaConfig.INSTANCE.getInputTextSize().Int())));
-            hint.setTextColor(Theme.getColor(Theme.key_chat_messagePanelHint));
+            // Typed-looking text in the field's own text colour rather than the placeholder, so the
+            // text size slider above has something that reads as a message to act on.
+            hint.setText(LocaleController.getString(R.string.ComposerPreviewSampleText));
+            hint.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, currentTextSize());
+            hint.setTextColor(Theme.getColor(Theme.key_chat_messagePanelText));
+            hint.setSingleLine(true);
+            hint.setEllipsize(android.text.TextUtils.TruncateAt.END);
             hint.setGravity(Gravity.CENTER_VERTICAL);
             hint.setFocusable(false);
             hint.setClickable(false);
@@ -1611,7 +1653,7 @@ public class ComposerLayoutActivity extends BaseFragment {
     }
 
     private static boolean isSliderRowType(int type) {
-        return type == TYPE_SCALE || type == TYPE_SPACING;
+        return type == TYPE_SCALE || type == TYPE_SPACING || type == TYPE_TEXT_SIZE;
     }
 
     // getItemViewType() shifts slider rows by generation * STRIDE so a theme flip forces a real

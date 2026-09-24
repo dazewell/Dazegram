@@ -126,7 +126,7 @@ The floating send-column layout is gone. The glass-fill helper stays with the cl
 
 ### Message input text size <!-- #input-text-size --> <!-- #composer-emoji-scale -->
 
-The text you type in the compose box has its own size, separate from chat bubbles, adjusted via a slider in chat settings. Custom animated emoji scale with this slider.
+The text you type in the compose box has its own size, separate from chat bubbles. Set it with the Message input text size slider at the top of Chat settings → Composer Toolbar, where the preview shows sample text at the chosen size. Custom animated emoji scale with it. Defaults to 18.
 
 ### Physical keyboard hotkeys <!-- #keyboard-hotkeys -->
 
