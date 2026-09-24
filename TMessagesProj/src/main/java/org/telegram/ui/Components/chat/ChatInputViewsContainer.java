@@ -39,7 +39,7 @@ public class ChatInputViewsContainer extends FrameLayout {
     private final FrameLayout inAppKeyboardBubbleContainer;
     // NagramX: only ChatActivity's composer opts in, so other hosts of this container keep the glass radii under MD3.
     private final boolean flatComposer;
-    // NagramX: set only by ChatActivity when the MD3 Composer is on; it then paints this container's bar.
+    // NagramX: set only by ChatActivity when the MD3 Composer is on; it then paints this container's island.
     public xyz.nextalone.nagram.ui.composer.ComposerMd3Surface md3Surface;
 
     public ChatInputViewsContainer(@NonNull Context context) {
@@ -348,7 +348,7 @@ public class ChatInputViewsContainer extends FrameLayout {
         tmpRect.inset(0, -dp(7));
         tmpRect.offset(0, blurTop + (int) bubbleInputTranlationY);
         blurredBackgroundDrawable.setBounds(tmpRect);
-        // NagramX: the MD3 Composer paints one flat bar instead. Both drawables keep their bounds, since
+        // NagramX: the MD3 Composer paints its own island instead. Both drawables keep their bounds, since
         // the in-app keyboard clip below and the touch capture still read them.
         if (md3Surface != null) {
             md3Surface.draw(canvas, getMeasuredWidth(), getMeasuredHeight(), blurredBackgroundDrawable.getPaddedBounds(), bubbleInputTranlationY,

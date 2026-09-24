@@ -44,7 +44,8 @@ import xyz.nextalone.nagram.helpers.InterfaceStyleController;
  * island, frosted and lightly shadowed: a tonal field with the send column beside it and the tools row
  * under it, or a tonal island around whichever action run replaces the input. The under-keyboard panel
  * stays docked and opaque.
- * Colours are read from the chat's theme on every draw; nothing here is cached between frames.
+ * Colours are read from the chat's theme on every draw. Only the frost drawable's alpha and corner radius are kept
+ * between frames, and changed only when they move, because each change re-records its render node.
  */
 public final class ComposerMd3Surface {
     private static final float CONTAINER_ON_SURFACE_BLEND = 0.06f;
@@ -82,13 +83,17 @@ public final class ComposerMd3Surface {
     private static final int SHADOW_ALPHA = 77;
     private static final int DARK_EDGE_TOP = 0x28FFFFFF;
     private static final int DARK_EDGE_BOTTOM = 0x14FFFFFF;
-    // The pill's padded bounds already sit this far in from the island's children, so a selection island uses it too.
-    private static final int SIDE_INSET = 7;
-    // The island sits this much further in from the screen sides than the stock 7dp pill, 9dp from each edge.
+    // The stock pill is drawn this far in from its children's edges, which is how far the input, search and
+    // overlay children already sit in from the container.
+    private static final int PILL_INSET = 7;
+    // The island sits this much further in from the screen sides than the stock pill, 9dp from each edge.
     private static final int ISLAND_EXTRA = 2;
-    // Its children are held further in still, so the send circle, drawn 3dp inside its slot, clears the island's
-    // side by the same 5dp it clears its top.
-    private static final int SIDE_EXTRA = 4;
+    // Every island child is padded this far in from the container, so the send circle, drawn 3dp inside its slot,
+    // clears the island's side by the same 5dp it clears its top.
+    private static final int CHILD_SIDE_PADDING = 4;
+    // The selection bar fills its padded parent edge to edge, so its island edge is measured from the bar itself:
+    // the pill inset, plus the island's extra inset, less the padding the bar already sits inside.
+    private static final int ACTION_RUN_SIDE_INSET = PILL_INSET + ISLAND_EXTRA - CHILD_SIDE_PADDING;
     // Added to the stock 9dp lift. Less the island's 2dp bottom padding, the island rests this far above the nav bar.
     private static final int EXTRA_LIFT = 5;
     // Measured on device: with the full trim the expanded island sat about 18dp under the header, twice its side gap.
@@ -131,16 +136,16 @@ public final class ComposerMd3Surface {
         this.host = host;
         final FrameLayout island = host.getInputIslandBubbleContainer();
         island.setClipToPadding(false);
-        island.setPadding(dp(SIDE_EXTRA), 0, dp(SIDE_EXTRA), 0);
+        island.setPadding(dp(CHILD_SIDE_PADDING), 0, dp(CHILD_SIDE_PADDING), 0);
         this.enterView = enterView;
         this.channelButtons = channelButtons;
         this.actionButtons = actionButtons;
     }
 
     /**
-     * Frosts the bar the way the MD3 chat header is frosted. It gets its own factory over the chat's frosted
+     * Frosts the island the way the MD3 chat header is frosted. It gets its own factory over the chat's frosted
      * source because the shared one hands out drawables with the Liquid Glass shader when that is enabled.
-     * Without a source (below API 31, or chat blur off when the chat opened) the bar stays opaque.
+     * Without a source (below API 31, or chat blur off when the chat opened) the island stays opaque.
      */
     public void attachFrost(@Nullable BlurredBackgroundSource source, ViewPositionWatcher watcher, ViewGroup root,
                             ReferenceList<View> linkedViews, ReferenceList<BlurredBackgroundDrawable> linkedDrawables,
@@ -327,9 +332,9 @@ public final class ComposerMd3Surface {
         }
         if (actionFactor > 0 && actionButtons != null) {
             weight += actionFactor;
-            left += (actionButtons.getLeft() + dp(SIDE_INSET + ISLAND_EXTRA - SIDE_EXTRA)) * actionFactor;
+            left += (actionButtons.getLeft() + dp(ACTION_RUN_SIDE_INSET)) * actionFactor;
             top += (pill.top - pillTranslation - pad) * actionFactor;
-            right += (actionButtons.getRight() - dp(SIDE_INSET + ISLAND_EXTRA - SIDE_EXTRA)) * actionFactor;
+            right += (actionButtons.getRight() - dp(ACTION_RUN_SIDE_INSET)) * actionFactor;
             bottom += (pill.bottom - pillTranslation + pad) * actionFactor;
         }
         island.set(left / weight, top / weight, right / weight, bottom / weight);
@@ -427,7 +432,7 @@ public final class ComposerMd3Surface {
      * The layout editor's stand-in for the island, frosted over the preview's wallpaper when a factory is
      * given. Like the Liquid Glass preview it shows the configured blur whatever the account's blur state.
      */
-    public static Drawable previewBar(@Nullable BlurredBackgroundDrawableViewFactory factory, @Nullable View view) {
+    public static Drawable previewIsland(@Nullable BlurredBackgroundDrawableViewFactory factory, @Nullable View view) {
         final ComposerMd3Surface surface = new ComposerMd3Surface(null);
         final BlurredBackgroundDrawable frost = factory != null ? factory.create(view, surface.frostProvider()) : null;
         if (frost != null) {
@@ -456,8 +461,8 @@ public final class ComposerMd3Surface {
         return dp(ISLAND_PADDING);
     }
 
-    /** The layout editor's field, stopping {@code endReserve} short of its end for the send circle. */
-    public static Drawable previewField(int endReserve) {
+    /** The layout editor's field, stopping the field-to-send gap short of the send slot, {@code sendReserve} from its end. */
+    public static Drawable previewField(int sendReserve) {
         final ComposerMd3Surface surface = new ComposerMd3Surface(null);
         return new PreviewDrawable() {
             @Override
@@ -465,7 +470,7 @@ public final class ComposerMd3Surface {
                 final Rect bounds = getBounds();
                 // Gravity.END puts the preview's send circle on the right even in RTL: the app does not
                 // declare supportsRtl.
-                surface.rect.set(bounds.left + dp(FIELD_SIDE_INSET), bounds.top + dp(FIELD_INSET), bounds.right - endReserve, bounds.bottom - dp(FIELD_INSET));
+                surface.rect.set(bounds.left + dp(FIELD_SIDE_INSET), bounds.top + dp(FIELD_INSET), bounds.right - sendReserve - dp(FIELD_SEND_GAP), bounds.bottom - dp(FIELD_INSET));
                 final float radius = Math.min(dp(FIELD_RADIUS), surface.rect.height() / 2f);
                 surface.fillPaint.setColor(Theme.multAlpha(surface.fieldColor(), fieldOpacity(true)));
                 canvas.drawRoundRect(surface.rect, radius, radius, surface.fillPaint);

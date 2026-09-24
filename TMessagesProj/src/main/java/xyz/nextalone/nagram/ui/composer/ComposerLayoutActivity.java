@@ -131,7 +131,6 @@ public class ComposerLayoutActivity extends BaseFragment {
     private static final int PREVIEW_HEADER_HEIGHT = 40;
     private static final int PREVIEW_INPUT_GAP = 2;
     private static final int PREVIEW_INPUT_HEIGHT = 44;
-    private static final int PREVIEW_FIELD_SEND_GAP = 8;
     private static final int PREVIEW_PADDING = 12;
     /** Matches ChatActivityEnterView.COMPOSER_PRIMARY_INSET - the real send button's own background inset
      * inside its DEFAULT_HEIGHT slot, kept in step so the preview's placeholder end-margin lines up with
@@ -1333,7 +1332,7 @@ public class ComposerLayoutActivity extends BaseFragment {
         /** Retained so addMockInput can glass the placeholder pill with the same wallpaper sample the
          * toolbar bubbles use, rather than the flat GradientDrawable it painted before. */
         private BlurredBackgroundDrawableViewFactory glassFactory;
-        private Drawable md3Bar;
+        private Drawable md3Island;
 
         PreviewCell(Context context) {
             super(context);
@@ -1421,7 +1420,7 @@ public class ComposerLayoutActivity extends BaseFragment {
             // The MD3 field stops short of the send circle, whose drawn left edge is PREVIEW_INPUT_HEIGHT
             // in from the end once its own inset and margin cancel out.
             body.setBackground(InterfaceStyleController.applyComposer()
-                    ? ComposerMd3Surface.previewField(dp(PREVIEW_INPUT_HEIGHT + PREVIEW_FIELD_SEND_GAP)) : bodyDrawable);
+                    ? ComposerMd3Surface.previewField(dp(PREVIEW_INPUT_HEIGHT)) : bodyDrawable);
             body.setFocusable(false);
             body.setClickable(false);
             body.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
@@ -1491,10 +1490,10 @@ public class ComposerLayoutActivity extends BaseFragment {
                 glassSource = null;
             }
             glassFactory = new BlurredBackgroundDrawableViewFactory(source);
-            // The MD3 bar frosts from the same factory, so a new wallpaper has to rebuild it too.
-            md3Bar = null;
+            // The MD3 island frosts from the same factory, so a new wallpaper has to rebuild it too.
+            md3Island = null;
             // NagramX: the preview uses the ungated default glass provider here; ComposerToolbarLayout
-            // itself clears these bubbles when the flat Composer role is active, matching the real chat.
+            // itself clears these bubbles when the MD3 Composer is active, matching the real chat.
             toolbar.attachGlass(
                     glassFactory,
                     new ComposerGlassProvider(UserConfig.selectedAccount, null, false));
@@ -1563,12 +1562,12 @@ public class ComposerLayoutActivity extends BaseFragment {
                 drawWallpaper(canvas, wallpaper);
             }
             if (InterfaceStyleController.applyComposer()) {
-                if (md3Bar == null) {
-                    md3Bar = ComposerMd3Surface.previewBar(glassFactory, this);
+                if (md3Island == null) {
+                    md3Island = ComposerMd3Surface.previewIsland(glassFactory, this);
                 }
                 final int pad = ComposerMd3Surface.previewPadding();
-                md3Bar.setBounds(stage.getLeft(), stage.getTop() - pad, stage.getRight(), stage.getBottom() + pad);
-                md3Bar.draw(canvas);
+                md3Island.setBounds(stage.getLeft(), stage.getTop() - pad, stage.getRight(), stage.getBottom() + pad);
+                md3Island.draw(canvas);
             }
             shadowDrawable.setBounds(0, 0, getMeasuredWidth(), getMeasuredHeight());
             shadowDrawable.draw(canvas);
