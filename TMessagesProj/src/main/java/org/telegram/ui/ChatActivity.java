@@ -5425,7 +5425,7 @@ public class ChatActivity extends BaseFragment implements
             glassBackgroundDrawableFactoryFrosted.create(chatInputViewsContainer, composerGlassColorProvider);
         // NagramX: this panel's own clip optimisation (enableInAppKeyboardOptimization, applied right
         // below by setUnderKeyboardBackgroundDrawable) cuts the glass shadow at the shape's own top
-        // edge. Keep the old shadow only when Composer is not using the flat MD3 surface.
+        // edge. Keep the old shadow only when the MD3 Composer is not drawing its own island instead.
         if (!xyz.nextalone.nagram.helpers.InterfaceStyleController.applyComposer()) {
             underKeyboardBackgroundDrawable.setShadowParams(AndroidUtilities.dpf2(1), 0, AndroidUtilities.dpf2(1 / 3f));
         }
