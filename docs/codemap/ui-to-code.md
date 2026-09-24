@@ -19,26 +19,23 @@ already consumes it (`InterfaceStyleActivity.java:285-287,430-442`;
 `ComposerGlassProvider.java:74-75`; `NaConfig.kt:1540-1542`). MD3-only rows are
 visible only after the Material Design 3 radio is selected
 (`InterfaceStyleActivity.java:288-302`). The Apply to rows expose Chat header,
-Chat list top bar, Buttons, Bottom navigation, and Panel dividers; the Composer
-row is assigned only when `COMPOSER_STYLE_AVAILABLE` is true, so it is hidden
-while the Composer rebuild is deferred (`InterfaceStyleActivity.java:289-295,406-428`;
-`InterfaceStyleController.java:33-37`). Chat header, chat list top bar, Buttons,
-and Bottom navigation have render consumers; Composer's stored config/provider
-path still exists but `applyComposer()` is gated off by
-`COMPOSER_STYLE_AVAILABLE = false`, while Classic/Day header colours are hidden
-by `MATCH_CLASSIC_DAY_HEADER_AVAILABLE = false`
-(`NaConfig.kt:1431-1435`; `ComposerGlassProvider.java:16-25,78-80`;
-`InterfaceStyleController.java:33-49`).
+Chat list top bar, Buttons, Composer, Bottom navigation, and Panel dividers;
+the Composer row is assigned only while `COMPOSER_STYLE_AVAILABLE` is true,
+which it now is (`InterfaceStyleActivity.java:293,419-421`;
+`InterfaceStyleController.java:33-36`). Its stored default is off
+(`NaConfig.kt:1431-1435`). Classic/Day header colours stay hidden by
+`MATCH_CLASSIC_DAY_HEADER_AVAILABLE = false`
+(`InterfaceStyleController.java:47-48`).
 
 Panel dividers are a shipped MD3 row: `NaConfig` stores
 `interfaceStylePanelDividers`, and `InterfaceStyleController.panelDividers()`
 gates the render paths (`NaConfig.kt:1455-1459`;
-`InterfaceStyleController.java:44-45`; `InterfaceStyleActivity.java:426-428`).
-It draws hairlines coloured as MD3 outline-variant (the local surface blended 12% towards `key_windowBackgroundWhiteBlackText`, `InterfaceStyleController.java:63-72`, because Night/AMOLED `key_divider` is pure black) at the MainTabs wrapper top edge, at
+`InterfaceStyleController.java:43-45`; `InterfaceStyleActivity.java:426-428`).
+It draws hairlines coloured as MD3 outline-variant (the local surface blended 12% towards `key_windowBackgroundWhiteBlackText`, `InterfaceStyleController.java:60-66`, because Night/AMOLED `key_divider` is pure black) at the MainTabs wrapper top edge, at
 Dialogs' captured top-surface bottom after `super.dispatchDraw(...)`, and under
 ChatActivity's header group after `super.dispatchDraw(...)`
 (`MainTabsActivity.java:436-442`; `DialogsActivity.java:1177-1182`;
-`ChatActivity.java:19590-19597`).
+`ChatActivity.java:19596-19603`).
 
 Chat/action-bar surfaces use the existing account-aware
 `topPanelChatActivity(...)` colour logic, but `ChatActivity` calls the
@@ -66,16 +63,16 @@ dialogs provider (`DialogsActivity.java:4966-4972`, `:5059-5061`,
 `:5407-5415`; `SearchTabsAndFiltersLayout.java:15-59`;
 `BlurredBackgroundProviderImpl.java:53-72`).
 Chat-side strips use the same chat-header flag through `ChatActivity` and the
-component flat hooks (`ChatActivity.java:8627-8636`, `:9901-9907`,
-`:11159-11162`, `:52162-52170`;
+component flat hooks (`ChatActivity.java:8629-8638`, `:9907-9913`,
+`:11165-11168`, `:52168-52176`;
 `ChatActivityTopPanelLayout.java:37-89`;
 `DialogsActivityTopPanelLayout.java:36-82`; `TopicsTabsView.java:485-498`).
 Pinned-message content uses explicit MD3 keylines at creation and at both
 runtime image/no-image updates. Its close, list, progress and action states
 also derive their drawn trailing edge from the header avatar keyline while
 retaining the clickable icons' 36×48dp targets; Liquid Glass keeps the original
-geometry (`ChatActivity.java:12717-12724`, `:12826-12949`,
-`:30980-31008`).
+geometry (`ChatActivity.java:12723-12730`, `:12832-12955`,
+`:30986-31014`).
 
 Chat header and tag-search providers use the same shared blur-strength alpha
 for translucent MD3 surfaces and fall back to opaque theme roles below the
@@ -94,7 +91,7 @@ theme colour, sizing and animation in place, but raises the borderless selected
 pill alpha through `InterfaceStyleController.filterTabSelectorAlpha(...)` when
 `applyChatListTopBar()` is true; `tabStyleStroke` still keeps the existing
 full-opacity stroked chip (`FilterTabsView.java:1644-1663`;
-`InterfaceStyleController.java:17-26,51-58`).
+`InterfaceStyleController.java:17-26,50-55`).
 
 Dialogs search tabs opt into the same alpha through their own
 `ViewPagerFixed.TabsView` flag. The flag defaults off, so the shared bubble
@@ -119,27 +116,81 @@ tab geometry (`MainTabsLayout.java:50-95`; `GlassTabView.java:145-187`).
 
 *(Established 2026-09-22, during `#interface-style`.)*
 
-## Buttons Apply ships while Composer path is gated off
+## MD3 Composer paints one island from ChatInputViewsContainer
 
-The Interface Style Composer switch is stored in `NaConfig`, but
-`InterfaceStyleActivity` assigns and binds its row only when
-`InterfaceStyleController.COMPOSER_STYLE_AVAILABLE` is true; because that
-constant is currently false, the row is hidden and `applyComposer()` always
-returns false (`NaConfig.kt:1431-1435`; `InterfaceStyleController.java:33-37`;
-`InterfaceStyleActivity.java:293,418-420`). The real chat uses a Buttons-role
-provider for side controls, selected-message actions, channel buttons, and
-instant-camera buttons, while the Composer provider/config path still exists
-for the input island, under-keyboard panel, top-panel close satellite, and
-tools row but is deferred until the full MD3 Composer rebuild
-(`ChatActivity.java:4202-4203,5413-5416,8938`;
-`ChatActivityEnterView.java:18959-18965`). The button role applies flat opaque
-MD3 colour at the shared colour-provider chokepoint; the Composer role has the
-same branch but cannot become active while `applyComposer()` is gated off
-(`ComposerGlassProvider.java:67-80`; `ComposerToolbarLayout.java:223-226`).
-Story controls and Dialogs floating buttons use separate providers and remain
-follow-up parity, not part of this chat-provider slice (`PeerStoriesView.java:549`;
+The Composer Apply to switch reaches the real chat through one draw hook.
+`ChatActivity` gives its own `ChatInputViewsContainer` a `ComposerMd3Surface`
+only while `applyComposer()` is true, attaches its frost, and binds the enter
+view, the channel buttons and the selection bar to it (`ChatActivity.java:5413-5416`,
+`:9361-9363`). `dispatchDraw` then hands the frame to the surface instead of
+drawing the island and under-keyboard glass. It still sets both drawables'
+bounds, because the in-app keyboard clip and touch capture read them, and touch
+capture also covers the painted island (`ChatInputViewsContainer.java:43`,
+`:331-350`, `:353-361`, `:454`). `DialogsActivity` and `GiftMessageBottomSheet` never get a
+surface, so they keep their glass.
+
+The surface paints one floating island: the 44dp text row and the tools row
+plus 2dp all round, radius 13dp, with a soft shadow in
+`key_chat_messagePanelShadow` and, in dark themes, a faint light edge
+(`ComposerMd3Surface.java:80`, `:327-485`). It sits 9dp from each screen side;
+its children are padded 4dp in from the container, so the stock 38dp send
+circle clears the island's side and top by the same 5dp (`:91-99`). The channel
+run, the selection bar and the plain pill (search, the bottom overlay text)
+each give the island a rect, and the cross-fade weights ease between them
+(`:353-388`). Resting on the nav bar its lower corners grow toward the display's
+rounded corner, capped at 15dp and read from the tighter side, easing back to
+13dp as the keyboard lifts it (`:263-285`). Like the MD3 chat header it is
+frosted when the chat has a frosted source and blur is enabled for the account,
+keeping 70% of the Blur strength setting, and opaque otherwise (`:156-185`). It
+gets its own factory over that source because the shared frosted factory can
+hand out drawables with the Liquid Glass shader
+(`BlurredBackgroundDrawableViewFactory.java:81-85`).
+
+MD3 keeps the stock 9dp lift plus 5dp, so the island rests 12dp clear of the
+nav bar, keyboard and docked emoji panel (`ComposerMd3Surface.java:100-101`,
+`:296-298`; `ChatInputViewsContainer.java:272-275`;
+`ChatActivityEnterView.java:18913-18918`). The island reaches `topOverhang()`
+above the pill (`ComposerMd3Surface.java:301-303`), so `getInputBubbleHeight()`
+adds it and everything laid out against the composer, including the message
+list padding, clears it (`ChatInputViewsContainer.java:284-291`;
+`ChatActivity.java:13503-13505`). The expanded input's budget takes off the
+extra lift, that reach and the pinned panel's height, less headroom the stock
+budget already leaves, and follows the pinned panel's animation. The round-video
+recorder's bottom chrome and its overlay add the same reach
+(`ComposerMd3Surface.java:306-308`, `:316-317`; `ChatActivity.java:10042-10045`, `:4852-4855`,
+`:20293-20295`, `:20309-20311`).
+
+Channel and selection runs tone the island itself (`ComposerMd3Surface.java:428-432`).
+The input gets a 42dp field with a concentric 10dp radius, an 8% tone (14% in
+dark themes) laid at 88% over the frost while Blur strength is above zero, and
+no focus ring (`:54-61`, `:287-289`, `:471-476`). The reply strip shares its column, is centred
+on the upstream close button and carries its accent as a separate rounded bar
+(`:457-469`); under MD3 the close button draws without its glass disc
+(`InputSatellites.java:97-102`). In a channel the Join/Mute fill was never the
+Buttons provider's. It is the island glass shrunk to the button run by
+`setInputBubbleOffsets` (`ChatActivity.java:9356`), because
+`ChatActivityChannelButtonsLayout.setupDrawableForContainer()` (`:155`) is only
+called from `ChannelAdminLogActivity.java:1511`. Dropping the island glass
+without painting that run is what blanked channel chats in #409. The field stops
+short of the send column using the existing `getComposerPrimaryEndInset()`, on
+the left under `LocaleController.isRTL` (`ComposerMd3Surface.java:434-454`;
+`ChatActivityEnterView.java:18929`). The reply strip reads `getTopViewHeight()`
+and `getTopViewEnterProgress()` (`ComposerMd3Surface.java:350-351`). The circle keeps its stock 44dp slot, but a press in the 2dp band around it is shifted into the slot for the whole gesture, giving a 48dp target (`ComposerMd3Surface.java:226-256`; `ChatInputViewsContainer.java:433-442`).
+
+The tools row keeps its Liquid Glass geometry unless MD3 is on. Then size runs
+the row, cell, state layer and glyph linearly through 40/48/56dp rows at
+75/100/125%, spacing takes up to 4dp off every cell's width, and groups sit 8dp
+apart (`ComposerToolbarLayout.java:82-88`, `:421-434`, `:448-469`, `:489-498`).
+The Scrolling zone keeps fixed cells, fades its edges inside the viewport and
+scrolls normally: fitting its cells to the viewport made smaller spacing look
+looser (`:139-140`). A 24dp hairline seams it from the leading group, and from
+the trailing group while it overflows (`:1147-1174`). `attachGlass` still clears
+the bubbles under MD3, with the island painted behind them (`:233-235`). The
+layout editor draws the same frosted island and tonal field
+(`ComposerLayoutActivity.java:1422-1423`, `:1566-1570`). Buttons-role surfaces
+keep their own provider (`ChatActivity.java:4202`). Story controls and Dialogs
+floating buttons remain separate follow-up parity (`PeerStoriesView.java:549`;
 `FragmentFloatingButton.java:164-168`).
-
 *(Established 2026-09-22, during `#interface-style`.)*
 
 ## BottomBuilder section cards are opt-in and isolated to Early Send

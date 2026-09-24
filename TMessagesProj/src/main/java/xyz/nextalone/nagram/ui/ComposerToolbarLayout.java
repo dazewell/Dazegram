@@ -5,6 +5,7 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.os.SystemClock;
@@ -76,6 +77,15 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * toolbar was scaled up, because the radius was in raw dp and the cell was not.
      */
     private static final int MIN_CELL_FLOOR = 36;
+    // MD3 sizes run linearly through the 75/100/125% anchors: row and cell 40/48/56dp, state layer 32/40/48dp,
+    // glyph 20/24/28dp. Spacing takes up to 4dp off the cell width, never off the row.
+    private static final float MD3_ROW_BASE = 16, MD3_ROW_PER_SCALE = 32;
+    private static final float MD3_STATE_BASE = 8, MD3_STATE_PER_SCALE = 32;
+    private static final float MD3_GLYPH_BASE = 8, MD3_GLYPH_PER_SCALE = 16;
+    private static final int MD3_SPACING_SQUEEZE = 4;
+    private static final int MD3_CELL_FLOOR = 36;
+    private static final int MD3_GROUP_GAP = 8;
+    private static final int MD3_SEAM_HEIGHT = 24;
     private static final int ICON_GLYPH = 24;
     private static final int GLASS_INSET = 4;
     private static final int GLASS_DRAW_INSET = 2;
@@ -409,7 +419,18 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * layout params it is given.
      */
     public static int height() {
+        if (InterfaceStyleController.applyComposer()) {
+            return Math.round(MD3_ROW_BASE + MD3_ROW_PER_SCALE * scale());
+        }
         return Math.round(BASE_HEIGHT * scale());
+    }
+
+    /** The glyph factor applyIconBox multiplies ICON_GLYPH by, before any per-button optical correction. */
+    private static float glyphScale() {
+        if (InterfaceStyleController.applyComposer()) {
+            return (MD3_GLYPH_BASE + MD3_GLYPH_PER_SCALE * scale()) / ICON_GLYPH;
+        }
+        return scale();
     }
 
     /**
@@ -425,6 +446,10 @@ public final class ComposerToolbarLayout extends FrameLayout {
     }
 
     private static int packedCellDp(float scale, int spacingPercent) {
+        if (InterfaceStyleController.applyComposer()) {
+            float squeeze = MD3_SPACING_SQUEEZE * (SPACING_MAX - spacingPercent) / (float) (SPACING_MAX - SPACING_MIN);
+            return Math.round(MD3_ROW_BASE + MD3_ROW_PER_SCALE * scale - squeeze);
+        }
         return Math.round(BASE_BUTTON_SIZE * scale * (spacingPercent / 100f));
     }
 
@@ -435,6 +460,10 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * floor with it instead of starving that glyph.
      */
     private static int minCellDp(float scale) {
+        if (InterfaceStyleController.applyComposer()) {
+            int widestGlyph = (int) Math.ceil((MD3_GLYPH_BASE + MD3_GLYPH_PER_SCALE * scale) * ComposerButtons.maxIconScale());
+            return Math.max(MD3_CELL_FLOOR, widestGlyph);
+        }
         int widestGlyph = (int) Math.ceil(ICON_GLYPH * ComposerButtons.maxIconScale() * scale);
         return Math.max(MIN_CELL_FLOOR, widestGlyph);
     }
@@ -458,6 +487,12 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * made worse by sizing the circle the same way.
      */
     public static Drawable panelSelector(int color) {
+        // NagramX (#interface-style): MD3 draws a state layer 8dp narrower than the row, and at least 4dp
+        // narrower than a squeezed cell so neighbouring circles never touch.
+        if (InterfaceStyleController.applyComposer()) {
+            float radius = Math.min(MD3_STATE_BASE + MD3_STATE_PER_SCALE * scale(), buttonSize() - MD3_SPACING_SQUEEZE) / 2f;
+            return Theme.createSelectorDrawable(color, Theme.RIPPLE_MASK_CIRCLE_20DP, AndroidUtilities.dp(radius));
+        }
         return Theme.createSelectorDrawable(color, Theme.RIPPLE_MASK_CIRCLE_20DP,
                 AndroidUtilities.dp(minCellDp(scale()) / 2f));
     }
@@ -502,7 +537,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * every button and this is all the enter view has to call.
      */
     public static void applyPanelIconBox(View view) {
-        applyPanelIconBox(view, scale());
+        applyPanelIconBox(view, glyphScale());
     }
 
     /**
@@ -512,7 +547,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * call site.
      */
     public static void applyPanelIconBox(View view, int resourceId) {
-        applyPanelIconBox(view, ComposerButtons.iconScaleForResource(resourceId) * scale());
+        applyPanelIconBox(view, ComposerButtons.iconScaleForResource(resourceId) * glyphScale());
     }
 
     private static void applyPanelIconBox(View view, float iconScale) {
@@ -596,7 +631,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         // ink renders the same pixels in RTL, and the per-glyph offset baked into the fork vectors is
         // physical canvas geometry, not reading order. Switching to setPaddingRelative would mirror the
         // inset in RTL and reintroduce exactly the decentring this change removes.
-        applyPanelIconBox(view, ComposerButtons.iconScaleForKey(key) * scale());
+        applyPanelIconBox(view, ComposerButtons.iconScaleForKey(key) * glyphScale());
     }
 
     // The panel and its slots react to the same layout passes, so they share one settle schedule and start
@@ -751,8 +786,8 @@ public final class ComposerToolbarLayout extends FrameLayout {
             geometryDrawInsetDp = glassDrawInset();
             // The gap between two neighbouring bubbles, reserved in layout so the glass separates the
             // button cells. 2 x the box inset (8dp at 100%), scale-derived and frozen with the rest of
-            // the geometry.
-            gapPx = 2 * AndroidUtilities.dp(geometryInsetDp);
+            // the geometry. MD3 has no bubbles to separate, only groups, and keeps that at a flat 8dp.
+            gapPx = InterfaceStyleController.applyComposer() ? AndroidUtilities.dp(MD3_GROUP_GAP) : 2 * AndroidUtilities.dp(geometryInsetDp);
             // Vertical inset only. The row keeps glassInset() (4dp at 100%) of top and bottom padding so
             // its slots still measure to the unpacked cell (see the height comment above) and each bubble
             // sits lifted off the row edge vertically. The horizontal component is deliberately zero:
@@ -764,7 +799,12 @@ public final class ComposerToolbarLayout extends FrameLayout {
             // painted flush edges and painted-edge-to-content is the same on every edge, flush or inner.
             // The trade: the outermost glyph now sits glassInset() nearer the row edge and no longer lines
             // up with the input pill's hint start (the bubble edge still does). Accepted.
-            setPaddingRelative(0, AndroidUtilities.dp(geometryInsetDp), 0, AndroidUtilities.dp(geometryInsetDp));
+            // MD3: the enter view already holds the row 7dp off the screen edge; one more dp puts the first and
+            // last targets on the composer's 8dp keyline.
+            int sidePadding = InterfaceStyleController.applyComposer() ? AndroidUtilities.dp(1) : 0;
+            // MD3 cells are as tall as the row, so there is no vertical inset to keep.
+            int verticalPadding = InterfaceStyleController.applyComposer() ? 0 : AndroidUtilities.dp(geometryInsetDp);
+            setPaddingRelative(sidePadding, verticalPadding, sidePadding, verticalPadding);
         }
 
         int rowHeightDp() {
@@ -876,7 +916,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
             // Set here, guarded like the clip toggle below so it only writes when it actually changes, and
             // re-derived each pass rather than frozen. Measured into middleContent's width, so it flows
             // through middleViewportWidth and the reserved gaps stay correct.
-            int middleInset = middleContentSideInset();
+            int middleInset = InterfaceStyleController.applyComposer() ? 0 : middleContentSideInset();
             if (middleContent.getPaddingLeft() != middleInset || middleContent.getPaddingRight() != middleInset) {
                 middleContent.setPadding(middleInset, 0, middleInset, 0);
             }
@@ -1007,7 +1047,8 @@ public final class ComposerToolbarLayout extends FrameLayout {
         // reserving nothing.
         private void applyEndSlotGapMargins() {
             boolean rtl = getLayoutDirection() == LAYOUT_DIRECTION_RTL;
-            int contextGap = (occContext && occTrailing) ? gapPx : 0;
+            // MD3 has no bubble per group, so the attach group and the trailing buttons read as one run.
+            int contextGap = (occContext && occTrailing && !InterfaceStyleController.applyComposer()) ? gapPx : 0;
             // Context's trailing-in-array side: rightMargin in LTR, leftMargin in RTL.
             setBubbleMargins(trailingContextGroup, rtl ? contextGap : 0, rtl ? 0 : contextGap);
         }
@@ -1095,6 +1136,41 @@ public final class ComposerToolbarLayout extends FrameLayout {
         protected void dispatchDraw(Canvas canvas) {
             drawGlass(canvas);
             super.dispatchDraw(canvas);
+            drawLeadingSeam(canvas);
+        }
+
+        private final Paint seamPaint = new Paint();
+
+        // NagramX (#interface-style): MD3 marks where the fixed leading group ends and the clipped scrolling
+        // strip begins with a hairline centred in the gap between them, so the cut reads as a seam. The trailing
+        // end gets one too while the strip overflows, the only time that end is a cut rather than open space.
+        private void drawLeadingSeam(Canvas canvas) {
+            if (!InterfaceStyleController.applyComposer() || middleScrollView.getWidth() <= 0) {
+                return;
+            }
+            final boolean rtl = getLayoutDirection() == LAYOUT_DIRECTION_RTL;
+            final float width = Math.max(1, AndroidUtilities.dp(0.66f));
+            final float half = AndroidUtilities.dp(MD3_SEAM_HEIGHT) / 2f;
+            final float centre = getHeight() / 2f;
+            final int surface = Theme.getColor(Theme.key_chat_messagePanelBackground);
+            final int color = InterfaceStyleController.panelDividerPaint(surface, null).getColor();
+            if (leadingMiddleGapPx > 0 && startSlot.getWidth() > 0) {
+                final float x = rtl
+                        ? (startSlot.getLeft() + middleScrollView.getRight()) / 2f
+                        : (startSlot.getRight() + middleScrollView.getLeft()) / 2f;
+                seamPaint.setColor(color);
+                seamPaint.setAlpha(Math.round(seamPaint.getAlpha() * Math.min(startSlot.getAlpha(), middleScrollView.getAlpha())));
+                canvas.drawRect(x - width / 2f, centre - half, x + width / 2f, centre + half, seamPaint);
+            }
+            final View content = middleScrollView.getChildAt(0);
+            if (content != null && content.getWidth() > middleScrollView.getWidth() && endSlot.getWidth() > 0) {
+                final float x = rtl
+                        ? middleScrollView.getLeft() - gapPx / 2f
+                        : middleScrollView.getRight() + gapPx / 2f;
+                seamPaint.setColor(color);
+                seamPaint.setAlpha(Math.round(seamPaint.getAlpha() * Math.min(endSlot.getAlpha(), middleScrollView.getAlpha())));
+                canvas.drawRect(x - width / 2f, centre - half, x + width / 2f, centre + half, seamPaint);
+            }
         }
 
         private void drawGlass(Canvas canvas) {

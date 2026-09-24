@@ -4849,6 +4849,10 @@ public class ChatActivity extends BaseFragment implements
             invalidateMessagesVisiblePart();
             checkUi_messagesSearchListPadding();
             checkUi_topFade();
+            // NagramX: the MD3 expanded input stops below this panel, so its budget follows the panel's animation.
+            if (chatInputViewsContainer != null && chatInputViewsContainer.md3Surface != null && chatActivityEnterView != null && chatActivityEnterView.isMessageEditExpanded()) {
+                checkUi_expandedInputBudget();
+            }
         });
         if (avatarContainer != null) {
             avatarContainer.onDestroy();
@@ -5405,6 +5409,11 @@ public class ChatActivity extends BaseFragment implements
         }
 
         chatInputViewsContainer = new ChatInputViewsContainer(context, true);
+        // NagramX: the MD3 Composer replaces the island and under-keyboard glass with its own floating island.
+        chatInputViewsContainer.md3Surface = xyz.nextalone.nagram.ui.composer.ComposerMd3Surface.createIfEnabled(themeDelegate);
+        if (chatInputViewsContainer.md3Surface != null) {
+            chatInputViewsContainer.md3Surface.attachFrost(glassBackgroundSourceFrostedRenderNode, viewPositionWatcher, parentView, glassAttachedViews, glassAttachedDrawables, chatInputViewsContainer, currentAccount);
+        }
         chatInputViewsContainer.setClipChildren(false);
         chatInputViewsContainer.setWindowInsetsProvider(windowInsetsStateHolder);
         // NagramX: keep Composer input surfaces on their own provider so the Apply Composer gate
@@ -5416,7 +5425,7 @@ public class ChatActivity extends BaseFragment implements
             glassBackgroundDrawableFactoryFrosted.create(chatInputViewsContainer, composerGlassColorProvider);
         // NagramX: this panel's own clip optimisation (enableInAppKeyboardOptimization, applied right
         // below by setUnderKeyboardBackgroundDrawable) cuts the glass shadow at the shape's own top
-        // edge. Keep the old shadow only when Composer is not using the flat MD3 surface.
+        // edge. Keep the old shadow only when the MD3 Composer is not drawing its own island instead.
         if (!xyz.nextalone.nagram.helpers.InterfaceStyleController.applyComposer()) {
             underKeyboardBackgroundDrawable.setShadowParams(AndroidUtilities.dpf2(1), 0, AndroidUtilities.dpf2(1 / 3f));
         }
@@ -9348,6 +9357,10 @@ public class ChatActivity extends BaseFragment implements
         });
 
         chatInputBubbleContainer.addView(bottomChannelButtonsLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 56, Gravity.BOTTOM, 0, 0, 0, (44 - 56) / 2));
+        // NagramX: the MD3 Composer reads these three views' fades to choose which run its island wraps.
+        if (chatInputViewsContainer.md3Surface != null) {
+            chatInputViewsContainer.md3Surface.bind(chatInputViewsContainer, chatActivityEnterView, bottomChannelButtonsLayout, actionsButtonsLayout);
+        }
 
         bottomOverlayStartButton = new TextView(context) {
             CellFlickerDrawable cellFlickerDrawable;
@@ -10025,6 +10038,10 @@ public class ChatActivity extends BaseFragment implements
             + (chatActivityEnterView != null ? chatActivityEnterView.getInputBubbleBottomLiftReduction() : 0);
         if (actionBar != null && actionBar.getVisibility() == View.VISIBLE) {
             budget -= actionBar.getMeasuredHeight();
+        }
+        // NagramX: the MD3 island floats higher and reaches past its pill, and must stop below the pinned panel.
+        if (chatInputViewsContainer != null && chatInputViewsContainer.md3Surface != null) {
+            budget -= chatInputViewsContainer.md3Surface.expandedInputTrim(topPanelLayout != null && topPanelLayout.getMetadata().getTotalVisibility() > 0 ? Math.round(topPanelLayout.getMetadata().getTotalHeight()) : 0);
         }
         final boolean inputMethodVisible = windowInsetsStateHolder.getInsets(WindowInsetsCompat.Type.ime()).bottom > 0
             || windowInsetsStateHolder.inAppViewIsVisible();
@@ -13483,8 +13500,9 @@ public class ChatActivity extends BaseFragment implements
         if (isInsideContainer && parentChatActivity == null) {
             paddingBottom = AndroidUtilities.navigationBarHeight;
         } else {
+            // NagramX: getInputBubbleHeight() is the island plus the MD3 Composer island's reach above it.
             paddingBottom = blurredViewBottomOffset + chatInputViewsContainer.getInputBubbleBottomLift() + dp(7)
-                + inputIslandHeightCurrent
+                + chatInputViewsContainer.getInputBubbleHeight()
                 + getTopicTabsSideSize(TopicsTabsView.Position.BOTTOM)
                 + windowInsetsStateHolder.getAnimatedMaxBottomInset();
         }
@@ -20272,7 +20290,9 @@ public class ChatActivity extends BaseFragment implements
                 } else if (child == instantCameraView) {
                     int contentWidthSpec = View.MeasureSpec.makeMeasureSpec(widthSize, View.MeasureSpec.EXACTLY);
                     int contentHeightSpec = View.MeasureSpec.makeMeasureSpec(allHeight, View.MeasureSpec.EXACTLY);
-                    final int recorderBottomChrome = (int) inputIslandHeightTarget + dp(9 + 3);
+                    final int recorderBottomChrome = (int) inputIslandHeightTarget + dp(9 + 3)
+                        // NagramX: the MD3 island floats higher and reaches past its pill, so the camera controls sit above that.
+                        + (chatInputViewsContainer != null && chatInputViewsContainer.md3Surface != null ? chatInputViewsContainer.md3Surface.reachAboveStock() : 0);
                     instantCameraView.setInternalPadding(windowInsetsStateHolder.getCurrentMaxBottomInset()
                         + recorderBottomChrome,
                         // NagramX: second value is the same padding without the soft keyboard, which is what
@@ -20287,7 +20307,8 @@ public class ChatActivity extends BaseFragment implements
                     int contentHeightSpec = View.MeasureSpec.makeMeasureSpec(allHeight
                         - windowInsetsStateHolder.getCurrentMaxBottomInset()
                         - (int) inputIslandHeightTarget
-                        - dp(9 + 3), View.MeasureSpec.EXACTLY);
+                        - dp(9 + 3)
+                        - (chatInputViewsContainer != null && chatInputViewsContainer.md3Surface != null ? chatInputViewsContainer.md3Surface.reachAboveStock() : 0), View.MeasureSpec.EXACTLY);
                     child.measure(contentWidthSpec, contentHeightSpec);
                 } else if (child == emptyViewContainer) {
                     int contentWidthSpec = View.MeasureSpec.makeMeasureSpec(widthSize, View.MeasureSpec.EXACTLY);

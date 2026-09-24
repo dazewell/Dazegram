@@ -30,8 +30,7 @@ public class InterfaceStyleController {
         return isMaterialDesign3() && NaConfig.INSTANCE.getInterfaceStyleApplyButtons().Bool();
     }
 
-    // The flat MD3 Composer is being rebuilt as its own layout; until it lands the stored switch is ignored.
-    public static final boolean COMPOSER_STYLE_AVAILABLE = false;
+    public static final boolean COMPOSER_STYLE_AVAILABLE = true;
 
     public static boolean applyComposer() {
         return COMPOSER_STYLE_AVAILABLE && isMaterialDesign3() && NaConfig.INSTANCE.getInterfaceStyleApplyComposer().Bool();

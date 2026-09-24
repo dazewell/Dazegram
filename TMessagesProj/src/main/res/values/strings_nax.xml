@@ -345,7 +345,7 @@
     <string name="InterfaceStyleApplyButtons">Buttons</string>
     <string name="InterfaceStyleApplyButtonsInfo">Floating and pill-shaped buttons in chats.</string>
     <string name="InterfaceStyleApplyComposer">Composer</string>
-    <string name="InterfaceStyleApplyComposerInfo">The message field and under-keyboard surface in chats, with a flat Material Design 3 treatment.</string>
+    <string name="InterfaceStyleApplyComposerInfo">The message field and its tools row in chats, drawn as one floating Material Design 3 island, and the panel under the keyboard.</string>
     <string name="InterfaceStyleApplyBottomNavigation">Bottom navigation</string>
     <string name="InterfaceStyleApplyBottomNavigationInfo">The Chats, Settings, and Profile bar at the bottom of the screen.</string>
     <string name="InterfaceStyleBlurStrength">Blur strength</string>

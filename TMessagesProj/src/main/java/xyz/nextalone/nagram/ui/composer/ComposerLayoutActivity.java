@@ -1332,6 +1332,7 @@ public class ComposerLayoutActivity extends BaseFragment {
         /** Retained so addMockInput can glass the placeholder pill with the same wallpaper sample the
          * toolbar bubbles use, rather than the flat GradientDrawable it painted before. */
         private BlurredBackgroundDrawableViewFactory glassFactory;
+        private Drawable md3Island;
 
         PreviewCell(Context context) {
             super(context);
@@ -1416,7 +1417,10 @@ public class ComposerLayoutActivity extends BaseFragment {
             FrameLayout body = new FrameLayout(getContext());
             BlurredBackgroundDrawable bodyDrawable = glassFactory.create(body, bodyGlassColor);
             bodyDrawable.setRadius(InterfaceStyleController.applyComposer() ? 0 : dp(PREVIEW_INPUT_HEIGHT / 2f));
-            body.setBackground(bodyDrawable);
+            // The MD3 field stops short of the send circle, whose drawn left edge is PREVIEW_INPUT_HEIGHT
+            // in from the end once its own inset and margin cancel out.
+            body.setBackground(InterfaceStyleController.applyComposer()
+                    ? ComposerMd3Surface.previewField(dp(PREVIEW_INPUT_HEIGHT)) : bodyDrawable);
             body.setFocusable(false);
             body.setClickable(false);
             body.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
@@ -1486,8 +1490,10 @@ public class ComposerLayoutActivity extends BaseFragment {
                 glassSource = null;
             }
             glassFactory = new BlurredBackgroundDrawableViewFactory(source);
+            // The MD3 island frosts from the same factory, so a new wallpaper has to rebuild it too.
+            md3Island = null;
             // NagramX: the preview uses the ungated default glass provider here; ComposerToolbarLayout
-            // itself clears these bubbles when the flat Composer role is active, matching the real chat.
+            // itself clears these bubbles when the MD3 Composer is active, matching the real chat.
             toolbar.attachGlass(
                     glassFactory,
                     new ComposerGlassProvider(UserConfig.selectedAccount, null, false));
@@ -1554,6 +1560,14 @@ public class ComposerLayoutActivity extends BaseFragment {
                 canvas.drawColor(Theme.getColor(Theme.key_windowBackgroundWhite));
             } else {
                 drawWallpaper(canvas, wallpaper);
+            }
+            if (InterfaceStyleController.applyComposer()) {
+                if (md3Island == null) {
+                    md3Island = ComposerMd3Surface.previewIsland(glassFactory, this);
+                }
+                final int pad = ComposerMd3Surface.previewPadding();
+                md3Island.setBounds(stage.getLeft(), stage.getTop() - pad, stage.getRight(), stage.getBottom() + pad);
+                md3Island.draw(canvas);
             }
             shadowDrawable.setBounds(0, 0, getMeasuredWidth(), getMeasuredHeight());
             shadowDrawable.draw(canvas);
