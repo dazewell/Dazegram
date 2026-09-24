@@ -31,11 +31,11 @@ Panel dividers are a shipped MD3 row: `NaConfig` stores
 `interfaceStylePanelDividers`, and `InterfaceStyleController.panelDividers()`
 gates the render paths (`NaConfig.kt:1455-1459`;
 `InterfaceStyleController.java:43-45`; `InterfaceStyleActivity.java:426-428`).
-It draws hairlines coloured as MD3 outline-variant (the local surface blended 12% towards `key_windowBackgroundWhiteBlackText`, `InterfaceStyleController.java:60-66`, because Night/AMOLED `key_divider` is pure black) at the MainTabs wrapper top edge, at
+It draws hairlines coloured as MD3 outline-variant (the local surface blended 12% towards `key_windowBackgroundWhiteBlackText`, `InterfaceStyleController.java:60-66`, because Night/AMOLED `key_divider` is pure black) at
 Dialogs' captured top-surface bottom after `super.dispatchDraw(...)`, and under
 ChatActivity's header group after `super.dispatchDraw(...)`
-(`MainTabsActivity.java:436-442`; `DialogsActivity.java:1177-1182`;
-`ChatActivity.java:19596-19603`).
+(`DialogsActivity.java:1177-1182`; `ChatActivity.java:19596-19603`). The
+floating bottom navigation never meets content edge to edge, so it draws none.
 
 Chat/action-bar surfaces use the existing account-aware
 `topPanelChatActivity(...)` colour logic, but `ChatActivity` calls the
@@ -102,17 +102,30 @@ own `tabStyleStroke` behavior independently (`ScrollSlidingTextTabStrip.java:772
 
 *(Established 2026-09-22, during `#interface-style`.)*
 
-## Bottom navigation uses a dedicated MD3 surface
+## Bottom navigation floats as an MD3 stadium through the Liquid Glass pill's own slot
 
-The Bottom navigation setting reaches the real global navigation bar through
+The Bottom navigation setting reaches the real global navigation through
 `MainTabsActivity.createView()` and the shared geometry helper
-(`MainTabsActivity.java:346-462`; `MainTabsHelper.java:14-18,27-42`). MD3 uses an
-80dp bar, or 64dp when bottom-navigation titles are hidden, and uses a
-dedicated provider so the existing `mainTabs()` provider remains unchanged for
-attach/statistics surfaces (`BlurredBackgroundProviderImpl.java:21-35,37-48`).
-`MainTabsLayout` fills the available width only in this scoped mode, and
-`GlassTabView` draws the selected tonal indicator without changing Liquid Glass
-tab geometry (`MainTabsLayout.java:50-95`; `GlassTabView.java:145-187`).
+(`MainTabsActivity.java:352-372`, `:436-468`; `MainTabsHelper.java:14-25`).
+MD3 reuses the Liquid Glass attachment: the background sits on `tabsView`,
+drawn `getMainTabsMargin()` in from it, with radius height/2, so the panel is an
+80dp stadium (64dp with titles hidden). That margin is 12dp under MD3
+(`MainTabsHelper.java:63-66`), and every consumer already measures to it: list
+padding, the Dialogs FAB, bulletins and the blur-capture rect
+(`MainTabsActivity.java:221-223`; `DialogsActivity.java:3109-3110`, `:14711-14712`),
+so they clear the lifted panel with no code of their own. Negative side margins
+put the panel 9dp from the screen, capped at the pill's 344dp; with few tabs it
+narrows so the edge indicators keep the same gap from the panel's side as from
+its top (`MainTabsHelper.java:30-52`). The panel is too round for the display
+curve to cut, so unlike the composer it needs no corner nesting.
+`mainTabsBottomNavigation()` frosts at the Blur strength alpha while blur is
+enabled for the account and is opaque otherwise, with the composer's shadow and
+a dark-only light edge that `BlurredBackgroundDrawable` hides with the Glare
+switch like every other stroke (`BlurredBackgroundProviderImpl.java:37-55`;
+`BlurredBackgroundDrawable.java:701-702`). `mainTabs()` stays the attach and
+statistics provider. The wrapper passes touches in the side gaps through to the
+list (`MainTabsActivity.java:436-446`). `GlassTabView` draws the selected tonal
+indicator without changing Liquid Glass tab geometry (`GlassTabView.java:165-176`).
 
 *(Established 2026-09-22, during `#interface-style`.)*
 

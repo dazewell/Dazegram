@@ -360,14 +360,15 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         final int paddingH = md3BottomNavigation ? 0 : dp(mainTabsMargin + 4);
         final int paddingV = md3BottomNavigation ? 0 : dp(mainTabsMargin + 4);
         if (md3BottomNavigation) {
-            // NagramX: MD3 insets the tabs vertically inside the 80dp bar instead of the legacy outer margin.
+            // NagramX: MD3 insets the tabs inside the floating panel, which the background draws mainTabsMargin in from tabsView.
             final int indicatorTop = dp(compact ? MainTabsHelper.MD3_NAVIGATION_INDICATOR_TOP_COMPACT : MainTabsHelper.MD3_NAVIGATION_INDICATOR_TOP);
-            tabsView.setPadding(0, indicatorTop, 0, compact ? indicatorTop : 0);
+            final int side = dp(mainTabsMargin + MainTabsHelper.getMd3NavigationContentPadding());
+            tabsView.setPadding(side, dp(mainTabsMargin) + indicatorTop, side, dp(mainTabsMargin) + (compact ? indicatorTop : 0));
         } else {
             tabsView.setPadding(paddingH, paddingV, paddingH, paddingV);
         }
-        // NagramX: MD3 navigation is full-width; the legacy pill keeps its capped geometry.
-        tabsView.setMaxWidth(md3BottomNavigation ? 0 : dp(328 + DialogsActivity.MAIN_TABS_MARGIN * 2));
+        // NagramX: MD3 navigation spreads its tabs across a panel narrower than the legacy pill's cap.
+        tabsView.setMaxWidth(md3BottomNavigation ? dp(MainTabsHelper.getMd3NavigationWidth() + mainTabsMargin * 2) : dp(328 + DialogsActivity.MAIN_TABS_MARGIN * 2));
         tabsView.setFillWidth(md3BottomNavigation);
 
         tabs = new GlassTabView[5];
@@ -432,37 +433,39 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         iBlur3FactoryGlass.setSourceRootView(viewPositionWatcher, contentView);
         iBlur3FactoryGlass.setLiquidGlassEffectAllowed(LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS));
 
-        // NagramX: the MD3 provider belongs on the wrapper so system insets remain part of the surface.
         tabsViewWrapper = new FrameLayout(context) {
             @Override
-            protected void dispatchDraw(Canvas canvas) {
-                super.dispatchDraw(canvas);
-                // NagramX: MD3 hairline where the bar meets content; drawn here so it follows the bar's translation and alpha.
-                if (md3BottomNavigation && xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividers()) {
-                    canvas.drawRect(0, 0, getWidth(), Math.max(1, AndroidUtilities.dp(0.66f)), xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividerPaint(getThemedColor(Theme.key_windowBackgroundWhite), getResourceProvider()));
+            public boolean onTouchEvent(MotionEvent event) {
+                if (!md3BottomNavigation) {
+                    return super.onTouchEvent(event);
                 }
+                // NagramX: the MD3 panel floats; a touch beside it reaches the list, one on it or below it stays here.
+                final int inset = dp(MainTabsHelper.getMainTabsMargin());
+                final float x = event.getX(), y = event.getY();
+                return y >= tabsView.getTop() + inset && (y >= tabsView.getBottom() - inset || x >= tabsView.getLeft() + inset && x <= tabsView.getRight() - inset);
             }
         };
-        tabsViewWrapper.setOnClickListener(v -> {});
+        if (!md3BottomNavigation) {
+            tabsViewWrapper.setOnClickListener(v -> {});
+        }
         tabsViewWrapper.addView(tabsView, LayoutHelper.createFrame(
             tabsViewWidth < 0 ? LayoutHelper.MATCH_PARENT : tabsViewWidth,
             MainTabsHelper.getMainTabsHeightWithMargins(),
-            Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL
+            Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL,
+            // NagramX: the panel is drawn mainTabsMargin in from tabsView; this puts its sides the MD3 gap from the screen.
+            md3BottomNavigation ? MainTabsHelper.MD3_NAVIGATION_SIDE_GAP - mainTabsMargin : 0, 0,
+            md3BottomNavigation ? MainTabsHelper.MD3_NAVIGATION_SIDE_GAP - mainTabsMargin : 0, 0
         ));
         tabsViewWrapper.setClipToPadding(false);
 
         tabsViewBackground = iBlur3FactoryGlass.create(
-            md3BottomNavigation ? tabsViewWrapper : tabsView,
-            md3BottomNavigation ? BlurredBackgroundProviderImpl.mainTabsBottomNavigation(resourceProvider) : BlurredBackgroundProviderImpl.mainTabs(resourceProvider)
+            tabsView,
+            md3BottomNavigation ? BlurredBackgroundProviderImpl.mainTabsBottomNavigation(currentAccount, resourceProvider) : BlurredBackgroundProviderImpl.mainTabs(resourceProvider)
         );
-        tabsViewBackground.setRadius(md3BottomNavigation ? 0 : dp(MainTabsHelper.getMainTabsHeight() / 2f));
-        tabsViewBackground.setPadding(md3BottomNavigation ? 0 : dp(mainTabsMargin - 0.334f));
-        // NagramX: hide the owner of the background in MD3; legacy mode keeps the original tab fade.
-        if (md3BottomNavigation) {
-            tabsViewWrapper.setBackground(tabsViewBackground);
-        } else {
-            tabsView.setBackground(tabsViewBackground);
-        }
+        tabsViewBackground.setRadius(dp(MainTabsHelper.getMainTabsHeight() / 2f));
+        // NagramX: the MD3 panel is drawn exactly its margin in from tabsView, the edge every consumer lays out against.
+        tabsViewBackground.setPadding(dp(md3BottomNavigation ? mainTabsMargin : mainTabsMargin - 0.334f));
+        tabsView.setBackground(tabsViewBackground);
 
         BlurredBackgroundDrawableViewFactory iBlur3FactoryFade = new BlurredBackgroundDrawableViewFactory(iBlur3SourceColor);
         iBlur3FactoryFade.setSourceRootView(viewPositionWatcher, contentView);

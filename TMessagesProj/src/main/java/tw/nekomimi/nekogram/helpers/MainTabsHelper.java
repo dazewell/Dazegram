@@ -16,8 +16,37 @@ public final class MainTabsHelper {
     public static final int MD3_NAVIGATION_HEIGHT_COMPACT = 64;
     public static final int MD3_NAVIGATION_INDICATOR_TOP = 12;
     public static final int MD3_NAVIGATION_INDICATOR_TOP_COMPACT = 16;
+    // MD3 navigation floats as a stadium this far above the nav inset. It is the outer margin every
+    // consumer already reads, so lists, the Dialogs FAB and bulletins clear the panel through it.
+    public static final int MD3_NAVIGATION_LIFT = 12;
+    public static final int MD3_NAVIGATION_SIDE_GAP = 9;
+    // The Liquid Glass pill's own cap.
+    public static final int MD3_NAVIGATION_MAX_WIDTH = 328 + MAIN_TABS_MARGIN * 2;
+    public static final int MD3_NAVIGATION_INDICATOR_WIDTH = 64;
 
     private MainTabsHelper() {
+    }
+
+    // The first and last indicators sit as far from the panel's side as the indicator sits from its top.
+    // Tabs share the width equally, so with few tabs the panel narrows until that edge gap still holds.
+    private static float md3NavigationEdgeGap() {
+        return isMainTabsHideTitleStyle() ? MD3_NAVIGATION_INDICATOR_TOP_COMPACT : MD3_NAVIGATION_INDICATOR_TOP;
+    }
+
+    public static float getMd3NavigationWidth() {
+        final float tab = 2 * md3NavigationEdgeGap() + MD3_NAVIGATION_INDICATOR_WIDTH;
+        return Math.min(MD3_NAVIGATION_MAX_WIDTH, tab * getFragmentsCount());
+    }
+
+    /** Side padding inside the panel that puts the edge indicators {@link #md3NavigationEdgeGap()} from its side. */
+    public static float getMd3NavigationContentPadding() {
+        final int count = getFragmentsCount();
+        if (count < 2) {
+            return 0;
+        }
+        final float gap = md3NavigationEdgeGap();
+        final float tab = (getMd3NavigationWidth() - 2 * gap - MD3_NAVIGATION_INDICATOR_WIDTH) / (count - 1);
+        return Math.max(0, gap + MD3_NAVIGATION_INDICATOR_WIDTH / 2f - tab / 2f);
     }
 
     public static boolean isMainTabsHideTitleStyle() {
@@ -33,7 +62,7 @@ public final class MainTabsHelper {
 
     public static int getMainTabsMargin() {
         if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyBottomNavigation()) {
-            return 0;
+            return MD3_NAVIGATION_LIFT;
         }
         return isMainTabsHideTitleStyle() ? MAIN_TABS_MARGIN_COMPACT : MAIN_TABS_MARGIN;
     }

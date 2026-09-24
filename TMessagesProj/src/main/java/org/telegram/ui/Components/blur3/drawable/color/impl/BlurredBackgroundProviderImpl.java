@@ -34,17 +34,23 @@ public class BlurredBackgroundProviderImpl {
             .build();
     }
 
-    // NagramX: Keep the MD3 navigation surface separate so attach/statistics keep the glass provider.
-    public static BlurredBackgroundProvider mainTabsBottomNavigation(Theme.ResourcesProvider resourcesProvider) {
+    // NagramX: Keep the MD3 navigation surface separate so attach/statistics keep the glass provider. It floats, so it
+    // takes the MD3 composer's shadow and, in dark themes where that shadow is lost, a faint light edge the Glare
+    // switch gates like every other stroke. Frosted like the MD3 chat header while blur is on, opaque otherwise.
+    public static BlurredBackgroundProvider mainTabsBottomNavigation(int currentAccount, Theme.ResourcesProvider resourcesProvider) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
-            .setBackgroundColor((r, isDark) -> Theme.multAlpha(
-                Theme.getColor(Theme.key_windowBackgroundWhite, r),
-                xyz.nextalone.nagram.NaConfig.interfaceStyleBlurAlpha()
-            ))
-            .setStrokeColorTop(0, 0)
-            .setStrokeColorBottom(0, 0)
-            .setShadowColor(0, 0)
-            .setStrokeWidth(0, 0)
+            .setBackgroundColor((r, isDark) -> {
+                final int color = Theme.getColor(Theme.key_windowBackgroundWhite, r);
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && checkBlurEnabled(currentAccount, r)) {
+                    return Theme.multAlpha(color, xyz.nextalone.nagram.NaConfig.interfaceStyleBlurAlpha());
+                }
+                return ColorUtils.setAlphaComponent(color, 255);
+            })
+            .setStrokeColorTop(0, 0x28FFFFFF)
+            .setStrokeColorBottom(0, 0x14FFFFFF)
+            .setShadowColor((r, isDark) -> ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_chat_messagePanelShadow, r), 77))
+            .setShadowLayer(dpf2(4), 0, dpf2(2))
+            .setStrokeWidth(dpf2(1), dpf2(1))
             .build();
     }
 
