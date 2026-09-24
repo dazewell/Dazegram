@@ -90,6 +90,8 @@ public final class ComposerMd3Surface {
     private static final int SIDE_EXTRA = 4;
     // Added to the stock 9dp lift. Less the island's 2dp bottom padding, the island rests this far above the nav bar.
     private static final int EXTRA_LIFT = 5;
+    // Measured on device: with the full trim the expanded island sat about 18dp under the header, twice its side gap.
+    private static final int EXPANDED_HEADROOM_RETURN = 9;
     private static final int ISLAND_LIFT = 12;
 
     private final Theme.ResourcesProvider resourcesProvider;
@@ -254,9 +256,11 @@ public final class ComposerMd3Surface {
     /**
      * How much less room the expanded input gets than a Liquid Glass one: the extra lift, the island's reach
      * above its pill, and whatever panel the header shows under the action bar, so it never slides under it.
+     * The stock budget already leaves more headroom above the pill than the island needs; this much of it is
+     * handed back so the gap under the header matches the island's 9dp side gaps.
      */
     public int expandedInputTrim(int headerPanelHeight) {
-        return extraLift() + topOverhang() + Math.max(0, headerPanelHeight);
+        return extraLift() + topOverhang() + Math.max(0, headerPanelHeight) - dp(EXPANDED_HEADROOM_RETURN);
     }
 
     /**
