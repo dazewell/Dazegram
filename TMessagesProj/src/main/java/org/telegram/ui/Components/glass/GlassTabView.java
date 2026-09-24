@@ -152,7 +152,7 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     public void setMd3NavigationIndicator(boolean md3NavigationIndicator) {
         if (this.md3NavigationIndicator != md3NavigationIndicator) {
             this.md3NavigationIndicator = md3NavigationIndicator;
-            // NagramX: MD3 puts the label 2dp below the 32dp indicator that wraps the icon, M3's short-bar layout.
+            // NagramX: MD3 puts the label 2dp below the 32dp indicator that wraps the icon.
             textView.setLayoutParams(LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 0, md3NavigationIndicator ? 34 : 28.33f, 0, 0));
             invalidate();
         }

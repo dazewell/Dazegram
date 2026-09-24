@@ -12,7 +12,7 @@ public final class MainTabsHelper {
     public static final int TAB_WIDTH = 80;
     public static final int TAB_PADDING = 4;
     // MD3 navigation: a 64dp panel either way. With titles the 32dp indicator sits 8dp from the top with the label
-    // 2dp under it, M3's short-bar layout; icon-only panels keep 16dp around it.
+    // 2dp under it; icon-only panels keep 16dp around it.
     public static final int MD3_NAVIGATION_HEIGHT = 64;
     public static final int MD3_NAVIGATION_HEIGHT_COMPACT = 64;
     public static final int MD3_NAVIGATION_INDICATOR_TOP = 8;
