@@ -298,6 +298,13 @@ public class ChatInputViewsContainer extends FrameLayout {
         return getMeasuredHeight() - maxBottomInset - getInputBubbleBottomLift();
     }
 
+    // NagramX (#composer-toolbar): the bottom of the pill as drawn. The toolbar row sits inside the island's
+    // height but under the pill, so anything centred on the pill alone, like the pull-to-next hint once the
+    // input has faded out, has to stop short of it. The MD3 island reaches as far below the pill as above it.
+    public float getInputBubbleDrawnBottom() {
+        return getInputBubbleBottom() - appliedInputBubbleBottomInset + (md3Surface != null ? md3Surface.topOverhang() : 0);
+    }
+
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
