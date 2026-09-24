@@ -92,7 +92,7 @@ public class ComposerLayoutActivity extends BaseFragment {
     private static final int GROUP_SPACING = -2;
     private static final int GROUP_TEXT_SIZE = -3;
 
-    /** Same range and default ChatActivityEnterView.getInputTextSizeDp() clamps to. */
+    /** The clamp ChatActivityEnterView.getInputTextSizeDp() applies, and NaConfig.inputTextSize's default. */
     private static final int TEXT_SIZE_MIN = 14;
     private static final int TEXT_SIZE_MAX = 20;
     private static final int TEXT_SIZE_DEFAULT = 18;
