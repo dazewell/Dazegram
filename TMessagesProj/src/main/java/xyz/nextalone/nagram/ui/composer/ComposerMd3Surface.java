@@ -81,9 +81,11 @@ public final class ComposerMd3Surface {
     private static final int DARK_EDGE_BOTTOM = 0x14FFFFFF;
     // The pill's padded bounds already sit this far in from the island's children, so a selection island uses it too.
     private static final int SIDE_INSET = 7;
-    // Every island child is held this much further in from the screen sides than the stock 7dp, so the island
-    // sits 9dp from each edge.
-    private static final int SIDE_EXTRA = 2;
+    // The island sits this much further in from the screen sides than the stock 7dp pill, 9dp from each edge.
+    private static final int ISLAND_EXTRA = 2;
+    // Its children are held further in still, so the send circle, drawn 3dp inside its slot, clears the island's
+    // side by the same 5dp it clears its top.
+    private static final int SIDE_EXTRA = 4;
     // Added to the stock 9dp lift. Less the island's 2dp bottom padding, the island rests this far above the nav bar.
     private static final int EXTRA_LIFT = 5;
     private static final int ISLAND_LIFT = 12;
@@ -277,9 +279,9 @@ public final class ComposerMd3Surface {
         final int surface = surfaceColor();
         final int container = containerOverlay();
         final float pad = dp(ISLAND_PADDING);
-        // The pill is drawn from the container's edges, but its children sit SIDE_EXTRA further in.
-        final float pillLeft = pill.left + dp(SIDE_EXTRA);
-        final float pillRight = pill.right - dp(SIDE_EXTRA);
+        // The pill is drawn from the container's edges; the island sits ISLAND_EXTRA inside it.
+        final float pillLeft = pill.left + dp(ISLAND_EXTRA);
+        final float pillRight = pill.right - dp(ISLAND_EXTRA);
 
         final float topViewProgress = enterView != null ? enterView.getTopViewEnterProgress() : 0;
         final float topViewHeight = enterView != null ? Math.max(0, enterView.getTopViewHeight()) * topViewProgress : 0;
@@ -314,9 +316,9 @@ public final class ComposerMd3Surface {
         }
         if (actionFactor > 0 && actionButtons != null) {
             weight += actionFactor;
-            left += (actionButtons.getLeft() + dp(SIDE_INSET)) * actionFactor;
+            left += (actionButtons.getLeft() + dp(SIDE_INSET + ISLAND_EXTRA - SIDE_EXTRA)) * actionFactor;
             top += (pill.top - pillTranslation - pad) * actionFactor;
-            right += (actionButtons.getRight() - dp(SIDE_INSET)) * actionFactor;
+            right += (actionButtons.getRight() - dp(SIDE_INSET + ISLAND_EXTRA - SIDE_EXTRA)) * actionFactor;
             bottom += (pill.bottom - pillTranslation + pad) * actionFactor;
         }
         island.set(left / weight, top / weight, right / weight, bottom / weight);
