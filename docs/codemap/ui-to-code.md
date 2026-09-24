@@ -170,9 +170,10 @@ The tools row keeps its Liquid Glass geometry unless MD3 is on. Then size runs
 the row, cell, state layer and glyph linearly through 40/48/56dp rows at
 75/100/125%, spacing takes up to 4dp off every cell's width, and groups sit
 8dp apart (`ComposerToolbarLayout.java:81-86`, `:421-435`, `:448-466`,
-`:489-494`). The Scrolling zone keeps fixed cells, hard-clips instead of fading
+`:489-494`). The Scrolling zone keeps fixed cells, fades its edges inside the viewport
 and scrolls normally: fitting its cells to the viewport made smaller spacing
-look looser (`:139`). `attachGlass` still clears the bubbles under MD3, with
+look looser (`:139-140`). A 24dp hairline seams it from the leading group, and
+from the trailing group while it overflows (`:1147-1174`). `attachGlass` still clears the bubbles under MD3, with
 the island painted behind them (`:233-235`). The layout
 editor draws the same frosted island and tonal field (`ComposerLayoutActivity.java:1425`,
 `:1568-1572`). Buttons-role surfaces keep
