@@ -9357,7 +9357,7 @@ public class ChatActivity extends BaseFragment implements
         });
 
         chatInputBubbleContainer.addView(bottomChannelButtonsLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 56, Gravity.BOTTOM, 0, 0, 0, (44 - 56) / 2));
-        // NagramX: the MD3 Composer reads these three views' fades to choose between field and host pill.
+        // NagramX: the MD3 Composer reads these three views' fades to choose which run its island wraps.
         if (chatInputViewsContainer.md3Surface != null) {
             chatInputViewsContainer.md3Surface.bind(chatInputViewsContainer, chatActivityEnterView, bottomChannelButtonsLayout, actionsButtonsLayout);
         }
@@ -13500,7 +13500,7 @@ public class ChatActivity extends BaseFragment implements
         if (isInsideContainer && parentChatActivity == null) {
             paddingBottom = AndroidUtilities.navigationBarHeight;
         } else {
-            // NagramX: getInputBubbleHeight() is the island plus the MD3 Composer bar's reach above it.
+            // NagramX: getInputBubbleHeight() is the island plus the MD3 Composer island's reach above it.
             paddingBottom = blurredViewBottomOffset + chatInputViewsContainer.getInputBubbleBottomLift() + dp(7)
                 + chatInputViewsContainer.getInputBubbleHeight()
                 + getTopicTabsSideSize(TopicsTabsView.Position.BOTTOM)
