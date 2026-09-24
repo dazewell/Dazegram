@@ -709,6 +709,8 @@
     <string name="ComposerSpacingInfoOverridden">Your saved %1$d%% will come back once Toolbar size is bigger, but moving Icon spacing now replaces it.</string>
     <string name="ComposerSpacingInfoOverriddenLocked">Your saved %1$d%% will come back once Toolbar size is bigger.</string>
     <string name="ComposerSpacingInfoNoRoom">Icon spacing can\'t move at this Toolbar size. Make Toolbar size bigger to use this slider.</string>
+    <string name="InputTextSizeInfo">Sets the size of the text you type. Custom emoji scale with it.</string>
+    <string name="ComposerPreviewSampleText">See you at eight?</string>
     <!-- Passcode setup safety #passcode-setup-safety -->
     <string name="PasscodePanicCodeConfirm">Re-enter your Panic Code</string>
     <string name="PasscodeSetForAccount">Set passcode for %1$s</string>
