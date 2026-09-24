@@ -12,6 +12,7 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
+import android.view.MotionEvent;
 import android.view.RoundedCorner;
 import android.view.View;
 import android.view.ViewGroup;
@@ -73,6 +74,8 @@ public final class ComposerMd3Surface {
     private static final int ISLAND_PADDING = 2;
     private static final int FIELD_SIDE_INSET = 3;
     private static final int FIELD_SEND_GAP = 8;
+    // The send slot is DEFAULT_HEIGHT square; its touch target reaches this far past it on every side, to 48dp.
+    private static final int SEND_TARGET_REACH = 2;
     // The send circle's top sits about 5dp inside the island, which caps the radius near 13dp.
     private static final int ISLAND_RADIUS = 13;
     // Resting on the nav bar the lower corners grow toward the display curve, but past this the tools row's
@@ -113,6 +116,9 @@ public final class ComposerMd3Surface {
     private final float[] islandRadii = new float[8];
     private final Path islandPath = new Path();
     private float frostBottomRadius = -1;
+    private final RectF sendSlot = new RectF();
+    private float touchShiftX, touchShiftY;
+    private float appliedShiftX, appliedShiftY;
 
     private ChatActivityEnterView enterView;
     private View channelButtons;
@@ -210,6 +216,43 @@ public final class ComposerMd3Surface {
     public boolean contains(float x, float y) {
         // Same rule as the island glass: only a fully shown island takes touches.
         return barVisible && island.contains(x, y);
+    }
+
+    /**
+     * The send, mic and camera circle keeps the stock 44dp slot, but under MD3 its touch target is 48dp. A
+     * press that starts in the 2dp band around the slot is shifted into it, and the rest of that gesture is
+     * shifted by the same amount, so a hold-to-record slide still tracks the finger exactly.
+     */
+    public void retargetSendTouch(MotionEvent event) {
+        final int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN) {
+            touchShiftX = touchShiftY = 0;
+            if (!sendSlot.isEmpty()) {
+                final float x = event.getX(), y = event.getY();
+                final float reach = dp(SEND_TARGET_REACH);
+                if (!sendSlot.contains(x, y) && x >= sendSlot.left - reach && x <= sendSlot.right + reach
+                        && y >= sendSlot.top - reach && y <= sendSlot.bottom + reach) {
+                    touchShiftX = Math.max(sendSlot.left + 1, Math.min(sendSlot.right - 1, x)) - x;
+                    touchShiftY = Math.max(sendSlot.top + 1, Math.min(sendSlot.bottom - 1, y)) - y;
+                }
+            }
+        }
+        appliedShiftX = touchShiftX;
+        appliedShiftY = touchShiftY;
+        if (appliedShiftX != 0 || appliedShiftY != 0) {
+            event.offsetLocation(appliedShiftX, appliedShiftY);
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                touchShiftX = touchShiftY = 0;
+            }
+        }
+    }
+
+    /** Undoes {@link #retargetSendTouch} once the container has dispatched the event, for whoever reads it next. */
+    public void restoreSendTouch(MotionEvent event) {
+        if (appliedShiftX != 0 || appliedShiftY != 0) {
+            event.offsetLocation(-appliedShiftX, -appliedShiftY);
+            appliedShiftX = appliedShiftY = 0;
+        }
     }
 
     /**
@@ -386,6 +429,7 @@ public final class ComposerMd3Surface {
         // The field and the reply strip share one column: both stop where the send and close controls begin.
         float columnLeft = pillLeft + dp(FIELD_SIDE_INSET);
         float columnRight = pillRight - dp(FIELD_SIDE_INSET);
+        sendSlot.setEmpty();
         if (enterView != null) {
             final int primaryEndInset = enterView.getComposerPrimaryEndInset();
             if (primaryEndInset > 0) {
@@ -394,6 +438,12 @@ public final class ComposerMd3Surface {
                     columnLeft = Math.max(columnLeft, enterView.getLeft() + primaryEndInset + dp(FIELD_SEND_GAP));
                 } else {
                     columnRight = Math.min(columnRight, enterView.getRight() - primaryEndInset - dp(FIELD_SEND_GAP));
+                }
+                if (barVisible && drawPill && inputFactor >= 1f) {
+                    // The slot is square at the bottom of the text row, flush with the enter view's send side.
+                    final float slot = dp(ChatActivityEnterView.DEFAULT_HEIGHT);
+                    final float slotLeft = LocaleController.isRTL ? enterView.getLeft() : enterView.getRight() - slot;
+                    sendSlot.set(slotLeft, pill.bottom - slot, slotLeft + slot, pill.bottom);
                 }
             }
         }

@@ -430,6 +430,18 @@ public class ChatInputViewsContainer extends FrameLayout {
     private boolean captured;
 
     @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        // NagramX (#interface-style): the MD3 send circle's 48dp touch target reaches past its 44dp slot.
+        if (md3Surface == null) {
+            return super.dispatchTouchEvent(event);
+        }
+        md3Surface.retargetSendTouch(event);
+        final boolean handled = super.dispatchTouchEvent(event);
+        md3Surface.restoreSendTouch(event);
+        return handled;
+    }
+
+    @Override
     public boolean onTouchEvent(MotionEvent event) {
         final int action = event.getAction();
 
