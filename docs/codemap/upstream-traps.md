@@ -203,10 +203,11 @@ the real parent skips measuring and laying it out. A device trace showed
 next relayout. Why the fragment's spec resolves one line shorter is inferred,
 not traced.
 
-Anything in the enter view that positions or clips children must read
-`getHeight()`, not `getMeasuredHeight()`. The reply panel's translation and the
-field's clip now do, and `onLayout` re-places the panel once a new height lands
-(`ChatActivityEnterView.java:5167`, `:17849`, `:19053`). Signature: with a reply
+The reply panel's translation and the field's clip read `getHeight()` for that
+reason, and `onLayout` re-places the panel once a new height lands
+(`ChatActivityEnterView.java:5167`, `:17849`, `:19053`). Measure-time code still
+wants the measured height; any other draw-time reader has to be traced before it
+is switched. Signature: with a reply
 open and the field growing, the reply content rides above its strip and the
 bottom of the field (the MD3 tools row) is cut by the same amount until the next
 keystroke that relays out.
