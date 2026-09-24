@@ -539,7 +539,8 @@ public final class ScheduleTimeHelper {
         if (step <= DEFAULT_SCHEDULE_LAST_HOUR_STEP) {
             return getTargetTimeFromNow(getDefaultScheduleMinutes(step));
         }
-        final long now = System.currentTimeMillis();
+        // Truncated rather than rounded up: rounding at 23:59:30 would tip the target onto the next date.
+        final long now = System.currentTimeMillis() / 60000L * 60000L;
         final Calendar calendar = Calendar.getInstance();
         calendar.setTimeInMillis(now);
         if (step < DEFAULT_SCHEDULE_FIRST_MONTH_STEP) {
@@ -552,7 +553,7 @@ public final class ScheduleTimeHelper {
                 calendar.add(Calendar.DAY_OF_YEAR, MAX_SCHEDULE_DAYS);
             }
         }
-        return roundUpToScheduleMinute(calendar.getTimeInMillis());
+        return calendar.getTimeInMillis();
     }
 
     private static int getDaysBetween(long from, long to) {
