@@ -149,7 +149,7 @@ emoji panel (`ChatInputViewsContainer.java:272-275`) (`ChatActivityEnterView.jav
 including the message list padding, clears it
 (`ChatInputViewsContainer.java:283-290`; `ChatActivity.java:13495-13497`).
 Channel and selection runs tone the island itself. The input gets a 42dp field
-with a concentric 10dp radius, an opaque 8% tone, and no focus ring. The
+with a concentric 10dp radius, an 8% tone (14% in dark themes) laid at 88% over the frost while Blur strength is above zero, and no focus ring. The
 reply strip shares its column and is centred on the upstream close button,
 which under MD3 draws without its glass disc (`ComposerMd3Surface.java:51`,
 `:337-377`; `InputSatellites.java:97-102`). In a channel the
