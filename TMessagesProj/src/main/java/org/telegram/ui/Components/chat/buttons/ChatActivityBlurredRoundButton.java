@@ -253,4 +253,8 @@ public class ChatActivityBlurredRoundButton extends FrameLayout implements Facto
         backgroundDrawable.setRadius(radius);
         updateColors();
     }
+
+    public boolean isNested() {
+        return nestedRadius > 0;
+    }
 }
