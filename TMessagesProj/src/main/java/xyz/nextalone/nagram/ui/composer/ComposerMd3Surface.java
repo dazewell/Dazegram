@@ -151,7 +151,7 @@ public final class ComposerMd3Surface {
         island.setPadding(dp(CHILD_SIDE_PADDING), 0, dp(CHILD_SIDE_PADDING), 0);
         this.enterView = enterView;
         this.channelButtons = channelButtons;
-        this.actionButtons = actionButtons;
+        this.actionButtons = nestActionButtons(actionButtons);
     }
 
     /**
@@ -433,8 +433,8 @@ public final class ComposerMd3Surface {
             }
         }
 
-        // The channel and selection runs have no field of their own, so the island itself takes the tone.
-        final float runFactor = Math.max(actionFactor, drawPill ? alpha * channelFactor : 0);
+        // The channel run has no field of its own, so the island itself takes the tone; so does the selection run unless MD3 Buttons nests its buttons as fields.
+        final float runFactor = Math.max(InterfaceStyleController.applyButtons() ? 0 : actionFactor, drawPill ? alpha * channelFactor : 0);
         if (runFactor > 0) {
             fillPaint.setColor(Theme.multAlpha(fieldOverlay(), runFactor));
             canvas.drawPath(islandPath, fillPaint);
@@ -580,5 +580,44 @@ public final class ComposerMd3Surface {
         }
         final ComposerMd3Surface surface = new ComposerMd3Surface(resourcesProvider);
         return ColorUtils.compositeColors(Theme.getColor(Theme.key_glass_defaultIcon, resourcesProvider), ColorUtils.compositeColors(surface.fieldOverlay(), surface.surfaceColor()));
+    }
+
+    // The selection bar's buttons are drawn 2dp inside the island, so this is the island radius less that inset,
+    // the same rule FIELD_RADIUS follows for the input field's 3dp.
+    private static final int ACTION_BUTTON_RADIUS = ISLAND_RADIUS - 2;
+
+    /**
+     * With MD3 Buttons on, the selection bar's two buttons become the run's fields, so the island is left untoned
+     * around them (see draw). Their fill is the field tone made opaque: a translucent one would show the drawable's
+     * own blur of the wallpaper instead of the island. Buttons are rebuilt with the chat when the setting changes.
+     */
+    private View nestActionButtons(View actionButtons) {
+        if (actionButtons instanceof org.telegram.ui.Components.chat.layouts.ChatActivityActionsButtonsLayout && InterfaceStyleController.applyButtons()) {
+            final org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider tone = new org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider() {
+                @Override
+                public int getShadowColor() {
+                    return 0;
+                }
+
+                @Override
+                public int getBackgroundColor() {
+                    return ColorUtils.compositeColors(fieldOverlay(), surfaceColor());
+                }
+
+                @Override
+                public int getStrokeColorTop() {
+                    return 0;
+                }
+
+                @Override
+                public int getStrokeColorBottom() {
+                    return 0;
+                }
+            };
+            final org.telegram.ui.Components.chat.layouts.ChatActivityActionsButtonsLayout layout = (org.telegram.ui.Components.chat.layouts.ChatActivityActionsButtonsLayout) actionButtons;
+            ((org.telegram.ui.Components.chat.buttons.ChatActivityBlurredRoundButton) layout.getReplyButton()).setNestedBackground(dp(ACTION_BUTTON_RADIUS), tone);
+            ((org.telegram.ui.Components.chat.buttons.ChatActivityBlurredRoundButton) layout.getForwardButton()).setNestedBackground(dp(ACTION_BUTTON_RADIUS), tone);
+        }
+        return actionButtons;
     }
 }

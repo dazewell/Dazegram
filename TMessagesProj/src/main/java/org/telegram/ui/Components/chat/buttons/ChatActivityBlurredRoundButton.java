@@ -209,7 +209,7 @@ public class ChatActivityBlurredRoundButton extends FrameLayout implements Facto
 
         final int color = Theme.getColor(Theme.key_glass_defaultIcon, resourcesProvider);
         setIconColor(Theme.getColor(Theme.key_glass_defaultIcon, resourcesProvider));
-        int rad = dp(22);
+        int rad = nestedRadius > 0 ? nestedRadius : dp(22); // NagramX: keep the nested shape's press state across theme changes
         int pressedColor = Theme.multAlpha(color, .15f);
         setBackground(Theme.createInsetRoundRectDrawable(pressedColor, rad, dp(6)));
     }
@@ -241,5 +241,16 @@ public class ChatActivityBlurredRoundButton extends FrameLayout implements Facto
                 loadingIndicatorDrawable.reset();
             }
         }
+    }
+
+    // NagramX: the MD3 composer nests the selection bar's buttons inside its island, so they take a concentric
+    // radius and their own tone instead of the shared Buttons pill.
+    private int nestedRadius;
+
+    public void setNestedBackground(int radius, BlurredBackgroundColorProvider colorProvider) {
+        nestedRadius = radius;
+        backgroundDrawable.setColorProvider(colorProvider);
+        backgroundDrawable.setRadius(radius);
+        updateColors();
     }
 }
