@@ -89,9 +89,9 @@ follow-up slice.
 black, so the old blue cannot come from any palette key.
 `InterfaceStyleSolidHeader` holds the pre-12.4.0 values and a
 render gate on `Theme.getActiveTheme()`, not `getCurrentTheme()`, which is the
-day-theme choice and stays "Blue" under auto-night (`InterfaceStyleSolidHeader.java:76-86`;
+day-theme choice and stays "Blue" under auto-night (`InterfaceStyleSolidHeader.java:77-87`;
 `Theme.java:6586-6587,6621-6622`). Classic accents go through the palette's own
-hue shift, `Theme.changeColorAccent(ThemeInfo, ...)` (`InterfaceStyleSolidHeader.java:116-123`).
+hue shift, `Theme.changeColorAccent(ThemeInfo, ...)` (`InterfaceStyleSolidHeader.java:121-128`).
 
 Chat header: the surface comes from `chatHeaderSurface(...)`, used only by the
 header and its status-bar composite (`ChatActivity.java:5398,19100`;
@@ -116,7 +116,9 @@ DialogStoriesCell, which otherwise bypasses the fragment when its provider is
 null, routes through it (`DialogsActivity.java:3752`;
 `DialogStoriesCell.java:2249-2256`). The frosted branch is skipped and the
 paint follows the search blend (`DialogsActivity.java:962-967,977-978`), and
-`isLightStatusBar()` follows the surface, or white while searching (`:13182-13185`). The main list is a tab of MainTabsActivity, which asks the visible tab only once it has a view and otherwise falls back to its own white action bar (`ViewPagerActivity.java:217-219`), so createView asks for a re-check (`InterfaceStyleSolidHeader.java:199-206`). The NagramX title span and the ActionBar subtitle overlay read the logo key through their own providers, so both get the scoped one (`TypefaceHelper.java:161-162`; `DialogsActivity.java:3271-3272`).
+`isLightStatusBar()` follows the surface, or white while searching (`:13182-13185`). The main list is a tab of MainTabsActivity, which asks the visible tab only once it has a view and otherwise falls back to its own white action bar (`ViewPagerActivity.java:217-219`), so createView asks for a re-check (`InterfaceStyleSolidHeader.java:203-210`). The NagramX title span and the ActionBar subtitle overlay read the logo key through their own providers, so both get the scoped one (`TypefaceHelper.java:161-162`; `DialogsActivity.java:3271-3272`).
+
+Selection mode keeps its 12.4.0 look. In chats the MD3 action mode is drawn straight on the header surface, so `chatHeaderSurface` stays themed while action mode shows, and ActionBar refreshes its cached glass colour on show and hide (`ActionBar.java:937,1110`). In the chat list the tabs switch to `profile_tab*` keys meant for white (`DialogsActivity.java:10463`), so the surface blends to white by `progressToActionMode` as it does for search (`:600`).
 
 Both fragments need the re-push because their header ThemeDescriptions are
 key-only: `ActionBarLayout.setThemeAnimationValue` writes every description
