@@ -43,18 +43,18 @@ public final class PrivacyProfileDurationSheet {
     private static final long MAX_UNTIL_SECONDS = MAX_DAYS * 24L * 3600L;
 
     private static final long[] PRESET_MS = {
+            15 * 60000L,
+            30 * 60000L,
             3600000L,
-            4 * 3600000L,
+            90 * 60000L,
+            3 * 3600000L,
             8 * 3600000L,
-            24 * 3600000L,
-            7 * 24 * 3600000L,
     };
 
     private static String presetLabel(long ms) {
-        int hours = (int) (ms / 3600000L);
-        if (hours % (24 * 7) == 0) return LocaleController.formatPluralString("Weeks", hours / (24 * 7));
-        if (hours % 24 == 0) return LocaleController.formatPluralString("Days", hours / 24);
-        return LocaleController.formatPluralString("Hours", hours);
+        // Compact pills: anything under two hours reads in minutes (60m, 90m), the rest in hours.
+        if (ms < 2 * 3600000L) return LocaleController.formatString(R.string.SlowmodeMinutes, (int) (ms / 60000L));
+        return LocaleController.formatString(R.string.SlowmodeHours, (int) (ms / 3600000L));
     }
 
     public static void show(BaseFragment fragment, PrivacyProfile profile, Runnable onActivated) {
