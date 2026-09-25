@@ -116,7 +116,7 @@ DialogStoriesCell, which otherwise bypasses the fragment when its provider is
 null, routes through it (`DialogsActivity.java:3752`;
 `DialogStoriesCell.java:2249-2256`). The frosted branch is skipped and the
 paint follows the search blend (`DialogsActivity.java:962-967,977-978`), and
-`isLightStatusBar()` follows the surface (`:13182-13185`). The NagramX title span and the ActionBar subtitle overlay read the logo key through their own providers, so both get the scoped one (`TypefaceHelper.java:161-162`; `DialogsActivity.java:3271-3272`).
+`isLightStatusBar()` follows the surface, or white while searching (`:13182-13185`). The main list is a tab of MainTabsActivity, which asks the visible tab only once it has a view and otherwise falls back to its own white action bar (`ViewPagerActivity.java:217-219`), so createView asks for a re-check (`InterfaceStyleSolidHeader.java:199-206`). The NagramX title span and the ActionBar subtitle overlay read the logo key through their own providers, so both get the scoped one (`TypefaceHelper.java:161-162`; `DialogsActivity.java:3271-3272`).
 
 Both fragments need the re-push because their header ThemeDescriptions are
 key-only: `ActionBarLayout.setThemeAnimationValue` writes every description
