@@ -23,9 +23,10 @@ Chat list top bar, Buttons, Composer, Bottom navigation, and Panel dividers;
 the Composer row is assigned only while `COMPOSER_STYLE_AVAILABLE` is true,
 which it now is (`InterfaceStyleActivity.java:293,419-421`;
 `InterfaceStyleController.java:33-36`). Like every other Apply to row, its
-stored default is on (`NaConfig.kt:1431-1435`). Classic/Day header colours stay hidden by
-`MATCH_CLASSIC_DAY_HEADER_AVAILABLE = false`
-(`InterfaceStyleController.java:47-48`).
+stored default is on (`NaConfig.kt:1431-1435`). The Panel colors row, Match
+Classic and Day header color, shows only on MD3 with Classic or Day selected as
+the day theme and defaults off (`InterfaceStyleActivity.java:299-305`;
+`NaConfig.kt:1449-1453`); its render path is the next entry.
 
 Panel dividers are a shipped MD3 row: `NaConfig` stores
 `interfaceStylePanelDividers`, and `InterfaceStyleController.panelDividers()`
@@ -78,10 +79,50 @@ Chat header and tag-search providers use the same shared blur-strength alpha
 for translucent MD3 surfaces and fall back to opaque theme roles below the
 RenderEffect/API/blur gate (`BlurredBackgroundProviderImpl.java:211-250`;
 `NaConfig.kt:1540-1542`). The filter-tab tonal pill remains a separate
-follow-up slice, and the Classic/Day header-colour switch is hidden until it has
-a render consumer.
+follow-up slice.
 
 *(Established 2026-09-22, during `#interface-style`.)*
+
+## Match Classic and Day header color: literal pre-12.4.0 colours, handed only to two consumers
+
+12.4.0 (`918447ef5b`) made Classic's `key_actionBarDefault` white and its icons
+black, so the old blue cannot come from any palette key.
+`InterfaceStyleSolidHeader` holds the pre-12.4.0 values and a
+render gate on `Theme.getActiveTheme()`, not `getCurrentTheme()`, which is the
+day-theme choice and stays "Blue" under auto-night (`InterfaceStyleSolidHeader.java:76-86`;
+`Theme.java:6586-6587,6621-6622`). Classic accents go through the palette's own
+hue shift, `Theme.changeColorAccent(ThemeInfo, ...)` (`InterfaceStyleSolidHeader.java:116-123`).
+
+Chat header: the surface comes from `chatHeaderSurface(...)`, used only by the
+header and its status-bar composite (`ChatActivity.java:5398,19100`;
+`BlurredBackgroundProviderImpl.java:211-213,229-230`). `chatHeaderPanel(...)` is
+**not** header-private: the pinned/join strip and the hashtag and topic tabs use it
+too (`ChatActivity.java:8646,9918,11180-11181`). Foregrounds go through
+`ChatAvatarContainer.getThemedColor` for avatar containers whose `parentFragment`
+is set, which only ChatActivity does (`ChatAvatarContainer.java:2039-2042`).
+They are also pushed onto the ActionBar after `setupGlass` and again from
+`selectedBackgroundDelegate` (`ChatActivity.java:5401-5402,46316-46321`). The mute and
+lock icons are shared static drawables, so the header gets tinted copies
+(`ChatActivity.java:21689-21695`). A provider-level hook on `themeDelegate` is
+the wrong chokepoint: `MessagePreviewView` reads the same title keys through it.
+
+Chat list: DialogsActivity has no provider, so its `getThemedColor` override
+maps the top-bar keys (`DialogsActivity.java:593-607`). The title keys are left
+out because the item-options popup reads `key_actionBarDefaultTitle` through the
+same method (`DialogsActivity.java:14114`); titles are pushed by
+`applyChatListTopBar` from createView and `cellDelegate`
+(`DialogsActivity.java:5663,12583`). FilterTabsView gets a scoped provider and
+DialogStoriesCell, which otherwise bypasses the fragment when its provider is
+null, routes through it (`DialogsActivity.java:3751`;
+`DialogStoriesCell.java:2249-2256`). The frosted branch is skipped and the
+paint follows the search blend (`DialogsActivity.java:962-967,977-978`), and
+`isLightStatusBar()` follows the surface (`:13181-13184`).
+
+Both fragments need the re-push because their header ThemeDescriptions are
+key-only: `ActionBarLayout.setThemeAnimationValue` writes every description
+from the shared palette, then runs the delegates (`ActionBarLayout.java:3100-3131`).
+
+*(Established 2026-09-25, during `#interface-style`.)*
 
 ## MD3 chat-list filter tabs strengthen only FilterTabsView's selected pill
 
