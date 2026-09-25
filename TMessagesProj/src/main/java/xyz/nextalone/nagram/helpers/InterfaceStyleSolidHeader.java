@@ -208,7 +208,12 @@ public final class InterfaceStyleSolidHeader {
     }
 
     public static void applyChatListTopBar(ActionBar actionBar, FragmentSearchField searchField, boolean archived) {
-        if (actionBar == null || !chatListTopBarClassic()) {
+        final boolean classic = chatListTopBarClassic();
+        // Runs on every theme change, so a switch away from Classic puts the normal pill back.
+        if (searchField != null) {
+            searchField.setWhiteBackground(classic);
+        }
+        if (actionBar == null || !classic) {
             return;
         }
         actionBar.setItemsColor(lookup(CHAT_LIST, archived ? Theme.key_actionBarDefaultArchivedIcon : Theme.key_actionBarDefaultIcon, 0), false);
@@ -216,9 +221,6 @@ public final class InterfaceStyleSolidHeader {
         actionBar.setTitleColor(lookup(CHAT_LIST_TITLES, archived ? Theme.key_actionBarDefaultArchivedTitle : Theme.key_actionBarDefaultTitle, 0));
         actionBar.setSearchTextColor(lookup(CHAT_LIST, archived ? Theme.key_actionBarDefaultArchivedSearch : Theme.key_actionBarDefaultSearch, 0), false);
         actionBar.setSearchTextColor(lookup(CHAT_LIST, archived ? Theme.key_actionBarDefaultArchivedSearchPlaceholder : Theme.key_actionBarDefaultSearchPlaceholder, 0), true);
-        if (searchField != null) {
-            searchField.setWhiteBackground();
-        }
     }
 
     // Filter tabs read their keys at draw time through their own provider, so they get a scoped one.
