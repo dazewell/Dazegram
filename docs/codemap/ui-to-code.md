@@ -201,10 +201,12 @@ Channel and selection runs tone the island itself (`ComposerMd3Surface.java:436-
 The input gets a 42dp field with a concentric 10dp radius, an on-surface tint at 8% (14% in
 dark themes) laid over the island like the reply strip's 6%, so the frost shows
 through both, and no focus ring (`:54-59`, `:203-208`, `:480-485`). The recorded-preview
-trash is a Lottie that fakes its stripes by painting them in `key_chat_messagePanelBackground`,
-so on the field they read as bars; under MD3 the chat's own enter view gives it the field over
-the opaque island and the composer icon tint instead (`ChatActivityEnterView.java:13302-13304`;
-`ComposerMd3Surface.java:569-583`). The reply strip shares its column, is centred
+trash is a Lottie whose stripes are recoloured by layer name to `key_chat_messagePanelBackground`
+to fake holes, and its resting stripes share those names, so stock it rests as a hollow can.
+A frosted field has no single colour to match, so on the field they read as bars; under MD3 the
+chat's own enter view paints stripes and can in one composer icon tint, a plain striped glyph
+(`ChatActivityEnterView.java:13302-13304`; `ComposerMd3Surface.java:569-583`;
+`res/raw/chat_audio_record_delete_2.json`, precomp `Box Grey`). The reply strip shares its column, is centred
 on the upstream close button and carries its accent as a separate rounded bar
 (`:465-478`); under MD3 the close button draws without its glass disc
 (`InputSatellites.java:97-102`). In a channel the Join/Mute fill was never the
