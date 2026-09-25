@@ -560,4 +560,24 @@ public final class ComposerMd3Surface {
     private static float visibility(View view) {
         return view != null && view.getVisibility() == View.VISIBLE ? view.getAlpha() : 0;
     }
+
+    /**
+     * The recorded-preview trash fakes its stripes by painting them in the colour behind it. On the MD3 field that is
+     * the field over an opaque island; a frosted island lets the wallpaper through, so there it is close, not exact.
+     */
+    public static int recordedDeleteStripeColor(Theme.ResourcesProvider resourcesProvider, int stockColor) {
+        if (!InterfaceStyleController.applyComposer()) {
+            return stockColor;
+        }
+        final ComposerMd3Surface surface = new ComposerMd3Surface(resourcesProvider);
+        return ColorUtils.compositeColors(surface.fieldOverlay(), surface.surfaceColor());
+    }
+
+    /** The composer's icon tint flattened onto the same field colour as the stripes, so the can reads like the other composer icons. */
+    public static int recordedDeleteIconColor(Theme.ResourcesProvider resourcesProvider, int stockColor) {
+        if (!InterfaceStyleController.applyComposer()) {
+            return stockColor;
+        }
+        return ColorUtils.compositeColors(Theme.getColor(Theme.key_glass_defaultIcon, resourcesProvider), recordedDeleteStripeColor(resourcesProvider, stockColor));
+    }
 }
