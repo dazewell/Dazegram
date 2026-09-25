@@ -44,8 +44,8 @@ public class InterfaceStyleController {
         return isMaterialDesign3() && NaConfig.INSTANCE.getInterfaceStylePanelDividers().Bool();
     }
 
-    // Panel colors has no render consumer yet, so its section stays hidden.
-    public static final boolean MATCH_CLASSIC_DAY_HEADER_AVAILABLE = false;
+    // Solid Classic/Day chat header and chat-list top bar, rendered by InterfaceStyleSolidHeader.
+    public static final boolean MATCH_CLASSIC_DAY_HEADER_AVAILABLE = true;
 
     public static int filterTabSelectorAlpha(boolean strokeStyle) {
         if (strokeStyle) {

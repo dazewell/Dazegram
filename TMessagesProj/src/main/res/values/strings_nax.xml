@@ -355,7 +355,8 @@
     <string name="InterfaceStylePanelDividersInfo">A thin line where headers and the bottom navigation meet the content.</string>
     <string name="InterfaceStylePanelColorsHeader">Panel colors</string>
     <string name="InterfaceStyleMatchClassicDayHeader">Match Classic and Day header color</string>
-    <string name="InterfaceStyleMatchClassicDayHeaderInfo">Will use the old Classic and Day theme panel color for MD3 chat headers once that color slice lands.</string>
+    <string name="InterfaceStyleMatchClassicDayHeaderInfo">Solid chat headers and chat list top bar, in Classic\'s original blue. Blur strength doesn\'t apply to them.</string>
+    <string name="InterfaceStyleMatchClassicDayHeaderNoTarget">Turn on Chat header or Chat list top bar above to see this.</string>
     <string name="InterfaceStyleInfo">Material Design 3 panels take their colors from your current theme.</string>
     <string name="SaveDeletedExclusionMenu">Save Deleted</string>
     <string name="SaveDeletedExcluded">Exclude</string>
