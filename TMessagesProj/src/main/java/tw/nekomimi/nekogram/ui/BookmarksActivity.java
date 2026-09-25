@@ -483,7 +483,7 @@ public class BookmarksActivity extends NekoDelegateFragment {
         BlurredBackgroundSourceColor pagedownSourceColor = new BlurredBackgroundSourceColor();
         pagedownSourceColor.setColor(Color.TRANSPARENT);
         BlurredBackgroundDrawableViewFactory pagedownBackgroundDrawableFactory = new BlurredBackgroundDrawableViewFactory(pagedownSourceColor);
-        BlurredBackgroundColorProviderThemed pagedownColorProvider = new BlurredBackgroundColorProviderThemed(getResourceProvider(), Theme.key_chat_messagePanelBackground);
+        BlurredBackgroundColorProviderThemed pagedownColorProvider = new xyz.nextalone.nagram.ui.Md3ButtonColorProvider(getResourceProvider(), Theme.key_chat_messagePanelBackground);
         sideControlsButtonsLayout = new ChatActivitySideControlsButtonsLayout(context, getResourceProvider(), pagedownColorProvider, pagedownBackgroundDrawableFactory);
         sideControlsButtonsLayout.setOnClickListener((buttonId, v) -> {
             if (buttonId == ChatActivitySideControlsButtonsLayout.BUTTON_PAGE_DOWN) {

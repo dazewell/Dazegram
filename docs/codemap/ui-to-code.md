@@ -200,7 +200,13 @@ Glass as well as MD3 (`ChatInputViewsContainer.java:304-306`; `ChatActivity.java
 Channel and selection runs tone the island itself (`ComposerMd3Surface.java:436-440`).
 The input gets a 42dp field with a concentric 10dp radius, an on-surface tint at 8% (14% in
 dark themes) laid over the island like the reply strip's 6%, so the frost shows
-through both, and no focus ring (`:54-59`, `:203-208`, `:480-485`). The reply strip shares its column, is centred
+through both, and no focus ring (`:54-59`, `:203-208`, `:480-485`). The recorded-preview
+trash is a Lottie whose stripes are recoloured by layer name to `key_chat_messagePanelBackground`
+to fake holes, and its resting stripes share those names, so stock it rests as a hollow can.
+A frosted field has no single colour to match, so on the field they read as bars; under MD3 the
+chat's own enter view paints stripes and can in one composer icon tint, a plain striped glyph
+(`ChatActivityEnterView.java:13302-13304`; `ComposerMd3Surface.java:569-583`;
+`res/raw/chat_audio_record_delete_2.json`, precomp `Box Grey`). The reply strip shares its column, is centred
 on the upstream close button and carries its accent as a separate rounded bar
 (`:465-478`); under MD3 the close button draws without its glass disc
 (`InputSatellites.java:97-102`). In a channel the Join/Mute fill was never the
@@ -227,10 +233,34 @@ the trailing group while it overflows (`:1147-1174`). `attachGlass` still clears
 the bubbles under MD3, with the island painted behind them (`:233-235`). The
 layout editor draws the same frosted island and tonal field
 (`ComposerLayoutActivity.java:1422-1423`, `:1566-1570`). Buttons-role surfaces
-keep their own provider (`ChatActivity.java:4202`). Story controls and Dialogs
-floating buttons remain separate follow-up parity (`PeerStoriesView.java:549`;
-`FragmentFloatingButton.java:164-168`).
+keep their own provider (`ChatActivity.java:4202`).
 *(Established 2026-09-22, during `#interface-style`.)*
+
+## MD3 Buttons reaches chat buttons through two providers
+
+The Buttons switch is read by two providers, both flat under
+`applyButtons()`: opaque own theme colour, no stroke, no shadow.
+`ComposerGlassProvider` ROLE_BUTTON (`ChatActivity.java:4202`) feeds the side,
+action and channel buttons and the round-video recorder, which forwards it to
+its flash/infinite row and zoom chips (`ChatActivity.java:12066`;
+`InstantCameraView.java:418-447`, `:489-494`). The recording lock and view-once chips build
+their own `Md3ButtonColorProvider` over `key_chat_messagePanelVoiceLockBackground`
+(`ChatActivityEnterView.java:1839`); the deleted-messages and bookmarks screens
+give one to their page-down button over `key_chat_messagePanelBackground`
+(`AyuViewDeleted.java:503`; `BookmarksActivity.java:486`). It skips `BlurredBackgroundProvider`, so
+Liquid Glass keeps the drawable's default stroke and shadow. The glyphs share
+`key_glass_defaultIcon`, the side buttons' tint (`ChatActivityBlurredRoundButton.java:169`);
+the recorder's hardcoded white/grey glyphs switch to it through
+`Md3ButtonColorProvider.glyphColor` (`InstantCameraView.java:667-670`;
+`Md3ButtonColorProvider.java:52-54`). Still glass: story
+controls, whose provider at `PeerStoriesView.java:549` feeds the reply field and
+also the comment, paid-reaction, mute and side-control buttons (`:3089`, `:3099`,
+`:3122`, `:3695`); the Dialogs sub-FAB, whose fill is already
+opaque, so only its stroke and shadow remain, and it has no elevation of its own
+(`FragmentFloatingButton.java:72-75`, `:77-97`, `:155`); EmojiView's buttons
+(`BlurredBackgroundProviderImpl.java:97`); and PhotoViewer's zero-fill rings
+(`:324`).
+*(Established 2026-09-25, during `#interface-style`.)*
 
 ## BottomBuilder section cards are opt-in and isolated to Early Send
 

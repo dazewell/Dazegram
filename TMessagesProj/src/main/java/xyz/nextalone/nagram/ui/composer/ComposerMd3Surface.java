@@ -560,4 +560,25 @@ public final class ComposerMd3Surface {
     private static float visibility(View view) {
         return view != null && view.getVisibility() == View.VISIBLE ? view.getAlpha() : 0;
     }
+
+    /**
+     * The recorded-preview trash fakes its stripes by painting them in the colour behind it, and its resting stripes share
+     * those layer names. A frosted MD3 field has no single colour to match, so the stripes take the can's colour instead.
+     * Only the chat's own enter view sits on the field; the Stories reply bar records too but has no MD3 surface.
+     */
+    public static int recordedDeleteStripeColor(Theme.ResourcesProvider resourcesProvider, boolean chatComposer, int stockColor) {
+        if (!chatComposer || !InterfaceStyleController.applyComposer()) {
+            return stockColor;
+        }
+        return recordedDeleteIconColor(resourcesProvider, true, stockColor);
+    }
+
+    /** The composer's icon tint flattened onto the field over an opaque island, so the can reads like the other composer icons. */
+    public static int recordedDeleteIconColor(Theme.ResourcesProvider resourcesProvider, boolean chatComposer, int stockColor) {
+        if (!chatComposer || !InterfaceStyleController.applyComposer()) {
+            return stockColor;
+        }
+        final ComposerMd3Surface surface = new ComposerMd3Surface(resourcesProvider);
+        return ColorUtils.compositeColors(Theme.getColor(Theme.key_glass_defaultIcon, resourcesProvider), ColorUtils.compositeColors(surface.fieldOverlay(), surface.surfaceColor()));
+    }
 }
