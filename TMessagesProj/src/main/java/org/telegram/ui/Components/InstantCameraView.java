@@ -665,7 +665,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     private int glyphColor(boolean dark) {
-        return xyz.nextalone.nagram.ui.Md3ButtonColorProvider.glyphColor(resourcesProvider, dark ? Color.WHITE : ColorUtils.blendARGB(Color.WHITE, Color.BLACK, 0.6f)); // NagramX: MD3 Buttons share one glyph tint
+        final int stock = dark ? Color.WHITE : ColorUtils.blendARGB(Color.WHITE, Color.BLACK, 0.6f);
+        return isNewDesign ? xyz.nextalone.nagram.ui.Md3ButtonColorProvider.glyphColor(resourcesProvider, stock) : stock; // NagramX: MD3 Buttons share one glyph tint; the story recorder's legacy flash can't follow it
     }
 
     // NagramX: the flash glyphs are single-channel lotties, so RLottieDrawable draws them as a bare alpha
