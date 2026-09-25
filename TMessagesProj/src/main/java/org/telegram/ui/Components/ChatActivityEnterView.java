@@ -1836,7 +1836,8 @@ public class ChatActivityEnterView extends FrameLayout implements
             useGlassDesign = true;
 
             if (colorProvider == null) {
-                colorProvider = new BlurredBackgroundColorProviderThemed(resourcesProvider, Theme.key_chat_messagePanelVoiceLockBackground);
+                // NagramX: lock and view-once chips follow Interface Style's Buttons switch; unchanged glass otherwise.
+                colorProvider = new xyz.nextalone.nagram.ui.Md3ButtonColorProvider(resourcesProvider, Theme.key_chat_messagePanelVoiceLockBackground);
             }
 
             lockBackgroundDrawable = factory.create(this, colorProvider);
