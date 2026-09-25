@@ -106,7 +106,7 @@ The toolbar row can be scaled from 75% to 125% in 5% steps. A second slider sets
 
 ### Interface style <!-- #interface-style --> <!-- #composer-transparency -->
 
-NagramX Settings → General → Interface Style picks Liquid Glass or Material Design 3, which restyles chat headers, the chat-list top bar, in-chat buttons, the frosted bottom navigation and the floating composer, each with its own Apply to toggle. Panel dividers, on by default, line panel edges. Match Classic and Day header color, off by default, makes those themes' headers solid, Classic's in its original blue. Unsupported devices get MD3 only.
+NagramX Settings → General → Interface Style picks Liquid Glass or Material Design 3, which restyles chat headers, the chat-list top bar, in-chat buttons, the bottom navigation and the floating composer, each with its own Apply to toggle. Panel dividers, on by default, line panel edges. Match Classic and Day header color, off by default, makes those themes' headers solid, Classic's in its original blue. Unsupported devices get MD3 only.
 
 ### Quick schedule button <!-- #quick-schedule -->
 
