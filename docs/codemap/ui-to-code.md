@@ -198,6 +198,11 @@ therefore takes its bottom from `getInputBubbleDrawnBottom()`, not
 Glass as well as MD3 (`ChatInputViewsContainer.java:304-306`; `ChatActivity.java:20082`).
 
 Channel and selection runs tone the island itself (`ComposerMd3Surface.java:436-440`).
+With MD3 Buttons on, the selection bar's Reply and Forward instead become the run's
+fields: an opaque field tone at an 11dp radius, 2dp inside an untoned island, set once at
+`bind` through `ChatActivityBlurredRoundButton.setNestedBackground`
+(`ComposerMd3Surface.java:154`, `:585-621`; `ChatActivityBlurredRoundButton.java:246-255`).
+Opaque, because a translucent drawable fill shows its own wallpaper blur, not the island.
 The input gets a 42dp field with a concentric 10dp radius, an on-surface tint at 8% (14% in
 dark themes) laid over the island like the reply strip's 6%, so the frost shows
 through both, and no focus ring (`:54-59`, `:203-208`, `:480-485`). The recorded-preview
