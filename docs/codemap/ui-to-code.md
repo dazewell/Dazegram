@@ -109,14 +109,14 @@ the wrong chokepoint: `MessagePreviewView` reads the same title keys through it.
 Chat list: DialogsActivity has no provider, so its `getThemedColor` override
 maps the top-bar keys (`DialogsActivity.java:593-607`). The title keys are left
 out because the item-options popup reads `key_actionBarDefaultTitle` through the
-same method (`DialogsActivity.java:14114`); titles are pushed by
+same method (`DialogsActivity.java:14115`); titles are pushed by
 `applyChatListTopBar` from createView and `cellDelegate`
-(`DialogsActivity.java:5663,12583`). FilterTabsView gets a scoped provider and
+(`DialogsActivity.java:5664,12584`). FilterTabsView gets a scoped provider and
 DialogStoriesCell, which otherwise bypasses the fragment when its provider is
-null, routes through it (`DialogsActivity.java:3751`;
+null, routes through it (`DialogsActivity.java:3752`;
 `DialogStoriesCell.java:2249-2256`). The frosted branch is skipped and the
 paint follows the search blend (`DialogsActivity.java:962-967,977-978`), and
-`isLightStatusBar()` follows the surface (`:13181-13184`).
+`isLightStatusBar()` follows the surface (`:13182-13185`). The NagramX title span and the ActionBar subtitle overlay read the logo key through their own providers, so both get the scoped one (`TypefaceHelper.java:161-162`; `DialogsActivity.java:3271-3272`).
 
 Both fragments need the re-push because their header ThemeDescriptions are
 key-only: `ActionBarLayout.setThemeAnimationValue` writes every description
