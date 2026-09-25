@@ -3268,7 +3268,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     @Override
     public ActionBar createActionBar(Context context) {
-        ActionBar actionBar = new ActionBar(context, resourceProvider) {
+        // NagramX: scoped provider so the Classic solid top bar reaches the ActionBar's own subtitle overlay.
+        ActionBar actionBar = new ActionBar(context, xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.wrapChatListTopBar(resourceProvider)) {
 
             @Override
             public void setTranslationY(float translationY) {
