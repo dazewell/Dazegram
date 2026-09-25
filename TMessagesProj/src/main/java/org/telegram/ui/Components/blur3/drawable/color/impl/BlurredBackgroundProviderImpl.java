@@ -205,28 +205,28 @@ public class BlurredBackgroundProviderImpl {
     }
 
     public static BlurredBackgroundProvider chatHeaderPanel(int currentAccount, Theme.ResourcesProvider resourcesProvider, boolean frostedSourceAvailable) {
-        return topPanelChatActivity(currentAccount, resourcesProvider, true, frostedSourceAvailable, false);
+        return topPanelChatActivity(currentAccount, resourcesProvider, true, frostedSourceAvailable, null);
     }
 
     // NagramX: the Classic/Day solid header is for the header alone; the pinned/join strip and the topic and
-    // hashtag tabs also use chatHeaderPanel and keep their frosted theme colour.
-    public static BlurredBackgroundProvider chatHeaderSurface(int currentAccount, Theme.ResourcesProvider resourcesProvider, boolean frostedSourceAvailable) {
-        return topPanelChatActivity(currentAccount, resourcesProvider, true, frostedSourceAvailable, true);
+    // hashtag tabs also use chatHeaderPanel and keep their frosted theme colour. Selection mode keeps its usual header too.
+    public static BlurredBackgroundProvider chatHeaderSurface(int currentAccount, Theme.ResourcesProvider resourcesProvider, boolean frostedSourceAvailable, org.telegram.ui.ActionBar.ActionBar actionBar) {
+        return topPanelChatActivity(currentAccount, resourcesProvider, true, frostedSourceAvailable, actionBar);
     }
 
     // NagramX: account-aware overload so bubble chats (which run under a
     // notification's account, not the globally selected one) evaluate blur
     // eligibility against the right account's config.
     public static BlurredBackgroundProvider topPanelChatActivity(int currentAccount, Theme.ResourcesProvider resourcesProvider) {
-        return topPanelChatActivity(currentAccount, resourcesProvider, false, false, false);
+        return topPanelChatActivity(currentAccount, resourcesProvider, false, false, null);
     }
 
-    private static BlurredBackgroundProvider topPanelChatActivity(int currentAccount, Theme.ResourcesProvider resourcesProvider, boolean flatMd3Chrome, boolean frostedSourceAvailable, boolean solidHeaderEligible) {
+    private static BlurredBackgroundProvider topPanelChatActivity(int currentAccount, Theme.ResourcesProvider resourcesProvider, boolean flatMd3Chrome, boolean frostedSourceAvailable, org.telegram.ui.ActionBar.ActionBar solidHeaderActionBar) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
                 .setBackgroundColor((r, isDark) -> {
                     // NagramX: MD3 keeps the pre-Glass theme colour instead of the glass target tint.
                     final boolean md3Header = flatMd3Chrome && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader();
-                    if (md3Header && solidHeaderEligible && xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeader()) {
+                    if (md3Header && solidHeaderActionBar != null && !solidHeaderActionBar.isActionModeShowed() && xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeader()) {
                         return xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeaderSurface(Theme.getColor(isDark ? Theme.key_actionBarDefault : Theme.key_chat_topPanelBackground, r));
                     }
                     if (md3Header && frostedSourceAvailable && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && checkBlurEnabled(currentAccount, resourcesProvider)) {

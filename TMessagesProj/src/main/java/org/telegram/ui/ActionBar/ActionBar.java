@@ -934,6 +934,8 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         }
         actionModeVisible = true;
         checkMenuItemsWidth();
+        // NagramX: the MD3 Classic solid header surface depends on action mode, so refresh the cached glass colour.
+        if (glassMode && glassDrawable != null) { glassDrawable.updateColors(); invalidate(); }
         if (animated) {
             ArrayList<Animator> animators = new ArrayList<>();
             animators.add(ObjectAnimator.ofFloat(actionMode, View.ALPHA, 0.0f, 1.0f));
@@ -1105,6 +1107,8 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         actionMode.hideAllPopupMenus();
         actionModeVisible = false;
         checkMenuItemsWidth();
+        // NagramX: see showActionMode.
+        if (glassMode && glassDrawable != null) { glassDrawable.updateColors(); invalidate(); }
         ArrayList<Animator> animators = new ArrayList<>();
         animators.add(ObjectAnimator.ofFloat(actionMode, View.ALPHA, 0.0f));
         if (actionModeHidingViews != null) {

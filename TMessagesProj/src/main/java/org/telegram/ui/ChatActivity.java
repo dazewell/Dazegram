@@ -5395,7 +5395,7 @@ public class ChatActivity extends BaseFragment implements
         contentView.setOccupyStatusBar(!inBubbleMode && !isInsideContainer && !inPreviewMode);
 
         // NagramX: chat-only provider can flatten MD3 header chrome without changing other topPanelChatActivity consumers.
-        actionBar.setupGlass(glassBackgroundDrawableFactory, isReport() ? BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null) : BlurredBackgroundProviderImpl.chatHeaderSurface(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null), ChatObject.isForum(currentChat), xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader());
+        actionBar.setupGlass(glassBackgroundDrawableFactory, isReport() ? BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null) : BlurredBackgroundProviderImpl.chatHeaderSurface(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null, actionBar), ChatObject.isForum(currentChat), xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader());
         actionBar.setChatAvatarContainer(avatarContainer);
         avatarContainer.setActionBar(actionBar);
         // NagramX: the Classic solid header needs light foregrounds the 12.4.0 palette no longer has.
@@ -19097,7 +19097,7 @@ public class ChatActivity extends BaseFragment implements
             int statusBarColor = wallpaperBitmapProvider.getStatusBarColor(source);
             // NagramX: an MD3 header paints its own mostly opaque surface over the wallpaper, so icon contrast must follow that composite.
             if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader()) {
-                statusBarColor = ColorUtils.compositeColors((isReport() ? BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null) : BlurredBackgroundProviderImpl.chatHeaderSurface(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null)).getBackgroundColor(), ColorUtils.setAlphaComponent(statusBarColor, 255));
+                statusBarColor = ColorUtils.compositeColors((isReport() ? BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null) : BlurredBackgroundProviderImpl.chatHeaderSurface(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null, actionBar)).getBackgroundColor(), ColorUtils.setAlphaComponent(statusBarColor, 255));
             }
             final float statusBarBrightness = AndroidUtilities.computePerceivedBrightness(statusBarColor);
             final int navigationBarColor = wallpaperBitmapProvider.getNavigationBarColor(source);
@@ -48244,6 +48244,8 @@ public class ChatActivity extends BaseFragment implements
         if (actionBar == null) {
             return !Theme.isCurrentThemeDark();
         }
+        // NagramX: selection mode drops the Classic solid header, so the icons follow the theme's own header there.
+        if (xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeaderSelectionShowing(actionBar)) return ColorUtils.calculateLuminance(xyz.nextalone.nagram.helpers.InterfaceStyleController.chatHeaderSurfaceColor(themeDelegate)) > 0.7f;
         return !shouldHaveLightStatusBarIcons;
     }
 

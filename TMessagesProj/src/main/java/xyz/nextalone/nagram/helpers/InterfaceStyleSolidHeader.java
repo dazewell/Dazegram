@@ -109,6 +109,10 @@ public final class InterfaceStyleSolidHeader {
         return InterfaceStyleController.applyChatHeader() && classic();
     }
 
+    public static boolean chatHeaderSelectionShowing(ActionBar actionBar) {
+        return actionBar != null && actionBar.isActionModeShowed() && chatHeaderClassic();
+    }
+
     private static boolean chatListTopBarClassic() {
         return InterfaceStyleController.applyChatListTopBar() && classic();
     }
