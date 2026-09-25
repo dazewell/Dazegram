@@ -372,7 +372,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         addView(cameraContainer, new LayoutParams(AndroidUtilities.roundPlayingMessageSize, AndroidUtilities.roundPlayingMessageSize, Gravity.CENTER));
         addView(flashViews.foregroundView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL));
 
-        zoomControlView = new InstantZoomControlView(context, isDarkAppearance(), Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider));
+        zoomControlView = new InstantZoomControlView(context, Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider), glyphColor(isDarkAppearance()));
         zoomControlView.setAlpha(0.0f);
         zoomControlView.setContentDescription(LocaleController.getString(R.string.AccDescrZoomControl));
         zoomControlView.setDelegate(new InstantZoomControlView.Delegate() {
@@ -647,7 +647,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private void updateThemeColors() {
         final boolean dark = isDarkAppearance();
         if (zoomControlView != null) {
-            zoomControlView.updateColors(dark, Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider));
+            zoomControlView.updateColors(Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider), glyphColor(dark));
         }
         // NagramX: only the new-design flash button carries a fixed tint here; the legacy one is driven
         // by flashViews, so leave it alone
@@ -665,7 +665,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     private int glyphColor(boolean dark) {
-        return dark ? Color.WHITE : ColorUtils.blendARGB(Color.WHITE, Color.BLACK, 0.6f);
+        return xyz.nextalone.nagram.ui.Md3ButtonColorProvider.glyphColor(resourcesProvider, dark ? Color.WHITE : ColorUtils.blendARGB(Color.WHITE, Color.BLACK, 0.6f)); // NagramX: MD3 Buttons share one glyph tint
     }
 
     // NagramX: the flash glyphs are single-channel lotties, so RLottieDrawable draws them as a bare alpha

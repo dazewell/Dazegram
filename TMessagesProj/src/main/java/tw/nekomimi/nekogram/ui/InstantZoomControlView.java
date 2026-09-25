@@ -3,7 +3,6 @@ package tw.nekomimi.nekogram.ui;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.RectF;
@@ -28,11 +27,6 @@ import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorPro
  * always 104dp tall; the rows move inside it. The flip button stays even when the camera has no zoom.
  */
 public class InstantZoomControlView extends View {
-
-    // the flash button's glyph is a white lottie multiplied by this blend (see
-    // FlashViews.ImageViewInvertable.setInvert, fed 0.6f by the recorder in a light theme), so reusing the
-    // same number here is what keeps the two rows of controls reading as one set instead of two
-    private static final float LIGHT_GLYPH_INVERT = 0.6f;
 
     private int chipColor;
     private int glyphColor;
@@ -114,7 +108,7 @@ public class InstantZoomControlView extends View {
     private final ButtonAccent plusAccent = new ButtonAccent();
     private final ButtonAccent switchAccent = new ButtonAccent();
 
-    public InstantZoomControlView(Context context, boolean dark, int chipBackgroundColor) {
+    public InstantZoomControlView(Context context, int chipBackgroundColor, int glyphColor) {
         super(context);
         minusDrawable = context.getResources().getDrawable(R.drawable.zoom_minus).mutate();
         plusDrawable = context.getResources().getDrawable(R.drawable.zoom_plus).mutate();
@@ -123,16 +117,17 @@ public class InstantZoomControlView extends View {
         pressedKnobDrawable = context.getResources().getDrawable(R.drawable.zoom_round_b);
         ringPaint.setStyle(Paint.Style.STROKE);
         ringPaint.setStrokeWidth(AndroidUtilities.dpf2(1.5f));
-        updateColors(dark, chipBackgroundColor);
+        updateColors(chipBackgroundColor, glyphColor);
     }
 
     // re-read the recorder's colors so the chips follow a live theme flip (e.g. battery-saver dark
-    // mode) instead of keeping the colors captured when the recorder was first built
-    public void updateColors(boolean dark, int chipBackgroundColor) {
+    // mode) instead of keeping the colors captured when the recorder was first built. The recorder owns
+    // the glyph color so the zoom chips and its flash/infinite row always share one tint
+    public void updateColors(int chipBackgroundColor, int glyphColor) {
         // only used when there's no glass chip to draw: a flat message-panel circle, the color the flash
         // button's background falls back to when blur is off
         chipColor = ColorUtils.setAlphaComponent(chipBackgroundColor, 0xFF);
-        glyphColor = dark ? Color.WHITE : ColorUtils.blendARGB(Color.WHITE, Color.BLACK, LIGHT_GLYPH_INVERT);
+        this.glyphColor = glyphColor;
         minusDrawable.setColorFilter(glyphColor, PorterDuff.Mode.SRC_IN);
         plusDrawable.setColorFilter(glyphColor, PorterDuff.Mode.SRC_IN);
         switchDrawable.setColorFilter(glyphColor, PorterDuff.Mode.SRC_IN);

@@ -47,4 +47,9 @@ public class Md3ButtonColorProvider extends BlurredBackgroundColorProviderThemed
     public int getStrokeColorBottom() {
         return InterfaceStyleController.applyButtons() ? 0 : super.getStrokeColorBottom();
     }
+
+    /** The glyph tint flat MD3 buttons share, the one the chat's side buttons already draw with; stockColor otherwise. */
+    public static int glyphColor(Theme.ResourcesProvider resourcesProvider, int stockColor) {
+        return InterfaceStyleController.applyButtons() ? Theme.getColor(Theme.key_glass_defaultIcon, resourcesProvider) : stockColor;
+    }
 }
