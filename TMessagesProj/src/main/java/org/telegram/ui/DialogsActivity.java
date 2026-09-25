@@ -597,7 +597,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private int getDialogsTopSurfaceColor() {
-        return xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListSurface(ColorUtils.setAlphaComponent(getThemedColor(getDialogsTopSurfaceColorKey()), 255), whiteActionBar ? searchAnimationProgress : 0);
+        return xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListSurface(ColorUtils.setAlphaComponent(getThemedColor(getDialogsTopSurfaceColorKey()), 255), Math.max(whiteActionBar ? searchAnimationProgress : 0, progressToActionMode));
     }
 
     // NagramX: this fragment has no resources provider, so the Classic top-bar colours are scoped here.
@@ -13180,8 +13180,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             return rightSlidingDialogContainer.getFragment().isLightStatusBar();
         }
         int color = getThemedColor(Theme.key_windowBackgroundWhite);
-        // NagramX: the Classic solid top bar is dark, so its icons follow the surface instead; search turns it white.
-        if (xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListTopBar()) color = xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListSurface(ColorUtils.setAlphaComponent(getThemedColor(getDialogsTopSurfaceColorKey()), 255), searching && (whiteActionBar || !onlySelect) ? 1f : 0f);
+        // NagramX: the Classic solid top bar is dark, so its icons follow the surface instead; search and selection turn it white.
+        if (xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListTopBar()) color = xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListSurface(ColorUtils.setAlphaComponent(getThemedColor(getDialogsTopSurfaceColorKey()), 255), searching && (whiteActionBar || !onlySelect) || actionBar != null && actionBar.isActionModeShowed() ? 1f : 0f);
         return ColorUtils.calculateLuminance(color) > 0.7f;
     }
 
