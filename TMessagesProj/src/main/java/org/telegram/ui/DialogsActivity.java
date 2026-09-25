@@ -964,7 +964,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         && iBlur3SourceGlassFrosted != null
                         && canvas.isHardwareAccelerated()
                         && BlurredBackgroundProviderImpl.checkBlurEnabled(currentAccount, resourceProvider)
-                        && !xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListTopBar()) {
+                        && (!xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListTopBar() || progressToActionMode > 0)) {
                     iBlur3SourceGlassFrosted.draw(canvas, 0, surfaceTop, getMeasuredWidth(), surfaceBottom);
                     final int oldColor = actionBarDefaultPaint.getColor();
                     final int oldAlpha = actionBarDefaultPaint.getAlpha();
