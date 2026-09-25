@@ -1432,7 +1432,7 @@ object NaConfig {
         addConfig(
             "InterfaceStyleApplyComposer",
             ConfigItem.configTypeBool,
-            false
+            true
         )
     val interfaceStyleApplyBottomNavigation =
         addConfig(

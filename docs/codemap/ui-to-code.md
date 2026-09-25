@@ -22,8 +22,8 @@ visible only after the Material Design 3 radio is selected
 Chat list top bar, Buttons, Composer, Bottom navigation, and Panel dividers;
 the Composer row is assigned only while `COMPOSER_STYLE_AVAILABLE` is true,
 which it now is (`InterfaceStyleActivity.java:293,419-421`;
-`InterfaceStyleController.java:33-36`). Its stored default is off
-(`NaConfig.kt:1431-1435`). Classic/Day header colours stay hidden by
+`InterfaceStyleController.java:33-36`). Like every other Apply to row, its
+stored default is on (`NaConfig.kt:1431-1435`). Classic/Day header colours stay hidden by
 `MATCH_CLASSIC_DAY_HEADER_AVAILABLE = false`
 (`InterfaceStyleController.java:47-48`).
 
