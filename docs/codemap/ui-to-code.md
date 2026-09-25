@@ -202,9 +202,9 @@ The input gets a 42dp field with a concentric 10dp radius, an on-surface tint at
 dark themes) laid over the island like the reply strip's 6%, so the frost shows
 through both, and no focus ring (`:54-59`, `:203-208`, `:480-485`). The recorded-preview
 trash is a Lottie that fakes its stripes by painting them in `key_chat_messagePanelBackground`,
-so on the field they read as bars; under MD3 it takes the field over the opaque island
-and the composer icon tint instead (`ChatActivityEnterView.java:13302-13304`;
-`ComposerMd3Surface.java:568-582`). The reply strip shares its column, is centred
+so on the field they read as bars; under MD3 the chat's own enter view gives it the field over
+the opaque island and the composer icon tint instead (`ChatActivityEnterView.java:13302-13304`;
+`ComposerMd3Surface.java:569-583`). The reply strip shares its column, is centred
 on the upstream close button and carries its accent as a separate rounded bar
 (`:465-478`); under MD3 the close button draws without its glass disc
 (`InputSatellites.java:97-102`). In a channel the Join/Mute fill was never the
