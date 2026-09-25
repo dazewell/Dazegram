@@ -237,14 +237,17 @@ The Buttons switch is read by two providers, both flat under
 `ComposerGlassProvider` ROLE_BUTTON (`ChatActivity.java:4202`) feeds the side,
 action and channel buttons and the round-video recorder, which forwards it to
 its flash/infinite row and zoom chips (`ChatActivity.java:12066`;
-`InstantCameraView.java:489-494`). The recording lock and view-once chips build
+`InstantCameraView.java:418-447`, `:489-494`). The recording lock and view-once chips build
 their own `Md3ButtonColorProvider` over `key_chat_messagePanelVoiceLockBackground`
-(`ChatActivityEnterView.java:1840`); it skips `BlurredBackgroundProvider`, so
-Liquid Glass keeps the drawable's default stroke and shadow. Stories have no
-glass buttons: `PeerStoriesView.java:549` feeds only the reply field and emoji
-keyboard (`:565-566`). Still glass: the Dialogs sub-FAB, whose fill is already
+(`ChatActivityEnterView.java:1840`); the deleted-messages and bookmarks screens
+give one to their page-down button over `key_chat_messagePanelBackground`
+(`AyuViewDeleted.java:503`; `BookmarksActivity.java:486`). It skips `BlurredBackgroundProvider`, so
+Liquid Glass keeps the drawable's default stroke and shadow. Still glass: story
+controls, whose provider at `PeerStoriesView.java:549` feeds the reply field and
+also the comment, paid-reaction, mute and side-control buttons (`:3089`, `:3099`,
+`:3122`, `:3695`); the Dialogs sub-FAB, whose fill is already
 opaque, so only its stroke and shadow remain, and it has no elevation of its own
-(`FragmentFloatingButton.java:72-75`, `:77-97`); EmojiView's buttons
+(`FragmentFloatingButton.java:72-75`, `:77-97`, `:155`); EmojiView's buttons
 (`BlurredBackgroundProviderImpl.java:97`); and PhotoViewer's zero-fill rings
 (`:324`).
 *(Established 2026-09-25, during `#interface-style`.)*
