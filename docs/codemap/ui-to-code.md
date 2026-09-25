@@ -227,10 +227,27 @@ the trailing group while it overflows (`:1147-1174`). `attachGlass` still clears
 the bubbles under MD3, with the island painted behind them (`:233-235`). The
 layout editor draws the same frosted island and tonal field
 (`ComposerLayoutActivity.java:1422-1423`, `:1566-1570`). Buttons-role surfaces
-keep their own provider (`ChatActivity.java:4202`). Story controls and Dialogs
-floating buttons remain separate follow-up parity (`PeerStoriesView.java:549`;
-`FragmentFloatingButton.java:164-168`).
+keep their own provider (`ChatActivity.java:4202`).
 *(Established 2026-09-22, during `#interface-style`.)*
+
+## MD3 Buttons reaches chat buttons through two providers
+
+The Buttons switch is read by two providers, both flat under
+`applyButtons()`: opaque own theme colour, no stroke, no shadow.
+`ComposerGlassProvider` ROLE_BUTTON (`ChatActivity.java:4202`) feeds the side,
+action and channel buttons and the round-video recorder, which forwards it to
+its flash/infinite row and zoom chips (`ChatActivity.java:12066`;
+`InstantCameraView.java:489-494`). The recording lock and view-once chips build
+their own `Md3ButtonColorProvider` over `key_chat_messagePanelVoiceLockBackground`
+(`ChatActivityEnterView.java:1840`); it skips `BlurredBackgroundProvider`, so
+Liquid Glass keeps the drawable's default stroke and shadow. Stories have no
+glass buttons: `PeerStoriesView.java:549` feeds only the reply field and emoji
+keyboard (`:565-566`). Still glass: the Dialogs sub-FAB, whose fill is already
+opaque, so only its stroke and shadow remain, and it has no elevation of its own
+(`FragmentFloatingButton.java:72-75`, `:77-97`); EmojiView's buttons
+(`BlurredBackgroundProviderImpl.java:97`); and PhotoViewer's zero-fill rings
+(`:324`).
+*(Established 2026-09-25, during `#interface-style`.)*
 
 ## BottomBuilder section cards are opt-in and isolated to Early Send
 
