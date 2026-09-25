@@ -2038,7 +2038,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
 
     private int getThemedColor(int key) {
         // NagramX: only a chat's own header (parentFragment is set only for ChatActivity) takes the Classic header colours.
-        return parentFragment != null ? xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeaderColor(key, Theme.getColor(key, resourcesProvider)) : Theme.getColor(key, resourcesProvider);
+        return parentFragment != null && !parentFragment.isReport() ? xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeaderColor(key, Theme.getColor(key, resourcesProvider)) : Theme.getColor(key, resourcesProvider);
     }
 
     public void updateColors() {
