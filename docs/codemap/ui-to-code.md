@@ -251,7 +251,7 @@ give one to their page-down button over `key_chat_messagePanelBackground`
 Liquid Glass keeps the drawable's default stroke and shadow. The glyphs share
 `key_glass_defaultIcon`, the side buttons' tint (`ChatActivityBlurredRoundButton.java:169`);
 the recorder's hardcoded white/grey glyphs switch to it through
-`Md3ButtonColorProvider.glyphColor` (`InstantCameraView.java:667-668`;
+`Md3ButtonColorProvider.glyphColor` (`InstantCameraView.java:667-670`;
 `Md3ButtonColorProvider.java:52-54`). Still glass: story
 controls, whose provider at `PeerStoriesView.java:549` feeds the reply field and
 also the comment, paid-reaction, mute and side-control buttons (`:3089`, `:3099`,
