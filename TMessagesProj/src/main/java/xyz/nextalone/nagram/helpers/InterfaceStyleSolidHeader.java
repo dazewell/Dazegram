@@ -6,7 +6,6 @@ import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.drawable.Drawable;
-import android.util.SparseArray;
 import android.util.SparseIntArray;
 import android.view.View;
 
@@ -157,24 +156,12 @@ public final class InterfaceStyleSolidHeader {
         return ColorUtils.blendARGB(surfaceColor, ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_windowBackgroundWhite), 255), Math.min(1f, searchProgress));
     }
 
-    // Theme descriptions re-run the chat delegate every animation frame, so the tinted copies are reused.
-    private static final SparseArray<Drawable> tintedSources = new SparseArray<>();
-    private static final SparseArray<Drawable> tintedCopies = new SparseArray<>();
-    private static final SparseIntArray tintedColors = new SparseIntArray();
-
     public static Drawable chatHeaderIcon(Drawable icon, int colorKey) {
         if (icon == null || icon.getConstantState() == null || !chatHeaderClassic()) {
             return icon;
         }
-        final int color = lookup(CHAT_HEADER, colorKey, Color.WHITE);
-        Drawable copy = tintedCopies.get(colorKey);
-        if (copy == null || tintedSources.get(colorKey) != icon || tintedColors.get(colorKey) != color) {
-            copy = icon.getConstantState().newDrawable().mutate();
-            copy.setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.MULTIPLY));
-            tintedSources.put(colorKey, icon);
-            tintedCopies.put(colorKey, copy);
-            tintedColors.put(colorKey, color);
-        }
+        final Drawable copy = icon.getConstantState().newDrawable().mutate();
+        copy.setColorFilter(new PorterDuffColorFilter(lookup(CHAT_HEADER, colorKey, Color.WHITE), PorterDuff.Mode.MULTIPLY));
         return copy;
     }
 
