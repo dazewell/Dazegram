@@ -13300,8 +13300,8 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     private void updateRecordedDeleteIconColors() {
         int dotColor = getThemedColor(Theme.key_chat_recordedVoiceDot);
-        int background = xyz.nextalone.nagram.ui.composer.ComposerMd3Surface.recordedDeleteStripeColor(resourcesProvider, getThemedColor(Theme.key_chat_messagePanelBackground)); // NagramX: the stripes fake holes in the colour behind them, which the MD3 field tints
-        int greyColor = xyz.nextalone.nagram.ui.composer.ComposerMd3Surface.recordedDeleteIconColor(resourcesProvider, getThemedColor(Theme.key_chat_messagePanelVoiceDelete));
+        int background = xyz.nextalone.nagram.ui.composer.ComposerMd3Surface.recordedDeleteStripeColor(resourcesProvider, composerToolbarEnabled, getThemedColor(Theme.key_chat_messagePanelBackground)); // NagramX: the stripes fake holes in the colour behind them, which the MD3 field tints
+        int greyColor = xyz.nextalone.nagram.ui.composer.ComposerMd3Surface.recordedDeleteIconColor(resourcesProvider, composerToolbarEnabled, getThemedColor(Theme.key_chat_messagePanelVoiceDelete));
 
         if (recordDeleteImageView != null) {
             recordDeleteImageView.setLayerColor("Cup Red", dotColor);
