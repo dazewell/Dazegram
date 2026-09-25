@@ -52,7 +52,9 @@ public final class PrivacyProfileDurationSheet {
     };
 
     private static String presetLabel(long ms) {
-        return formatDuration((int) (ms / 3600000L), (int) ((ms % 3600000L) / 60000L));
+        // Compact pills: anything under two hours reads in minutes (60m, 90m), the rest in hours.
+        if (ms < 2 * 3600000L) return LocaleController.formatString(R.string.SlowmodeMinutes, (int) (ms / 60000L));
+        return LocaleController.formatString(R.string.SlowmodeHours, (int) (ms / 3600000L));
     }
 
     public static void show(BaseFragment fragment, PrivacyProfile profile, Runnable onActivated) {
