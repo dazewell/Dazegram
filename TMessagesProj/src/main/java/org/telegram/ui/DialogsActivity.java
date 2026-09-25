@@ -5661,7 +5661,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         actionBarDefaultPaint.setColor(getDialogsTopSurfaceColor());
         // NagramX: the Classic solid top bar needs light foregrounds the 12.4.0 palette no longer has.
-        xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.applyChatListTopBar(actionBar, fragmentSearchField, folderId != 0 || communityId != 0);
+        xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.applyChatListTopBarOnCreate(actionBar, fragmentSearchField, folderId != 0 || communityId != 0);
         /*
         if (inPreviewMode) {
             final TLRPC.User currentUser = getUserConfig().getCurrentUser();
@@ -13180,8 +13180,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             return rightSlidingDialogContainer.getFragment().isLightStatusBar();
         }
         int color = getThemedColor(Theme.key_windowBackgroundWhite);
-        // NagramX: the Classic solid top bar is dark, so its icons follow the surface instead.
-        if (xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListTopBar()) color = getDialogsTopSurfaceColor();
+        // NagramX: the Classic solid top bar is dark, so its icons follow the surface instead; search turns it white.
+        if (xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListTopBar()) color = xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListSurface(ColorUtils.setAlphaComponent(getThemedColor(getDialogsTopSurfaceColorKey()), 255), searching && (whiteActionBar || !onlySelect) ? 1f : 0f);
         return ColorUtils.calculateLuminance(color) > 0.7f;
     }
 

@@ -11,6 +11,8 @@ import android.view.View;
 
 import androidx.core.graphics.ColorUtils;
 
+import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.NotificationCenter;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
@@ -191,6 +193,15 @@ public final class InterfaceStyleSolidHeader {
                 }
             }
             avatarContainer.updateColors();
+        }
+    }
+
+    // The system-bar check at startup runs before this fragment has a view, so it falls back to the host's
+    // white action bar; ask again once the view is attached.
+    public static void applyChatListTopBarOnCreate(ActionBar actionBar, FragmentSearchField searchField, boolean archived) {
+        applyChatListTopBar(actionBar, searchField, archived);
+        if (chatListTopBarClassic()) {
+            AndroidUtilities.runOnUIThread(() -> NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.needCheckSystemBarColors));
         }
     }
 
