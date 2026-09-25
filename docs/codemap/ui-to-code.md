@@ -163,9 +163,9 @@ each give the island a rect, and the cross-fade weights ease between them
 and top, runs down to the screen's bottom edge and its bottom corners go
 square, so no edge crosses the display's rounded corners. `dockFactor()` measures the lift as the container's bottom inset less
 the resting system-bar and cutout inset `WindowInsetsStateHolder` builds it from.
-The shape leaves the sheet on a 450ms `AnimatedFloat` as soon as the keyboard
-or emoji panel starts lifting it, and returns only once it has landed, so the
-morph outlasts the keyboard (`ComposerMd3Surface.java:269-281`, `:392-398`; `WindowInsetsStateHolder.java:91-92`). Like the MD3 chat header it is
+The shape switches between sheet and island on a 500ms ease-out `AnimatedFloat`
+when the keyboard or emoji panel is halfway through that 48dp, either way, so
+the morph outlasts the keyboard (`ComposerMd3Surface.java:269-281`, `:392-398`; `WindowInsetsStateHolder.java:91-92`). Like the MD3 chat header it is
 frosted when the chat has a frosted source and blur is enabled for the account,
 keeping 70% of the Blur strength setting, and opaque otherwise (`:162-191`). It
 gets its own factory over that source because the shared frosted factory can
