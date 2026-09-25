@@ -80,7 +80,7 @@ public final class PrivacyProfilesController {
     private static boolean sevenDayCapHintShown;
 
     /**
-     * FOR is a stock preset (1 hour / 8 hours / 1 day) and deliberately does NOT overwrite the
+     * FOR is a stock preset (15 minutes up to 8 hours) and deliberately does NOT overwrite the
      * remembered custom duration; FOR_CUSTOM is the wheel picker's own result and is what gets
      * remembered per profile.
      */
