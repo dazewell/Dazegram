@@ -288,7 +288,7 @@ keep their own provider (`ChatActivity.java:4202`).
 
 ## MD3 Buttons reaches chat buttons through two providers
 
-The Buttons switch is read by two providers, both flat under
+The Buttons switch is read by two shared providers and a few targeted hooks, all flat under
 `applyButtons()`: opaque own theme colour, no stroke, no shadow.
 `ComposerGlassProvider` ROLE_BUTTON (`ChatActivity.java:4202`) feeds the side,
 action and channel buttons and the round-video recorder, which forwards it to
