@@ -48,6 +48,9 @@ public final class PersonalRepliesStorage {
      */
     public static final int THREAD_LIMIT = 500;
 
+    /** Backstop on the queries one thread walk may put on the storage queue. */
+    private static final int THREAD_QUERY_LIMIT = 1000;
+
     private PersonalRepliesStorage() {}
 
     /**
@@ -191,30 +194,44 @@ public final class PersonalRepliesStorage {
             ArrayList<Integer> frontier = new ArrayList<>();
             frontier.add(topId);
             int remaining = THREAD_LIMIT;
-            // each round either adds unvisited ids to the next frontier or ends the walk, so it can't
-            // outlast the cap anyway; the round bound is there so no shape of stored data can keep the
-            // storage queue, and every other query waiting on it, busy
-            for (int round = 0; round < THREAD_LIMIT && !frontier.isEmpty() && remaining > 0; round++) {
-                cursor = database.queryFinalized(String.format(Locale.US,
-                        "SELECT " + THREAD_COLUMNS + " FROM messages_v2 as m WHERE m.uid = %d AND m.thread_reply_id IN (%s) ORDER BY m.mid ASC LIMIT %d",
-                        dialogId, TextUtils.join(",", frontier), remaining));
+            int queries = 0;
+            // every query either moves past the rows it read or ends the walk, so it can't outlast the cap
+            // anyway; the query bound is there so no shape of stored data can keep the storage queue, and
+            // every other query waiting on it, busy
+            while (!frontier.isEmpty() && remaining > 0 && queries < THREAD_QUERY_LIMIT) {
+                String parents = TextUtils.join(",", frontier);
                 ArrayList<Integer> next = new ArrayList<>();
-                while (cursor.next()) {
-                    int id = (int) cursor.longValue(3);
-                    if (visited.contains(id)) {
-                        continue;
+                // rows the checks below reject still take up LIMIT slots, so page through the level until it
+                // runs dry rather than moving on after one short read and losing the replies sorted after them
+                long lastMid = Integer.MIN_VALUE - 1L;
+                boolean more = true;
+                while (more && remaining > 0 && queries < THREAD_QUERY_LIMIT) {
+                    int limit = remaining;
+                    queries++;
+                    cursor = database.queryFinalized(String.format(Locale.US,
+                            "SELECT " + THREAD_COLUMNS + " FROM messages_v2 as m WHERE m.uid = %d AND m.thread_reply_id IN (%s) AND m.mid > %d ORDER BY m.mid ASC LIMIT %d",
+                            dialogId, parents, lastMid, limit));
+                    int read = 0;
+                    while (cursor.next()) {
+                        read++;
+                        int id = (int) cursor.longValue(3);
+                        lastMid = id;
+                        if (visited.contains(id)) {
+                            continue;
+                        }
+                        TLRPC.Message message = readRow(cursor, dialogId, selfId, true, usersToLoad, chatsToLoad);
+                        if (message == null) {
+                            continue;
+                        }
+                        visited.add(id);
+                        next.add(id);
+                        result.add(message);
+                        remaining--;
                     }
-                    TLRPC.Message message = readRow(cursor, dialogId, selfId, true, usersToLoad, chatsToLoad);
-                    if (message == null) {
-                        continue;
-                    }
-                    visited.add(id);
-                    next.add(id);
-                    result.add(message);
-                    remaining--;
+                    cursor.dispose();
+                    cursor = null;
+                    more = read == limit;
                 }
-                cursor.dispose();
-                cursor = null;
                 frontier = next;
             }
         } catch (Throwable t) {
