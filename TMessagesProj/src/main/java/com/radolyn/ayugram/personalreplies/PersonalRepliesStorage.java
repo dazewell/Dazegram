@@ -209,8 +209,9 @@ public final class PersonalRepliesStorage {
                 while (more && remaining > 0 && queries < THREAD_QUERY_LIMIT) {
                     int limit = remaining;
                     queries++;
+                    // the explicit != 0 is what lets SQLite pick the partial index, whose own WHERE it has to see
                     cursor = database.queryFinalized(String.format(Locale.US,
-                            "SELECT " + THREAD_COLUMNS + " FROM messages_v2 as m WHERE m.uid = %d AND m.thread_reply_id IN (%s) AND m.mid > %d ORDER BY m.mid ASC LIMIT %d",
+                            "SELECT " + THREAD_COLUMNS + " FROM messages_v2 as m WHERE m.uid = %d AND m.thread_reply_id != 0 AND m.thread_reply_id IN (%s) AND m.mid > %d ORDER BY m.mid ASC LIMIT %d",
                             dialogId, parents, lastMid, limit));
                     int read = 0;
                     while (cursor.next()) {
