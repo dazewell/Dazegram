@@ -89,9 +89,9 @@ follow-up slice.
 black, so the old blue cannot come from any palette key.
 `InterfaceStyleSolidHeader` holds the pre-12.4.0 values and a
 render gate on `Theme.getActiveTheme()`, not `getCurrentTheme()`, which is the
-day-theme choice and stays "Blue" under auto-night (`InterfaceStyleSolidHeader.java:77-87`;
+day-theme choice and stays "Blue" under auto-night (`InterfaceStyleSolidHeader.java:78-88`;
 `Theme.java:6586-6587,6621-6622`). Classic accents go through the palette's own
-hue shift, `Theme.changeColorAccent(ThemeInfo, ...)` (`InterfaceStyleSolidHeader.java:121-128`).
+hue shift, `Theme.changeColorAccent(ThemeInfo, ...)` (`InterfaceStyleSolidHeader.java:122-129`).
 
 Chat header: the surface comes from `chatHeaderSurface(...)`, used only by the
 header and its status-bar composite (`ChatActivity.java:5398,19100`;
@@ -114,9 +114,9 @@ same method (`DialogsActivity.java:14115`); titles are pushed by
 (`DialogsActivity.java:5664,12584`). FilterTabsView gets a scoped provider and
 DialogStoriesCell, which otherwise bypasses the fragment when its provider is
 null, routes through it (`DialogsActivity.java:3752`;
-`DialogStoriesCell.java:2249-2256`). The frosted branch is skipped and the
+`DialogStoriesCell.java:2249-2256`). My Story's "+" disc is `key_telegram_color`, so the stories table maps it to white (`DialogStoriesCell.java:1937`; `InterfaceStyleSolidHeader.java:71`). The frosted branch is skipped and the
 paint follows the search blend (`DialogsActivity.java:962-967,977-978`), and
-`isLightStatusBar()` follows the surface, or white while searching (`:13182-13185`). The main list is a tab of MainTabsActivity, which asks the visible tab only once it has a view and otherwise falls back to its own white action bar (`ViewPagerActivity.java:217-219`), so createView asks for a re-check (`InterfaceStyleSolidHeader.java:203-210`). The NagramX title span and the ActionBar subtitle overlay read the logo key through their own providers, so both get the scoped one (`TypefaceHelper.java:161-162`; `DialogsActivity.java:3271-3272`).
+`isLightStatusBar()` follows the surface, or white while searching (`:13182-13185`). The main list is a tab of MainTabsActivity, which asks the visible tab only once it has a view and otherwise falls back to its own white action bar (`ViewPagerActivity.java:217-219`), so createView asks for a re-check (`InterfaceStyleSolidHeader.java:204-211`). The NagramX title span and the ActionBar subtitle overlay read the logo key through their own providers, so both get the scoped one (`TypefaceHelper.java:161-162`; `DialogsActivity.java:3271-3272`).
 
 Selection mode keeps its 12.4.0 look. In chats the MD3 action mode is drawn straight on the header surface, so `chatHeaderSurface` stays themed while action mode shows, and ActionBar refreshes its cached glass colour on show and hide (`ActionBar.java:937,1110`). In the chat list the tabs switch to `profile_tab*` keys meant for white (`DialogsActivity.java:10463`), so the surface blends to white by `progressToActionMode` as it does for search (`:600`), and frosts again while selecting, matching the header above it (`:967`).
 
@@ -286,7 +286,7 @@ layout editor draws the same frosted island and tonal field
 keep their own provider (`ChatActivity.java:4202`).
 *(Established 2026-09-22, during `#interface-style`.)*
 
-## MD3 Buttons reaches chat buttons through two providers
+## MD3 Buttons reaches buttons through shared providers and targeted hooks
 
 The Buttons switch is read by two shared providers and a few targeted hooks, all flat under
 `applyButtons()`: opaque own theme colour, no stroke, no shadow.
@@ -302,22 +302,34 @@ Liquid Glass keeps the drawable's default stroke and shadow. The glyphs share
 `key_glass_defaultIcon`, the side buttons' tint (`ChatActivityBlurredRoundButton.java:169`);
 the recorder's hardcoded white/grey glyphs switch to it through
 `Md3ButtonColorProvider.glyphColor` (`InstantCameraView.java:667-670`;
-`Md3ButtonColorProvider.java:52-54`). The Dialogs story/camera sub-FAB, the
+`Md3ButtonColorProvider.java:58-60`). The Dialogs story/camera sub-FAB, the
 only `isSubButton` `FragmentFloatingButton` (`DialogsActivity.java:4999`), keeps
 its opaque fill and drops its own stroke and shadow in place
 (`FragmentFloatingButton.java:80-92`); `Md3ButtonColorProvider.elevate` gives
 it the main FAB's 0.5dp `translationZ` (`:72-75`), outlined to the drawable's
 padded circle rather than the 48dp bounds (`:100`;
-`Md3ButtonColorProvider.java:61-66`). EmojiView's backspace, search, type-tab
+`Md3ButtonColorProvider.java:67-72`). EmojiView's backspace, search, type-tab
 and sticker-settings buttons all take `BlurredBackgroundProviderImpl.emojiViewButton`
 from the view's own constructor, so every host gets them
 (`EmojiView.java:2916`, `:2942-2970`); that provider goes opaque
 `key_windowBackgroundWhite` with no stroke or shadow in place
-(`BlurredBackgroundProviderImpl.java:97-110`). Still glass: story
-controls, whose provider at `PeerStoriesView.java:549` feeds the reply field and
-also the comment, paid-reaction, mute and side-control buttons (`:3089`, `:3099`,
-`:3122`, `:3695`); and PhotoViewer's zero-fill rings
-(`BlurredBackgroundProviderImpl.java:333-344`).
+(`BlurredBackgroundProviderImpl.java:97-110`).
+
+Story controls get their own `Md3ButtonColorProvider` from
+`PeerStoriesView.buttonColorProvider()` (`PeerStoriesView.java:8557-8562`), same key
+and 0.8 alpha as the shared provider at `:549`, which stays glass because it
+also draws the reply field and emoji keyboard (`:565-566`). The comment,
+paid-reaction, mute and side-control buttons take it (`:3089`, `:3099`, `:3122`,
+`:3695`). The first three paint a hardcoded opaque `0xFF20242A`, which the paid
+reaction blends to gold as it fills (`PaidReactionButton.java:448-452`), and read only
+the stroke from the provider (`CommentButton.java:60-61`; `StrokeDrawable.java:51-55`),
+so for them MD3 just drops the stroke; the side controls go opaque
+`key_chat_messagePanelBackground`, which the stories' dark provider sets to that
+same `0xFF20242A` (`DarkThemeResourceProvider.java:90`). No glyph needs
+moving: the comment and mute `0xFFD2D3D4` (`CommentButton.java:68`;
+`MuteButton.java:75`) is exactly the stories' `key_glass_defaultIcon`, 80% white
+(`DarkThemeResourceProvider.java:89`), composited over that fill. Still glass:
+PhotoViewer's zero-fill rings (`BlurredBackgroundProviderImpl.java:333-344`).
 *(Established 2026-09-25, during `#interface-style`.)*
 
 ## BottomBuilder section cards are opt-in and isolated to Early Send

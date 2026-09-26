@@ -3086,7 +3086,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 
     private void createCommentButton() {
         if (commentButton != null || getContext() == null) return;
-        commentButton = new CommentButton(getContext(), blurredBackgroundColorProvider);
+        commentButton = new CommentButton(getContext(), buttonColorProvider()); // NagramX: own provider, flat under MD3 Buttons
         commentButton.setOnClickListener(v -> {
             liveCommentsView.setCollapsed(!liveCommentsView.isCollapsed(), true);
         });
@@ -3096,7 +3096,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     private void createPaidReactionsButton() {
         if (starsButton != null || getContext() == null) return;
         starsButtonEffectsView = new PaidReactionButton.PaidReactionButtonEffectsView(getContext(), currentAccount);
-        starsButton = new PaidReactionButton(getContext(), starsButtonEffectsView, blurredBackgroundColorProvider);
+        starsButton = new PaidReactionButton(getContext(), starsButtonEffectsView, buttonColorProvider()); // NagramX: own provider, flat under MD3 Buttons
         starsButton.setOnClickListener(v -> {
             if (disabledPaidFeatures(false)) {
                 liveCommentsView.openStarsSheet(disabledPaidFeatures(false));
@@ -3119,7 +3119,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 
     private void createMuteButton() {
         if (muteButton != null || getContext() == null) return;
-        muteButton = new MuteButton(getContext(), blurredBackgroundColorProvider);
+        muteButton = new MuteButton(getContext(), buttonColorProvider()); // NagramX: own provider, flat under MD3 Buttons
         muteButton.setOnClickListener(v -> {
             if (LivePlayer.recording == null) return;
             final boolean muted = LivePlayer.recording.isMuted();
@@ -3692,7 +3692,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
             chatActivityEnterView.setVisibility(View.GONE);
         }
 
-        sideControlsButtonsLayout = new ChatActivitySideControlsButtonsLayout(getContext(), resourcesProvider, blurredBackgroundColorProvider, blurredBackgroundDrawableFactory);
+        sideControlsButtonsLayout = new ChatActivitySideControlsButtonsLayout(getContext(), resourcesProvider, buttonColorProvider(), blurredBackgroundDrawableFactory); // NagramX: own provider, flat under MD3 Buttons
         sideControlsButtonsLayout.setOnClickListener(this::onSideControlButtonOnClick);
         addView(sideControlsButtonsLayout, LayoutHelper.createFrame(57, 300, Gravity.RIGHT | Gravity.BOTTOM));
         sideControlsButtonsLayout.setVisibility(View.GONE);
@@ -8548,5 +8548,16 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
         } else {
             showDownloadAlert();
         }
+    }
+
+    // NagramX: the story buttons get their own provider so MD3 Buttons can flatten them without touching
+    // the reply field and emoji keyboard, which share blurredBackgroundColorProvider. Same key and alpha.
+    private xyz.nextalone.nagram.ui.Md3ButtonColorProvider md3ButtonColorProvider;
+
+    private xyz.nextalone.nagram.ui.Md3ButtonColorProvider buttonColorProvider() {
+        if (md3ButtonColorProvider == null) {
+            md3ButtonColorProvider = new xyz.nextalone.nagram.ui.Md3ButtonColorProvider(resourcesProvider, Theme.key_chat_messagePanelBackground, 0.8f);
+        }
+        return md3ButtonColorProvider;
     }
 }
