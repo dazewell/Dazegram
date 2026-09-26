@@ -52,4 +52,16 @@ public class Md3ButtonColorProvider extends BlurredBackgroundColorProviderThemed
     public static int glyphColor(Theme.ResourcesProvider resourcesProvider, int stockColor) {
         return InterfaceStyleController.applyButtons() ? Theme.getColor(Theme.key_glass_defaultIcon, resourcesProvider) : stockColor;
     }
+
+    /**
+     * Gives a flat button the main Dialogs FAB's lift, since its own stroke and shadow are gone:
+     * without them a white button on a white list has no edge. The outline follows the drawable's
+     * padded shape rather than the view bounds, so the shadow sits under what is actually drawn.
+     */
+    public static void elevate(android.view.View view, org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable drawable) {
+        if (InterfaceStyleController.applyButtons()) {
+            view.setOutlineProvider(drawable.getViewOutlineProvider());
+            view.setTranslationZ(org.telegram.messenger.AndroidUtilities.dpf2(0.5f));
+        }
+    }
 }

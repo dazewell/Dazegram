@@ -302,12 +302,16 @@ Liquid Glass keeps the drawable's default stroke and shadow. The glyphs share
 `key_glass_defaultIcon`, the side buttons' tint (`ChatActivityBlurredRoundButton.java:169`);
 the recorder's hardcoded white/grey glyphs switch to it through
 `Md3ButtonColorProvider.glyphColor` (`InstantCameraView.java:667-670`;
-`Md3ButtonColorProvider.java:52-54`). Still glass: story
+`Md3ButtonColorProvider.java:52-54`). The Dialogs story/camera sub-FAB, the
+only `isSubButton` `FragmentFloatingButton` (`DialogsActivity.java:4999`), keeps
+its opaque fill and drops its own stroke and shadow in place
+(`FragmentFloatingButton.java:80-92`); `Md3ButtonColorProvider.elevate` gives
+it the main FAB's 0.5dp `translationZ` (`:72-75`), outlined to the drawable's
+padded circle rather than the 48dp bounds (`:100`;
+`Md3ButtonColorProvider.java:61-66`). Still glass: story
 controls, whose provider at `PeerStoriesView.java:549` feeds the reply field and
 also the comment, paid-reaction, mute and side-control buttons (`:3089`, `:3099`,
-`:3122`, `:3695`); the Dialogs sub-FAB, whose fill is already
-opaque, so only its stroke and shadow remain, and it has no elevation of its own
-(`FragmentFloatingButton.java:72-75`, `:77-97`, `:155`); EmojiView's buttons
+`:3122`, `:3695`); EmojiView's buttons
 (`BlurredBackgroundProviderImpl.java:97`); and PhotoViewer's zero-fill rings
 (`:324`).
 *(Established 2026-09-25, during `#interface-style`.)*
