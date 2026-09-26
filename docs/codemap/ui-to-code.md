@@ -168,7 +168,7 @@ each 4dp inside the one around it, so they nest at the edge tabs
 the 56×32 icon-only indicator, inside a near-square card, read as ovals on
 device and was dropped for these (`4b6b7c61da`). Tabs are padded symmetrically so ItemOptions,
 which centres the card on the tab, centres it on the panel
-(`MainTabsActivity.java:1509-1531`). There is no display-corner nesting: by
+(`MainTabsActivity.java:1511-1533`). There is no display-corner nesting: by
 geometry, 18dp corners 12dp above the inset clear a display corner up to about
 44dp even with no nav inset, but that is not device-checked.
 `mainTabsBottomNavigation()` frosts at the Blur strength alpha while blur is
@@ -188,10 +188,11 @@ becomes half its height, tabs abut 4dp inside it at 80dp each within the same ca
 (`MainTabsHelper.java:50-52`, `:76-79`, `:86-88`), and a tab-wide stadium one
 inset inside the panel is the highlight, the long-press card and the drag
 selector (`MainTabsLayout.java:98-111`, `:360`, `:386`;
-`MainTabsActivity.java:1519-1526`). The layout draws that highlight itself and
-slides it between the tabs either side of the pager's animated position on taps
-and swipes, resting on the selected tab once the pager stops; `GlassTabView`
-draws none in this mode (`MainTabsActivity.java:833`, `:864`, `:994-1019`;
+`MainTabsActivity.java:1521-1528`). The layout draws that highlight itself and
+slides it from the current page's tab towards the next page's by the current
+page's offset, clamped to one page (`getPositionAnimated()` turns back on an
+overdrag), on taps and swipes, resting on the selected tab once the pager stops; `GlassTabView`
+draws none in this mode (`MainTabsActivity.java:833`, `:864`, `:992-1021`;
 `MainTabsLayout.java:392-393`; `GlassTabView.java:170`). Titled tabs stay 48dp,
 so the highlight reaches 4dp past them each way. It is drawn before
 `super.dispatchDraw`, because a tab drawing past its own 48dp is cut flat by
