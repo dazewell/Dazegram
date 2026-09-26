@@ -349,6 +349,8 @@
     <string name="InterfaceStyleApplyComposerInfo">The message field and its tools row in chats, drawn as one floating Material Design 3 island, and the panel under the keyboard.</string>
     <string name="InterfaceStyleApplyBottomNavigation">Bottom navigation</string>
     <string name="InterfaceStyleApplyBottomNavigationInfo">The Chats, Settings, and Profile bar at the bottom of the screen.</string>
+    <string name="InterfaceStyleRoundedNavigation">Rounded navigation</string>
+    <string name="InterfaceStyleRoundedNavigationInfo">Fully rounded bottom navigation that highlights the whole selected tab, label included.</string>
     <string name="InterfaceStyleBlurStrength">Blur strength</string>
     <string name="InterfaceStyleBlurStrengthAccDescr">Blur strength</string>
     <string name="InterfaceStyleBlurStrengthInfo">How much of the content behind shows through chat headers, the chat list top bar, bottom navigation, and the message field.</string>

@@ -64,6 +64,7 @@ public class InterfaceStyleActivity extends BaseFragment {
     private int rowApplyButtons;
     private int rowApplyComposer;
     private int rowApplyBottomNavigation;
+    private int rowRoundedNavigation;
     private int rowPanelDividers;
     private int rowBlurStrengthHeader;
     private int rowBlurStrength;
@@ -129,6 +130,10 @@ public class InterfaceStyleActivity extends BaseFragment {
                 reloadInterfaceStyle();
             } else if (position == rowApplyBottomNavigation) {
                 boolean checked = NaConfig.INSTANCE.getInterfaceStyleApplyBottomNavigation().toggleConfigBool();
+                ((TextCheckCell) view).setChecked(checked);
+                reloadInterfaceStyle();
+            } else if (position == rowRoundedNavigation) {
+                boolean checked = NaConfig.INSTANCE.getInterfaceStyleRoundedNavigation().toggleConfigBool();
                 ((TextCheckCell) view).setChecked(checked);
                 reloadInterfaceStyle();
             } else if (position == rowPanelDividers) {
@@ -213,6 +218,8 @@ public class InterfaceStyleActivity extends BaseFragment {
             return NaConfig.INSTANCE.getInterfaceStyleApplyComposer().getKey();
         } else if (position == rowApplyBottomNavigation) {
             return NaConfig.INSTANCE.getInterfaceStyleApplyBottomNavigation().getKey();
+        } else if (position == rowRoundedNavigation) {
+            return NaConfig.INSTANCE.getInterfaceStyleRoundedNavigation().getKey();
         } else if (position == rowPanelDividers) {
             return NaConfig.INSTANCE.getInterfaceStylePanelDividers().getKey();
         } else if (position == rowMatchClassicDayHeader) {
@@ -295,6 +302,7 @@ public class InterfaceStyleActivity extends BaseFragment {
             rowApplyButtons = row++;
             rowApplyComposer = InterfaceStyleController.COMPOSER_STYLE_AVAILABLE ? row++ : -1;
             rowApplyBottomNavigation = row++;
+            rowRoundedNavigation = NaConfig.INSTANCE.getInterfaceStyleApplyBottomNavigation().Bool() ? row++ : -1;
             rowPanelDividers = row++;
             if (InterfaceStyleController.MATCH_CLASSIC_DAY_HEADER_AVAILABLE && isClassicOrDayTheme()) {
                 rowPanelColorsHeader = row++;
@@ -310,6 +318,7 @@ public class InterfaceStyleActivity extends BaseFragment {
             rowApplyButtons = -1;
             rowApplyComposer = -1;
             rowApplyBottomNavigation = -1;
+            rowRoundedNavigation = -1;
             rowPanelDividers = -1;
             rowPanelColorsHeader = -1;
             rowMatchClassicDayHeader = -1;
@@ -341,6 +350,7 @@ public class InterfaceStyleActivity extends BaseFragment {
                     || rowApplyButtons >= 0 && position == rowApplyButtons
                     || rowApplyComposer >= 0 && position == rowApplyComposer
                     || rowApplyBottomNavigation >= 0 && position == rowApplyBottomNavigation
+                    || rowRoundedNavigation >= 0 && position == rowRoundedNavigation
                     || rowPanelDividers >= 0 && position == rowPanelDividers
                     || rowMatchClassicDayHeader >= 0 && position == rowMatchClassicDayHeader;
         }
@@ -351,7 +361,7 @@ public class InterfaceStyleActivity extends BaseFragment {
                 return TYPE_HEADER;
             } else if (position == rowInfo || position == rowBlurStrengthInfo) {
                 return TYPE_INFO;
-            } else if (position == rowApplyChatHeader || position == rowApplyChatListTopBar || position == rowApplyButtons || position == rowApplyComposer ||             position == rowApplyBottomNavigation || position == rowPanelDividers || position == rowMatchClassicDayHeader) {
+            } else if (position == rowApplyChatHeader || position == rowApplyChatListTopBar || position == rowApplyButtons || position == rowApplyComposer ||             position == rowApplyBottomNavigation || position == rowRoundedNavigation || position == rowPanelDividers || position == rowMatchClassicDayHeader) {
                 return TYPE_CHECK;
             } else if (position == rowBlurStrength) {
                 return TYPE_SLIDER;
@@ -426,6 +436,10 @@ public class InterfaceStyleActivity extends BaseFragment {
             } else if (position == rowApplyBottomNavigation) {
                 TextCheckCell cell = (TextCheckCell) holder.itemView;
                 cell.setTextAndValueAndCheck(getString(R.string.InterfaceStyleApplyBottomNavigation), getString(R.string.InterfaceStyleApplyBottomNavigationInfo), NaConfig.INSTANCE.getInterfaceStyleApplyBottomNavigation().Bool(), true, true, true);
+                cell.setEnabled(true, null);
+            } else if (position == rowRoundedNavigation) {
+                TextCheckCell cell = (TextCheckCell) holder.itemView;
+                cell.setTextAndValueAndCheck(getString(R.string.InterfaceStyleRoundedNavigation), getString(R.string.InterfaceStyleRoundedNavigationInfo), NaConfig.INSTANCE.getInterfaceStyleRoundedNavigation().Bool(), true, true, true);
                 cell.setEnabled(true, null);
             } else if (position == rowPanelDividers) {
                 TextCheckCell cell = (TextCheckCell) holder.itemView;

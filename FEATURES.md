@@ -104,9 +104,9 @@ The toolbar row can be scaled from 75% to 125% in 5% steps. A second slider sets
 
 <img height="260" alt="Toolbar size slider set to 90 percent above an Icon spacing slider set to 87 percent, each with its explanation below" src="docs/images/features/composer-toolbar-sliders.png" />
 
-### Interface style <!-- #interface-style --> <!-- #composer-transparency -->
+### Interface style <!-- #interface-style --> <!-- #composer-transparency --> <!-- #rounded-navigation -->
 
-NagramX Settings → General → Interface Style picks Liquid Glass or Material Design 3, which restyles chat headers, the chat-list top bar, buttons, the bottom navigation and the floating composer, each with its own Apply to toggle. Panel dividers, on by default, line panel edges. Match Classic and Day header color, off by default, makes those themes' headers solid, Classic's in its original blue. Unsupported devices get MD3 only.
+NagramX Settings → General → Interface Style picks Liquid Glass or Material Design 3, which restyles chat headers, the chat-list top bar, buttons, the bottom navigation and the floating composer, each with an Apply to toggle. Panel dividers, on by default, line panel edges. Off by default, Rounded navigation fully rounds the bar and highlights whole tabs, and Match Classic and Day header color makes those themes' headers solid.
 
 ### Quick schedule button <!-- #quick-schedule -->
 

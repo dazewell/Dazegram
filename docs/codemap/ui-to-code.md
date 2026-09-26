@@ -149,25 +149,26 @@ own `tabStyleStroke` behavior independently (`ScrollSlidingTextTabStrip.java:772
 
 The Bottom navigation setting reaches the real global navigation through
 `MainTabsActivity.createView()` and the shared geometry helper
-(`MainTabsActivity.java:352-372`, `:436-469`; `MainTabsHelper.java:14-34`).
+(`MainTabsActivity.java:352-374`, `:438-472`; `MainTabsHelper.java:14-36`).
 MD3 reuses the Liquid Glass attachment: the background sits on `tabsView`,
 drawn `getMainTabsMargin()` in from it, so the panel is 64dp tall with or
-without titles. That margin is 12dp under MD3 (`MainTabsHelper.java:80-82`),
+without titles. That margin is 12dp under MD3 (`MainTabsHelper.java:110-113`),
 and every consumer already measures to it: list padding, the Dialogs FAB,
 bulletins and the blur-capture rect (`MainTabsActivity.java:221-223`;
-`DialogsActivity.java:3109-3110`, `:14711-14712`), so they clear the lifted
+`DialogsActivity.java:3118-3119`, `:14727-14728`), so they clear the lifted
 panel with no code of their own. Negative side margins put the panel 9dp from
 the screen, capped at the pill's 344dp; with few tabs it narrows so the edge
 indicators keep the same gap from the panel's side as from its top
-(`MainTabsHelper.java:49-66`; `MainTabsLayout.java:144-157`). With titles the
+(`MainTabsHelper.java:72-97`; `MainTabsLayout.java:191-204`). With titles the
 label is fixed at the 10sp pass, 2dp under a 56×32 indicator
-(`MainTabsLayout.java:101-102`; `GlassTabView.java:152-157`, `:171-178`).
+(`MainTabsLayout.java:148-149`; `GlassTabView.java:155-164`, `:175-182`).
 Panel, long-press card and indicator are rounded rectangles of 18, 14 and 10dp,
-each 4dp inside the one around it, so they nest at the edge tabs; stadium
-shapes read as ovals on device and were dropped (`MainTabsHelper.java:28-34`;
-`MainTabsActivity.java:465`). Tabs are padded symmetrically so ItemOptions,
+each 4dp inside the one around it, so they nest at the edge tabs
+(`MainTabsHelper.java:28-36`; `MainTabsActivity.java:469`). A stadium around
+the 56×32 icon-only indicator, inside a near-square card, read as ovals on
+device and was dropped for these (`4b6b7c61da`). Tabs are padded symmetrically so ItemOptions,
 which centres the card on the tab, centres it on the panel
-(`MainTabsActivity.java:1474-1488`). There is no display-corner nesting: by
+(`MainTabsActivity.java:1511-1533`). There is no display-corner nesting: by
 geometry, 18dp corners 12dp above the inset clear a display corner up to about
 44dp even with no nav inset, but that is not device-checked.
 `mainTabsBottomNavigation()` frosts at the Blur strength alpha while blur is
@@ -176,10 +177,32 @@ a dark-only light edge that `BlurredBackgroundDrawable` hides with the Glare
 switch like every other stroke (`BlurredBackgroundProviderImpl.java:37-55`;
 `BlurredBackgroundDrawable.java:701-702`). `mainTabs()` stays the attach and
 statistics provider. The wrapper passes touches in the side gaps through to the
-list (`MainTabsActivity.java:436-446`). Liquid Glass keeps its stadium pill and
+list (`MainTabsActivity.java:438-448`). Liquid Glass keeps its stadium pill and
 tab geometry.
 
-*(Established 2026-09-22, during `#interface-style`.)*
+Rounded navigation, an MD3 sub-toggle shown only while Bottom navigation is on
+(`InterfaceStyleActivity.java:305`; `InterfaceStyleController.java:44-46`),
+keeps this slot, lift and provider and changes shape and labels. Its whole-tab
+highlight is a different stadium from the dropped one. The panel radius
+becomes half its height, tabs abut 4dp inside it at 80dp each within the same cap
+(`MainTabsHelper.java:50-52`, `:76-79`, `:86-88`), and a tab-wide stadium one
+inset inside the panel is the highlight, the long-press card and the drag
+selector (`MainTabsLayout.java:98-111`, `:360`, `:386`;
+`MainTabsActivity.java:1521-1528`). The layout draws that highlight itself and
+slides it from the current page's tab towards the next page's by the current
+page's offset, clamped to one page (`getPositionAnimated()` turns back on an
+overdrag), on taps and swipes, resting on the selected tab once the pager stops; `GlassTabView`
+draws none in this mode (`MainTabsActivity.java:833`, `:864`, `:992-1021`;
+`MainTabsLayout.java:392-393`; `GlassTabView.java:170`). Titled tabs stay 48dp,
+so the highlight reaches 4dp past them each way. It is drawn before
+`super.dispatchDraw`, because a tab drawing past its own 48dp is cut flat by
+`tabsView`'s default `clipToPadding` whatever `clipChildren` says, as the first
+build showed. Icon-only tabs grow to 56dp so all of it is tappable
+(`MainTabsHelper.java:55-60`). Labels keep the glass position and larger
+passes, in regular weight, medium when selected (`GlassTabView.java:160`,
+`:276-283`; `MainTabsLayout.java:149`).
+
+*(Established 2026-09-22, during `#interface-style`; rounded navigation 2026-09-26, `#rounded-navigation`.)*
 
 ## MD3 Composer paints one island from ChatInputViewsContainer
 

@@ -28,12 +28,35 @@ public final class MainTabsHelper {
     // Panel, long-press card and indicator are one family of rounded rectangles, each this inset inside the
     // one around it with its radius smaller by the same amount: 18, 14 and 10dp. With titles the edge
     // indicators sit two insets from the panel's top and side, so all three nest there exactly.
+    // Rounded navigation instead makes the panel a stadium and the highlight, and the long-press card, a
+    // stadium the size of the whole tab one inset inside it.
     public static final int MD3_NAVIGATION_RADIUS = 18;
     public static final int MD3_NAVIGATION_SCRIM_INSET = 4;
     public static final int MD3_NAVIGATION_SCRIM_RADIUS = MD3_NAVIGATION_RADIUS - MD3_NAVIGATION_SCRIM_INSET;
     public static final int MD3_NAVIGATION_INDICATOR_RADIUS = MD3_NAVIGATION_SCRIM_RADIUS - MD3_NAVIGATION_SCRIM_INSET;
 
     private MainTabsHelper() {
+    }
+
+    private static boolean isRoundedNavigation() {
+        return xyz.nextalone.nagram.helpers.InterfaceStyleController.roundedBottomNavigation();
+    }
+
+    /** The rounded navigation highlight: the panel's height less one inset top and bottom. */
+    public static int getRoundedNavigationIndicatorHeight() {
+        return getMainTabsHeight() - MD3_NAVIGATION_SCRIM_INSET * 2;
+    }
+
+    public static float getMd3NavigationRadius() {
+        return isRoundedNavigation() ? getMainTabsHeight() / 2f : MD3_NAVIGATION_RADIUS;
+    }
+
+    /** Space between the panel's top and the tabs. Icon-only rounded tabs fill the highlight so all of it is tappable. */
+    public static int getMd3NavigationTabTop() {
+        if (!isMainTabsHideTitleStyle()) {
+            return MD3_NAVIGATION_INDICATOR_TOP;
+        }
+        return isRoundedNavigation() ? MD3_NAVIGATION_SCRIM_INSET : MD3_NAVIGATION_INDICATOR_TOP_COMPACT;
     }
 
     // The first and last indicators sit as far from the panel's side as the indicator sits from its top.
@@ -47,15 +70,22 @@ public final class MainTabsHelper {
     }
 
     public static float getMd3NavigationWidth() {
-        final float tab = 2 * md3NavigationEdgeGap() + getMd3NavigationIndicatorWidth();
         // A narrow screen can hold less than the cap; the padding is derived from this width, so it must be the
         // width the panel really gets.
         final float screen = org.telegram.messenger.AndroidUtilities.displaySize.x / org.telegram.messenger.AndroidUtilities.density - 2 * MD3_NAVIGATION_SIDE_GAP;
+        if (isRoundedNavigation()) {
+            // Rounded highlights fill their tabs, which abut, so the panel is the Liquid Glass tabs plus one inset each side.
+            return Math.min(Math.min(MD3_NAVIGATION_MAX_WIDTH, screen), TAB_WIDTH * getFragmentsCount() + 2 * MD3_NAVIGATION_SCRIM_INSET);
+        }
+        final float tab = 2 * md3NavigationEdgeGap() + getMd3NavigationIndicatorWidth();
         return Math.min(Math.min(MD3_NAVIGATION_MAX_WIDTH, screen), tab * getFragmentsCount());
     }
 
-    /** Side padding inside the panel that puts the edge indicators {@link #md3NavigationEdgeGap()} from its side. */
+    /** Side padding inside the panel: the edge indicators {@link #md3NavigationEdgeGap()} from its side, or one inset for rounded tabs. */
     public static float getMd3NavigationContentPadding() {
+        if (isRoundedNavigation()) {
+            return MD3_NAVIGATION_SCRIM_INSET;
+        }
         final int count = getFragmentsCount();
         if (count < 2) {
             return 0;

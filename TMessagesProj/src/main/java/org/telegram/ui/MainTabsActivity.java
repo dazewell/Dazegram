@@ -350,6 +350,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
         // NagramX: snapshot the setting for this rebuilt navigation view; the toggle rebuilds the activity.
         md3BottomNavigation = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyBottomNavigation();
+        roundedBottomNavigation = xyz.nextalone.nagram.helpers.InterfaceStyleController.roundedBottomNavigation();
         final boolean compact = MainTabsHelper.isMainTabsHideTitleStyle();
         final int mainTabsMargin = MainTabsHelper.getMainTabsMargin();
         final boolean hideContacts = MainTabsHelper.isContactsTabHidden();
@@ -361,7 +362,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         final int paddingV = md3BottomNavigation ? 0 : dp(mainTabsMargin + 4);
         if (md3BottomNavigation) {
             // NagramX: MD3 insets the tabs inside the floating panel, which the background draws mainTabsMargin in from tabsView.
-            final int indicatorTop = dp(compact ? MainTabsHelper.MD3_NAVIGATION_INDICATOR_TOP_COMPACT : MainTabsHelper.MD3_NAVIGATION_INDICATOR_TOP);
+            final int indicatorTop = dp(MainTabsHelper.getMd3NavigationTabTop());
             final int side = dp(mainTabsMargin + MainTabsHelper.getMd3NavigationContentPadding());
             tabsView.setPadding(side, dp(mainTabsMargin) + indicatorTop, side, dp(mainTabsMargin) + indicatorTop);
         } else {
@@ -370,6 +371,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         // NagramX: MD3 navigation spreads its tabs across a panel narrower than the legacy pill's cap.
         tabsView.setMaxWidth(md3BottomNavigation ? dp(MainTabsHelper.getMd3NavigationWidth() + mainTabsMargin * 2) : dp(328 + DialogsActivity.MAIN_TABS_MARGIN * 2));
         tabsView.setFillWidth(md3BottomNavigation);
+        tabsView.setRoundedNavigation(roundedBottomNavigation);
 
         tabs = new GlassTabView[5];
         tabs[INDEX_CHATS] = GlassTabView.createMainTab(context, resourceProvider, GlassTabView.TabAnimation.CHATS, R.string.MainTabsChats);
@@ -383,7 +385,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         tabs[INDEX_PROFILE].setOnLongClickListener(this::openAccountSelector);
         for (GlassTabView tab : tabs) {
             tab.setMainTabsCompact(compact);
-            tab.setMd3NavigationIndicator(md3BottomNavigation);
+            tab.setNavigationIndicator(roundedBottomNavigation ? GlassTabView.NAVIGATION_INDICATOR_ROUNDED : md3BottomNavigation ? GlassTabView.NAVIGATION_INDICATOR_MD3 : GlassTabView.NAVIGATION_INDICATOR_GLASS);
         }
 
         tabsView.addTabToIgnoreClick(tabs[INDEX_CHATS]);
@@ -462,8 +464,9 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             tabsView,
             md3BottomNavigation ? BlurredBackgroundProviderImpl.mainTabsBottomNavigation(currentAccount, resourceProvider) : BlurredBackgroundProviderImpl.mainTabs(resourceProvider)
         );
-        // NagramX: MD3 draws the panel as a rounded rectangle that the long-press card and indicator nest inside.
-        tabsViewBackground.setRadius(dp(md3BottomNavigation ? MainTabsHelper.MD3_NAVIGATION_RADIUS : MainTabsHelper.getMainTabsHeight() / 2f));
+        // NagramX: MD3 draws the panel as a rounded rectangle, or a stadium under rounded navigation, that the
+        // long-press card and indicator nest inside.
+        tabsViewBackground.setRadius(dp(md3BottomNavigation ? MainTabsHelper.getMd3NavigationRadius() : MainTabsHelper.getMainTabsHeight() / 2f));
         // NagramX: the MD3 panel is drawn exactly its margin in from tabsView, the edge every consumer lays out against.
         tabsViewBackground.setPadding(dp(md3BottomNavigation ? mainTabsMargin : mainTabsMargin - 0.334f));
         tabsView.setBackground(tabsViewBackground);
@@ -827,6 +830,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         if (tabsView != null) {
             selectTab(viewPager.getCurrentPosition(), true);
             setGestureSelectedOverride(0, false);
+            tabsView.clearRoundedSelector(); // NagramX
         }
         blur3_invalidateBlur();
 
@@ -857,6 +861,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             if (isDragByGesture) {
                 selectTab(Math.round(position), true);
             }
+            updateRoundedSelector(); // NagramX
         }
 
         checkUi_fadeView();
@@ -984,6 +989,37 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         tabsView.invalidate();
     }
 
+    // NagramX: rounded navigation slides its one highlight from the current page's tab towards the next one's, so a
+    // tap or a swipe moves it across rather than fading one tab out and the next in. The progress comes from the
+    // current page's own offset, clamped to one page, because getPositionAnimated() turns back on an overdrag.
+    private void updateRoundedSelector() {
+        if (!roundedBottomNavigation) {
+            return;
+        }
+        final GlassTabView from = visibleTabAt(viewPager.getCurrentPosition());
+        if (from == null) {
+            tabsView.clearRoundedSelector();
+            return;
+        }
+        final int nextPosition = viewPager.getNextPosition();
+        final GlassTabView next = nextPosition >= 0 ? visibleTabAt(nextPosition) : null;
+        final GlassTabView to = next == null ? from : next;
+        final float t = next == null ? 0 : 1f - viewPager.getCurrentPositionAlpha();
+        tabsView.setRoundedSelector(
+            lerp(from.getX() + from.getWidth() / 2f, to.getX() + to.getWidth() / 2f, t),
+            lerp((float) from.getWidth(), (float) to.getWidth(), t)
+        );
+    }
+
+    private GlassTabView visibleTabAt(int position) {
+        for (int index = 0; index < tabs.length; index++) {
+            if (indexToPosition(index) == position && tabsView.isViewVisible(tabs[index])) {
+                return tabs[index];
+            }
+        }
+        return null;
+    }
+
 
     /* * */
 
@@ -1032,6 +1068,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
     private int insetLeft;
     private int insetRight;
     private boolean md3BottomNavigation;
+    private boolean roundedBottomNavigation; // NagramX
 
     @NonNull
     @Override
@@ -1471,9 +1508,9 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         com.radolyn.ayugram.eventschedule.MessageTriggersMenu.addTo(o, this);
     }
 
-    // NagramX: under MD3 each tab spans the panel's height less its indicator gap top and bottom, so ItemOptions,
-    // which centres the card on the tab, centres it on the panel. The card is inset inside the panel with a radius
-    // smaller by that inset, so a lifted edge tab nests in the panel's corner instead of crossing it.
+    // NagramX: under MD3 each tab is centred in the panel's height, so ItemOptions, which centres the card on the
+    // tab, centres it on the panel. The card is inset inside the panel with a radius smaller by that inset, so a
+    // lifted edge tab nests in the panel's corner instead of crossing it.
     private ShapeDrawable naxTabScrimBackground() {
         final int color = getThemedColor(Theme.key_windowBackgroundWhite);
         if (!md3BottomNavigation) {
@@ -1481,6 +1518,14 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         }
         final int inset = MainTabsHelper.MD3_NAVIGATION_SCRIM_INSET;
         final int height = MainTabsHelper.getMainTabsHeight() - inset * 2;
+        if (roundedBottomNavigation) {
+            // NagramX: rounded navigation's card is its highlight: the whole tab, as a stadium.
+            final int width = tabs[INDEX_CHATS].getWidth();
+            final ShapeDrawable bg = Theme.createRoundRectDrawable(Math.min(dp(height), width) / 2, color);
+            bg.setIntrinsicWidth(width);
+            bg.setIntrinsicHeight(dp(height));
+            return bg;
+        }
         final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(MainTabsHelper.MD3_NAVIGATION_SCRIM_RADIUS), color);
         bg.setIntrinsicWidth(Math.max(dp(height), tabs[INDEX_CHATS].getWidth() - dp(inset * 2)));
         bg.setIntrinsicHeight(dp(height));
