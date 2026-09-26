@@ -169,7 +169,7 @@ same applies when the effect is gated on lifecycle state you never watched
 happen — a dialog still showing, a view not yet destroyed.
 Reading the diff cannot answer "which path actually executed on the device"; a
 log line answers it in seconds. A feature that passed the compile gate, an
-automated review and two architect rounds still shipped unreachable once,
+a Copilot review and two architect rounds still shipped unreachable once,
 because all of those reason about the diff and none can see the device state
 that picks the branch.
 

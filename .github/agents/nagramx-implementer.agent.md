@@ -321,7 +321,7 @@ If the change adds a decision point that determines whether something is shown,
 or which of several paths presents the same screen, instrument it. So does one
 whose effect is gated on lifecycle state you never watched happen — a dialog
 still showing, a view not yet destroyed. A feature that passed a compile
-gate, an automated review and two architect rounds still shipped unreachable
+gate, a Copilot review and two architect rounds still shipped unreachable
 once, because every one of those reasons about the diff and none can see the
 device state that picks the branch.
 
