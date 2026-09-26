@@ -48840,8 +48840,10 @@ public class ChatActivity extends BaseFragment implements
 
             }
             case nkbtn_personal_replies: {
-                openPersonalReplies(com.radolyn.ayugram.personalreplies.PersonalRepliesController.threadAnchor(
-                        selectedObjectGroup != null ? selectedObjectGroup.findPrimaryMessageObject() : selectedObject, selectedObjectGroup));
+                // NagramX: the group is looked up here rather than taken from selectedObjectGroup, which the cell's
+                // own long-press leaves null even on an album
+                openPersonalReplies(selectedObject == null ? null : com.radolyn.ayugram.personalreplies.PersonalRepliesController.threadAnchor(
+                        currentAccount, selectedObject, getValidGroupedMessage(selectedObject)));
                 break;
             }
             case nkbtn_view_in_chat: {
@@ -51096,9 +51098,9 @@ public class ChatActivity extends BaseFragment implements
                 }
                 // NagramX: same entry for one-to-one chats, from the history stored on this device. It opens the
                 // whole thread the message sits in, so it also shows on a reply that has no replies of its own
-                if (!isThreadChat() && chatMode == MODE_DEFAULT && !isInsideContainer && personalRepliesTopId == 0
+                if (!isThreadChat() && chatMode == MODE_DEFAULT && !isInsideContainer && personalRepliesTopId == 0 && primaryMessage != null
                         && com.radolyn.ayugram.personalreplies.PersonalRepliesController.canViewThread(currentAccount,
-                                com.radolyn.ayugram.personalreplies.PersonalRepliesController.threadAnchor(primaryMessage, selectedObjectGroup))) {
+                                com.radolyn.ayugram.personalreplies.PersonalRepliesController.threadAnchor(currentAccount, primaryMessage, getValidGroupedMessage(primaryMessage)))) {
                     items.add(LocaleController.getString(R.string.ViewThread));
                     options.add(nkbtn_personal_replies);
                     icons.add(R.drawable.msg_viewreplies);

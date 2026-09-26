@@ -152,14 +152,22 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
     }
 
     /**
-     * The message a thread should be looked up from. For an album that is the
-     * member carrying the reply, which needn't be the one the menu treats as
-     * primary; otherwise it's the message itself.
+     * The message a thread should be looked up from. For an album that is its
+     * primary when the primary has stored replies or is a reply itself, and
+     * otherwise the member carrying the reply, since only one member may; for
+     * anything else it's the message itself.
      */
-    public static MessageObject threadAnchor(MessageObject message, MessageObject.GroupedMessages group) {
-        if (message == null || group == null || message.messageOwner == null
-                || PersonalRepliesStorage.isReplyInDialog(message.messageOwner, message.getDialogId())) {
+    public static MessageObject threadAnchor(int account, MessageObject message, MessageObject.GroupedMessages group) {
+        if (group == null || group.messages.isEmpty()) {
             return message;
+        }
+        MessageObject primary = group.findPrimaryMessageObject();
+        if (primary == null || primary.messageOwner == null) {
+            return message;
+        }
+        // a primary with its own replies keeps opening on them, as the item did before threads walked upward
+        if (getCount(account, primary) > 0 || PersonalRepliesStorage.isReplyInDialog(primary.messageOwner, primary.getDialogId())) {
+            return primary;
         }
         for (int i = 0; i < group.messages.size(); i++) {
             MessageObject member = group.messages.get(i);
@@ -168,7 +176,7 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
                 return member;
             }
         }
-        return message;
+        return primary;
     }
 
     private int count(long dialogId, int messageId) {
