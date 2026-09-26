@@ -320,7 +320,8 @@ Story controls get their own `Md3ButtonColorProvider` from
 and 0.8 alpha as the shared provider at `:549`, which stays glass because it
 also draws the reply field and emoji keyboard (`:565-566`). The comment,
 paid-reaction, mute and side-control buttons take it (`:3089`, `:3099`, `:3122`,
-`:3695`). The first three paint a hardcoded opaque `0xFF20242A` and read only
+`:3695`). The first three paint a hardcoded opaque `0xFF20242A`, which the paid
+reaction blends to gold as it fills (`PaidReactionButton.java:448-452`), and read only
 the stroke from the provider (`CommentButton.java:60-61`; `StrokeDrawable.java:51-55`),
 so for them MD3 just drops the stroke; the side controls go opaque
 `key_chat_messagePanelBackground`, which the stories' dark provider sets to that
