@@ -286,7 +286,7 @@ layout editor draws the same frosted island and tonal field
 keep their own provider (`ChatActivity.java:4202`).
 *(Established 2026-09-22, during `#interface-style`.)*
 
-## MD3 Buttons reaches chat buttons through two providers
+## MD3 Buttons reaches buttons through shared providers and targeted hooks
 
 The Buttons switch is read by two shared providers and a few targeted hooks, all flat under
 `applyButtons()`: opaque own theme colour, no stroke, no shadow.
@@ -302,22 +302,33 @@ Liquid Glass keeps the drawable's default stroke and shadow. The glyphs share
 `key_glass_defaultIcon`, the side buttons' tint (`ChatActivityBlurredRoundButton.java:169`);
 the recorder's hardcoded white/grey glyphs switch to it through
 `Md3ButtonColorProvider.glyphColor` (`InstantCameraView.java:667-670`;
-`Md3ButtonColorProvider.java:52-54`). The Dialogs story/camera sub-FAB, the
+`Md3ButtonColorProvider.java:58-60`). The Dialogs story/camera sub-FAB, the
 only `isSubButton` `FragmentFloatingButton` (`DialogsActivity.java:4999`), keeps
 its opaque fill and drops its own stroke and shadow in place
 (`FragmentFloatingButton.java:80-92`); `Md3ButtonColorProvider.elevate` gives
 it the main FAB's 0.5dp `translationZ` (`:72-75`), outlined to the drawable's
 padded circle rather than the 48dp bounds (`:100`;
-`Md3ButtonColorProvider.java:61-66`). EmojiView's backspace, search, type-tab
+`Md3ButtonColorProvider.java:67-72`). EmojiView's backspace, search, type-tab
 and sticker-settings buttons all take `BlurredBackgroundProviderImpl.emojiViewButton`
 from the view's own constructor, so every host gets them
 (`EmojiView.java:2916`, `:2942-2970`); that provider goes opaque
 `key_windowBackgroundWhite` with no stroke or shadow in place
-(`BlurredBackgroundProviderImpl.java:97-110`). Still glass: story
-controls, whose provider at `PeerStoriesView.java:549` feeds the reply field and
-also the comment, paid-reaction, mute and side-control buttons (`:3089`, `:3099`,
-`:3122`, `:3695`); and PhotoViewer's zero-fill rings
-(`BlurredBackgroundProviderImpl.java:333-344`).
+(`BlurredBackgroundProviderImpl.java:97-110`).
+
+Story controls get their own `Md3ButtonColorProvider` from
+`PeerStoriesView.buttonColorProvider()` (`PeerStoriesView.java:8557-8562`), same key
+and 0.8 alpha as the shared provider at `:549`, which stays glass because it
+also draws the reply field and emoji keyboard (`:565-566`). The comment,
+paid-reaction, mute and side-control buttons take it (`:3089`, `:3099`, `:3122`,
+`:3695`). The first three paint a hardcoded opaque `0xFF20242A` and read only
+the stroke from the provider (`CommentButton.java:60-61`; `StrokeDrawable.java:51-55`),
+so for them MD3 just drops the stroke; the side controls go opaque
+`key_chat_messagePanelBackground`, which the stories' dark provider sets to that
+same `0xFF20242A` (`DarkThemeResourceProvider.java:90`). No glyph needs
+moving: the comment and mute `0xFFD2D3D4` (`CommentButton.java:68`;
+`MuteButton.java:75`) is exactly the stories' `key_glass_defaultIcon`, 80% white
+(`DarkThemeResourceProvider.java:89`), composited over that fill. Still glass:
+PhotoViewer's zero-fill rings (`BlurredBackgroundProviderImpl.java:333-344`).
 *(Established 2026-09-25, during `#interface-style`.)*
 
 ## BottomBuilder section cards are opt-in and isolated to Early Send

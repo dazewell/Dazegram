@@ -25,6 +25,12 @@ public class Md3ButtonColorProvider extends BlurredBackgroundColorProviderThemed
         this.backgroundColorId = backgroundColorId;
     }
 
+    public Md3ButtonColorProvider(Theme.ResourcesProvider resourcesProvider, int backgroundColorId, float alpha) {
+        super(resourcesProvider, backgroundColorId, alpha);
+        this.resourcesProvider = resourcesProvider;
+        this.backgroundColorId = backgroundColorId;
+    }
+
     @Override
     public int getBackgroundColor() {
         if (InterfaceStyleController.applyButtons()) {
