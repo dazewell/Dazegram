@@ -288,7 +288,7 @@ keep their own provider (`ChatActivity.java:4202`).
 
 ## MD3 Buttons reaches chat buttons through two providers
 
-The Buttons switch is read by two providers, both flat under
+The Buttons switch is read by two shared providers and a few targeted hooks, all flat under
 `applyButtons()`: opaque own theme colour, no stroke, no shadow.
 `ComposerGlassProvider` ROLE_BUTTON (`ChatActivity.java:4202`) feeds the side,
 action and channel buttons and the round-video recorder, which forwards it to
@@ -308,12 +308,16 @@ its opaque fill and drops its own stroke and shadow in place
 (`FragmentFloatingButton.java:80-92`); `Md3ButtonColorProvider.elevate` gives
 it the main FAB's 0.5dp `translationZ` (`:72-75`), outlined to the drawable's
 padded circle rather than the 48dp bounds (`:100`;
-`Md3ButtonColorProvider.java:61-66`). Still glass: story
+`Md3ButtonColorProvider.java:61-66`). EmojiView's backspace, search, type-tab
+and sticker-settings buttons all take `BlurredBackgroundProviderImpl.emojiViewButton`
+from the view's own constructor, so every host gets them
+(`EmojiView.java:2916`, `:2942-2970`); that provider goes opaque
+`key_windowBackgroundWhite` with no stroke or shadow in place
+(`BlurredBackgroundProviderImpl.java:97-110`). Still glass: story
 controls, whose provider at `PeerStoriesView.java:549` feeds the reply field and
 also the comment, paid-reaction, mute and side-control buttons (`:3089`, `:3099`,
-`:3122`, `:3695`); EmojiView's buttons
-(`BlurredBackgroundProviderImpl.java:97`); and PhotoViewer's zero-fill rings
-(`:333-344`).
+`:3122`, `:3695`); and PhotoViewer's zero-fill rings
+(`BlurredBackgroundProviderImpl.java:333-344`).
 *(Established 2026-09-25, during `#interface-style`.)*
 
 ## BottomBuilder section cards are opt-in and isolated to Early Send
