@@ -75,6 +75,42 @@ public class MainTabsLayout extends AnimatedLinearLayout {
         }
     }
 
+    // NagramX: rounded navigation draws one highlight here and slides it with the pager, instead of each tab fading
+    // its own. Between pager animations it rests on the selected tab.
+    private boolean hasRoundedSelector;
+    private float roundedSelectorX;
+    private float roundedSelectorWidth;
+
+    public void setRoundedSelector(float centerX, float width) {
+        hasRoundedSelector = true;
+        roundedSelectorX = centerX;
+        roundedSelectorWidth = width;
+        invalidate();
+    }
+
+    public void clearRoundedSelector() {
+        if (hasRoundedSelector) {
+            hasRoundedSelector = false;
+            invalidate();
+        }
+    }
+
+    private void drawRoundedSelector(Canvas canvas) {
+        float x = roundedSelectorX, width = roundedSelectorWidth;
+        if (!hasRoundedSelector) {
+            final View selected = findSelectedTab();
+            if (selected == null) {
+                return;
+            }
+            x = selected.getX() + selected.getWidth() / 2f;
+            width = selected.getWidth();
+        }
+        final float height = dp(tw.nekomimi.nekogram.helpers.MainTabsHelper.getRoundedNavigationIndicatorHeight());
+        final float r = Math.min(width, height) / 2f;
+        selectorPaint.setColor(Theme.multAlpha(Theme.getColor(Theme.key_glass_tabSelected, resourcesProvider), 0.18f));
+        canvas.drawRoundRect(x - width / 2f, (getHeight() - height) / 2f, x + width / 2f, (getHeight() + height) / 2f, r, r, selectorPaint);
+    }
+
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         int width = MeasureSpec.getSize(widthMeasureSpec);
@@ -353,6 +389,8 @@ public class MainTabsLayout extends AnimatedLinearLayout {
                     x - sWidth / 2f, (getHeight() - sHeight) / 2f,
                     x + sWidth / 2f, (getHeight() + sHeight) / 2f,
                     sHeight / 2f, sHeight / 2f, selectorPaint);
+        } else if (roundedNavigation) {
+            drawRoundedSelector(canvas); // NagramX
         }
 
         super.dispatchDraw(canvas);

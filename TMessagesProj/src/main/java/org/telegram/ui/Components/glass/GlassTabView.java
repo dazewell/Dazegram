@@ -136,7 +136,7 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     // NagramX: MD3 navigation owns a tonal indicator while other GlassTabView users keep the glass selector.
     public static final int NAVIGATION_INDICATOR_GLASS = 0;
     public static final int NAVIGATION_INDICATOR_MD3 = 1;
-    public static final int NAVIGATION_INDICATOR_ROUNDED = 2;
+    public static final int NAVIGATION_INDICATOR_ROUNDED = 2; // its highlight is MainTabsLayout's, which slides it
     private int navigationIndicator = NAVIGATION_INDICATOR_GLASS;
 
     public void setGestureSelectedOverride(float gestureSelectedOverride, boolean allow) {
@@ -167,20 +167,12 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     protected void dispatchDraw(@NonNull Canvas canvas) {
         final float viewWidth = hasVisualWidth ? visualWidth : getWidth();
         final float selectedFactor = hasGestureSelectedOverride ? gestureSelectedOverride : isSelectedAnimator.getFloatValue();
-        if (selectedFactor > 0 && !skipDrawSelector) {
+        if (selectedFactor > 0 && !skipDrawSelector && navigationIndicator != NAVIGATION_INDICATOR_ROUNDED) {
             final float alpha = AnimatorUtils.DECELERATE_INTERPOLATOR.getInterpolation(selectedFactor);
 
             canvas.save();
-            paintCounterBackground.setColor(Theme.multAlpha(colorSelected, (navigationIndicator != NAVIGATION_INDICATOR_GLASS ? 0.18f : 0.09f) * alpha));
-            if (navigationIndicator == NAVIGATION_INDICATOR_ROUNDED) {
-                // NagramX: a stadium over the whole tab, one inset inside the panel, so it nests in the panel's ends.
-                // Titled tabs are shorter than it and it overdraws them; tabsView does not clip its children.
-                final float indicatorHeight = dp(tw.nekomimi.nekogram.helpers.MainTabsHelper.getRoundedNavigationIndicatorHeight());
-                final float top = (getHeight() - indicatorHeight) / 2f;
-                tmpRectF.set(0, top, viewWidth, top + indicatorHeight);
-                final float r = Math.min(tmpRectF.width(), tmpRectF.height()) / 2f;
-                canvas.drawRoundRect(tmpRectF, r, r, paintCounterBackground);
-            } else if (navigationIndicator == NAVIGATION_INDICATOR_MD3) {
+            paintCounterBackground.setColor(Theme.multAlpha(colorSelected, (navigationIndicator == NAVIGATION_INDICATOR_MD3 ? 0.18f : 0.09f) * alpha));
+            if (navigationIndicator == NAVIGATION_INDICATOR_MD3) {
                 final float indicatorWidth = Math.min(dp(tw.nekomimi.nekogram.helpers.MainTabsHelper.getMd3NavigationIndicatorWidth()), viewWidth - dp(8));
                 final float indicatorHeight = dp(32);
                 final float top = isCompact ? (getHeight() - indicatorHeight) / 2f : 0;

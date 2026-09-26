@@ -358,8 +358,6 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
         tabsView = new MainTabsLayout(context, resourceProvider);
         tabsView.setClipChildren(false);
-        // NagramX: the rounded highlight overdraws titled tabs into the padding above and below them.
-        tabsView.setClipToPadding(!roundedBottomNavigation);
         final int paddingH = md3BottomNavigation ? 0 : dp(mainTabsMargin + 4);
         final int paddingV = md3BottomNavigation ? 0 : dp(mainTabsMargin + 4);
         if (md3BottomNavigation) {
@@ -832,6 +830,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         if (tabsView != null) {
             selectTab(viewPager.getCurrentPosition(), true);
             setGestureSelectedOverride(0, false);
+            tabsView.clearRoundedSelector(); // NagramX
         }
         blur3_invalidateBlur();
 
@@ -862,6 +861,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             if (isDragByGesture) {
                 selectTab(Math.round(position), true);
             }
+            updateRoundedSelector(position); // NagramX
         }
 
         checkUi_fadeView();
@@ -987,6 +987,35 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             tabs[index].setGestureSelectedOverride(visibility, allow);
         }
         tabsView.invalidate();
+    }
+
+    // NagramX: rounded navigation slides its one highlight between the tabs either side of the pager's position,
+    // so a tap or a swipe moves it across rather than fading one tab out and the next in.
+    private void updateRoundedSelector(float animatedPosition) {
+        if (!roundedBottomNavigation) {
+            return;
+        }
+        final int from = (int) Math.floor(animatedPosition);
+        final GlassTabView a = visibleTabAt(from), b = visibleTabAt(from + 1);
+        if (a == null) {
+            tabsView.clearRoundedSelector();
+            return;
+        }
+        final float t = b == null ? 0 : animatedPosition - from;
+        final GlassTabView to = b == null ? a : b;
+        tabsView.setRoundedSelector(
+            lerp(a.getX() + a.getWidth() / 2f, to.getX() + to.getWidth() / 2f, t),
+            lerp((float) a.getWidth(), (float) to.getWidth(), t)
+        );
+    }
+
+    private GlassTabView visibleTabAt(int position) {
+        for (int index = 0; index < tabs.length; index++) {
+            if (indexToPosition(index) == position && tabsView.isViewVisible(tabs[index])) {
+                return tabs[index];
+            }
+        }
+        return null;
     }
 
 
