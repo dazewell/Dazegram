@@ -17,11 +17,11 @@ absent, so the chat top-panel key still falls back to the same white default
 (`day.attheme:213`).
 
 That means a literal Classic/Day switch between those two keys changes no
-pixels. If the Interface Style panel-colour option needs a future implementation
-for these themes, its target has to be something else, such as opacity or blur
-eligibility, not a colour-key restoration.
+pixels. The shipped option therefore carries the pre-12.4.0 values itself and
+hands them only to the chat header and chat-list top bar; see "Match Classic and
+Day header color" in `ui-to-code.md`.
 
-*(Established 2026-09-22, during `#interface-style`.)*
+*(Established 2026-09-22, during `#interface-style`; outcome added 2026-09-25.)*
 
 ## "The attach sheet's static selection survives a rebuild, so the attachment can be restored cheaply"
 

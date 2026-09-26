@@ -139,6 +139,9 @@ public class InterfaceStyleActivity extends BaseFragment {
                 boolean checked = NaConfig.INSTANCE.getInterfaceStyleMatchClassicDayHeader().toggleConfigBool();
                 ((TextCheckCell) view).setChecked(checked);
                 reloadInterfaceStyle();
+                if (!NaConfig.INSTANCE.getInterfaceStyleApplyChatHeader().Bool() && !NaConfig.INSTANCE.getInterfaceStyleApplyChatListTopBar().Bool()) {
+                    BulletinFactory.of(this).createSimpleBulletin(R.raw.info, getString(R.string.InterfaceStyleMatchClassicDayHeaderNoTarget)).show();
+                }
             }
         });
         frameLayout.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.TOP | Gravity.LEFT));

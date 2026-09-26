@@ -5395,9 +5395,11 @@ public class ChatActivity extends BaseFragment implements
         contentView.setOccupyStatusBar(!inBubbleMode && !isInsideContainer && !inPreviewMode);
 
         // NagramX: chat-only provider can flatten MD3 header chrome without changing other topPanelChatActivity consumers.
-        actionBar.setupGlass(glassBackgroundDrawableFactory, BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null), ChatObject.isForum(currentChat), xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader());
+        actionBar.setupGlass(glassBackgroundDrawableFactory, isReport() ? BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null) : BlurredBackgroundProviderImpl.chatHeaderSurface(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null, actionBar), ChatObject.isForum(currentChat), xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader());
         actionBar.setChatAvatarContainer(avatarContainer);
         avatarContainer.setActionBar(actionBar);
+        // NagramX: the Classic solid header needs light foregrounds the 12.4.0 palette no longer has.
+        if (!isReport()) xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.applyChatHeader(actionBar, avatarContainer);
 
         if (chatMode == MODE_PINNED) {
             actionBar.setForcedMenuMinWidth(dp(46));
@@ -19095,7 +19097,7 @@ public class ChatActivity extends BaseFragment implements
             int statusBarColor = wallpaperBitmapProvider.getStatusBarColor(source);
             // NagramX: an MD3 header paints its own mostly opaque surface over the wallpaper, so icon contrast must follow that composite.
             if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader()) {
-                statusBarColor = ColorUtils.compositeColors(BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null).getBackgroundColor(), ColorUtils.setAlphaComponent(statusBarColor, 255));
+                statusBarColor = ColorUtils.compositeColors((isReport() ? BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null) : BlurredBackgroundProviderImpl.chatHeaderSurface(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null, actionBar)).getBackgroundColor(), ColorUtils.setAlphaComponent(statusBarColor, 255));
             }
             final float statusBarBrightness = AndroidUtilities.computePerceivedBrightness(statusBarColor);
             final int navigationBarColor = wallpaperBitmapProvider.getNavigationBarColor(source);
@@ -21685,11 +21687,12 @@ public class ChatActivity extends BaseFragment implements
             rightIcon = getContext().getResources().getDrawable(R.drawable.mini_ephemeral_hidden_14).mutate();
             rightIcon.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_windowBackgroundWhiteHintText), PorterDuff.Mode.SRC_IN));
         } else if (!UserObject.isReplyUser(currentUser) && (!isThreadChat() || isTopic) && isMuted) {
-            rightIcon = getThemedDrawable(Theme.key_drawable_muteIconDrawable);
+            // NagramX: a tinted copy, since the shared drawable is also tinted by the global palette.
+            rightIcon = xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeaderIcon(getThemedDrawable(Theme.key_drawable_muteIconDrawable), Theme.key_chat_muteIcon);
         }
         Drawable leftIcon = null;
         if (currentEncryptedChat != null) {
-            leftIcon = getThemedDrawable(Theme.key_drawable_lockIconDrawable);
+            leftIcon = xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeaderIcon(getThemedDrawable(Theme.key_drawable_lockIconDrawable), Theme.key_chat_lockIcon);
         } else if (currentChat != null) {
             leftIcon = avatarContainer.getBotVerificationDrawable(DialogObject.getBotVerificationIcon(currentChat), false);
         } else if (currentUser != null && !UserObject.isUserSelf(currentUser)) {
@@ -46311,6 +46314,11 @@ public class ChatActivity extends BaseFragment implements
             return null;
         }
         ThemeDescription.ThemeDescriptionDelegate selectedBackgroundDelegate = () -> {
+            // NagramX: the key-only header descriptions below have just pushed the shared palette back in.
+            if (xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeaderOptedIn() && !isReport()) {
+                xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.applyChatHeader(actionBar, avatarContainer);
+                updateTitleIcons();
+            }
             if (blurredBackgroundColorProvider != null) {
                 blurredBackgroundColorProvider.updateColors();
             }
@@ -48236,6 +48244,8 @@ public class ChatActivity extends BaseFragment implements
         if (actionBar == null) {
             return !Theme.isCurrentThemeDark();
         }
+        // NagramX: selection mode drops the Classic solid header, so the icons follow the theme's own header there.
+        if (xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeaderSelectionShowing(actionBar)) return ColorUtils.calculateLuminance(xyz.nextalone.nagram.helpers.InterfaceStyleController.chatHeaderSurfaceColor(themeDelegate)) > 0.7f;
         return !shouldHaveLightStatusBarIcons;
     }
 

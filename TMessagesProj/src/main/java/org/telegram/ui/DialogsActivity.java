@@ -592,12 +592,18 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     // NagramX: every MD3 chat-list top row shares one opaque surface color.
     private int getDialogsTopSurfaceColorKey() {
         return xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()
-            ? Theme.key_actionBarDefault
+            ? xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListSurfaceKey(Theme.key_actionBarDefault, folderId != 0 || communityId != 0)
             : Theme.key_windowBackgroundWhite;
     }
 
     private int getDialogsTopSurfaceColor() {
-        return ColorUtils.setAlphaComponent(getThemedColor(getDialogsTopSurfaceColorKey()), 255);
+        return xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListSurface(ColorUtils.setAlphaComponent(getThemedColor(getDialogsTopSurfaceColorKey()), 255), Math.max(whiteActionBar ? searchAnimationProgress : 0, progressToActionMode));
+    }
+
+    // NagramX: this fragment has no resources provider, so the Classic top-bar colours are scoped here.
+    @Override
+    public int getThemedColor(int key) {
+        return xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListColor(key, super.getThemedColor(key));
     }
 
     // NagramX: reloadInterface rebuilds this view without reconstructing these final factories.
@@ -957,7 +963,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         && SharedConfig.chatBlurEnabled()
                         && iBlur3SourceGlassFrosted != null
                         && canvas.isHardwareAccelerated()
-                        && BlurredBackgroundProviderImpl.checkBlurEnabled(currentAccount, resourceProvider)) {
+                        && BlurredBackgroundProviderImpl.checkBlurEnabled(currentAccount, resourceProvider)
+                        && (!xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListTopBar() || progressToActionMode > 0)) {
                     iBlur3SourceGlassFrosted.draw(canvas, 0, surfaceTop, getMeasuredWidth(), surfaceBottom);
                     final int oldColor = actionBarDefaultPaint.getColor();
                     final int oldAlpha = actionBarDefaultPaint.getAlpha();
@@ -967,6 +974,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     actionBarDefaultPaint.setColor(oldColor);
                     actionBarDefaultPaint.setAlpha(oldAlpha);
                 } else {
+                    // NagramX: the solid header's paint follows the search blend and the theme animator every frame.
+                    if (xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListTopBar()) actionBarDefaultPaint.setColor(getDialogsTopSurfaceColor());
                     canvas.drawRect(0, surfaceTop, getMeasuredWidth(), surfaceBottom, actionBarDefaultPaint);
                 }
             }
@@ -3259,7 +3268,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     @Override
     public ActionBar createActionBar(Context context) {
-        ActionBar actionBar = new ActionBar(context, resourceProvider) {
+        // NagramX: scoped provider so the Classic solid top bar reaches the ActionBar's own subtitle overlay.
+        ActionBar actionBar = new ActionBar(context, xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.wrapChatListTopBar(resourceProvider)) {
 
             @Override
             public void setTranslationY(float translationY) {
@@ -3739,7 +3749,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             (initialDialogsType == DIALOGS_TYPE_DEFAULT && !onlySelect || initialDialogsType == DIALOGS_TYPE_FORWARD) &&
             folderId == 0 && communityId == 0 && TextUtils.isEmpty(searchString)
         ) {
-            filterTabsView = new FilterTabsView(context, resourceProvider) {
+            filterTabsView = new FilterTabsView(context, xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.wrapChatListTopBar(resourceProvider)) {
                 @Override
                 public boolean onInterceptTouchEvent(MotionEvent ev) {
                     getParent().requestDisallowInterceptTouchEvent(true);
@@ -5650,6 +5660,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
 
         actionBarDefaultPaint.setColor(getDialogsTopSurfaceColor());
+        // NagramX: the Classic solid top bar needs light foregrounds the 12.4.0 palette no longer has.
+        xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.applyChatListTopBarOnCreate(actionBar, fragmentSearchField, folderId != 0 || communityId != 0);
         /*
         if (inPreviewMode) {
             final TLRPC.User currentUser = getUserConfig().getCurrentUser();
@@ -12568,6 +12580,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 fragmentLocationContextView.updateColors();
             }
 
+            // NagramX: the key-only top-bar descriptions have just pushed the shared palette back in.
+            xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.applyChatListTopBar(actionBar, fragmentSearchField, folderId != 0 || communityId != 0);
             setSearchAnimationProgress(searchAnimationProgress, false);
             if (dialogStoriesCell != null) {
                 dialogStoriesCell.updateColors();
@@ -13166,6 +13180,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             return rightSlidingDialogContainer.getFragment().isLightStatusBar();
         }
         int color = getThemedColor(Theme.key_windowBackgroundWhite);
+        // NagramX: the Classic solid top bar is dark, so its icons follow the surface instead; search and selection turn it white.
+        if (xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListTopBar()) color = xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListSurface(ColorUtils.setAlphaComponent(getThemedColor(getDialogsTopSurfaceColorKey()), 255), searching && (whiteActionBar || !onlySelect) || actionBar != null && actionBar.isActionModeShowed() ? 1f : 0f);
         return ColorUtils.calculateLuminance(color) > 0.7f;
     }
 

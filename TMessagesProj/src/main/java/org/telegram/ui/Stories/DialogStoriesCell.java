@@ -2247,6 +2247,8 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
     }
 
     private int getThemedColor(int key) {
+        // NagramX: route through DialogsActivity so the Classic solid top bar reaches the stories row it contains.
+        if (fragment instanceof org.telegram.ui.DialogsActivity) return xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListStoriesColor(key, fragment.getThemedColor(key));
         if (fragment == null || fragment.getResourceProvider() == null) {
             return Theme.getColor(key);
         }

@@ -267,6 +267,14 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
         updateColors();
     }
 
+    // NagramX: the Classic solid chat-list bar needs to turn the white pill back off on a live theme switch.
+    public void setWhiteBackground(boolean white) {
+        if (isWhiteBackground != white) {
+            isWhiteBackground = white;
+            updateColors();
+        }
+    }
+
     @Override
     public void updateColors() {
         final boolean isDark = resourcesProvider != null ? resourcesProvider.isDark() : Theme.isCurrentThemeDark();
