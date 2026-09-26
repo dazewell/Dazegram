@@ -861,7 +861,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             if (isDragByGesture) {
                 selectTab(Math.round(position), true);
             }
-            updateRoundedSelector(position); // NagramX
+            updateRoundedSelector(); // NagramX
         }
 
         checkUi_fadeView();
@@ -989,23 +989,25 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         tabsView.invalidate();
     }
 
-    // NagramX: rounded navigation slides its one highlight between the tabs either side of the pager's position,
-    // so a tap or a swipe moves it across rather than fading one tab out and the next in.
-    private void updateRoundedSelector(float animatedPosition) {
+    // NagramX: rounded navigation slides its one highlight from the current page's tab towards the next one's, so a
+    // tap or a swipe moves it across rather than fading one tab out and the next in. The progress comes from the
+    // current page's own offset, clamped to one page, because getPositionAnimated() turns back on an overdrag.
+    private void updateRoundedSelector() {
         if (!roundedBottomNavigation) {
             return;
         }
-        final int from = (int) Math.floor(animatedPosition);
-        final GlassTabView a = visibleTabAt(from), b = visibleTabAt(from + 1);
-        if (a == null) {
+        final GlassTabView from = visibleTabAt(viewPager.getCurrentPosition());
+        if (from == null) {
             tabsView.clearRoundedSelector();
             return;
         }
-        final float t = b == null ? 0 : animatedPosition - from;
-        final GlassTabView to = b == null ? a : b;
+        final int nextPosition = viewPager.getNextPosition();
+        final GlassTabView next = nextPosition >= 0 ? visibleTabAt(nextPosition) : null;
+        final GlassTabView to = next == null ? from : next;
+        final float t = next == null ? 0 : 1f - viewPager.getCurrentPositionAlpha();
         tabsView.setRoundedSelector(
-            lerp(a.getX() + a.getWidth() / 2f, to.getX() + to.getWidth() / 2f, t),
-            lerp((float) a.getWidth(), (float) to.getWidth(), t)
+            lerp(from.getX() + from.getWidth() / 2f, to.getX() + to.getWidth() / 2f, t),
+            lerp((float) from.getWidth(), (float) to.getWidth(), t)
         );
     }
 
