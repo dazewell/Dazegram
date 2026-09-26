@@ -292,7 +292,7 @@ The Buttons switch is read by two providers, both flat under
 `applyButtons()`: opaque own theme colour, no stroke, no shadow.
 `ComposerGlassProvider` ROLE_BUTTON (`ChatActivity.java:4202`) feeds the side,
 action and channel buttons and the round-video recorder, which forwards it to
-its flash/infinite row and zoom chips (`ChatActivity.java:12066`;
+its flash/infinite row and zoom chips (`ChatActivity.java:12068`;
 `InstantCameraView.java:418-447`, `:489-494`). The recording lock and view-once chips build
 their own `Md3ButtonColorProvider` over `key_chat_messagePanelVoiceLockBackground`
 (`ChatActivityEnterView.java:1839`); the deleted-messages and bookmarks screens
@@ -313,7 +313,7 @@ controls, whose provider at `PeerStoriesView.java:549` feeds the reply field and
 also the comment, paid-reaction, mute and side-control buttons (`:3089`, `:3099`,
 `:3122`, `:3695`); EmojiView's buttons
 (`BlurredBackgroundProviderImpl.java:97`); and PhotoViewer's zero-fill rings
-(`:324`).
+(`:333-344`).
 *(Established 2026-09-25, during `#interface-style`.)*
 
 ## BottomBuilder section cards are opt-in and isolated to Early Send
