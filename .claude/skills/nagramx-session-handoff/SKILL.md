@@ -71,7 +71,7 @@ Never discard work to make the branch look tidy.
 ### 2. Make sure a PR exists
 
 If there is none, open one now, **non-draft, into `dev`**; if one exists as a
-draft, mark it ready (`gh pr ready <n>`). A draft gets no automated review, and
+draft, mark it ready (`gh pr ready <n>`). A draft can't be reviewed, and
 review history is a large part of what the next session reconstructs. An
 unfinished change is not a reason to draft it; the handoff
 block below is what says it is unfinished. **The PR is where the handoff
@@ -138,14 +138,16 @@ that the change is too big — say that instead.
 **Close the review threads — after the last push, not before.** `AGENTS.md`
 requires every review point to get a fix or an explicit reply, then a resolve;
 handing off does not suspend that, it makes it more urgent, because a thread
-the next session inherits has nobody attached to it. Order matters: step 1
-pushed a new head, and the automated reviewer re-fires on every push, so
-resolving the threads you could see *before* that review lands leaves its new
-findings open behind a handoff that claims to be complete. Wait for the review
-on your final head to settle, then reply to each open thread with the fix or
+the next session inherits has nobody attached to it. Order matters: if a
+Copilot review is still in flight on your head, resolving the threads you could
+see *before* it lands leaves its findings open behind a handoff that claims to
+be complete. Wait for it to settle, then reply to each open thread with the fix or
 why it will not be changed — a finding you are deliberately leaving is a fine
 reply, and belongs in the half-done list too — and resolve it. Verify none are
-left, per the `reviewThreads` query in `nagramx-session-pickup`.
+left, per the `reviewThreads` query in `nagramx-session-pickup`. **Do not request
+a Copilot review just to hand off** — it is billed, and an unfinished head is
+not one worth reviewing; record in the handoff how many of the two the PR has
+used.
 
 **Stop every process you started, and say so in the handoff.** This is the one
 step where `nagramx-process-lifecycle` bites hardest: the worktree you are
@@ -156,8 +158,8 @@ any capture artifact — and record the outcome in the **Left running** field, s
 the next session knows rather than guessing.
 
 **If a finding needs code, you are not stopping yet.** Fixing it means another
-commit and another push, which invalidates the sha you just wrote and re-fires
-the reviewer. Go back to step 1, then refresh the handoff block — sha, state,
+commit and another push, which invalidates the sha you just wrote. Go back to
+step 1, then refresh the handoff block — sha, state,
 half-done — before stopping. The last thing written must describe the last thing
 pushed.
 
