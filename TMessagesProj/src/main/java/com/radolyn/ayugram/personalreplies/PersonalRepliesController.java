@@ -151,6 +151,26 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
                 || PersonalRepliesStorage.isReplyInDialog(message.messageOwner, dialogId);
     }
 
+    /**
+     * The message a thread should be looked up from. For an album that is the
+     * member carrying the reply, which needn't be the one the menu treats as
+     * primary; otherwise it's the message itself.
+     */
+    public static MessageObject threadAnchor(MessageObject message, MessageObject.GroupedMessages group) {
+        if (message == null || group == null || message.messageOwner == null
+                || PersonalRepliesStorage.isReplyInDialog(message.messageOwner, message.getDialogId())) {
+            return message;
+        }
+        for (int i = 0; i < group.messages.size(); i++) {
+            MessageObject member = group.messages.get(i);
+            if (member != null && member.getId() > 0 && member.messageOwner != null
+                    && PersonalRepliesStorage.isReplyInDialog(member.messageOwner, member.getDialogId())) {
+                return member;
+            }
+        }
+        return message;
+    }
+
     private int count(long dialogId, int messageId) {
         if (dialogId != cachedDialogId) {
             cachedDialogId = dialogId;

@@ -48840,7 +48840,8 @@ public class ChatActivity extends BaseFragment implements
 
             }
             case nkbtn_personal_replies: {
-                openPersonalReplies(selectedObjectGroup != null ? selectedObjectGroup.findPrimaryMessageObject() : selectedObject);
+                openPersonalReplies(com.radolyn.ayugram.personalreplies.PersonalRepliesController.threadAnchor(
+                        selectedObjectGroup != null ? selectedObjectGroup.findPrimaryMessageObject() : selectedObject, selectedObjectGroup));
                 break;
             }
             case nkbtn_view_in_chat: {
@@ -51096,7 +51097,8 @@ public class ChatActivity extends BaseFragment implements
                 // NagramX: same entry for one-to-one chats, from the history stored on this device. It opens the
                 // whole thread the message sits in, so it also shows on a reply that has no replies of its own
                 if (!isThreadChat() && chatMode == MODE_DEFAULT && !isInsideContainer && personalRepliesTopId == 0
-                        && com.radolyn.ayugram.personalreplies.PersonalRepliesController.canViewThread(currentAccount, primaryMessage)) {
+                        && com.radolyn.ayugram.personalreplies.PersonalRepliesController.canViewThread(currentAccount,
+                                com.radolyn.ayugram.personalreplies.PersonalRepliesController.threadAnchor(primaryMessage, selectedObjectGroup))) {
                     items.add(LocaleController.getString(R.string.ViewThread));
                     options.add(nkbtn_personal_replies);
                     icons.add(R.drawable.msg_viewreplies);
