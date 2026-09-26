@@ -21505,8 +21505,8 @@ public class ChatActivity extends BaseFragment implements
         }
         if (personalRepliesTopId != 0) {
             // NagramX: the reply view walks the whole reply tree, so it can hold more than the direct-reply
-            // count the menu item showed; titling it with a count would contradict that label one tap later
-            avatarContainer.setTitle(LocaleController.getString(R.string.PersonalRepliesThreadTitle));
+            // count the menu item showed; labelling the full size as a thread keeps it from reading as that count
+            avatarContainer.setTitle(LocaleController.formatString(R.string.PersonalRepliesThreadTitle, personalRepliesMessages.size()));
             return;
         }
         if (chatMode == MODE_SUGGESTIONS && currentChat != null) {
