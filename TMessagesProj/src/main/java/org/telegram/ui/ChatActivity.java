@@ -10232,6 +10232,7 @@ public class ChatActivity extends BaseFragment implements
         if (!filter) {
             // NagramX: whoever turns the filtered list off ends the personal reply view with it
             personalRepliesTopId = 0;
+            personalRepliesFocusId = 0;
             personalRepliesMessages.clear();
         }
         chatAdapter.isFiltered = filter;
@@ -10640,24 +10641,31 @@ public class ChatActivity extends BaseFragment implements
     // NagramX: personal reply view. Swaps the history for one message and its stored replies without
     // leaving the chat, so the composer and everything else stay live. It rides on the adapter's
     // filtered list because the whole adapter and every live-update handler already branch on that;
-    // personalRepliesTopId is only the marker saying which kind of filtered list is on screen.
+    // personalRepliesTopId is only the marker saying which kind of filtered list is on screen (it holds the
+    // thread's top message); personalRepliesFocusId is the message the view was opened from, landed on and
+    // returned to, since the top can sit far above it.
     private int personalRepliesTopId;
+    private int personalRepliesFocusId;
     private final ArrayList<MessageObject> personalRepliesMessages = new ArrayList<>();
 
     private void openPersonalReplies(MessageObject message) {
         if (message == null || chatAdapter == null || chatAdapter.isFiltered || personalRepliesTopId != 0) {
             return;
         }
-        final int topId = message.getId();
+        final int focusId = message.getId();
         final long dialogId = dialog_id;
-        com.radolyn.ayugram.personalreplies.PersonalRepliesController.loadThread(currentAccount, dialogId, topId, loaded -> {
-            if (chatAdapter == null || dialogId != dialog_id || personalRepliesTopId != 0 || loaded.size() < 2) {
+        com.radolyn.ayugram.personalreplies.PersonalRepliesController.loadThread(currentAccount, dialogId, focusId, loaded -> {
+            // the load is async: the chat may have closed, or a tag search taken over the filtered list, before it lands
+            if (getParentActivity() == null || fragmentView == null || isFinishing() || chatAdapter == null || chatAdapter.isFiltered
+                    || dialogId != dialog_id || personalRepliesTopId != 0) {
                 return;
             }
-            if (loaded.get(0).getId() != topId) {
-                // the message being replied to isn't in the cache any more, so there's nothing to anchor the view on
+            if (loaded.size() < 2) {
+                // a reply whose parent is gone from the cache and that has no replies of its own
+                BulletinFactory.of(this).createErrorBulletin(LocaleController.getString(R.string.PersonalRepliesThreadMissing), themeDelegate).show();
                 return;
             }
+            final int topId = loaded.get(0).getId();
             personalRepliesMessages.clear();
             for (int i = 0; i < loaded.size(); i++) {
                 MessageObject object = loaded.get(i);
@@ -10668,14 +10676,22 @@ public class ChatActivity extends BaseFragment implements
                 personalRepliesMessages.add(live != null ? live : object);
             }
             personalRepliesTopId = topId;
+            personalRepliesFocusId = focusId;
             setFilterMessages(true, true, true);
             if (!chatAdapter.isFiltered) {
                 personalRepliesTopId = 0;
+                personalRepliesFocusId = 0;
                 personalRepliesMessages.clear();
                 return;
             }
             updateTitle(true);
-            scrollToMessageId(topId, 0, false, 0, true, 0);
+            // the 500-message cap can leave the tapped message out of a very large thread, and scrolling to
+            // an id the view doesn't hold would close it again
+            if (filteredMessagesDict != null && filteredMessagesDict.get(focusId) != null) {
+                scrollToMessageId(focusId, 0, true, 0, true, 0);
+            } else {
+                scrollToMessageId(topId, 0, false, 0, true, 0);
+            }
         });
     }
 
@@ -10683,13 +10699,14 @@ public class ChatActivity extends BaseFragment implements
         if (personalRepliesTopId == 0) {
             return;
         }
-        final int topId = personalRepliesTopId;
+        final int focusId = personalRepliesFocusId;
         personalRepliesTopId = 0;
+        personalRepliesFocusId = 0;
         personalRepliesMessages.clear();
         setFilterMessages(false, true, true);
         updateTitle(true);
         if (scrollBack) {
-            scrollToMessageId(topId, 0, true, 0, true, 0);
+            scrollToMessageId(focusId, 0, true, 0, true, 0);
         }
     }
 
@@ -51076,15 +51093,13 @@ public class ChatActivity extends BaseFragment implements
                     icons.add(R.drawable.msg_viewreplies);
                     items.add(LocaleController.getString(R.string.ViewInChat));
                 }
-                // NagramX: same entry for one-to-one chats, counted from the history stored on this device
-                if (!isThreadChat() && chatMode == MODE_DEFAULT && !isInsideContainer && personalRepliesTopId == 0 && primaryMessage != null
-                        && com.radolyn.ayugram.personalreplies.PersonalRepliesController.isEligibleDialog(currentAccount, dialog_id)) {
-                    int personalReplies = com.radolyn.ayugram.personalreplies.PersonalRepliesController.getCount(currentAccount, primaryMessage);
-                    if (personalReplies > 0) {
-                        items.add(LocaleController.formatPluralString("ViewReplies", personalReplies));
-                        options.add(nkbtn_personal_replies);
-                        icons.add(R.drawable.msg_viewreplies);
-                    }
+                // NagramX: same entry for one-to-one chats, from the history stored on this device. It opens the
+                // whole thread the message sits in, so it also shows on a reply that has no replies of its own
+                if (!isThreadChat() && chatMode == MODE_DEFAULT && !isInsideContainer && personalRepliesTopId == 0
+                        && com.radolyn.ayugram.personalreplies.PersonalRepliesController.canViewThread(currentAccount, primaryMessage)) {
+                    items.add(LocaleController.getString(R.string.ViewThread));
+                    options.add(nkbtn_personal_replies);
+                    icons.add(R.drawable.msg_viewreplies);
                 }
                 if (!isEphemeral && !selectedObject.isSponsored() && chatMode != MODE_SCHEDULED && ChatObject.isChannel(currentChat) && !ChatObject.isMonoForum(currentChat) && selectedObject.getDialogId() != mergeDialogId && !selectedObject.isAyuDeleted()) {
                     allowCopyLink = true;
