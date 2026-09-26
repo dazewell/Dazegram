@@ -155,7 +155,7 @@ drawn `getMainTabsMargin()` in from it, so the panel is 64dp tall with or
 without titles. That margin is 12dp under MD3 (`MainTabsHelper.java:110-113`),
 and every consumer already measures to it: list padding, the Dialogs FAB,
 bulletins and the blur-capture rect (`MainTabsActivity.java:221-223`;
-`DialogsActivity.java:3109-3110`, `:14711-14712`), so they clear the lifted
+`DialogsActivity.java:3118-3119`, `:14727-14728`), so they clear the lifted
 panel with no code of their own. Negative side margins put the panel 9dp from
 the screen, capped at the pill's 344dp; with few tabs it narrows so the edge
 indicators keep the same gap from the panel's side as from its top
@@ -168,7 +168,7 @@ each 4dp inside the one around it, so they nest at the edge tabs
 the 56×32 icon-only indicator, inside a near-square card, read as ovals on
 device and was dropped for these (`4b6b7c61da`). Tabs are padded symmetrically so ItemOptions,
 which centres the card on the tab, centres it on the panel
-(`MainTabsActivity.java:1478-1499`). There is no display-corner nesting: by
+(`MainTabsActivity.java:1478-1500`). There is no display-corner nesting: by
 geometry, 18dp corners 12dp above the inset clear a display corner up to about
 44dp even with no nav inset, but that is not device-checked.
 `mainTabsBottomNavigation()` frosts at the Blur strength alpha while blur is
@@ -182,12 +182,12 @@ tab geometry.
 
 Rounded navigation, an MD3 sub-toggle shown only while Bottom navigation is on
 (`InterfaceStyleActivity.java:305`; `InterfaceStyleController.java:44-46`),
-keeps this slot, lift and provider and changes only shape. Its whole-tab
+keeps this slot, lift and provider and changes shape and labels. Its whole-tab
 highlight is a different stadium from the dropped one. The panel radius
-becomes half its height, tabs abut 4dp inside it at 80dp each
+becomes half its height, tabs abut 4dp inside it at 80dp each within the same cap
 (`MainTabsHelper.java:50-52`, `:76-79`, `:86-88`), and a tab-wide stadium one
 inset inside the panel is the highlight, the long-press card and the drag
-selector (`GlassTabView.java:175-182`; `MainTabsActivity.java:1488-1494`;
+selector (`GlassTabView.java:175-182`; `MainTabsActivity.java:1488-1495`;
 `MainTabsLayout.java:324`, `:350`). Titled tabs stay 48dp, so the highlight
 overdraws them 4dp each way; icon-only tabs grow to 56dp so all of it is
 tappable (`MainTabsHelper.java:55-60`). Labels keep the glass position and
