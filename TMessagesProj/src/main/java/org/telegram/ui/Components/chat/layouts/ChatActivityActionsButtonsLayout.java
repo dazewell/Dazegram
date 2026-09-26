@@ -180,8 +180,8 @@ public class ChatActivityActionsButtonsLayout extends LinearLayout {
 
     private void checkHolderPositionsAndVisibility(ButtonHolder holder) {
         final float visibility = totalVisibilityFactor * holder.visibilityAnimator.getFloatValue();
-        final float offsetY = -dp(54) * (1f - visibility);
-        float offsetX = getMeasuredWidth() / 2f * (1f - AnimatorUtils.DECELERATE_INTERPOLATOR.getInterpolation(visibility));
+        final float offsetY = holder.button.isNested() ? 0 : -dp(54) * (1f - visibility); // NagramX: nested in the MD3 island, the buttons fade in place instead of flying in from outside it
+        float offsetX = holder.button.isNested() ? 0 : getMeasuredWidth() / 2f * (1f - AnimatorUtils.DECELERATE_INTERPOLATOR.getInterpolation(visibility));
         if (holder == replyButton) {
             offsetX *= -1;
         }
