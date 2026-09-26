@@ -6,6 +6,7 @@ import android.util.SparseIntArray;
 
 import org.telegram.SQLite.SQLiteCursor;
 import org.telegram.SQLite.SQLiteDatabase;
+import org.telegram.SQLite.SQLiteException;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.MessageCustomParamsHelper;
 import org.telegram.messenger.MessageObject;
@@ -16,6 +17,7 @@ import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_stories;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Locale;
 
 /**
@@ -39,10 +41,15 @@ public final class PersonalRepliesStorage {
     private static final int CANDIDATE_LIMIT = 4000;
 
     /**
-     * Ceiling on replies for one message, applied to both the count and the
-     * view so the glyph, the menu label and the list can't disagree.
+     * Ceiling on the direct replies counted for one message, and on the
+     * messages the thread view loads below it. The two numbers measure
+     * different things (the view walks the whole reply tree), so the glyph and
+     * menu label can be lower than what the view shows.
      */
     public static final int THREAD_LIMIT = 500;
+
+    /** Backstop on the queries one thread walk may put on the storage queue. */
+    private static final int THREAD_QUERY_LIMIT = 1000;
 
     private PersonalRepliesStorage() {}
 
@@ -145,10 +152,22 @@ public final class PersonalRepliesStorage {
         }
     }
 
+    /** Columns every thread query reads, in the order {@link #readRow} expects them. */
+    private static final String THREAD_COLUMNS = "m.read_state, m.data, m.send_state, m.mid, m.date, m.replydata, m.media, m.ttl, "
+            + "m.mention, m.imp, m.forwards, m.replies_data, m.custom_params, m.thread_reply_id";
+
     /**
-     * Loads the message being replied to plus its stored replies, oldest first.
-     * Users and chats the messages point at are gathered so the caller can put
-     * them into {@code MessagesController} before building message objects.
+     * Loads the message being replied to plus every stored reply below it: its
+     * replies, their replies, and so on. The root comes first, then one level at
+     * a time, oldest first within a level, so when {@link #THREAD_LIMIT} cuts the
+     * walk short every message kept still has its parent in the list. Users and
+     * chats the messages point at are gathered so the caller can put them into
+     * {@code MessagesController} before building message objects.
+     *
+     * <p>Indexed queries a level at a time rather than a recursive SQL query: whether a
+     * row really replies to something in this chat is only settled by its
+     * serialized {@code reply_to} (see {@link #countReplies}), and SQL would have
+     * already descended into a wrong row's replies before anything could reject it.
      */
     static ArrayList<TLRPC.Message> loadThread(int account, long dialogId, int topId,
                                                ArrayList<Long> usersToLoad, ArrayList<Long> chatsToLoad) {
@@ -161,78 +180,61 @@ public final class PersonalRepliesStorage {
         SQLiteCursor cursor = null;
         try {
             cursor = database.queryFinalized(String.format(Locale.US,
-                    "SELECT m.read_state, m.data, m.send_state, m.mid, m.date, m.replydata, m.media, m.ttl, m.mention, m.imp, m.forwards, m.replies_data, m.custom_params "
-                            + "FROM messages_v2 as m WHERE m.uid = %d AND (m.mid = %d OR m.thread_reply_id = %d) ORDER BY m.mid ASC LIMIT %d",
-                    dialogId, topId, topId, THREAD_LIMIT + 1));            while (cursor.next()) {
-                NativeByteBuffer data = cursor.byteBufferValue(1);
-                if (data == null) {
-                    continue;
-                }
-                TLRPC.Message message = TLRPC.Message.TLdeserialize(data, data.readInt32(false), false);
-                if (message == null) {
-                    data.reuse();
-                    continue;
-                }
-                message.send_state = cursor.intValue(2);
-                message.id = (int) cursor.longValue(3);
-                if (message.id > 0 && message.send_state != 0 && message.send_state != 3) {
-                    message.send_state = 0;
-                }
-                message.readAttachPath(data, selfId);
-                data.reuse();
-                if (message.id != topId && !isReplyInDialog(message, dialogId)) {
-                    continue;
-                }
-                MessageObject.setUnreadFlags(message, cursor.intValue(0));
-                message.date = cursor.intValue(4);
-                message.dialog_id = dialogId;
-                if ((message.flags & TLRPC.MESSAGE_FLAG_HAS_VIEWS) != 0) {
-                    message.views = cursor.intValue(6);
-                    message.forwards = cursor.intValue(10);
-                }
-                NativeByteBuffer repliesData = cursor.byteBufferValue(11);
-                if (repliesData != null) {
-                    TLRPC.MessageReplies replies = TLRPC.MessageReplies.TLdeserialize(repliesData, repliesData.readInt32(false), false);
-                    if (replies != null) {
-                        message.replies = replies;
-                    }
-                    repliesData.reuse();
-                }
-                if (message.ttl == 0) {
-                    message.ttl = cursor.intValue(7);
-                }
-                if (cursor.intValue(8) != 0) {
-                    message.mentioned = true;
-                }
-                int flags = cursor.intValue(9);
-                if ((flags & 1) != 0) {
-                    message.stickerVerified = 0;
-                } else if ((flags & 2) != 0) {
-                    message.stickerVerified = 2;
-                }
-                NativeByteBuffer customParams = cursor.byteBufferValue(12);
-                if (customParams != null) {
-                    MessageCustomParamsHelper.readLocalParams(message, customParams);
-                    customParams.reuse();
-                }
-                if (message.reply_to != null && !cursor.isNull(5)) {
-                    NativeByteBuffer replyData = cursor.byteBufferValue(5);
-                    if (replyData != null) {
-                        if (message.reply_to.reply_to_msg_id != 0) {
-                            message.replyMessage = TLRPC.Message.TLdeserialize(replyData, replyData.readInt32(false), false);
-                            if (message.replyMessage != null) {
-                                message.replyMessage.readAttachPath(replyData, selfId);
-                                MessagesStorage.addUsersAndChatsFromMessage(message.replyMessage, usersToLoad, chatsToLoad, null);
-                            }
-                        } else if (message.reply_to.story_id != 0) {
-                            // the same blob holds the story a message replies to, and the top message can be one
-                            message.replyStory = TL_stories.StoryItem.TLdeserialize(replyData, replyData.readInt32(false), false);
+                    "SELECT " + THREAD_COLUMNS + " FROM messages_v2 as m WHERE m.uid = %d AND m.mid = %d", dialogId, topId));
+            TLRPC.Message root = cursor.next() ? readRow(cursor, dialogId, selfId, false, usersToLoad, chatsToLoad) : null;
+            cursor.dispose();
+            cursor = null;
+            if (root == null) {
+                return result;
+            }
+            result.add(root);
+
+            HashSet<Integer> visited = new HashSet<>();
+            visited.add(topId);
+            ArrayList<Integer> frontier = new ArrayList<>();
+            frontier.add(topId);
+            int remaining = THREAD_LIMIT;
+            int queries = 0;
+            // each page either moves past the rows it read or finishes its level, and a level only
+            // continues the walk with ids it hasn't visited, so it can't outlast the cap anyway; the query
+            // bound is there so no shape of stored data can keep the storage queue, and every other query
+            // waiting on it, busy
+            while (!frontier.isEmpty() && remaining > 0 && queries < THREAD_QUERY_LIMIT) {
+                String parents = TextUtils.join(",", frontier);
+                ArrayList<Integer> next = new ArrayList<>();
+                // rows the checks below reject still take up LIMIT slots, so page through the level until it
+                // runs dry rather than moving on after one short read and losing the replies sorted after them
+                long lastMid = Integer.MIN_VALUE - 1L;
+                boolean more = true;
+                while (more && remaining > 0 && queries < THREAD_QUERY_LIMIT) {
+                    int limit = remaining;
+                    queries++;
+                    // the explicit != 0 is what lets SQLite pick the partial index, whose own WHERE it has to see
+                    cursor = database.queryFinalized(String.format(Locale.US,
+                            "SELECT " + THREAD_COLUMNS + " FROM messages_v2 as m WHERE m.uid = %d AND m.thread_reply_id != 0 AND m.thread_reply_id IN (%s) AND m.mid > %d ORDER BY m.mid ASC LIMIT %d",
+                            dialogId, parents, lastMid, limit));
+                    int read = 0;
+                    while (cursor.next()) {
+                        read++;
+                        int id = (int) cursor.longValue(3);
+                        lastMid = id;
+                        if (visited.contains(id)) {
+                            continue;
                         }
-                        replyData.reuse();
+                        TLRPC.Message message = readRow(cursor, dialogId, selfId, true, usersToLoad, chatsToLoad);
+                        if (message == null) {
+                            continue;
+                        }
+                        visited.add(id);
+                        next.add(id);
+                        result.add(message);
+                        remaining--;
                     }
+                    cursor.dispose();
+                    cursor = null;
+                    more = read == limit;
                 }
-                MessagesStorage.addUsersAndChatsFromMessage(message, usersToLoad, chatsToLoad, null);
-                result.add(message);
+                frontier = next;
             }
         } catch (Throwable t) {
             FileLog.e(t);
@@ -242,6 +244,86 @@ public final class PersonalRepliesStorage {
             }
         }
         return result;
+    }
+
+    /**
+     * Rebuilds one stored message from a {@link #THREAD_COLUMNS} row. With
+     * {@code asReply} set, a row that isn't really a reply to the parent it was
+     * found under comes back null.
+     */
+    private static TLRPC.Message readRow(SQLiteCursor cursor, long dialogId, long selfId, boolean asReply,
+                                         ArrayList<Long> usersToLoad, ArrayList<Long> chatsToLoad) throws SQLiteException {
+        NativeByteBuffer data = cursor.byteBufferValue(1);
+        if (data == null) {
+            return null;
+        }
+        TLRPC.Message message = TLRPC.Message.TLdeserialize(data, data.readInt32(false), false);
+        if (message == null) {
+            data.reuse();
+            return null;
+        }
+        message.send_state = cursor.intValue(2);
+        message.id = (int) cursor.longValue(3);
+        if (message.id > 0 && message.send_state != 0 && message.send_state != 3) {
+            message.send_state = 0;
+        }
+        message.readAttachPath(data, selfId);
+        data.reuse();
+        // the column is only the direct parent while the chat has no top ids, so hold it against
+        // the message itself: one wrong edge here would pull a whole wrong branch in under it
+        if (asReply && (!isReplyInDialog(message, dialogId) || message.reply_to.reply_to_msg_id != cursor.intValue(13))) {
+            return null;
+        }
+        MessageObject.setUnreadFlags(message, cursor.intValue(0));
+        message.date = cursor.intValue(4);
+        message.dialog_id = dialogId;
+        if ((message.flags & TLRPC.MESSAGE_FLAG_HAS_VIEWS) != 0) {
+            message.views = cursor.intValue(6);
+            message.forwards = cursor.intValue(10);
+        }
+        NativeByteBuffer repliesData = cursor.byteBufferValue(11);
+        if (repliesData != null) {
+            TLRPC.MessageReplies replies = TLRPC.MessageReplies.TLdeserialize(repliesData, repliesData.readInt32(false), false);
+            if (replies != null) {
+                message.replies = replies;
+            }
+            repliesData.reuse();
+        }
+        if (message.ttl == 0) {
+            message.ttl = cursor.intValue(7);
+        }
+        if (cursor.intValue(8) != 0) {
+            message.mentioned = true;
+        }
+        int flags = cursor.intValue(9);
+        if ((flags & 1) != 0) {
+            message.stickerVerified = 0;
+        } else if ((flags & 2) != 0) {
+            message.stickerVerified = 2;
+        }
+        NativeByteBuffer customParams = cursor.byteBufferValue(12);
+        if (customParams != null) {
+            MessageCustomParamsHelper.readLocalParams(message, customParams);
+            customParams.reuse();
+        }
+        if (message.reply_to != null && !cursor.isNull(5)) {
+            NativeByteBuffer replyData = cursor.byteBufferValue(5);
+            if (replyData != null) {
+                if (message.reply_to.reply_to_msg_id != 0) {
+                    message.replyMessage = TLRPC.Message.TLdeserialize(replyData, replyData.readInt32(false), false);
+                    if (message.replyMessage != null) {
+                        message.replyMessage.readAttachPath(replyData, selfId);
+                        MessagesStorage.addUsersAndChatsFromMessage(message.replyMessage, usersToLoad, chatsToLoad, null);
+                    }
+                } else if (message.reply_to.story_id != 0) {
+                    // the same blob holds the story a message replies to, and the top message can be one
+                    message.replyStory = TL_stories.StoryItem.TLdeserialize(replyData, replyData.readInt32(false), false);
+                }
+                replyData.reuse();
+            }
+        }
+        MessagesStorage.addUsersAndChatsFromMessage(message, usersToLoad, chatsToLoad, null);
+        return message;
     }
 
     /**

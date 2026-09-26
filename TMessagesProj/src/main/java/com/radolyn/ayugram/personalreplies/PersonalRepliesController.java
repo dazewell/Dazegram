@@ -339,8 +339,8 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
     }
 
     /**
-     * Loads the message plus its stored replies for the in-place reply view,
-     * oldest first, and hands back ready-to-render message objects.
+     * Loads the message plus every stored reply below it for the in-place
+     * thread view, root first, and hands back ready-to-render message objects.
      */
     public static void loadThread(int account, long dialogId, int topId, Utilities.Callback<ArrayList<MessageObject>> onDone) {
         MessagesStorage.getInstance(account).getStorageQueue().postRunnable(() -> {
