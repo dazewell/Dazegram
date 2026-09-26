@@ -18,6 +18,13 @@ check), `nagramx-process-lifecycle` (any process you start, and cleanup),
 
 Invoke the skill for the job rather than working from memory.
 
+## Requesting a Copilot review
+
+The `request_copilot_review` tool is a Copilot CLI extension
+(`.github/extensions/copilot-review/`). Claude Code doesn't load it, so run the
+script it wraps: `.\.github\scripts\request-copilot-review.ps1 -PullRequest <n> -Wait`.
+When and how often is in `nagramx-branch-flow`.
+
 ## Subagents
 
 `.claude/agents/` mirrors the specialists as thin stubs that read their

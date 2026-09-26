@@ -231,47 +231,8 @@ gh pr create --base dev --head <YYYY-MM-DD>_<slug> --title "<title>" --body "<bo
 
 The PR body states the exact gate command and its result.
 
-**Don't request the review — it is automatic.** The repository ruleset requests
-Copilot when a non-draft PR targets `dev`. Every hand-request route fails
-*silently*: the REST POST to `requested_reviewers` returns 200 with the reviewer
-dropped, and `gh pr edit --add-reviewer @copilot` no-ops. **Never confirm via
-`requested_reviewers`** — it stays empty even after a review is submitted.
-Confirm on the *reviews* endpoint, filtered to the bot.
-
-Login gotcha: the *reviews* endpoint lists it as
-`copilot-pull-request-reviewer[bot]` but the *comments* endpoint lists it as
-`Copilot`, so an exact-match filter on either silently returns zero on the
-other. Match case-insensitively on a wildcard.
-
-```powershell
-# filter in PowerShell, not in --jq: this shell strips the inner quotes out of a
-# jq string literal, so `--jq '...=="Copilot"'` fails with "function not defined"
-$pr = '<n>'
-$reviews = gh api "repos/dazewell/Dazegram/pulls/$pr/reviews" | ConvertFrom-Json
-$reviews | Where-Object { $_.user.login -like '*copilot*' } |
-  Select-Object -Last 1 | ForEach-Object { $_.state; $_.submitted_at; $_.body }
-
-$comments = gh api "repos/dazewell/Dazegram/pulls/$pr/comments" | ConvertFrom-Json
-$comments | Where-Object { $_.user.login -like '*opilot*' } |
-  Sort-Object created_at | Select-Object -Last 5 |
-  ForEach-Object { "$($_.path):$($_.line)`n$($_.body)`n---" }
-```
-
-**Wait for the automated review, then bound it yourself** — it posts a minute or
-two later, re-fires on every push, and nobody else is watching the loop. Note
-the review count as a baseline first, and run the wait synchronously; a
-session-attached process dies when the session goes idle.
-
-- **Severity floor.** Act only on **Important or above** — data loss, a crash, a
-  race with a user-visible consequence, a wrong-behaviour regression. Nitpicks,
-  naming, comment suggestions and speculative defensive guards are not grounds
-  for another commit. Record them and move on.
-- **Round cap.** At most **two** review-driven push cycles. If Important-or-above
-  findings remain after the second, **stop and report** — more churn there
-  usually means the design needs revisiting, which is a report, not a patch.
-
-Fix real findings as new commits; note false positives with a reason. Do not
-re-request the reviewer; the push already re-fired it.
+Opening the PR requests no review. The Copilot review is billed and you request
+it yourself, once the head deserves one — step 10.
 
 **Close every review point.** Each thread gets a fix or an explicit reply saying
 why it will not change, then gets resolved. Reply *in the thread*, not as a
@@ -279,6 +240,7 @@ loose PR comment. Verify none remain unresolved.
 
 ```powershell
 # reply in-thread; --body-file avoids this shell mangling backticks and $ in prose
+$pr = '<n>'
 [System.IO.File]::WriteAllText("$env:TEMP\reply.md", $text, (New-Object System.Text.UTF8Encoding $false))
 gh api "repos/dazewell/Dazegram/pulls/$pr/comments/<comment-id>/replies" -F body=@"$env:TEMP\reply.md"
 
@@ -290,7 +252,7 @@ $m = 'mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResol
 gh api graphql -f query=$m -F id=<PRRT_...>
 ```
 
-### 10. Round 2, and the APK
+### 10. Round 2, the Copilot review, and the APK
 
 Once it compiles — or once CI has gated it — take the **real diff** back to
 `nagramx-architect` for round 2. Run it on a **different model family** from the
@@ -305,13 +267,46 @@ finding is right, just fix it; the diff shows you heard it, so skip the thanks.
 Fix one item per commit.
 
 **A logic commit pushed after the last architect round is unreviewed.** The
-round cap above bounds automated-review churn, not architect rounds — applying
+Copilot budget below bounds paid-review churn, not architect rounds — applying
 it to both is how `#attach-caption-guard` shipped commits its reviewer never
-saw, one carrying a defect the automated reviewer then caught. Send the new head
+saw, one carrying a defect the Copilot review then caught. Send the new head
 back, or name those commits as unreviewed in the handback — that second option
 is what keeps this from becoming an unbounded loop.
 
-**Request the on-device APK build only after round 2 has cleared** — not before.
+**Then request the Copilot review — yourself, once.** Nothing requests it for
+you; every request is billed. Call it when the head is one you would defend to
+an outside reviewer: round 2 has cleared and `ci.yml` is green **on that head
+SHA**. Not on a head you already plan to change. Skip it on a doc- or
+process-only PR unless dazewell asked.
+
+Use the `request_copilot_review` tool (Copilot CLI). Without it, run the script
+it wraps — same checks, same JSON:
+
+```powershell
+.\.github\scripts\request-copilot-review.ps1 -PullRequest <n> -Wait
+```
+
+It refuses a draft, a head Copilot already reviewed, a request still in flight
+and a spent budget; confirms the request on the timeline, because
+`requested_reviewers` never lists a bot; and returns the review with its inline
+comments. Never hand-roll the request with `gh pr edit --add-reviewer` or a raw
+REST POST.
+
+- **Severity floor.** Act only on **Important or above** — data loss, a crash, a
+  race with a user-visible consequence, a wrong-behaviour regression. Nitpicks,
+  naming, comment suggestions and speculative defensive guards are not grounds
+  for another commit. Record them and move on.
+- **Budget: two reviews per PR.** The second only after pushing fixes for an
+  Important-or-above finding, and only once `ci.yml` is green on that new head.
+  If Important-or-above findings remain after it, **stop and report** — more
+  churn there usually means the design needs revisiting, which is a report, not
+  a patch. `-Force` past the budget only when dazewell asks by name.
+
+Fix real findings as new commits; note false positives with a reason. Pushing
+no longer re-requests anything.
+
+**Request the on-device APK build only after round 2 and the Copilot review have
+settled** — not before.
 Review can still find Criticals after you think you are done, which makes any
 earlier build stale the moment it lands. "Ready for a build" means a `ci.yml` run
 exists **for the head SHA** and is green, and every thread is resolved. An absent
@@ -426,7 +421,7 @@ Branch:        <YYYY-MM-DD>_<slug>
 PR:            <url>  (state, draft: no)
 Compile gate:  local | ci.yml | not applicable (doc-only) — with the evidence
 Diagnostics:   not applicable | added in <sha>, reverted in <sha> | still in (why)
-Review:        <architect verdict; n automated findings, x fixed, y declined with reason>
+Review:        <architect verdict; Copilot reviews used n/2, x findings fixed, y declined with reason>
 Review threads: <n, all resolved?>
 Processes:     <none> | one block per item, in the process-lifecycle ledger format
 Isolated GRADLE_USER_HOME: <absolute path> | <none>

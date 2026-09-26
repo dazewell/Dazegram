@@ -262,8 +262,8 @@ release-signed dual-package APK and uploads it to Telegram as a *test* build.
 branch head as-is, not the merge ref. The label is auto-removed at the start of
 the run, so re-applying it requests a fresh build.
 
-PR mechanics — the automatic Copilot review, the endpoints that lie, the
-severity floor, the two-round cap, and thread resolution — are normative in
+PR mechanics — requesting the billed Copilot review, its budget, the severity
+floor, and thread resolution — are normative in
 `.github/agents/nagramx-implementer.agent.md` and are not restated here.
 
 **Request the verification build only once review has settled** — round 2 clean,
