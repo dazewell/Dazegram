@@ -40,6 +40,11 @@ public class InterfaceStyleController {
         return isMaterialDesign3() && NaConfig.INSTANCE.getInterfaceStyleApplyBottomNavigation().Bool();
     }
 
+    // A stadium panel whose selected highlight covers the whole tab, label included.
+    public static boolean roundedBottomNavigation() {
+        return applyBottomNavigation() && NaConfig.INSTANCE.getInterfaceStyleRoundedNavigation().Bool();
+    }
+
     public static boolean panelDividers() {
         return isMaterialDesign3() && NaConfig.INSTANCE.getInterfaceStylePanelDividers().Bool();
     }

@@ -1440,6 +1440,12 @@ object NaConfig {
             ConfigItem.configTypeBool,
             true
         )
+    val interfaceStyleRoundedNavigation =
+        addConfig(
+            "InterfaceStyleRoundedNavigation",
+            ConfigItem.configTypeBool,
+            false
+        )
     val interfaceStyleBlurStrength =
         addConfig(
             "InterfaceStyleBlurStrength",

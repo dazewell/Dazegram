@@ -134,7 +134,10 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     private float gestureSelectedOverride;
     private boolean skipDrawSelector;
     // NagramX: MD3 navigation owns a tonal indicator while other GlassTabView users keep the glass selector.
-    private boolean md3NavigationIndicator;
+    public static final int NAVIGATION_INDICATOR_GLASS = 0;
+    public static final int NAVIGATION_INDICATOR_MD3 = 1;
+    public static final int NAVIGATION_INDICATOR_ROUNDED = 2;
+    private int navigationIndicator = NAVIGATION_INDICATOR_GLASS;
 
     public void setGestureSelectedOverride(float gestureSelectedOverride, boolean allow) {
         this.gestureSelectedOverride = gestureSelectedOverride;
@@ -149,11 +152,13 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
         }
     }
 
-    public void setMd3NavigationIndicator(boolean md3NavigationIndicator) {
-        if (this.md3NavigationIndicator != md3NavigationIndicator) {
-            this.md3NavigationIndicator = md3NavigationIndicator;
-            // NagramX: MD3 puts the label 2dp below the 32dp indicator that wraps the icon.
-            textView.setLayoutParams(LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 0, md3NavigationIndicator ? 34 : 28.33f, 0, 0));
+    public void setNavigationIndicator(int navigationIndicator) {
+        if (this.navigationIndicator != navigationIndicator) {
+            this.navigationIndicator = navigationIndicator;
+            // NagramX: MD3 puts the label 2dp below the 32dp indicator that wraps the icon; the rounded highlight
+            // wraps icon and label, so they keep the glass layout.
+            textView.setLayoutParams(LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 0, navigationIndicator == NAVIGATION_INDICATOR_MD3 ? 34 : 28.33f, 0, 0));
+            updateLabelTypeface();
             invalidate();
         }
     }
@@ -166,8 +171,16 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
             final float alpha = AnimatorUtils.DECELERATE_INTERPOLATOR.getInterpolation(selectedFactor);
 
             canvas.save();
-            paintCounterBackground.setColor(Theme.multAlpha(colorSelected, (md3NavigationIndicator ? 0.18f : 0.09f) * alpha));
-            if (md3NavigationIndicator) {
+            paintCounterBackground.setColor(Theme.multAlpha(colorSelected, (navigationIndicator != NAVIGATION_INDICATOR_GLASS ? 0.18f : 0.09f) * alpha));
+            if (navigationIndicator == NAVIGATION_INDICATOR_ROUNDED) {
+                // NagramX: a stadium over the whole tab, one inset inside the panel, so it nests in the panel's ends.
+                // Titled tabs are shorter than it and it overdraws them; tabsView does not clip its children.
+                final float indicatorHeight = dp(tw.nekomimi.nekogram.helpers.MainTabsHelper.getRoundedNavigationIndicatorHeight());
+                final float top = (getHeight() - indicatorHeight) / 2f;
+                tmpRectF.set(0, top, viewWidth, top + indicatorHeight);
+                final float r = Math.min(tmpRectF.width(), tmpRectF.height()) / 2f;
+                canvas.drawRoundRect(tmpRectF, r, r, paintCounterBackground);
+            } else if (navigationIndicator == NAVIGATION_INDICATOR_MD3) {
                 final float indicatorWidth = Math.min(dp(tw.nekomimi.nekogram.helpers.MainTabsHelper.getMd3NavigationIndicatorWidth()), viewWidth - dp(8));
                 final float indicatorHeight = dp(32);
                 final float top = isCompact ? (getHeight() - indicatorHeight) / 2f : 0;
@@ -200,7 +213,7 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
             final float cx = viewWidth / 2f + dpf2(11);
             // NagramX: MD3's indicator sits 4dp around the icon, so the badge drops 2dp to align with the icon's top
             // and keep that 4dp from the indicator's edge instead of crowding it.
-            final float cy = dpf2(md3NavigationIndicator ? 12 : 10);
+            final float cy = dpf2(navigationIndicator == NAVIGATION_INDICATOR_MD3 ? 12 : 10);
             final float height = dpf2(16);
             final float width = Math.max(height, counter.getCurrentWidth() + dp(8));
             final float rOuter = dpf2(9.333f);
@@ -264,7 +277,17 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
         isSelectedAnimator.setValue(selected, animated);
         checkPlayAnimation(animated);
 
-        textView.setTypeface(selected ? AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_EXTRA_BOLD) : AndroidUtilities.bold());
+        updateLabelTypeface(); // NagramX
+    }
+
+    // NagramX: rounded navigation labels are regular, and medium when selected, rather than medium and extra bold.
+    private void updateLabelTypeface() {
+        final boolean selected = isSelectedAnimator.getValue();
+        if (navigationIndicator == NAVIGATION_INDICATOR_ROUNDED) {
+            textView.setTypeface(selected ? AndroidUtilities.bold() : android.graphics.Typeface.DEFAULT);
+        } else {
+            textView.setTypeface(selected ? AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_EXTRA_BOLD) : AndroidUtilities.bold());
+        }
     }
 
     public boolean isTabSelected() {

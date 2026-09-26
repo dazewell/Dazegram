@@ -64,6 +64,17 @@ public class MainTabsLayout extends AnimatedLinearLayout {
         }
     }
 
+    // NagramX: rounded navigation keeps the glass label position, which has room for the larger passes, and its
+    // long-press selector matches its whole-tab highlight.
+    private boolean roundedNavigation;
+
+    public void setRoundedNavigation(boolean roundedNavigation) {
+        if (this.roundedNavigation != roundedNavigation) {
+            this.roundedNavigation = roundedNavigation;
+            requestLayout();
+        }
+    }
+
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         int width = MeasureSpec.getSize(widthMeasureSpec);
@@ -98,8 +109,8 @@ public class MainTabsLayout extends AnimatedLinearLayout {
             }
         }
 
-        // NagramX: the 64dp MD3 panel leaves room for its label only at the smallest pass, whatever the width.
-        applyPassTextSize(fillWidth ? PASS_TEXT_SIZES_DP.length - 1 : chosenPass);
+        // NagramX: MD3 puts its label under a 32dp indicator, which in the 64dp panel leaves room only for the smallest pass.
+        applyPassTextSize(fillWidth && !roundedNavigation ? PASS_TEXT_SIZES_DP.length - 1 : chosenPass);
 
         final int tabPadding = dp(PASS_PADDINGS_DP[chosenPass]);
         final int maxTabTextWidthIfEq = (maxTotalWidthForTabs / Math.max(1, visibleChildCount)) - tabPadding * 2;
@@ -310,7 +321,7 @@ public class MainTabsLayout extends AnimatedLinearLayout {
     private void setSkipDrawSelector(boolean skipDrawSelector) {
         drawCustomSelector = skipDrawSelector;
         if (drawCustomSelector) {
-            selectorPaint.setColor(Theme.multAlpha(Theme.getColor(Theme.key_glass_tabSelected, resourcesProvider), 0.09f));
+            selectorPaint.setColor(Theme.multAlpha(Theme.getColor(Theme.key_glass_tabSelected, resourcesProvider), roundedNavigation ? 0.18f : 0.09f));
         }
         for (int a = 0, N = getChildCount(); a < N; a++) {
             final View child = getChildAt(a);
@@ -336,7 +347,7 @@ public class MainTabsLayout extends AnimatedLinearLayout {
         if (drawCustomSelector) {
             final float x = animatedLongSelectedViewCenterX + animatedLongSelectedViewOffsetX;
             final float sWidth = getInterpolatedWidthByX(x, this);
-            final float sHeight = getHeight() - getPaddingTop() - getPaddingBottom();
+            final float sHeight = roundedNavigation ? dp(tw.nekomimi.nekogram.helpers.MainTabsHelper.getRoundedNavigationIndicatorHeight()) : getHeight() - getPaddingTop() - getPaddingBottom();
 
             canvas.drawRoundRect(
                     x - sWidth / 2f, (getHeight() - sHeight) / 2f,
