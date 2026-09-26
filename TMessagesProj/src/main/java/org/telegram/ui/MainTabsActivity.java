@@ -358,6 +358,8 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
         tabsView = new MainTabsLayout(context, resourceProvider);
         tabsView.setClipChildren(false);
+        // NagramX: the rounded highlight overdraws titled tabs into the padding above and below them.
+        tabsView.setClipToPadding(!roundedBottomNavigation);
         final int paddingH = md3BottomNavigation ? 0 : dp(mainTabsMargin + 4);
         final int paddingV = md3BottomNavigation ? 0 : dp(mainTabsMargin + 4);
         if (md3BottomNavigation) {
