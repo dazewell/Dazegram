@@ -169,7 +169,7 @@ same applies when the effect is gated on lifecycle state you never watched
 happen — a dialog still showing, a view not yet destroyed.
 Reading the diff cannot answer "which path actually executed on the device"; a
 log line answers it in seconds. A feature that passed the compile gate, an
-automated review and two architect rounds still shipped unreachable once,
+a Copilot review and two architect rounds still shipped unreachable once,
 because all of those reason about the diff and none can see the device state
 that picks the branch.
 
@@ -262,8 +262,8 @@ release-signed dual-package APK and uploads it to Telegram as a *test* build.
 branch head as-is, not the merge ref. The label is auto-removed at the start of
 the run, so re-applying it requests a fresh build.
 
-PR mechanics — the automatic Copilot review, the endpoints that lie, the
-severity floor, the two-round cap, and thread resolution — are normative in
+PR mechanics — requesting the billed Copilot review, its budget, the severity
+floor, and thread resolution — are normative in
 `.github/agents/nagramx-implementer.agent.md` and are not restated here.
 
 **Request the verification build only once review has settled** — round 2 clean,

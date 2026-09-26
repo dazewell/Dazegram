@@ -201,18 +201,15 @@ Report trigger/ref. A workflow that never ran is not a pass.
 Request behaviour verification only after review is clean. A UI-facing change
 also gets one earlier smoke build after compile, for reachability only.
 
-Copilot review is automatic on non-draft PRs to `dev`. Do not request it:
-`gh pr edit <n> --add-reviewer @copilot` no-ops; posting
-`reviewers[]=copilot-pull-request-reviewer[bot]` returns HTTP 200 but drops it;
-`--json reviewRequests` hides bots. Never use `requested_reviewers`; confirm via
-filtered reviews:
+Copilot review is **billed and never automatic**. Request it once architect
+round 2 has cleared and `ci.yml` is green on the head SHA, via the
+`request_copilot_review` tool or its script,
+`.github/scripts/request-copilot-review.ps1 -PullRequest <n> -Wait`. **Two per
+PR**, the second only after fixing an Important-or-above finding; none on doc-
+or process-only PRs unless dazewell asks. The script enforces this; never
+hand-roll the request.
 
-```powershell
-@(gh api repos/<owner>/<repo>/pulls/<n>/reviews | ConvertFrom-Json) |
-  Where-Object { $_.user.login -like '*copilot*' }
-```
-
-A draft PR gets no review. Close every review point: fix or reply why not,
+Close every review point: fix or reply why not,
 resolve, verify none remain.
 
 ## Follow-up commits
