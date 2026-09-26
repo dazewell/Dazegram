@@ -10655,7 +10655,9 @@ public class ChatActivity extends BaseFragment implements
         final int focusId = message.getId();
         final long dialogId = dialog_id;
         com.radolyn.ayugram.personalreplies.PersonalRepliesController.loadThread(currentAccount, dialogId, focusId, loaded -> {
-            if (chatAdapter == null || dialogId != dialog_id || personalRepliesTopId != 0) {
+            // the load is async: the chat may have closed, or a tag search taken over the filtered list, before it lands
+            if (getParentActivity() == null || fragmentView == null || isFinishing() || chatAdapter == null || chatAdapter.isFiltered
+                    || dialogId != dialog_id || personalRepliesTopId != 0) {
                 return;
             }
             if (loaded.size() < 2) {
