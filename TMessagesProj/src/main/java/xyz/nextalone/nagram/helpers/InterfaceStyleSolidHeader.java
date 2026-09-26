@@ -68,6 +68,7 @@ public final class InterfaceStyleSolidHeader {
 
         CHAT_LIST_TITLES.put(Theme.key_actionBarDefaultTitle, 0xffffffff);
         CHAT_LIST_TITLES.put(Theme.key_actionBarDefaultArchivedTitle, 0xffffffff);
+        CHAT_LIST_TITLES.put(Theme.key_telegram_color, 0xffffffff); // My Story's "+" disc, Telegram blue and invisible on the blue bar
     }
 
     private InterfaceStyleSolidHeader() {
