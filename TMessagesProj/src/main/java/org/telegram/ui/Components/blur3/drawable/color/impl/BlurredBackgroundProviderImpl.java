@@ -99,11 +99,11 @@ public class BlurredBackgroundProviderImpl {
                 .setBackgroundColor((r, isDark) -> {
                     final float alpha = LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS) ? 0.85f : 0.76f;
                     final int colorBg = Theme.getColor(Theme.key_windowBackgroundWhite, r);
-                    return Theme.multAlpha(colorBg, alpha);
+                    return xyz.nextalone.nagram.helpers.InterfaceStyleController.applyButtons() ? ColorUtils.setAlphaComponent(colorBg, 255) : Theme.multAlpha(colorBg, alpha); // NagramX: opaque, a translucent fill shows its own blur
                 })
-                .setStrokeColorTop(0xFFFFFFFF, 0x28FFFFFF)
-                .setStrokeColorBottom(0xFFFFFFFF, 0x14FFFFFF)
-                .setShadowColor(0x40000000, 0)
+                .setStrokeColorTop((r, isDark) -> xyz.nextalone.nagram.helpers.InterfaceStyleController.applyButtons() ? 0 : (isDark ? 0x28FFFFFF : 0xFFFFFFFF)) // NagramX: flat under MD3 Buttons
+                .setStrokeColorBottom((r, isDark) -> xyz.nextalone.nagram.helpers.InterfaceStyleController.applyButtons() ? 0 : (isDark ? 0x14FFFFFF : 0xFFFFFFFF))
+                .setShadowColor((r, isDark) -> xyz.nextalone.nagram.helpers.InterfaceStyleController.applyButtons() ? 0 : (isDark ? 0 : 0x40000000))
                 .setShadowLayer(dpf2(11 / 3f), 0, dpf2(2 / 3f))
                 .setStrokeWidth(dpf2(0.5f), dpf2(0.5f))
                 .build();
