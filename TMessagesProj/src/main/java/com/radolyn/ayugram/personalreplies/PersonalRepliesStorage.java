@@ -164,7 +164,7 @@ public final class PersonalRepliesStorage {
      * chats the messages point at are gathered so the caller can put them into
      * {@code MessagesController} before building message objects.
      *
-     * <p>One indexed query per level rather than a recursive SQL query: whether a
+     * <p>Indexed queries a level at a time rather than a recursive SQL query: whether a
      * row really replies to something in this chat is only settled by its
      * serialized {@code reply_to} (see {@link #countReplies}), and SQL would have
      * already descended into a wrong row's replies before anything could reject it.
@@ -195,9 +195,10 @@ public final class PersonalRepliesStorage {
             frontier.add(topId);
             int remaining = THREAD_LIMIT;
             int queries = 0;
-            // every query either moves past the rows it read or ends the walk, so it can't outlast the cap
-            // anyway; the query bound is there so no shape of stored data can keep the storage queue, and
-            // every other query waiting on it, busy
+            // each page either moves past the rows it read or finishes its level, and a level only
+            // continues the walk with ids it hasn't visited, so it can't outlast the cap anyway; the query
+            // bound is there so no shape of stored data can keep the storage queue, and every other query
+            // waiting on it, busy
             while (!frontier.isEmpty() && remaining > 0 && queries < THREAD_QUERY_LIMIT) {
                 String parents = TextUtils.join(",", frontier);
                 ArrayList<Integer> next = new ArrayList<>();
