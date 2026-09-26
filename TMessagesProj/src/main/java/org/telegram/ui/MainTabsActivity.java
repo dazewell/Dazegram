@@ -1475,9 +1475,9 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         com.radolyn.ayugram.eventschedule.MessageTriggersMenu.addTo(o, this);
     }
 
-    // NagramX: under MD3 each tab spans the panel's height less its indicator gap top and bottom, so ItemOptions,
-    // which centres the card on the tab, centres it on the panel. The card is inset inside the panel with a radius
-    // smaller by that inset, so a lifted edge tab nests in the panel's corner instead of crossing it.
+    // NagramX: under MD3 each tab is centred in the panel's height, so ItemOptions, which centres the card on the
+    // tab, centres it on the panel. The card is inset inside the panel with a radius smaller by that inset, so a
+    // lifted edge tab nests in the panel's corner instead of crossing it.
     private ShapeDrawable naxTabScrimBackground() {
         final int color = getThemedColor(Theme.key_windowBackgroundWhite);
         if (!md3BottomNavigation) {
@@ -1487,8 +1487,9 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         final int height = MainTabsHelper.getMainTabsHeight() - inset * 2;
         if (roundedBottomNavigation) {
             // NagramX: rounded navigation's card is its highlight: the whole tab, as a stadium.
-            final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(height / 2f), color);
-            bg.setIntrinsicWidth(Math.max(dp(height), tabs[INDEX_CHATS].getWidth()));
+            final int width = tabs[INDEX_CHATS].getWidth();
+            final ShapeDrawable bg = Theme.createRoundRectDrawable(Math.min(dp(height), width) / 2, color);
+            bg.setIntrinsicWidth(width);
             bg.setIntrinsicHeight(dp(height));
             return bg;
         }

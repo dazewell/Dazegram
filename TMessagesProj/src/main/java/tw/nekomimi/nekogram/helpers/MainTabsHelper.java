@@ -81,7 +81,7 @@ public final class MainTabsHelper {
         return Math.min(Math.min(MD3_NAVIGATION_MAX_WIDTH, screen), tab * getFragmentsCount());
     }
 
-    /** Side padding inside the panel that puts the edge indicators {@link #md3NavigationEdgeGap()} from its side. */
+    /** Side padding inside the panel: the edge indicators {@link #md3NavigationEdgeGap()} from its side, or one inset for rounded tabs. */
     public static float getMd3NavigationContentPadding() {
         if (isRoundedNavigation()) {
             return MD3_NAVIGATION_SCRIM_INSET;
