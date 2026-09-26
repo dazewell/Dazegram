@@ -7,6 +7,8 @@
 #
 # Prints one JSON object. status is one of:
 #   requested         the request landed; nothing waited for
+#   requested-unconfirmed  the POST succeeded but the timeline has not shown it
+#                     yet; do not retry, check again in a few minutes
 #   pending           an earlier request is still in flight; nothing new sent
 #   already-reviewed  Copilot has already reviewed this head; nothing sent
 #   reviewed          a review landed while waiting (review + comments set)
@@ -65,7 +67,8 @@ function Get-CopilotState {
         Where-Object { $_.event -eq 'review_requested' -and $_.PSObject.Properties['requested_reviewer'] } |
         Where-Object { Test-Copilot $_.requested_reviewer })
     # Reviews the old ruleset fired left no review_requested event, so count
-    # whichever is larger against the budget.
+    # whichever is larger against the budget. That undercounts one mix, a legacy
+    # review plus an unanswered manual request, which only old PRs can have.
     $Used = [Math]::Max($Reviews.Count, $Requests.Count)
     [pscustomobject]@{ Reviews = $Reviews; Requests = $Requests; Used = $Used }
 }
@@ -193,7 +196,11 @@ foreach ($Attempt in 1..12) {
     }
 }
 if (-not $Landed) {
-    throw "The review request for $Repository#$PullRequest did not appear on the timeline within 60 seconds."
+    # The POST succeeded, so the request most likely landed and the timeline is
+    # lagging. Throwing here would read as a failure and invite a second billed
+    # request on retry.
+    Write-Result 'requested-unconfirmed' $null
+    return
 }
 
 if (-not $Wait) {

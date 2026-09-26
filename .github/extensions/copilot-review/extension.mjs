@@ -9,8 +9,9 @@ const script = fileURLToPath(new URL("../../scripts/request-copilot-review.ps1",
 const repoRoot = path.resolve(path.dirname(script), "..", "..");
 
 function run(opts, timeoutMs) {
-    // -Command rather than -File so errors come back as one plain line, not a
-    // coloured source frame. Every value is single-quoted, flags are literals.
+    // -Command rather than -File so the same invocation can switch off colour
+    // and set the error view before the script runs. Every value is
+    // single-quoted, flags are literals.
     const quote = (s) => `'${String(s).replace(/'/g, "''")}'`;
     const parts = [
         `-PullRequest ${quote(opts.pullRequest)}`,
@@ -44,7 +45,8 @@ await joinSession({
                 "for Important-or-above findings. Skip it on doc- or process-only PRs unless dazewell " +
                 "asked. Refuses drafts, a head Copilot already reviewed, a request still in flight, and " +
                 "a spent budget. Returns JSON: status, head_sha, reviews_used, and when waited for, " +
-                "the review and its inline comments (comment ids are what in-thread replies take).",
+                "the review and its inline comments (comment ids are what in-thread replies take). " +
+                "Status requested-unconfirmed means the request most likely landed: do not retry.",
             parameters: {
                 type: "object",
                 properties: {
@@ -81,7 +83,7 @@ await joinSession({
                         resultType: "failure",
                     };
                 }
-                return stdout;
+                return { textResultForLlm: stdout, resultType: "success" };
             },
         },
     ],
