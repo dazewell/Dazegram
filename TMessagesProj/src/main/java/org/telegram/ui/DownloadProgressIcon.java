@@ -60,9 +60,15 @@ public class DownloadProgressIcon extends View implements NotificationCenter.Not
         downloadDrawable.start();
     }
 
+    // NagramX: this only sits on the chat-list top bar, and it reads the palette directly, so it needs the
+    // Classic solid bar's white explicitly or it stays 12.4.0 black on the blue.
+    private static int iconColor() {
+        return xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListColor(Theme.key_actionBarDefaultIcon, Theme.getColor(Theme.key_actionBarDefaultIcon));
+    }
+
     public void updateColors() {
-        downloadDrawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_actionBarDefaultIcon), PorterDuff.Mode.SRC_IN));
-        downloadCompleteDrawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_actionBarDefaultIcon), PorterDuff.Mode.SRC));
+        downloadDrawable.setColorFilter(new PorterDuffColorFilter(iconColor(), PorterDuff.Mode.SRC_IN));
+        downloadCompleteDrawable.setColorFilter(new PorterDuffColorFilter(iconColor(), PorterDuff.Mode.SRC));
         invalidate();
     }
 
@@ -81,12 +87,12 @@ public class DownloadProgressIcon extends View implements NotificationCenter.Not
             return;
         }
 
-        if (currentColor != Theme.getColor(Theme.key_actionBarDefaultIcon)) {
-            currentColor = Theme.getColor(Theme.key_actionBarDefaultIcon);
-            paint.setColor(Theme.getColor(Theme.key_actionBarDefaultIcon));
-            paint2.setColor(Theme.getColor(Theme.key_actionBarDefaultIcon));
-            downloadImageReceiver.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_actionBarDefaultIcon), PorterDuff.Mode.SRC_IN));
-            downloadCompleteImageReceiver.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_actionBarDefaultIcon), PorterDuff.Mode.SRC_IN));
+        if (currentColor != iconColor()) {
+            currentColor = iconColor();
+            paint.setColor(iconColor());
+            paint2.setColor(iconColor());
+            downloadImageReceiver.setColorFilter(new PorterDuffColorFilter(iconColor(), PorterDuff.Mode.SRC_IN));
+            downloadCompleteImageReceiver.setColorFilter(new PorterDuffColorFilter(iconColor(), PorterDuff.Mode.SRC_IN));
             paint2.setAlpha(100);
         }
 
