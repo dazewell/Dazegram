@@ -220,7 +220,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private Size aspectRatio = SharedConfig.roundCamera16to9 ? new Size(16, 9) : new Size(4, 3);
     private TextureView textureView;
     private BackupImageView textureOverlayView;
-    private final boolean useCamera2 = SharedConfig.isUsingCamera2(currentAccount);
+    // NagramX: the N-Settings switch opts video messages into Camera2 unless the debug menu forces a choice
+    private final boolean useCamera2 = SharedConfig.isUsingCamera2(currentAccount) || SharedConfig.useCamera2Force == null && NaConfig.INSTANCE.getVideoMessagesCamera2().Bool();
     private CameraSession cameraSession;
     private boolean bothCameras;
     private Camera2Session[] camera2Sessions = new Camera2Session[2];
@@ -1042,6 +1043,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         camera2Sessions[a] = Camera2Session.create(a == (isFrontface ? 0 : 1), MessagesController.getInstance(UserConfig.selectedAccount).roundVideoSize, MessagesController.getInstance(UserConfig.selectedAccount).roundVideoSize);
                         if (camera2Sessions[a] != null) {
                             camera2Sessions[a].setRecordingVideo(true);
+                            camera2Sessions[a].setUseZoomRatio(); // NagramX: per session, so the idle one of a dual pair matches
                             previewSize[a] = new Size(camera2Sessions[a].getPreviewWidth(), camera2Sessions[a].getPreviewHeight());
                         }
                     }
@@ -1056,8 +1058,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 camera2SessionCurrent = camera2Sessions[isFrontface ? 0 : 1] = Camera2Session.create(isFrontface, MessagesController.getInstance(UserConfig.selectedAccount).roundVideoSize, MessagesController.getInstance(UserConfig.selectedAccount).roundVideoSize);
                 if (camera2SessionCurrent == null) return;
                 camera2SessionCurrent.setRecordingVideo(true);
+                camera2SessionCurrent.setUseZoomRatio(); // NagramX
                 previewSize[0] = new Size(camera2SessionCurrent.getPreviewWidth(), camera2SessionCurrent.getPreviewHeight());
             }
+            adaptZoomToSession(0f); // NagramX: the 1x home and lens stops depend on the camera's own range
             applyLockedZoomToCamera();
         }
         updateZoomControlAvailability();
@@ -1570,8 +1574,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         isFrontface = !isFrontface;
         updateFlash();
         if (useCamera2) {
+            // NagramX: each camera has its own zoom range in ratio mode, so carry the ratio, not the slider spot
+            final float carriedZoom = camera2SessionCurrent == null ? 0f : zoomFractionToRatio(camera2SessionCurrent, lockedZoom);
             if (bothCameras) {
                 camera2SessionCurrent = camera2Sessions[isFrontface == initialCameraFront ? 0 : 1];
+                adaptZoomToSession(carriedZoom); // NagramX
                 applyLockedZoomToCamera();
                 updateZoomControlAvailability();
                 cameraThread.flipSurfaces();
@@ -1585,8 +1592,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 camera2SessionCurrent = camera2Sessions[isFrontface ? 0 : 1] = Camera2Session.create(isFrontface, MessagesController.getInstance(UserConfig.selectedAccount).roundVideoSize, MessagesController.getInstance(UserConfig.selectedAccount).roundVideoSize);
                 if (camera2SessionCurrent == null) return;
                 camera2SessionCurrent.setRecordingVideo(true);
+                camera2SessionCurrent.setUseZoomRatio(); // NagramX
                 previewSize[0] = new Size(camera2SessionCurrent.getPreviewWidth(), camera2SessionCurrent.getPreviewHeight());
                 cameraThread.setCurrentSession(camera2SessionCurrent);
+                adaptZoomToSession(carriedZoom); // NagramX
                 applyLockedZoomToCamera();
                 updateZoomControlAvailability();
             }
@@ -4982,9 +4991,42 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
     private void resetZoom() {
         cancelZoomInteractions();
-        lockedZoom = 0.0f;
-        zoomControlView.setZoom(0.0f, false);
+        // NagramX: home is 1x, which in ratio mode sits past the ultrawide end of the slider. The camera being
+        // shown may not exist yet (or be the one switched away from), so adaptZoomToSession finishes this
+        zoomHomePending = true;
+        lockedZoom = useCamera2 && camera2SessionCurrent != null ? getZoomControlValueFromCamera2(1f) : 0.0f;
+        zoomControlView.setZoom(lockedZoom, false);
         applyLockedZoomToCamera();
+    }
+
+    private boolean zoomHomePending;
+
+    // NagramX: called once camera2SessionCurrent is the camera about to show, before its zoom is applied.
+    // carriedZoom is the ratio to keep across a flip, or 0 to leave the slider where it is
+    private void adaptZoomToSession(float carriedZoom) {
+        final Camera2Session session = camera2SessionCurrent;
+        if (session == null) {
+            return;
+        }
+        final float target = zoomHomePending ? 1f : carriedZoom;
+        zoomHomePending = false;
+        if (target > 0f) {
+            cancelFinishZoomTransition();
+            lockedZoom = getZoomControlValueFromCamera2(target);
+            zoomControlView.setZoom(lockedZoom, false);
+        }
+        final float[] stops = session.isZoomRatioMode() ? xyz.nextalone.nagram.helper.RoundLensPresets.get(session.cameraId) : null;
+        if (stops == null || stops.length < 2) {
+            zoomControlView.setPresets(null, null);
+            return;
+        }
+        final float[] fractions = new float[stops.length];
+        final String[] labels = new String[stops.length];
+        for (int i = 0; i < stops.length; i++) {
+            fractions[i] = getZoomControlValueFromCamera2(stops[i]);
+            labels[i] = xyz.nextalone.nagram.helper.RoundLensPresets.label(stops[i]);
+        }
+        zoomControlView.setPresets(fractions, labels);
     }
 
     private void updateZoomControlAvailability() {

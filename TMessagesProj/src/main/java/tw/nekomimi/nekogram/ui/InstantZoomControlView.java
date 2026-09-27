@@ -69,6 +69,13 @@ public class InstantZoomControlView extends View {
     // the slider + -/+ rocker hide when the current camera has no zoom range; the flip button stays
     private boolean zoomEnabled = true;
 
+    // fixed lens stops drawn as tappable labels just above the track, at their true slider positions
+    private float[] presetFractions;
+    private String[] presetLabels;
+    private final android.text.TextPaint presetPaint = new android.text.TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private int presetPointer = -1;
+    private int presetPressed = -1;
+
     private boolean knobPressed;
     private float knobOffsetX;
     private boolean trackPressed;
@@ -117,7 +124,54 @@ public class InstantZoomControlView extends View {
         pressedKnobDrawable = context.getResources().getDrawable(R.drawable.zoom_round_b);
         ringPaint.setStyle(Paint.Style.STROKE);
         ringPaint.setStrokeWidth(AndroidUtilities.dpf2(1.5f));
+        presetPaint.setTextSize(AndroidUtilities.dp(10));
+        presetPaint.setTextAlign(Paint.Align.CENTER);
+        presetPaint.setTypeface(AndroidUtilities.bold());
+        presetPaint.setShadowLayer(AndroidUtilities.dp(2), 0, 0, 0x66000000);
         updateColors(chipBackgroundColor, glyphColor);
+    }
+
+    // fractions are slider positions (0..1) for the matching labels; null or fewer than two hides them
+    public void setPresets(float[] fractions, String[] labels) {
+        if (fractions == null || labels == null || fractions.length < 2 || fractions.length != labels.length) {
+            fractions = null;
+            labels = null;
+        }
+        presetFractions = fractions;
+        presetLabels = labels;
+        presetPointer = -1;
+        presetPressed = -1;
+        invalidate();
+    }
+
+    private boolean presetsShown() {
+        return zoomEnabled && presetFractions != null && compact < 1f;
+    }
+
+    private float presetX(int i) {
+        return travelLeft() + travelWidth() * presetFractions[i];
+    }
+
+    private float presetBaseline() {
+        return trackY - AndroidUtilities.dp(14);
+    }
+
+    // the label row sits in the ~12dp band over the track, so its hit box reaches a little into the track
+    // and the nearest label wins; a tap exactly on the knob still grabs the knob
+    private int findPreset(float x, float y) {
+        if (!presetsShown() || y > trackY - AndroidUtilities.dp(8) || y < presetBaseline() - AndroidUtilities.dp(18)) {
+            return -1;
+        }
+        int hit = -1;
+        float best = AndroidUtilities.dp(20);
+        for (int i = 0; i < presetFractions.length; i++) {
+            final float d = Math.abs(x - presetX(i));
+            if (d < best) {
+                best = d;
+                hit = i;
+            }
+        }
+        return hit;
     }
 
     // re-read the recorder's colors so the chips follow a live theme flip (e.g. battery-saver dark
@@ -190,6 +244,8 @@ public class InstantZoomControlView extends View {
         if (!enabled) {
             knobPressed = false;
             trackPressed = false;
+            presetPointer = -1;
+            presetPressed = -1;
             if (buttonPointerId != -1) {
                 releaseButton(true);
             }
@@ -333,10 +389,42 @@ public class InstantZoomControlView extends View {
             }
             return true;
         }
+        if (presetPointer != -1) {
+            final int index = event.findPointerIndex(presetPointer);
+            if (action == MotionEvent.ACTION_CANCEL || index == -1) {
+                presetPointer = -1;
+                presetPressed = -1;
+                invalidate();
+            } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP && event.getPointerId(event.getActionIndex()) == presetPointer) {
+                final int pressed = presetPressed;
+                final boolean inside = presetsShown() && pressed < presetFractions.length && Math.abs(event.getX(index) - presetX(pressed)) <= AndroidUtilities.dp(40);
+                presetPointer = -1;
+                presetPressed = -1;
+                if (inside) {
+                    if (!tw.nekomimi.nekogram.NekoConfig.disableVibration.Bool()) {
+                        performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+                    }
+                    // same route as a tap on the rail: the recorder eases the knob over to it
+                    zoom = presetFractions[pressed];
+                    if (delegate != null) {
+                        delegate.didSetZoom(zoom);
+                    }
+                }
+                invalidate();
+            }
+            return true;
+        }
         final float x = event.getX();
         final float y = event.getY();
         final float knobX = travelLeft() + travelWidth() * zoom;
         if (action == MotionEvent.ACTION_DOWN) {
+            final int preset = findPreset(x, y);
+            if (preset != -1) {
+                presetPointer = event.getPointerId(0);
+                presetPressed = preset;
+                invalidate();
+                return true;
+            }
             // the flip / -/+ buttons share a row and their 28dp hit boxes overlap; the nearest present
             // center wins. the flip button is always live; the rocker responds only when zoom is enabled.
             if (Math.abs(y - buttonCy) <= AndroidUtilities.dp(28)) {
@@ -442,6 +530,16 @@ public class InstantZoomControlView extends View {
             trackPaint.setColor(0xFFFFFFFF);
             trackRect.set(lineLeft, trackY - half, knobX, trackY + half);
             canvas.drawRoundRect(trackRect, half, half, trackPaint);
+
+            if (presetsShown()) {
+                // the stop the knob sits on reads solid, the rest dimmed; faded out with the compact layout
+                final float baseline = presetBaseline();
+                for (int i = 0; i < presetFractions.length; i++) {
+                    final boolean current = i == presetPressed || presetPressed == -1 && Math.abs(zoom - presetFractions[i]) < 0.015f;
+                    presetPaint.setColor(ColorUtils.setAlphaComponent(0xFFFFFFFF, (int) ((current ? 0xFF : 0x99) * (1f - compact))));
+                    canvas.drawText(presetLabels[i], presetX(i), baseline, presetPaint);
+                }
+            }
 
             final Drawable knob = knobPressed ? pressedKnobDrawable : knobDrawable;
             final int knobHalf = knob.getIntrinsicWidth() / 2;

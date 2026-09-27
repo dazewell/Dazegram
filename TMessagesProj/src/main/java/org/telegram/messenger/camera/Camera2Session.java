@@ -345,7 +345,7 @@ public class Camera2Session {
         if (!isInitiated()) return;
         if (captureRequestBuilder == null || cameraDevice == null || sensorSize == null) return;
 
-        currentZoom = Utilities.clamp(value, maxZoom, 1f);
+        currentZoom = Utilities.clamp(value, maxZoom, getMinZoom()); // NagramX: ratio mode can go below 1x
         updateCaptureRequest();
 
         try {
@@ -376,7 +376,26 @@ public class Camera2Session {
 
     public float getMinZoom() {
         // TODO: support wide zoom camera switching
-        return 1f;
+        return zoomRatioMode ? zoomRatioMin : 1f; // NagramX
+    }
+
+    // NagramX: opt-in, since the stories camera maps its zoom over [getMinZoom, getMaxZoom] and would open
+    // on the ultrawide. CONTROL_ZOOM_RATIO lets a logical multi-camera switch lenses on its own, which a
+    // crop region never does. Set on the UI thread before open(); read on the camera thread.
+    private volatile boolean zoomRatioMode;
+    private volatile float zoomRatioMin = 1f;
+
+    public void setUseZoomRatio() {
+        if (Build.VERSION.SDK_INT < 30 || cameraCharacteristics == null) return;
+        final Range<Float> range = cameraCharacteristics.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE);
+        if (range == null || range.getUpper() <= range.getLower()) return;
+        zoomRatioMin = Math.min(1f, range.getLower());
+        maxZoom = Math.max(1f, range.getUpper());
+        zoomRatioMode = true;
+    }
+
+    public boolean isZoomRatioMode() {
+        return zoomRatioMode;
     }
 
     public int getPreviewWidth() {
@@ -494,7 +513,9 @@ public class Camera2Session {
                 captureRequestBuilder.set(CaptureRequest.CONTROL_CAPTURE_INTENT, CaptureRequest.CONTROL_CAPTURE_INTENT_VIDEO_RECORD);
             }
 
-            if (sensorSize != null && Math.abs(currentZoom - 1f) >= 0.01f) {
+            if (zoomRatioMode && Build.VERSION.SDK_INT >= 30) { // NagramX
+                captureRequestBuilder.set(CaptureRequest.CONTROL_ZOOM_RATIO, currentZoom);
+            } else if (sensorSize != null && Math.abs(currentZoom - 1f) >= 0.01f) {
                 final int centerX = sensorSize.width() / 2;
                 final int centerY = sensorSize.height() / 2;
                 final int deltaX = (int) ((0.5f * sensorSize.width()) / currentZoom);

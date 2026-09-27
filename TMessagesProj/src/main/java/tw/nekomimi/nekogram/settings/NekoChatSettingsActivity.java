@@ -172,6 +172,7 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
             getString(R.string.CameraInVideoMessagesRear),
             getString(R.string.CameraInVideoMessagesAsk)
     }, null));
+    private final AbstractConfigCell videoMessagesCamera2Row = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getVideoMessagesCamera2(), getString(R.string.VideoMessagesCamera2Notice)));
     private final AbstractConfigCell videoMessagesResetZoomOnSwitchRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getVideoMessagesResetZoomOnSwitch()));
     private final AbstractConfigCell videoMessagesHalSmoothZoomRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getVideoMessagesHalSmoothZoom(), getString(R.string.VideoMessagesHalSmoothZoomNotice)));
     private final AbstractConfigCell videoMessagesWarningVibrationRow = cellGroup.appendCell(new ConfigCellSelectBox("VideoMessagesWarningVibration", NaConfig.INSTANCE.getVideoMessagesWarningVibration(), new String[]{
