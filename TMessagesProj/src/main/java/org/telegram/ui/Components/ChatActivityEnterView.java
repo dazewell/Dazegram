@@ -19225,11 +19225,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     // still busy, leaving the composer as idle as the camera-choice popup path does. No send or pause can follow;
     // a far-left release can still reach cancel(), which leaves a handed-off file alone.
     private boolean refuseRoundVideoIfBusy() {
-        android.util.Log.w("NaxSmoke", "NAX_SMOKE_round-video-restart-guard BEGIN build=" + org.telegram.messenger.BuildConfig.BUILD_VERSION_STRING + " app=" + org.telegram.messenger.BuildConfig.APPLICATION_ID + " account=" + currentAccount + " busy=" + (delegate != null && delegate.isRoundVideoRecorderBusy()));
         if (delegate == null || !delegate.isRoundVideoRecorderBusy()) {
             return false;
         }
-        android.util.Log.w("NaxSmoke", "NAX_SMOKE_round-video-restart-guard REFUSE");
         recordAudioVideoRunnableStarted = false;
         calledRecordRunnable = false;
         startedDraggingX = -1;

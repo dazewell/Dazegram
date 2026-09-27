@@ -39281,7 +39281,6 @@ public class ChatActivity extends BaseFragment implements
         // NagramX (#round-video-restart-guard-fix): a camera that never sent (a newer recording, or a view rebuilt
         // since this was armed) isn't this close's to retire
         if (!instantCameraView.isFileHandedOff()) {
-            android.util.Log.w("NaxSmoke", "NAX_SMOKE_round-video-restart-guard CLOSE_SKIP handedOff=false");
             return;
         }
 

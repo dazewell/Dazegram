@@ -841,7 +841,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             return; // NagramX (#round-video-restart-guard-fix): the last resume's camera is still coming up; a second resume would stop it as a terminal stop
         }
         if (cameraFileHandedOff || encoderTeardownPending) {
-            android.util.Log.w("NaxSmoke", "NAX_SMOKE_round-video-restart-guard PAUSE_BLOCKED handedOff=" + cameraFileHandedOff + " pending=" + encoderTeardownPending);
             return; // NagramX (#round-video-restart-guard-fix): a resume here would reopen the camera into the finished recorder
         }
         if (recording) {
@@ -999,11 +998,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
     public void showCamera(boolean fromPaused) {
         if (textureView != null) {
-            android.util.Log.w("NaxSmoke", "NAX_SMOKE_round-video-restart-guard SHOW_NOOP_TEXTURE fromPaused=" + fromPaused);
             return;
         }
         if (!fromPaused && encoderTeardownPending) {
-            android.util.Log.w("NaxSmoke", "NAX_SMOKE_round-video-restart-guard SHOW_BLOCKED pending=true");
             return; // NagramX (#round-video-restart-guard-fix): a fresh open would reuse the recorder still finishing the last video
         }
         // NagramX: pick up the current theme each time the recorder opens, in case it changed while hidden
@@ -1106,7 +1103,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     // NagramX (#round-video-restart-guard-fix): a re-attach inside the send window would start a new GL
                     // thread recording into the handed-off file
                     if (cancelled || cameraFileHandedOff || encoderTeardownPending) {
-                        if (cameraFileHandedOff || encoderTeardownPending) android.util.Log.w("NaxSmoke", "NAX_SMOKE_round-video-restart-guard REATTACH_BLOCKED cancelled=" + cancelled + " handedOff=" + cameraFileHandedOff + " pending=" + encoderTeardownPending);
                         return;
                     }
                     if (BuildVars.LOGS_ENABLED) {
@@ -1327,7 +1323,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
     public void send(int state, boolean notify, int scheduleDate, int scheduleRepeatPeriod, int ttl, long effectId, long stars) {
         if (cameraFileHandedOff) {
-            android.util.Log.w("NaxSmoke", "NAX_SMOKE_round-video-restart-guard SEND_BLOCKED state=" + state);
             return; // NagramX (#round-video-restart-guard-fix): this file already went; a second send would duplicate it
         }
         if (textureView == null && !(sendAdoptedDraft && state == 4)) {
@@ -1345,7 +1340,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             if (videoEncoder != null && recordedTime > 800) {
                 // NagramX (#round-video-restart-guard-fix): from here the file belongs to the outgoing message
                 cameraFileHandedOff = true;
-                android.util.Log.w("NaxSmoke", "NAX_SMOKE_round-video-restart-guard HANDOFF state=4 via=encoder");
                 if (videoEncoder.handler != null) {
                     encoderTeardownPending = true;
                 }
@@ -1390,7 +1384,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             entry.effectId = effectId;
             // NagramX (#round-video-restart-guard-fix): set before sendMedia, which on stories calls cancel() back
             cameraFileHandedOff = true;
-            android.util.Log.w("NaxSmoke", "NAX_SMOKE_round-video-restart-guard HANDOFF state=4 via=direct adopted=" + sendAdoptedDraft);
             delegate.sendMedia(entry, videoEditedInfo, notify, scheduleDate, scheduleRepeatPeriod, false, stars);
             if (scheduleDate != 0) {
                 startAnimation(false, false);
@@ -1423,7 +1416,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 } else {
                     send = 1;
                     cameraFileHandedOff = true; // NagramX (#round-video-restart-guard-fix): the recorder sends this file now
-                    android.util.Log.w("NaxSmoke", "NAX_SMOKE_round-video-restart-guard HANDOFF state=" + state + " via=shutdown");
                 }
                 saveLastCameraBitmap();
                 cameraThread.shutdown(send, notify, scheduleDate, scheduleRepeatPeriod, ttl, effectId);
@@ -1538,7 +1530,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         if (!cameraFileHandedOff) {
             cancelled = true; // NagramX (#round-video-restart-guard-fix): the recorder reads this, and a handed-off one may still owe a rollover cut
         }
-        android.util.Log.w("NaxSmoke", "NAX_SMOKE_round-video-restart-guard CANCEL byGesture=" + byGesture + " handedOff=" + cameraFileHandedOff + " pending=" + encoderTeardownPending + " thread=" + (cameraThread != null) + " encoder=" + (videoEncoder != null) + " file=" + (cameraFile != null));
         recording = false;
         flashing = false;
         updateFlash();
@@ -2407,7 +2398,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         // NagramX (#round-video-restart-guard-fix): a terminal stop that queued nothing (no frame yet,
                         // or no recorder) gets no teardown post, so release what send()/cancel() set for it here
                         AndroidUtilities.runOnUIThread(() -> {
-                            android.util.Log.w("NaxSmoke", "NAX_SMOKE_round-video-restart-guard SKIP_CLEAR handedOff=" + cameraFileHandedOff + " pending=" + encoderTeardownPending);
                             encoderTeardownPending = false;
                             cameraFileHandedOff = false;
                         });
@@ -2521,7 +2511,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 limitStopHapticArmed = false;
                 if (ttl != -2) {
                     encoderTeardownPending = true; // NagramX (#round-video-restart-guard-fix): every shutdown but a pause is a terminal stop
-                    android.util.Log.w("NaxSmoke", "NAX_SMOKE_round-video-restart-guard PENDING_SET send=" + send);
                 }
                 sendMessage(handler.obtainMessage(DO_SHUTDOWN_MESSAGE, send, 0, options), 0);
             }
@@ -2965,7 +2954,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         private void postPrepareFailed() {
             final int token = recordingToken;
             AndroidUtilities.runOnUIThread(() -> {
-                android.util.Log.w("NaxSmoke", "NAX_SMOKE_round-video-restart-guard PREPARE_FAIL_CLEAR genMatch=" + (InstantCameraView.this.recordingGeneration == token));
                 if (InstantCameraView.this.recordingGeneration == token) {
                     InstantCameraView.this.videoEncoder = null;
                 }
@@ -4079,7 +4067,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 // NagramX (#round-video-restart-guard-fix): this stop is finished whatever the generation says, and
                 // nothing can have started since, because the flag holds new recordings off
                 encoderTeardownPending = false;
-                android.util.Log.w("NaxSmoke", "NAX_SMOKE_round-video-restart-guard END teardown send=" + send + " genMatch=" + (InstantCameraView.this.recordingGeneration == capturedGeneration));
                 if (InstantCameraView.this.recordingGeneration == capturedGeneration) {
                     InstantCameraView.this.videoEncoder = null;
                     // NagramX: recording is over one way or another, so any pre-cut warning still showing
