@@ -161,7 +161,8 @@ public class ChatPullingDownDrawable implements NotificationCenter.NotificationC
     public void updateDialog() {
         recommendedChannel = false;
         nextTopic = null;
-        TLRPC.Dialog dialog = getNextUnreadDialog(currentDialog, folderId, filterId, true, params);
+        // NagramX: searchNext is the fallback into other folders and the archive
+        TLRPC.Dialog dialog = getNextUnreadDialog(currentDialog, folderId, filterId, !xyz.nextalone.nagram.NaConfig.INSTANCE.getSwipeToNextWithinFolder().Bool(), params);
         if (dialog != null) {
             nextDialogId = dialog.id;
             drawFolderBackground = params[0] == 1;
