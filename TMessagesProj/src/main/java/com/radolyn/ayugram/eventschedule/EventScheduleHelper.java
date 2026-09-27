@@ -1663,12 +1663,7 @@ public final class EventScheduleHelper {
             // Remove trigger row is the clearing action.
             if (!enabled) {
                 TextView resetButton = builder.addButton(getString(R.string.Reset), true, false, it -> {
-                    boolean animate = focusedField(rows) == null;
                     applyDraft.apply(new EventSchedulePresetStore.Preset(null, "", 0, new ArrayList<>(), false, 0, 0));
-                    // Same rule the sheet opens with when nothing is configured.
-                    typeExpanded[0] = true;
-                    textExpanded[0] = false;
-                    applyGroupVisibility.accept(animate);
                     updateTypeHeader[0].run();
                     updateTextHeader[0].run();
                     return kotlin.Unit.INSTANCE;
