@@ -1095,7 +1095,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 camera2SessionCurrent.setUseZoomRatio(); // NagramX
                 previewSize[0] = new Size(camera2SessionCurrent.getPreviewWidth(), camera2SessionCurrent.getPreviewHeight());
             }
-            adaptZoomToSession(0f); // NagramX: the 1x home and lens stops depend on the camera's own range
             applyLockedZoomToCamera();
         }
         updateZoomControlAvailability();
@@ -1630,11 +1629,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         isFrontface = !isFrontface;
         updateFlash();
         if (useCamera2) {
-            // NagramX: each camera has its own zoom range in ratio mode, so carry the ratio, not the slider spot
-            final float carriedZoom = camera2SessionCurrent == null ? 0f : zoomFractionToRatio(camera2SessionCurrent, lockedZoom);
             if (bothCameras) {
                 camera2SessionCurrent = camera2Sessions[isFrontface == initialCameraFront ? 0 : 1];
-                adaptZoomToSession(carriedZoom); // NagramX
                 applyLockedZoomToCamera();
                 updateZoomControlAvailability();
                 cameraThread.flipSurfaces();
@@ -1651,7 +1647,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 camera2SessionCurrent.setUseZoomRatio(); // NagramX
                 previewSize[0] = new Size(camera2SessionCurrent.getPreviewWidth(), camera2SessionCurrent.getPreviewHeight());
                 cameraThread.setCurrentSession(camera2SessionCurrent);
-                adaptZoomToSession(carriedZoom); // NagramX
                 applyLockedZoomToCamera();
                 updateZoomControlAvailability();
             }
@@ -1703,7 +1698,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             previewSize[0] = new Size(session.getPreviewWidth(), session.getPreviewHeight());
         }
         camera2Sessions[isFrontface ? 0 : 1] = camera2SessionCurrent;
-        adaptZoomToSession(0f); // NagramX (#video-zoom)
         applyLockedZoomToCamera();
         updateFlash();
         updateZoomControlAvailability();
@@ -5147,31 +5141,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
     private void resetZoom() {
         cancelZoomInteractions();
-        // NagramX: home is 1x, which in ratio mode sits past the ultrawide end of the slider. The camera being
-        // shown may not exist yet (or be the one switched away from), so adaptZoomToSession finishes this
-        zoomHomePending = true;
-        lockedZoom = useCamera2 && camera2SessionCurrent != null ? getZoomControlValueFromCamera2(1f) : 0.0f;
-        zoomControlView.setZoom(lockedZoom, false);
+        lockedZoom = 0.0f;
+        zoomControlView.setZoom(0.0f, false);
         applyLockedZoomToCamera();
     }
 
-    private boolean zoomHomePending;
-
-    // NagramX: called once camera2SessionCurrent is the camera about to show, before its zoom is applied.
-    // carriedZoom is the ratio to keep across a flip, or 0 to leave the slider where it is
-    private void adaptZoomToSession(float carriedZoom) {
-        final Camera2Session session = camera2SessionCurrent;
-        if (session == null) {
-            return;
-        }
-        final float target = zoomHomePending ? 1f : carriedZoom;
-        zoomHomePending = false;
-        if (target > 0f) {
-            cancelFinishZoomTransition();
-            lockedZoom = getZoomControlValueFromCamera2(target);
-            zoomControlView.setZoom(lockedZoom, false);
-        }
-        final float[] stops = session.isZoomRatioMode() ? xyz.nextalone.nagram.helper.RoundLensPresets.get(session.cameraId) : null;
+    // NagramX: lens stops for the camera now showing; their slider spots depend on its zoom range
+    private void updateZoomPresets(Camera2Session session, boolean hasZoom) {
+        final float[] stops = hasZoom && session.isZoomRatioMode() ? xyz.nextalone.nagram.helper.RoundLensPresets.get(session.cameraId) : null;
         if (stops == null || stops.length < 2) {
             zoomControlView.setPresets(null, null);
             return;
@@ -5193,6 +5170,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         final boolean hasZoom = session != null && session.getMaxZoom() > session.getMinZoom() * 1.01f;
         // keep the control laid out so its flip button stays; only the slider + rocker follow zoom
         zoomControlView.setZoomEnabled(hasZoom);
+        if (session != null) {
+            updateZoomPresets(session, hasZoom);
+        }
         if (!hasZoom) {
             zoomLabelVisible = false;
             zoomLabel.animate().cancel();

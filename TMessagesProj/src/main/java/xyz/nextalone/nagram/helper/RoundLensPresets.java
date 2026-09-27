@@ -16,8 +16,8 @@ import java.util.Locale;
 import java.util.Set;
 
 // Fixed zoom stops for the round video recorder, matching the lenses a logical multi-camera reports:
-// the ultrawide floor, 1x, each telephoto, and twice the longest telephoto. Hardware facts, so cached per
-// camera id for the process.
+// 1x, each telephoto, and twice the longest telephoto. No ultrawide stop: the recorder zooms from 1x up
+// (see Camera2Session.setUseZoomRatio). Hardware facts, so cached per camera id for the process.
 public final class RoundLensPresets {
 
     private static final float[] NONE = new float[0];
@@ -53,17 +53,14 @@ public final class RoundLensPresets {
             if (range == null) return NONE;
             final float min = range.getLower(), max = range.getUpper();
             final ArrayList<Float> stops = new ArrayList<>();
-            if (min < 0.95f) {
-                stops.add(Math.max(min, Math.round(min * 10f) / 10f));
-            }
-            stops.add(1f);
+            stops.add(Math.max(1f, min));
             final float base = equivalentFocal(c);
             float longest = 0f;
             final Set<String> physical = c.getPhysicalCameraIds();
             if (base > 0f) {
                 for (String id : physical) {
                     final float eq = equivalentFocal(manager.getCameraCharacteristics(id));
-                    // anything short of 1.5x is the main sensor or the ultrawide, which the range floor covers
+                    // anything short of 1.5x is the main sensor or the ultrawide
                     final float ratio = eq / base;
                     if (ratio >= 1.5f && Math.round(ratio) <= max) {
                         addStop(stops, Math.round(ratio));
