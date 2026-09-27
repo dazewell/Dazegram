@@ -6317,7 +6317,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
     private int getRepliesCount() {
         if (currentMessagesGroup != null && !currentMessagesGroup.messages.isEmpty()) {
             MessageObject messageObject = currentMessagesGroup.messages.get(0);
-            return getRepliesCount(messageObject);
+            // NagramX: a private reply to an album can target any of its members, so the stored count covers them all
+            int count = messageObject.getRepliesCount();
+            return count != 0 ? count : com.radolyn.ayugram.personalreplies.PersonalRepliesController.getCount(currentAccount, currentMessagesGroup);
         }
         return getRepliesCount(currentMessageObject);
     }

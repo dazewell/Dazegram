@@ -152,31 +152,39 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
     }
 
     /**
-     * The message a thread should be looked up from. For an album that is its
-     * primary when the primary has stored replies or is a reply itself, and
-     * otherwise the member carrying the reply, since only one member may; for
-     * anything else it's the message itself.
+     * The message a thread should be looked up from. A reply to an album targets
+     * whichever member was pressed, so any member can hold its replies or its
+     * own reply link: the primary is used when it qualifies, as the item opened
+     * from it before threads walked upward, and otherwise the first member that
+     * does. For anything but an album it's the message itself.
      */
     public static MessageObject threadAnchor(int account, MessageObject message, MessageObject.GroupedMessages group) {
         if (group == null || group.messages.isEmpty()) {
             return message;
         }
         MessageObject primary = group.findPrimaryMessageObject();
-        if (primary == null || primary.messageOwner == null) {
-            return message;
+        if (primary == null) {
+            primary = message;
         }
-        // a primary with its own replies keeps opening on them, as the item did before threads walked upward
-        if (getCount(account, primary) > 0 || PersonalRepliesStorage.isReplyInDialog(primary.messageOwner, primary.getDialogId())) {
+        if (canViewThread(account, primary)) {
             return primary;
         }
         for (int i = 0; i < group.messages.size(); i++) {
             MessageObject member = group.messages.get(i);
-            if (member != null && member.getId() > 0 && member.messageOwner != null
-                    && PersonalRepliesStorage.isReplyInDialog(member.messageOwner, member.getDialogId())) {
+            if (member != primary && canViewThread(account, member)) {
                 return member;
             }
         }
         return primary;
+    }
+
+    /** Stored replies to every member of an album together, 0 while unknown or ineligible. */
+    public static int getCount(int account, MessageObject.GroupedMessages group) {
+        int total = 0;
+        for (int i = 0; i < group.messages.size(); i++) {
+            total += getCount(account, group.messages.get(i));
+        }
+        return Math.min(total, PersonalRepliesStorage.THREAD_LIMIT);
     }
 
     private int count(long dialogId, int messageId) {
