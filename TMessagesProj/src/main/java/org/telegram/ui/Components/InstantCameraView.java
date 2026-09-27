@@ -1532,7 +1532,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         if (textureView == null) {
             return;
         }
-        cancelled = true;
+        if (!cameraFileHandedOff) {
+            cancelled = true; // NagramX (#round-video-restart-guard-fix): the recorder reads this, and a handed-off one may still owe a rollover cut
+        }
         android.util.Log.w("NaxSmoke", "NAX_SMOKE_round-video-restart-guard CANCEL byGesture=" + byGesture + " handedOff=" + cameraFileHandedOff + " pending=" + encoderTeardownPending + " thread=" + (cameraThread != null) + " encoder=" + (videoEncoder != null) + " file=" + (cameraFile != null));
         recording = false;
         flashing = false;
@@ -4201,7 +4203,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 }
 
                 AndroidUtilities.runOnUIThread(() -> {
-                    if (cancelled) {
+                    if (cancelled || cameraFileHandedOff) { // NagramX (#round-video-restart-guard-fix): a late start post must not revive a session that already sent
                         return;
                     }
                     try {
