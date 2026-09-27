@@ -868,7 +868,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 videoEncoder.pause();
             }
         } else if (videoEncoder != null) {
-            videoEncoder.resume();
+            // NagramX (#round-video-restart-guard-fix): no videoEncoder.resume() here. It unpaused the recorder before its
+            // audio thread restarted, and a stop in that gap waited forever for that thread. prepareEncoder(true)
+            // unpauses it once audio is back, so until then a stop takes the paused single pass and tears down.
             hideCamera(false);
             if (videoPlayer != null) {
                 videoPlayer.releasePlayer(true);
@@ -2560,7 +2562,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         encoder.prepareEncoder(inputMessage.arg1 == 1);
                     } catch (Exception e) {
                         FileLog.e(e);
-                        encoder.handleStopRecording(0, null);
+                        if (inputMessage.arg1 == 1) {
+                            // NagramX (#round-video-restart-guard-fix): a resumed prepare can fail while still paused, and
+                            // the stop's paused single pass would delete the paused clip; just let any audio thread end
+                            encoder.running = false;
+                        } else {
+                            encoder.handleStopRecording(0, null);
+                        }
                         encoder.postPrepareFailed(); // NagramX (#round-video-restart-guard-fix)
                         Looper.myLooper().quit();
                     }
