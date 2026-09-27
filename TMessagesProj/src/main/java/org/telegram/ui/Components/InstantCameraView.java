@@ -2499,7 +2499,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         public void handOverSession(Camera2Session session, boolean open) {
             Handler handler = getHandler();
             if (handler != null) {
-                sendMessage(handler.obtainMessage(DO_OPEN_SESSION, open ? 1 : 0, 0, session), 0);
+                handler.sendMessage(handler.obtainMessage(DO_OPEN_SESSION, open ? 1 : 0, 0, session)); // straight to the handler: DispatchQueue.sendMessage waits on its latch
             } else {
                 AndroidUtilities.runOnUIThread(() -> {
                     if (cameraThread == this && camera2SessionCurrent == session) {
