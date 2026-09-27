@@ -1201,7 +1201,15 @@ public final class EventScheduleHelper {
                 row.field.setOnFocusChangeListener((v, hasFocus) -> {
                     if (hasFocus) return;
                     if (isBlankRow(row) && rows.size() > 1) {
-                        removeRow.accept(row);
+                        // NagramX: deferred because this runs mid-handoff, while the row is still its
+                        // container's focused child. Removing it now makes ViewGroup.removeViewInternal
+                        // refocus the root, which focuses the first pattern field; the handoff then points
+                        // mFocused at the new row without unfocusing it, so two fields keep a cursor.
+                        row.field.post(() -> {
+                            if (!row.field.isFocused() && isBlankRow(row) && rows.size() > 1) {
+                                removeRow.accept(row);
+                            }
+                        });
                         return;
                     }
                     clearRowMessage(row);
@@ -1468,10 +1476,9 @@ public final class EventScheduleHelper {
                 // Order matters: hide the keyboard while the field is still attached (hideKeyboard needs
                 // a live view to resolve its window token), then clear `rows`/the container BEFORE calling
                 // clearFocus() -- clearFocus() synchronously invokes the row's focus-change listener,
-                // which auto-removes a blank row when it loses focus with 2+ rows present; if that ran
-                // here it would remove+refocus a row we're about to discard anyway. Clearing `rows` first
-                // makes that listener's rows.indexOf(row) come back -1, so removeRow's own guard no-ops
-                // it instead of doing that redundant (and focus-stealing) work.
+                // which schedules removal of a blank row when it loses focus with 2+ rows present. With
+                // `rows` already empty the listener's size check fails, so nothing is scheduled against
+                // a row we're about to discard anyway.
                 EditTextBoldCursor focused = focusedField(rows);
                 if (focused != null) {
                     org.telegram.messenger.AndroidUtilities.hideKeyboard(focused);

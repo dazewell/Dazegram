@@ -2346,3 +2346,22 @@ before it is regenerated (`:1026`). A slide-cancel then reaches `cancel()`, whic
 deletes that file (`:1498-1504`), possibly mid-upload.
 
 *(Established 2026-09-26, investigating a stuck overlay on a video-message start.)*
+
+## Removing a view from its own focus-loss callback during a focus handoff can leave two views focused
+
+`ViewGroup.requestChildFocus` unfocuses the old child and only then assigns
+`mFocused = child` (android-37 `ViewGroup.java:876-882`). If the old child's
+`OnFocusChangeListener` removes it from its parent synchronously,
+`removeViewInternal` still sees it as `mFocused` (`ViewGroup.java:5738-5740`)
+and calls `rootViewRequestFocus()` unconditionally, touch mode or not
+(`ViewGroup.java:5773-5778`). The root picks a new focus holder (in the trigger
+sheet, the first pattern field); the outer call then overwrites `mFocused`
+without unfocusing it. Both
+views keep `isFocused()` and both cursors blink, and nothing can clear the
+orphan.
+
+The trigger sheet hit this when a blank pattern row auto-removed on focus
+loss. The fix posts the removal instead
+(`EventScheduleHelper.java:1203-1213`).
+
+*(Established 2026-09-26, `#trigger-cursor-fix`.)*
