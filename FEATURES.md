@@ -245,7 +245,7 @@ Round video recordings warn you before they end. Configured via N-Settings → C
 
 ### Smoother video message zoom <!-- #video-zoom -->
 
-The zoom control under the round video camera has a full-range slider and step buttons. Turn on N-Settings → Chat → Camera → *Newer camera for video messages* (off by default) to reach the telephoto lens, with tappable zoom stops like 1x, 3x and 6x above the slider.
+The zoom control under the round video camera has a full-range slider and step buttons. Turn on N-Settings → Chat → Camera → *Newer camera for video messages* (off by default) to reach the telephoto lens on phones that have one, with tappable zoom stops like 1x, 3x and 6x above the slider.
 
 ### Scrub the video message preview <!-- #video-scrub -->
 
