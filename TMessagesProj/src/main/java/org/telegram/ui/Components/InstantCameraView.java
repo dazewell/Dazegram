@@ -1604,14 +1604,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     // NagramX (#round-dual-camera-fix): some phones advertise concurrent cameras yet evict the first camera when
-    // the second opens, leaving the rear preview black. Drop to one camera for this recording, and remember it
-    // only when the loss came before the first frame: another app taking the camera later proves nothing about
-    // the phone. Mid-flip it only remembers, since single mode draws surface 0 alone.
+    // the second opens, leaving the rear preview black. Drop to one camera for this recording. The pref is only
+    // written while cameraReady is still false, since another app taking the camera mid-recording proves nothing
+    // about the phone. Once flipped nothing changes this attempt, since single mode draws surface 0 alone.
     private void onRoundDualCameraLost(Camera2Session failed) {
         if (!bothCameras || failed != camera2Sessions[0] && failed != camera2Sessions[1]) {
             return;
         }
-        FileLog.e("InstantCamera dual camera #" + failed.cameraId + " lost, ready=" + cameraReady + ", falling back to single camera");
+        FileLog.e("InstantCamera dual camera #" + failed.cameraId + " lost, ready=" + cameraReady);
         if (!cameraReady) {
             MessagesController.getGlobalMainSettings().edit().putBoolean("rounddual_available", false).apply();
         }
@@ -1619,6 +1619,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             return;
         }
         final boolean keep = failed != camera2SessionCurrent;
+        FileLog.e("InstantCamera falling back to single camera, reopen=" + !keep);
         bothCameras = false;
         for (int a = 0; a < camera2Sessions.length; ++a) {
             if (camera2Sessions[a] != null && !(keep && camera2Sessions[a] == camera2SessionCurrent)) {
