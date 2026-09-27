@@ -1042,10 +1042,12 @@ On the OPPO Find X9 Pro, round video at `CONTROL_ZOOM_RATIO` below 1x shows
 horizontal streaks over the left part of the circle as soon as the ultrawide
 takes over. Today's square stream (a 1088×1088 `ImageReader` beside the
 preview, seen in `dumpsys media.camera` with `zoomRatio 0.6` and a full
-4096×3072 `cropRegion`) was the suspect. Requesting a 4:3 stream sized like
-Camera1's round preview (`InstantCameraView.java:1737-1762`), which the
-renderer's `scaleX`/`scaleY` crop already handles, left the streaks unchanged
-(commit `3df14ccb11`, reverted in `f1f5e78c74`). Caveat: the 4:3 delivery
+4096×3072 `cropRegion`) was the suspect. Requesting a 4:3 stream at Camera1's
+round-preview cap of 1440 on the long side (`InstantCameraView.java:1786-1824`,
+which itself picks the squarest size under that cap) left the streaks
+unchanged (commit `3df14ccb11`, reverted in `f1f5e78c74`). The renderer takes
+non-square previews through `updateScale`'s `scaleX`/`scaleY` (`:2062-2086`)
+and the texture coordinates built from them (`:2177`). Caveat: the 4:3 delivery
 itself was not read back from the device. The working theory is MediaTek's
 spatial-alignment step (`multiCamMtkSat` in the camera dump), not the stream
 shape.
