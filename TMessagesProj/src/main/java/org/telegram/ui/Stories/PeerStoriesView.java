@@ -3585,6 +3585,12 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                 return instantCameraView != null && instantCameraView.isPaused();
             }
 
+            // NagramX (#round-video-restart-guard-fix)
+            @Override
+            public boolean isRoundVideoRecorderBusy() {
+                return instantCameraView != null && instantCameraView.isBusyForNewRecording();
+            }
+
             @Override
             public void needChangeVideoPreviewState(int state, float seekProgress) {
                 if (instantCameraView != null) {

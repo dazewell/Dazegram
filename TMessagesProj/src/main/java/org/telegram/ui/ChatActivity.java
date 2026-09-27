@@ -2751,6 +2751,12 @@ public class ChatActivity extends BaseFragment implements
             return instantCameraView != null && instantCameraView.isPaused();
         }
 
+        // NagramX (#round-video-restart-guard-fix)
+        @Override
+        public boolean isRoundVideoRecorderBusy() {
+            return instantCameraView != null && instantCameraView.isBusyForNewRecording();
+        }
+
         @Override
         public void needStartRecordVideo(int state, boolean notify, int scheduleDate, int scheduleRepeatPeriod, int ttl, long effectId, long stars) {
             checkInstantCameraView();
@@ -39272,6 +39278,11 @@ public class ChatActivity extends BaseFragment implements
         if (instantCameraView == null || instantCameraView.getTextureView() == null) {
             return;
         }
+        // NagramX (#round-video-restart-guard-fix): a camera that never sent (a newer recording, or a view rebuilt
+        // since this was armed) isn't this close's to retire
+        if (!instantCameraView.isFileHandedOff()) {
+            return;
+        }
 
         final InstantCameraView.InstantViewCameraContainer cameraContainer = instantCameraView.getCameraContainer();
         AnimatorSet allAnimators = new AnimatorSet();
@@ -39286,7 +39297,7 @@ public class ChatActivity extends BaseFragment implements
         allAnimators.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator animation) {
-                if (instantCameraView != null) {
+                if (instantCameraView != null && instantCameraView.isFileHandedOff()) { // NagramX (#round-video-restart-guard-fix): re-read, the view may have been rebuilt
                     instantCameraView.setIsMessageTransition(false);
                     instantCameraView.hideCamera(true);
                     instantCameraView.setVisibility(View.INVISIBLE);
@@ -41429,7 +41440,8 @@ public class ChatActivity extends BaseFragment implements
                         boolean applyAnimation = false;
                         // NagramX: the pending close is what marks a sent camera still waiting to be retired. Without it,
                         // the open camera belongs to a later recording and must not be flown away.
-                        if (message.type == MessageObject.TYPE_ROUND_VIDEO && instantCameraView != null && instantCameraView.getTextureView() != null && closeInstantCameraAnimation != null) {
+                        if (message.type == MessageObject.TYPE_ROUND_VIDEO && instantCameraView != null && instantCameraView.getTextureView() != null && closeInstantCameraAnimation != null
+                                && instantCameraView.isFileHandedOff()) { // NagramX (#round-video-restart-guard-fix): only the camera that sent
                             applyAnimation = true;
                             if (closeInstantCameraAnimation != null) {
                                 AndroidUtilities.cancelRunOnUIThread(closeInstantCameraAnimation);
@@ -41510,7 +41522,7 @@ public class ChatActivity extends BaseFragment implements
                                             animatorSet.addListener(new AnimatorListenerAdapter() {
                                                 @Override
                                                 public void onAnimationEnd(Animator animation) {
-                                                    if (instantCameraView != null) {
+                                                    if (instantCameraView != null && instantCameraView.isFileHandedOff()) { // NagramX (#round-video-restart-guard-fix)
                                                         instantCameraView.setIsMessageTransition(false);
                                                         instantCameraView.hideCamera(true);
                                                         instantCameraView.setVisibility(View.INVISIBLE);
