@@ -350,6 +350,12 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         void needStartRecordVideo(int state, boolean notify, int scheduleDate, int scheduleRepeatPeriod, int ttl, long effectId, long stars);
 
+        // NagramX (#round-video-restart-guard-fix): true while the last round video's camera is still closing or its
+        // recorder still finishing; a start then would run against that recording
+        default boolean isRoundVideoRecorderBusy() {
+            return false;
+        }
+
         void toggleVideoRecordingPause();
 
         boolean isVideoRecordingPaused();
@@ -995,6 +1001,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         public void run() {
             if (delegate == null || parentActivity == null) {
                 return;
+            }
+            if (isInVideoMode() && refuseRoundVideoIfBusy()) {
+                return; // NagramX (#round-video-restart-guard-fix)
             }
             // NagramX: every recording starts with infinite mode off, whatever the last one used
             infiniteVideoMessage = false;
@@ -5356,6 +5365,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                         }
                     }
 
+                    if (refuseRoundVideoIfBusy()) {
+                        return; // NagramX (#round-video-restart-guard-fix): before the lock setup below, which a refusal would strand
+                    }
                     if (checkMenuPermissions(true)) {
                         int cameraMode = NaConfig.INSTANCE.getCameraInVideoMessages().Int();
                         if (cameraMode == 2) {
@@ -19211,7 +19223,28 @@ public class ChatActivityEnterView extends FrameLayout implements
         startVideoRecordingSession();
     }
 
+    // NagramX (#round-video-restart-guard-fix): refuse a round-video start while the last one's camera or recorder is
+    // still busy, leaving the composer as idle as the camera-choice popup path does. No send or pause can follow;
+    // a far-left release can still reach cancel(), which leaves a handed-off file alone.
+    private boolean refuseRoundVideoIfBusy() {
+        if (delegate == null || !delegate.isRoundVideoRecorderBusy()) {
+            return false;
+        }
+        recordAudioVideoRunnableStarted = false;
+        calledRecordRunnable = false;
+        startedDraggingX = -1;
+        pendingCameraFront = null;
+        if (audioVideoButtonContainer != null) {
+            AndroidUtilities.shakeViewSpring(audioVideoButtonContainer, 3);
+        }
+        BotWebViewVibrationEffect.APP_ERROR.vibrate();
+        return true;
+    }
+
     private void startVideoRecordingSession() {
+        if (refuseRoundVideoIfBusy()) {
+            return; // NagramX (#round-video-restart-guard-fix): the camera-choice popup and schedule sheet land here later
+        }
         isInVideoMode = true;
         setMessageEditExpanded(false); // NagramX: same reason as in recordAudioVideoRunnable, this path skips it in camera-ask mode
         // initialize state that would have been set in recordAudioVideoRunnable

@@ -200,6 +200,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     // textureView is null and send()'s textureView==null guard would drop the send -- this flag lets the
     // state==4 send through for exactly that adopted case. A fresh recording clears it (showCamera).
     private boolean sendAdoptedDraft;
+    // NagramX (#round-video-restart-guard-fix): cameraFile was handed to a send, so this instance no longer owns
+    // it. Until the next fresh open or adoption, nothing here may send, pause, re-record or delete it; the camera
+    // still closes. UI thread only.
+    private boolean cameraFileHandedOff;
+    // NagramX (#round-video-restart-guard-fix): a terminal stop was queued and its teardown post hasn't run. The
+    // recorder is reused by the next open, and its pending UI posts read videoFile, file, size and recordedTime
+    // live, so no new recording may start until it is done. UI thread only.
+    private boolean encoderTeardownPending;
     private long recordedTime;
     private boolean cancelled;
 
@@ -829,6 +837,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     public void togglePause() {
+        if (!recording && cameraThread != null) {
+            return; // NagramX (#round-video-restart-guard-fix): the last resume's camera is still coming up; a second resume would stop it as a terminal stop
+        }
+        if (cameraFileHandedOff || encoderTeardownPending) {
+            return; // NagramX (#round-video-restart-guard-fix): a resume here would reopen the camera into the finished recorder
+        }
         if (recording) {
             cancelled = recordedTime < 800;
             recording = false;
@@ -854,7 +868,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 videoEncoder.pause();
             }
         } else if (videoEncoder != null) {
-            videoEncoder.resume();
+            // NagramX (#round-video-restart-guard-fix): no videoEncoder.resume() here. It unpaused the recorder before its
+            // audio thread restarted, and a stop in that gap waited forever for that thread. prepareEncoder(true)
+            // unpauses it once audio is back, so until then a stop takes the paused single pass and tears down.
             hideCamera(false);
             if (videoPlayer != null) {
                 videoPlayer.releasePlayer(true);
@@ -882,6 +898,18 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         return recording;
     }
 
+    // NagramX (#round-video-restart-guard-fix): a new recording can't start while the last camera is still up or
+    // its recorder is still finishing.
+    public boolean isBusyForNewRecording() {
+        return textureView != null || encoderTeardownPending;
+    }
+
+    // NagramX (#round-video-restart-guard-fix): true only for a camera whose file went to a send, which is the only
+    // camera the send transition and its fallback may retire.
+    public boolean isFileHandedOff() {
+        return cameraFileHandedOff;
+    }
+
     // NagramX (#video-draft-guard): wire a restored round-video draft's on-disk file into this instance so the
     // normal state==4 send path can re-upload and send it, without re-opening the camera. Refuses when a live
     // session is present (recording, or a same-session finalize already holds its own cameraFile) so it can
@@ -904,6 +932,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         size = fileSize;
         videoEditedInfo = info;
         sendAdoptedDraft = true;
+        cameraFileHandedOff = false; // NagramX (#round-video-restart-guard-fix): the adopted draft is owned again, or its send(4) would no-op
         // NagramX (#video-draft-guard): force the normal upload flow for this file. send(4)'s untrimmed branch
         // copies these fields straight onto videoEditedInfo without nulling them (only the trimmed branch clears
         // them), so any leftover upload material on this instance would otherwise ride along with the restored
@@ -973,6 +1002,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         if (textureView != null) {
             return;
         }
+        if (!fromPaused && encoderTeardownPending) {
+            return; // NagramX (#round-video-restart-guard-fix): a fresh open would reuse the recorder still finishing the last video
+        }
         // NagramX: pick up the current theme each time the recorder opens, in case it changed while hidden
         updateThemeColors();
         textureOverlayView.setAlpha(1.0f);
@@ -1025,6 +1057,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         if (!fromPaused) {
             cameraFile = generateCameraFile();
             sendAdoptedDraft = false; // NagramX (#video-draft-guard): a fresh recording owns a live cameraFile; drop any restored-draft send state
+            cameraFileHandedOff = false; // NagramX (#round-video-restart-guard-fix): same, this file is ours again
         }
 
         SharedConfig.saveConfig();
@@ -1070,7 +1103,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     FileLog.d("InstantCamera camera surface available");
                 }
                 if (cameraThread == null && surface != null) {
-                    if (cancelled) {
+                    // NagramX (#round-video-restart-guard-fix): a re-attach inside the send window would start a new GL
+                    // thread recording into the handed-off file
+                    if (cancelled || cameraFileHandedOff || encoderTeardownPending) {
                         return;
                     }
                     if (BuildVars.LOGS_ENABLED) {
@@ -1290,6 +1325,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     public void send(int state, boolean notify, int scheduleDate, int scheduleRepeatPeriod, int ttl, long effectId, long stars) {
+        if (cameraFileHandedOff) {
+            return; // NagramX (#round-video-restart-guard-fix): this file already went; a second send would duplicate it
+        }
         if (textureView == null && !(sendAdoptedDraft && state == 4)) {
             // NagramX (#video-draft-guard): a restored draft (a rebuilt instance that only adopted a file, never
             // opened the camera) has no textureView, but its cameraFile/videoEditedInfo are set up by
@@ -1302,7 +1340,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             videoPlayer = null;
         }
         if (state == 4) {
-            if (videoEncoder != null && recordedTime > 800) {
+            // NagramX (#round-video-restart-guard-fix): with a terminal stop already queued the recorder is quitting and
+            // would drop this; its file is finished, so send it directly, as happens once teardown nulls videoEncoder
+            if (videoEncoder != null && recordedTime > 800 && !encoderTeardownPending) {
+                // NagramX (#round-video-restart-guard-fix): from here the file belongs to the outgoing message
+                cameraFileHandedOff = true;
+                if (videoEncoder.handler != null) {
+                    encoderTeardownPending = true;
+                }
                 videoEncoder.stopRecording(VideoRecorder.ENCODER_SEND_SEND, new SendOptions(notify, scheduleDate, scheduleRepeatPeriod, ttl, effectId, stars));
                 return;
             }
@@ -1342,6 +1387,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             MediaController.PhotoEntry entry = new MediaController.PhotoEntry(0, 0, 0, cameraFile.getAbsolutePath(), 0, true, 0, 0, 0);
             entry.ttl = ttl;
             entry.effectId = effectId;
+            // NagramX (#round-video-restart-guard-fix): set before sendMedia, which on stories calls cancel() back
+            cameraFileHandedOff = true;
             delegate.sendMedia(entry, videoEditedInfo, notify, scheduleDate, scheduleRepeatPeriod, false, stars);
             if (scheduleDate != 0) {
                 startAnimation(false, false);
@@ -1373,6 +1420,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     send = 2;
                 } else {
                     send = 1;
+                    cameraFileHandedOff = true; // NagramX (#round-video-restart-guard-fix): the recorder sends this file now
                 }
                 saveLastCameraBitmap();
                 cameraThread.shutdown(send, notify, scheduleDate, scheduleRepeatPeriod, ttl, effectId);
@@ -1484,7 +1532,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         if (textureView == null) {
             return;
         }
-        cancelled = true;
+        if (!cameraFileHandedOff) {
+            cancelled = true; // NagramX (#round-video-restart-guard-fix): the recorder reads this, and a handed-off one may still owe a rollover cut
+        }
         recording = false;
         flashing = false;
         updateFlash();
@@ -1493,10 +1543,15 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             saveLastCameraBitmap();
             cameraThread.shutdown(0, true, 0, 0, 0, 0);
             cameraThread = null;
-        } else if (videoEncoder != null) {
+        } else if (videoEncoder != null && !cameraFileHandedOff) {
+            // NagramX (#round-video-restart-guard-fix): a handed-off recorder is still finishing that send; cancelling
+            // it would delete the file under the upload. The close below still runs.
+            if (videoEncoder.handler != null) {
+                encoderTeardownPending = true;
+            }
             videoEncoder.stopRecording(VideoRecorder.ENCODER_SEND_CANCEL, new SendOptions(true, 0, 0, 0, 0, 0));
         }
-        if (cameraFile != null) {
+        if (cameraFile != null && !cameraFileHandedOff) {
             if (BuildVars.LOGS_ENABLED) {
                 FileLog.e("delete camera file by cancel");
             }
@@ -2388,6 +2443,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     finish();
                     if (recording && (!(inputMessage.obj instanceof SendOptions) || ((SendOptions) inputMessage.obj).ttl != -2) && videoEncoder != null) {
                         videoEncoder.stopRecording(inputMessage.arg1, inputMessage.obj instanceof SendOptions ? (SendOptions) inputMessage.obj : null);
+                    } else if (!(inputMessage.obj instanceof SendOptions) || ((SendOptions) inputMessage.obj).ttl != -2) {
+                        // NagramX (#round-video-restart-guard-fix): a terminal stop that queued nothing (no frame yet,
+                        // or no recorder) gets no teardown post, so release what send()/cancel() set for it here
+                        AndroidUtilities.runOnUIThread(() -> {
+                            encoderTeardownPending = false;
+                            cameraFileHandedOff = false;
+                        });
                     }
                     Looper looper = Looper.myLooper();
                     if (looper != null) {
@@ -2518,6 +2580,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 // armed this -- read and clear before SendOptions crosses to the encoder thread
                 options.limitStop = limitStopHapticArmed;
                 limitStopHapticArmed = false;
+                if (ttl != -2) {
+                    encoderTeardownPending = true; // NagramX (#round-video-restart-guard-fix): every shutdown but a pause is a terminal stop
+                }
                 sendMessage(handler.obtainMessage(DO_SHUTDOWN_MESSAGE, send, 0, options), 0);
             }
         }
@@ -2564,7 +2629,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         encoder.prepareEncoder(inputMessage.arg1 == 1);
                     } catch (Exception e) {
                         FileLog.e(e);
-                        encoder.handleStopRecording(0, null);
+                        if (inputMessage.arg1 == 1) {
+                            // NagramX (#round-video-restart-guard-fix): a resumed prepare can fail while still paused, and
+                            // the stop's paused single pass would delete the paused clip; just let any audio thread end
+                            encoder.running = false;
+                        } else {
+                            encoder.handleStopRecording(0, null);
+                        }
+                        encoder.postPrepareFailed(); // NagramX (#round-video-restart-guard-fix)
                         Looper.myLooper().quit();
                     }
                     break;
@@ -2951,6 +3023,18 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             handler.sendMessage(handler.obtainMessage(MSG_STOP_RECORDING, send, 0, options));
             AndroidUtilities.runOnUIThread(() -> {
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.stopAllHeavyOperations, 512);
+            });
+        }
+
+        // NagramX (#round-video-restart-guard-fix): a failed prepare quits the looper before the stop's second pass,
+        // so the teardown post never comes. Drop this recorder and release the admission flag here instead.
+        private void postPrepareFailed() {
+            final int token = recordingToken;
+            AndroidUtilities.runOnUIThread(() -> {
+                if (InstantCameraView.this.recordingGeneration == token) {
+                    InstantCameraView.this.videoEncoder = null;
+                }
+                encoderTeardownPending = false;
             });
         }
 
@@ -4057,6 +4141,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             final int capturedGeneration = stoppedGeneration;
             final boolean fireLimitStopHaptic = sendOptions != null && sendOptions.limitStop;
             AndroidUtilities.runOnUIThread(() -> {
+                // NagramX (#round-video-restart-guard-fix): this stop is finished whatever the generation says, and
+                // nothing can have started since, because the flag holds new recordings off
+                encoderTeardownPending = false;
                 if (InstantCameraView.this.recordingGeneration == capturedGeneration) {
                     InstantCameraView.this.videoEncoder = null;
                     // NagramX: recording is over one way or another, so any pre-cut warning still showing
@@ -4183,7 +4270,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 }
 
                 AndroidUtilities.runOnUIThread(() -> {
-                    if (cancelled) {
+                    if (cancelled || cameraFileHandedOff || encoderTeardownPending) { // NagramX (#round-video-restart-guard-fix): a late start post must not revive a session that already stopped
                         return;
                     }
                     try {
