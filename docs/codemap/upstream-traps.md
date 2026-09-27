@@ -2365,3 +2365,20 @@ loss. The fix posts the removal instead
 (`EventScheduleHelper.java:1203-1213`).
 
 *(Established 2026-09-26, `#trigger-cursor-fix`.)*
+
+## The chat top panel sits 5dp under the header, and the header hairline is drawn over every child
+
+`checkUi_topPanelPositions` lifts `topPanelLayout` (player strip, pinned
+message, join bar) by a stock `dp(5)` so it tucks under the header
+(`ChatActivity.java:13648-13649`). Liquid Glass hides this inside its 7dp
+padding; MD3 zeroes that padding (`:52259`), so the strip's top 5dp sit under
+the header. A translucent MD3 header matches the strip and hides it; the solid
+Classic/Day header shows it as a clipped strip, so the lift is dropped only
+there.
+
+The MD3 panel divider used to be drawn after `super.dispatchDraw`, above every
+child, including the full-screen round-video scrim added after the action bar
+(`:8659`, `:8988`). While the scrim is visible it is now drawn in `drawChild`
+just before the scrim (`:19532-19533`, `:19663`).
+
+*(Established 2026-09-27, `#solid-header-panel-fix`, `#round-video-divider-fix`.)*
