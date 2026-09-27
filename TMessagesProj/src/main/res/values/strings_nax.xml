@@ -623,8 +623,9 @@
     <string name="EventSchedulePresetSaveAction">Save current as preset…</string>
     <string name="EventSchedulePresetNameHint">Preset name</string>
     <string name="EventSchedulePresetSaveTitle">Save preset</string>
-    <string name="EventSchedulePresetNameDuplicate">A preset with this name already exists</string>
+    <string name="EventSchedulePresetNameReplace">\"%1$s\" already exists. Tap Replace to overwrite it with the current setup.</string>
     <string name="EventSchedulePresetSaved">Preset saved</string>
+    <string name="EventSchedulePresetReplaced">Preset replaced</string>
     <string name="EventSchedulePresetLimitReached">Preset limit reached</string>
     <string name="EventSchedulePresetRemove">Remove preset</string>
     <string name="EventSchedulePresetRemoveConfirm">Remove the preset \"%1$s\"?</string>

@@ -1555,10 +1555,6 @@ public final class EventScheduleHelper {
             };
 
             savePresetActionHolder[0] = () -> {
-                if (presetList.size() >= EventScheduleEntry.MAX_PRESET_COUNT) {
-                    AlertUtil.showToast(getString(R.string.EventSchedulePresetLimitReached));
-                    return;
-                }
                 ExtractedConfig extracted = extractAndValidate(context, rows, textFrame, typeGroup, regexCell,
                         typeExpanded, textExpanded, syncGroupVisibility, updateTypeHeader, updateTextHeader);
                 if (extracted == null) return;
@@ -1616,28 +1612,65 @@ public final class EventScheduleHelper {
                     org.telegram.messenger.AndroidUtilities.runOnUIThread(requestFocusAndKeyboard);
                 });
                 nameDialog.show();
-                nameDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                final TextView saveButton = (TextView) nameDialog.getButton(AlertDialog.BUTTON_POSITIVE);
+                // Set once Save has been tapped on a taken name, so the next tap overwrites that preset;
+                // any edit to the field drops it and puts the button back to Save.
+                final String[] pendingReplaceName = {null};
+                nameField.addTextChangedListener(new TextWatcher() {
+                    @Override
+                    public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+                    @Override
+                    public void onTextChanged(CharSequence s, int start, int before, int count) {}
+
+                    @Override
+                    public void afterTextChanged(Editable s) {
+                        errorView.setVisibility(View.GONE);
+                        if (pendingReplaceName[0] != null) {
+                            pendingReplaceName[0] = null;
+                            saveButton.setText(getString(R.string.Save));
+                            saveButton.setTextColor(Theme.getColor(Theme.key_dialogButton));
+                        }
+                    }
+                });
+                saveButton.setOnClickListener(v -> {
                     String candidate = nameField.getText().toString().trim();
                     if (TextUtils.isEmpty(candidate)) {
                         shakeAndVibrate(nameField);
                         return;
                     }
-                    if (EventSchedulePresetStore.nameExists(account, candidate)) {
-                        errorView.setText(getString(R.string.EventSchedulePresetNameDuplicate));
+                    String existingName = EventSchedulePresetStore.findName(account, candidate);
+                    if (existingName != null && pendingReplaceName[0] == null) {
+                        pendingReplaceName[0] = existingName;
+                        errorView.setText(org.telegram.messenger.LocaleController.formatString(
+                                R.string.EventSchedulePresetNameReplace, existingName));
+                        errorView.setVisibility(View.VISIBLE);
+                        saveButton.setText(getString(R.string.Replace));
+                        saveButton.setTextColor(Theme.getColor(Theme.key_text_RedBold));
+                        return;
+                    }
+                    if (existingName == null && presetList.size() >= EventScheduleEntry.MAX_PRESET_COUNT) {
+                        errorView.setText(getString(R.string.EventSchedulePresetLimitReached));
                         errorView.setVisibility(View.VISIBLE);
                         shakeAndVibrate(nameField);
                         return;
                     }
-                    boolean added = EventSchedulePresetStore.add(account, presetGeneration, candidate, extracted.types,
-                            extracted.patterns, savedRegex, savedDelay);
+                    boolean replacing = existingName != null;
+                    boolean saved = replacing
+                            ? EventSchedulePresetStore.replace(account, presetGeneration, candidate, extracted.types,
+                                    extracted.patterns, savedRegex, savedDelay)
+                            : EventSchedulePresetStore.add(account, presetGeneration, candidate, extracted.types,
+                                    extracted.patterns, savedRegex, savedDelay);
                     org.telegram.messenger.AndroidUtilities.hideKeyboard(nameField);
                     nameDialog.dismiss();
-                    if (!added) {
-                        // Cap was reached by a concurrent save between the check above and here, or
-                        // (unreachable in practice: the logout-driven dismiss below runs synchronously
-                        // with the generation bump, before this click can be dispatched) the account
-                        // was logged out from under this dialog.
-                        AlertUtil.showToast(getString(R.string.EventSchedulePresetLimitReached));
+                    if (!saved) {
+                        // add(): the cap was reached by a concurrent save between the check above and here.
+                        // Either call (unreachable in practice: the logout-driven dismiss below runs
+                        // synchronously with the generation bump, before this click can be dispatched):
+                        // the account was logged out from under this dialog.
+                        if (!replacing) {
+                            AlertUtil.showToast(getString(R.string.EventSchedulePresetLimitReached));
+                        }
                         return;
                     }
                     presetList.clear();
@@ -1649,7 +1682,7 @@ public final class EventScheduleHelper {
                     }
                     rebuildPresetsList[0].run();
                     updatePresetsHeader[0].run();
-                    AlertUtil.showToast(getString(R.string.EventSchedulePresetSaved));
+                    AlertUtil.showToast(getString(replacing ? R.string.EventSchedulePresetReplaced : R.string.EventSchedulePresetSaved));
                 });
             };
 
