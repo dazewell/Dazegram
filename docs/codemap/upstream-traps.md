@@ -2370,8 +2370,10 @@ resume and the first frame waited in `handleStopRecording` (`:3859`) for a
 re-post that never came, and the teardown never ran. The fork leaves the
 recorder paused until `prepareEncoder(true)` restarts audio (`:4168`). A stop
 that reaches it in that gap takes the paused single pass and tears down; one
-whose resumed camera never drew reaches nothing, as upstream, and the clip waits
-for a later cancel. Forwarding that stop, or pausing again on a surface loss,
+whose resumed camera never drew reaches nothing, as upstream. A send there is
+dropped, and a cancel there leaves the paused recorder behind, so the next
+recording resumes into its deleted file (`initGL` keeps it, `prepareEncoder(true)`
+skips `createMuxer`, `:4201-4202`). Forwarding that stop, or pausing again on a surface loss,
 was tried and dropped: the first races the pause preview post that reads
 `previewFile`, the second can resume a queued start with no camera. Code-verified.
 
