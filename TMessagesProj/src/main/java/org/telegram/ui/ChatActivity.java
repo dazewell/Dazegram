@@ -13644,7 +13644,9 @@ public class ChatActivity extends BaseFragment implements
         }
 
         if (topPanelLayout != null) {
-            topPanelLayout.setTranslationY(ty - dp(5) - getTopicTabsSideSize(TopicsTabsView.Position.TOP) * getHashtagTabsShownT());
+            // NagramX: the stock 5dp tuck hides the panel's top under the header, which a solid header shows as a clipped strip
+            final int naxTopPanelTuck = xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeader() ? 0 : dp(5);
+            topPanelLayout.setTranslationY(ty - naxTopPanelTuck - getTopicTabsSideSize(TopicsTabsView.Position.TOP) * getHashtagTabsShownT());
         }
     }
 
