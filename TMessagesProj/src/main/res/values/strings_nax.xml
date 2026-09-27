@@ -625,8 +625,9 @@
     <string name="EventSchedulePresetSaveAction">Save current as preset…</string>
     <string name="EventSchedulePresetNameHint">Preset name</string>
     <string name="EventSchedulePresetSaveTitle">Save preset</string>
-    <string name="EventSchedulePresetNameDuplicate">A preset with this name already exists</string>
+    <string name="EventSchedulePresetNameReplace">\"%1$s\" already exists. Tap Replace to overwrite it with the current setup.</string>
     <string name="EventSchedulePresetSaved">Preset saved</string>
+    <string name="EventSchedulePresetReplaced">Preset replaced</string>
     <string name="EventSchedulePresetLimitReached">Preset limit reached</string>
     <string name="EventSchedulePresetRemove">Remove preset</string>
     <string name="EventSchedulePresetRemoveConfirm">Remove the preset \"%1$s\"?</string>
@@ -666,6 +667,8 @@
     <string name="ImportAyuDB">Import Database</string>
     <string name="ImportAyuDBAlert">The current message database will be replaced. The app will restart after the import.</string>
     <string name="DisableSwipeToNext">Disable Swipe to Next</string>
+    <string name="SwipeToNextWithinFolder">Swipe to Next Within Folder</string>
+    <string name="SwipeToNextWithinFolderInfo">Swiping up at the end of a channel only goes to unread channels in the folder it was opened from, never another folder or the archive.</string>
     <string name="ExpandMessageField">Expand message field</string>
     <string name="CollapseMessageField">Collapse message field</string>
     <string name="ChatTimeZoneNow">Now</string>

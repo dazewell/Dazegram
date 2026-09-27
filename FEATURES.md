@@ -70,6 +70,10 @@ Clear Message Database now removes only the media this install has database rows
 
 Each chat's Notifications screen (open a chat → its name → Notifications) has a **Show on Watch** switch under Message Preview, on by default. Turn it off and that chat's message notifications stop reaching a paired Wear OS watch, while the phone notification is unaffected. It isn't available on secret chats — set it on a forum's main chat to cover every topic.
 
+### Swipe to next channel within the folder <!-- #next-channel-in-folder -->
+
+Swiping up at the end of a channel normally jumps to the next unread channel, and once the current folder runs out it moves on to other folders and the archive. N-Settings → Chat → Channels → *Swipe to Next Within Folder* keeps it in the folder you opened the channel from. Off by default.
+
 ## Composer and input
 
 ### Composer toolbar <!-- #composer-toolbar --> <!-- #composer-bubbles --> <!-- #toggle-formatting -->
@@ -164,7 +168,7 @@ Select text in a message and tap *Cite* to drop it into your input box as a quot
 
 ### Scheduled message triggers <!-- #reschedule --> <!-- #eventschedule -->
 
-Pick several scheduled messages and use *Reschedule* to move them all at once with a base time and interval. *Send on event* arms from the schedule picker or from bulk *Reschedule*: one trigger watches message type, text patterns, or both, and sends early while each message keeps its fallback schedule. Setups save as presets or clear with *Reset*, and armed triggers live under Chats nav ⋯ → *Message Triggers*.
+Pick several scheduled messages and use *Reschedule* to move them at once with a base time and interval. *Send on event* arms from the schedule picker or bulk *Reschedule*: one trigger watches message type, text patterns, or both, and sends early while each message keeps its fallback schedule. Setups save as presets (a reused name overwrites) or clear with *Reset*, and armed triggers live under Chats nav ⋯ → *Message Triggers*.
 
 <img height="260" alt="bulk Reschedule sheet with a base time, per-message interval, and a delay slider" src="docs/images/features/reschedule.png" />
 <img height="260" alt="Send on event trigger editor with By message type and Or by text collapsible sections" src="docs/images/features/trigger-editor.png" />

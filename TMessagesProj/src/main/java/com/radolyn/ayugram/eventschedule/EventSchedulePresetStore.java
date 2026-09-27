@@ -106,16 +106,17 @@ public final class EventSchedulePresetStore {
         }
     }
 
-    public static boolean nameExists(int account, String name) {
+    /** The stored name of the preset matching {@code name} case-insensitively, or null if none does. */
+    public static String findName(int account, String name) {
         String normalizedName = normalizeName(name);
         synchronized (monitor(account)) {
             loadLocked(account);
             ArrayList<Preset> list = CACHE.get(account);
-            if (list == null) return false;
+            if (list == null) return null;
             for (int i = 0; i < list.size(); i++) {
-                if (list.get(i).name.equalsIgnoreCase(normalizedName)) return true;
+                if (list.get(i).name.equalsIgnoreCase(normalizedName)) return list.get(i).name;
             }
-            return false;
+            return null;
         }
     }
 
@@ -125,7 +126,7 @@ public final class EventSchedulePresetStore {
      * with the same name (case-insensitive) already exists, or {@code generation} no longer matches
      * this slot's current generation (the account was logged out -- and the store cleared -- since the
      * caller captured it via {@link #currentGeneration}). The naming dialog already checks the first
-     * three before showing this call, and {@link #nameExists} before that, but enforcing all of it again
+     * three before showing this call, and {@link #findName} before that, but enforcing all of it again
      * here -- inside the same synchronized block as the mutation -- keeps the invariant atomic and true
      * for any future caller that skips the dialog, not just today's one call site.
      */
@@ -148,6 +149,36 @@ public final class EventSchedulePresetStore {
             list.add(preset);
             persistLocked(account, list);
             return true;
+        }
+    }
+
+    /**
+     * Overwrites the conditions and delay of the preset whose name matches {@code name} case-insensitively,
+     * keeping its id, stored name and creation time so it stays where it was in the list. Returns false
+     * (and changes nothing) when no preset matches, no condition is set, or {@code generation} is stale --
+     * the same guards as {@link #add}, minus the count cap, which a replace never grows past.
+     */
+    public static boolean replace(int account, int generation, String name, int types, List<String> patterns, boolean regex, int delaySeconds) {
+        String normalizedName = normalizeName(name);
+        int normalizedTypes = types & EventScheduleEntry.TYPE_MASK;
+        ArrayList<String> normalizedPatterns = EventScheduleEntry.normalizeCommittedPatterns(patterns);
+        int normalizedDelay = Math.max(0, Math.min(delaySeconds, EventScheduleEntry.MAX_DELAY_SECONDS));
+        if (TextUtils.isEmpty(normalizedName) || (normalizedTypes == 0 && normalizedPatterns.isEmpty())) return false;
+        synchronized (monitor(account)) {
+            if (GENERATION.getOrDefault(account, 0) != generation) return false;
+            loadLocked(account);
+            ArrayList<Preset> list = CACHE.get(account);
+            if (list == null) return false;
+            for (int i = 0; i < list.size(); i++) {
+                Preset old = list.get(i);
+                if (old.name.equalsIgnoreCase(normalizedName)) {
+                    list.set(i, new Preset(old.id, old.name, normalizedTypes, normalizedPatterns,
+                            regex, normalizedDelay, old.createdAt));
+                    persistLocked(account, list);
+                    return true;
+                }
+            }
+            return false;
         }
     }
 

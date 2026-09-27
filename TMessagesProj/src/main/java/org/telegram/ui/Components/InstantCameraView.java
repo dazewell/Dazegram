@@ -223,7 +223,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     // NagramX: the N-Settings switch opts video messages into Camera2 unless the debug menu forces a choice
     private final boolean useCamera2 = SharedConfig.isUsingCamera2(currentAccount) || SharedConfig.useCamera2Force == null && NaConfig.INSTANCE.getVideoMessagesCamera2().Bool();
     private CameraSession cameraSession;
-    private boolean bothCameras;
+    private volatile boolean bothCameras; // NagramX (#round-dual-camera-fix): volatile, since dual fallback clears it mid-recording while the GL and encoder threads read it
     private Camera2Session[] camera2Sessions = new Camera2Session[2];
     private Camera2Session camera2SessionCurrent;
     private boolean needDrawFlickerStub;
@@ -1044,6 +1044,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         if (camera2Sessions[a] != null) {
                             camera2Sessions[a].setRecordingVideo(true);
                             camera2Sessions[a].setUseZoomRatio(); // NagramX: per session, so the idle one of a dual pair matches
+                            camera2Sessions[a].whenFailed(this::onRoundDualCameraLost); // NagramX (#round-dual-camera-fix)
                             previewSize[a] = new Size(camera2Sessions[a].getPreviewWidth(), camera2Sessions[a].getPreviewHeight());
                         }
                     }
@@ -1611,6 +1612,49 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         cameraThread.reinitForNewCamera();
     }
 
+    // NagramX (#round-dual-camera-fix): some phones advertise concurrent cameras yet evict the first camera when
+    // the second opens, leaving the rear preview black. Drop to one camera for this recording. The pref is only
+    // written while cameraReady is still false, since another app taking the camera mid-recording proves nothing
+    // about the phone. Once flipped nothing changes this attempt, since single mode draws surface 0 alone.
+    private void onRoundDualCameraLost(Camera2Session failed) {
+        if (!bothCameras || failed != camera2Sessions[0] && failed != camera2Sessions[1]) {
+            return;
+        }
+        FileLog.e("InstantCamera dual camera #" + failed.cameraId + " lost, ready=" + cameraReady);
+        if (!cameraReady) {
+            MessagesController.getGlobalMainSettings().edit().putBoolean("rounddual_available", false).apply();
+        }
+        if (flipAnimationInProgress || camera2SessionCurrent != camera2Sessions[0] || surfaceIndex != 0) {
+            return;
+        }
+        final boolean keep = failed != camera2SessionCurrent;
+        FileLog.e("InstantCamera falling back to single camera, reopen=" + !keep);
+        bothCameras = false;
+        for (int a = 0; a < camera2Sessions.length; ++a) {
+            if (camera2Sessions[a] != null && !(keep && camera2Sessions[a] == camera2SessionCurrent)) {
+                camera2Sessions[a].destroy(false);
+            }
+            camera2Sessions[a] = null;
+        }
+        if (!keep) {
+            // both old cameras are closed first, so the replacement is the only one open
+            Camera2Session session = Camera2Session.create(isFrontface, MessagesController.getInstance(UserConfig.selectedAccount).roundVideoSize, MessagesController.getInstance(UserConfig.selectedAccount).roundVideoSize);
+            if (session == null) {
+                return;
+            }
+            session.setRecordingVideo(true);
+            camera2SessionCurrent = session;
+            previewSize[0] = new Size(session.getPreviewWidth(), session.getPreviewHeight());
+        }
+        camera2Sessions[isFrontface ? 0 : 1] = camera2SessionCurrent;
+        applyLockedZoomToCamera();
+        updateFlash();
+        updateZoomControlAvailability();
+        if (cameraThread != null) {
+            cameraThread.handOverSession(camera2SessionCurrent, !keep);
+        }
+    }
+
     // Old Camera1 API
     @Deprecated
     private boolean initCamera() {
@@ -1941,6 +1985,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         private final int DO_REINIT_MESSAGE = 2;
         private final int DO_SETSESSION_MESSAGE = 3;
         private final int DO_FLIP = 4;
+        private final int DO_OPEN_SESSION = 5; // NagramX (#round-dual-camera-fix)
 
         private int drawProgram;
         private int vertexMatrixHandle;
@@ -2448,6 +2493,28 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     textureBuffer.put(texData).position(0);
                     break;
                 }
+                case DO_OPEN_SESSION: // NagramX (#round-dual-camera-fix)
+                    currentSession = inputMessage.obj;
+                    if (inputMessage.arg1 != 0 && cameraSurface[0] != null) {
+                        ((Camera2Session) inputMessage.obj).open(cameraSurface[0]);
+                    }
+                    break;
+            }
+        }
+
+        // NagramX (#round-dual-camera-fix): hands the dual-fallback session to this thread, which owns cameraSurface,
+        // and opens it on surface 0 when asked. The handler only exists once initGL returns, so until then retry on
+        // the UI thread for as long as this thread and this session are still the live ones.
+        public void handOverSession(Camera2Session session, boolean open) {
+            Handler handler = getHandler();
+            if (handler != null) {
+                handler.sendMessage(handler.obtainMessage(DO_OPEN_SESSION, open ? 1 : 0, 0, session)); // straight to the handler: DispatchQueue.sendMessage waits on its latch
+            } else {
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (cameraThread == this && camera2SessionCurrent == session) {
+                        handOverSession(session, open);
+                    }
+                }, 16);
             }
         }
 

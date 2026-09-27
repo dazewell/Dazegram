@@ -514,6 +514,7 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
         add(new ConfigCellCheckBox(NekoConfig.disableSwipeToNextTopic, null, getString(R.string.Topics), 0, true));
     }}, null));
     private final ArrayList<ConfigCellCheckBox> disableSwipeToNextRows = ((ConfigCellTextCheck2) disableSwipeToNextRow).getCheckBox();
+    private final AbstractConfigCell swipeToNextWithinFolderRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getSwipeToNextWithinFolder(), getString(R.string.SwipeToNextWithinFolderInfo)));
     private final AbstractConfigCell dividerChannels = cellGroup.appendCell(new ConfigCellDivider());
 
     // Confirmations

@@ -143,6 +143,9 @@ public class Camera2Session {
             public void onDisconnected(@NonNull CameraDevice camera) {
                 Camera2Session.this.cameraDevice = camera;
                 FileLog.d("Camera2Session camera #" + cameraId + " disconnected");
+                // NagramX (#round-dual-camera-fix): an evicted camera is gone, so stop reporting it as initiated
+                AndroidUtilities.runOnUIThread(() -> isError = true);
+                postFailure();
             }
 
             @Override
@@ -152,6 +155,7 @@ public class Camera2Session {
                 AndroidUtilities.runOnUIThread(() -> {
                     isError = true;
                 });
+                postFailure(); // NagramX (#round-dual-camera-fix)
             }
         };
 
@@ -182,6 +186,7 @@ public class Camera2Session {
                 AndroidUtilities.runOnUIThread(() -> {
                     isError = true;
                 });
+                postFailure(); // NagramX (#round-dual-camera-fix)
             }
         };
 
@@ -202,7 +207,23 @@ public class Camera2Session {
             AndroidUtilities.runOnUIThread(() -> {
                 isError = true;
             });
+            postFailure(); // NagramX (#round-dual-camera-fix)
         }
+    }
+
+    // NagramX (#round-dual-camera-fix): lets the round recorder drop dual mode when one of its two cameras
+    // is lost. Some phones advertise concurrent cameras yet evict the first one when the second opens.
+    private Utilities.Callback<Camera2Session> failedCallback;
+    public void whenFailed(Utilities.Callback<Camera2Session> failedCallback) {
+        this.failedCallback = failedCallback;
+    }
+
+    private void postFailure() {
+        AndroidUtilities.runOnUIThread(() -> {
+            if (failedCallback != null && !isClosed) {
+                failedCallback.run(this);
+            }
+        });
     }
 
     private Runnable doneCallback;
@@ -243,6 +264,7 @@ public class Camera2Session {
             AndroidUtilities.runOnUIThread(() -> {
                 isError = true;
             });
+            postFailure(); // NagramX (#round-dual-camera-fix)
         }
     }
 

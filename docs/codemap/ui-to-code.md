@@ -255,13 +255,21 @@ recorder's bottom chrome and its overlay add the same reach
 
 The pull-to-next hint ("Pull up to go to the next unread channel") is text only,
 centred between the two `top`/`bottom` values it is given
-(`ChatPullingDownDrawable.java:751`). The pull fades every bottom view out
+(`ChatPullingDownDrawable.java:752`). The pull fades every bottom view out
 (`ChatActivity.java:52343-52345`), and the island collapses to the plain pill.
 With the composer toolbar on, `inputBubbleHeight` still counts the tools row, but
 the pill as drawn leaves it out (`ChatInputViewsContainer.java:347`). The hint
 therefore takes its bottom from `getInputBubbleDrawnBottom()`, not
 `getInputBubbleBottom()`, or the text lands on the pill's bottom edge, in Liquid
 Glass as well as MD3 (`ChatInputViewsContainer.java:304-306`; `ChatActivity.java:20082`).
+
+Which channel the pull goes to comes from `getNextUnreadDialog`: the current
+filter's (or folder's) list first, then, with `searchNext`, every other filter
+and every other folder including the archive (`ChatPullingDownDrawable.java:685-713`).
+The folder context travels with the pull through the `dialog_folder_id` /
+`dialog_filter_id` bundle args, so a cross-folder hop moves the next pull there
+too (`ChatActivity.java:12583-12584`). *Swipe to Next Within Folder* turns
+`searchNext` off in the drawable's lookup (`ChatPullingDownDrawable.java:165`).
 
 Channel and selection runs tone the island itself (`ComposerMd3Surface.java:436-440`).
 With MD3 Buttons on, the selection bar's Reply and Forward instead become the run's

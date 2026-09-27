@@ -1044,6 +1044,8 @@ public class ChatActivityEnterView extends FrameLayout implements
                 } else if (cameraMode != 2) {
                     pendingCameraFront = (cameraMode == 0);
                 }
+                // NagramX: the Ask popup only hides the keyboard by taking focus; without it the camera opens over the IME
+                closeKeyboard();
             }
 
             setMessageEditExpanded(false); // NagramX: the record UI replaces the field, don't leave a fullscreen island behind it
