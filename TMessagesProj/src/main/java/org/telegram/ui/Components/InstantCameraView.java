@@ -2400,10 +2400,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     finish();
                     if (recording && (!(inputMessage.obj instanceof SendOptions) || ((SendOptions) inputMessage.obj).ttl != -2) && videoEncoder != null) {
                         videoEncoder.stopRecording(inputMessage.arg1, inputMessage.obj instanceof SendOptions ? (SendOptions) inputMessage.obj : null);
-                    } else if ((!(inputMessage.obj instanceof SendOptions) || ((SendOptions) inputMessage.obj).ttl != -2) && videoEncoder != null && videoEncoder.pauseRecorder) {
-                        // NagramX (#round-video-restart-guard-fix): resumed but no frame yet, so the recorder still holds
-                        // the paused clip; stop it the way a stop from the paused preview does, or it would never be sent
-                        videoEncoder.stopRecording(inputMessage.arg1, inputMessage.obj instanceof SendOptions ? (SendOptions) inputMessage.obj : null);
                     } else if (!(inputMessage.obj instanceof SendOptions) || ((SendOptions) inputMessage.obj).ttl != -2) {
                         // NagramX (#round-video-restart-guard-fix): a terminal stop that queued nothing (no frame yet,
                         // or no recorder) gets no teardown post, so release what send()/cancel() set for it here
