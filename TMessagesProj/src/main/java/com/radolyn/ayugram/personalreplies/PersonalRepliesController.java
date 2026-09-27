@@ -154,24 +154,27 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
     /**
      * The message a thread should be looked up from. A reply to an album targets
      * whichever member was pressed, so any member can hold its replies or its
-     * own reply link: the primary is used when it qualifies, as the item opened
-     * from it before threads walked upward, and otherwise the first member that
-     * does. For anything but an album it's the message itself.
+     * own reply link: the pressed member is used when it qualifies, then the
+     * primary, as the item opened from it before threads walked upward, then the
+     * first member that does. For anything but an album it's the message itself.
      */
     public static MessageObject threadAnchor(int account, MessageObject message, MessageObject.GroupedMessages group) {
         if (group == null || group.messages.isEmpty()) {
+            return message;
+        }
+        if (canViewThread(account, message)) {
             return message;
         }
         MessageObject primary = group.findPrimaryMessageObject();
         if (primary == null) {
             primary = message;
         }
-        if (canViewThread(account, primary)) {
+        if (primary != message && canViewThread(account, primary)) {
             return primary;
         }
         for (int i = 0; i < group.messages.size(); i++) {
             MessageObject member = group.messages.get(i);
-            if (member != primary && canViewThread(account, member)) {
+            if (member != primary && member != message && canViewThread(account, member)) {
                 return member;
             }
         }
