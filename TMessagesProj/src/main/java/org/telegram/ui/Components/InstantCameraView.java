@@ -1337,7 +1337,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             videoPlayer = null;
         }
         if (state == 4) {
-            if (videoEncoder != null && recordedTime > 800) {
+            // NagramX (#round-video-restart-guard-fix): with a terminal stop already queued the recorder is quitting and
+            // would drop this; its file is finished, so send it directly, as happens once teardown nulls videoEncoder
+            if (videoEncoder != null && recordedTime > 800 && !encoderTeardownPending) {
                 // NagramX (#round-video-restart-guard-fix): from here the file belongs to the outgoing message
                 cameraFileHandedOff = true;
                 if (videoEncoder.handler != null) {
