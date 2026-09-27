@@ -2307,14 +2307,14 @@ bind immediate when something is playing: `showCamera` stops the player
 (`ChatActivity.java:25236-25251`). The camera is flown away and hidden within
 ~400 ms, but the composer keeps its recording controls: removing the texture view
 stops the camera thread through `onSurfaceTextureDestroyed`, and nothing on that
-path posts `recordStopped` (only `InstantCameraView.java:851`, `:1416` and
-`:1542` do). Send or cancel then no-ops, because `send()` and `cancel()` both
-return early on a null texture view (`:1332`, `:1533-1535`) before reaching
+path posts `recordStopped` (only `InstantCameraView.java:851`, `:1414` and
+`:1540` do). Send or cancel then no-ops, because `send()` and `cancel()` both
+return early on a null texture view (`:1330`, `:1531-1533`) before reaching
 `startAnimation(false)`. Nothing is sent, and the scrim is left over an idle
 composer.
 
 A scrim left behind after Send, with no circle, means the texture view was
-already null. `textureView` is nulled only in `hideCamera` (`:1611`), and the only
+already null. `textureView` is nulled only in `hideCamera` (`:1609`), and the only
 callers besides the close animation (which lowers the scrim first) are these two
 paths and the pause-resume at `:874`. A resume whose `showCamera(true)` fails
 leaves the view visible with the placeholder circle, which is not what this
@@ -2325,7 +2325,7 @@ A round message is bound without a camera whenever the 3-second fallback
 inserted, which a slow `prepareSendingVideo` can cause (it blocks on
 `MessagesStorage.getSentFile`, `MessagesStorage.java:10103-10109`). The fork adds
 a deterministic source: sending a restored `#video-draft-guard` draft goes
-through `send(4)` with no texture view by design (`InstantCameraView.java:1332`).
+through `send(4)` with no texture view by design (`InstantCameraView.java:1330`).
 Its fallback timer, like a scheduled send's, can also hit a recording opened
 within 3 s, either still pending or during its 300 ms animation. Code-verified;
 not yet caught on a device.
@@ -2343,33 +2343,37 @@ no-ops in `showCamera` (`InstantCameraView.java:1001-1004`) yet used to put the
 composer into recording, with `cameraFile` still naming the just-sent file
 (the early return comes before `:1058`). The same instance is reused for the
 next recording, so anything driven against it then lands on the send: `cancel()`
-deleted the file (`:1559`) and could cancel its still-finishing recorder, a pause
+deleted the file (`:1557`) and could cancel its still-finishing recorder, a pause
 resumed into that recorder, and a second `send(4)` resent the file. Back-press
 (`ChatActivity.java:37811`) and the story-reply close (`PeerStoriesView.java:7899`)
 reach the same `cancel()` with no new press at all. And the texture going away is
 not the end of it: the recorder is only released by its teardown post
-(`InstantCameraView.java:4087`), and until then its pending posts read
-`videoFile`, `file`, `size` and `recordedTime` live (`:4051`, `handleStopRecording`
-from `:3819`), which a new recording's `startRecording` (`:2922`) and `showCamera`
+(`InstantCameraView.java:4081`), and until then its pending posts read
+`videoFile`, `file`, `size` and `recordedTime` live (`:4045`, `handleStopRecording`
+from `:3813`), which a new recording's `startRecording` (`:2916`) and `showCamera`
 reset.
 
 The fork guards it, `#round-video-restart-guard-fix`, with two flags on the view.
 `cameraFileHandedOff`, set where a file goes to a send, makes `send`, `togglePause`,
-the surface re-attach (`:1107`) and `cancel()`'s destructive half (`:1547-1555`)
+the surface re-attach (`:1107`) and `cancel()`'s destructive half (`:1545-1553`)
 leave that file alone, and the two ChatActivity close paths retire only a camera
 carrying it (`ChatActivity.java:39283`, `:41444`). `encoderTeardownPending`, set on
-every terminal stop and cleared by the teardown, a skipped stop (`:2407-2413`) or a
-failed prepare (`:2578`), holds a fresh `showCamera` off (`:1005`). The composer
+every terminal stop and cleared by the teardown, a skipped stop (`:2401-2407`) or a
+failed prepare (`:2572`), holds a fresh `showCamera` off (`:1005`). The composer
 refuses the press up front while either the texture or that flag is up
 (`ChatActivityEnterView.java:19227`, called from `:1005`, `:5366` and `:19243`).
 The window press was checked on a device.
 
 Upstream `togglePause` also unpaused the recorder before its audio thread came
 back. That thread exits on pause without re-posting its stop, so a stop between
-resume and the first frame waited in `handleStopRecording` (`:3865`) for a
+resume and the first frame waited in `handleStopRecording` (`:3859`) for a
 re-post that never came, and the teardown never ran. The fork leaves the
-recorder paused until `prepareEncoder(true)` restarts audio (`:4174`), so a stop
-in that gap takes the paused single pass. Code-verified.
+recorder paused until `prepareEncoder(true)` restarts audio (`:4168`). A stop
+that reaches it in that gap takes the paused single pass and tears down; one
+whose resumed camera never drew reaches nothing, as upstream, and the clip waits
+for a later cancel. Forwarding that stop, or pausing again on a surface loss,
+was tried and dropped: the first races the pause preview post that reads
+`previewFile`, the second can resume a queued start with no camera. Code-verified.
 
 *(Established 2026-09-26, investigating a stuck overlay on a video-message start.)*
 
