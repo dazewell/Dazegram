@@ -2282,3 +2282,22 @@ still being at `DEFAULT` — that condition is what distinguishes "never chose"
 from "chose this one", and it is the only safe trigger for overriding.
 
 *(Established 2026-09-20, `#ribbon-icons`.)*
+
+## Removing a view from its own focus-loss callback during a focus handoff can leave two views focused
+
+`ViewGroup.requestChildFocus` unfocuses the old child and only then assigns
+`mFocused = child` (android-37 `ViewGroup.java:876-882`). If the old child's
+`OnFocusChangeListener` removes it from its parent synchronously,
+`removeViewInternal` still sees it as `mFocused` (`ViewGroup.java:5738-5740`)
+and calls `rootViewRequestFocus()` unconditionally, touch mode or not
+(`ViewGroup.java:5773-5778`). The root picks a new focus holder (in the trigger
+sheet, the first pattern field); the outer call then overwrites `mFocused`
+without unfocusing it. Both
+views keep `isFocused()` and both cursors blink, and nothing can clear the
+orphan.
+
+The trigger sheet hit this when a blank pattern row auto-removed on focus
+loss. The fix posts the removal instead
+(`EventScheduleHelper.java:1203-1213`).
+
+*(Established 2026-09-26, `#trigger-cursor-fix`.)*
