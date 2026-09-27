@@ -409,6 +409,76 @@ public final class EventScheduleHelper {
             }
         }
 
+        /**
+         * Reveals its single body child by animating its own measured height, so the sheet grows and
+         * shrinks instead of snapping. A FrameLayout on purpose: SectionsScrollView.gatherChildren recurses
+         * into full-width vertical LinearLayouts and would paint the card from the body's full height, past
+         * the part that is actually revealed; a FrameLayout is gathered as one child at its animated size.
+         */
+        private static final class CollapsibleFrame extends FrameLayout {
+            private final View body;
+            private float progress;
+            private boolean expanded;
+            private ValueAnimator animator;
+
+            CollapsibleFrame(Context context, View body) {
+                super(context);
+                this.body = body;
+                addView(body, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.LEFT));
+                setVisibility(GONE);
+            }
+
+            void setExpanded(boolean expanded, boolean animated) {
+                if (this.expanded == expanded && animator == null) return;
+                this.expanded = expanded;
+                if (animator != null) {
+                    // Null the field first: cancel() runs onAnimationEnd synchronously, which would
+                    // otherwise snap to the old target before reversing.
+                    ValueAnimator running = animator;
+                    animator = null;
+                    running.cancel();
+                }
+                float target = expanded ? 1f : 0f;
+                if (!animated || !isLaidOut()) {
+                    setProgress(target);
+                    return;
+                }
+                setVisibility(VISIBLE);
+                animator = ValueAnimator.ofFloat(progress, target);
+                animator.setDuration(340);
+                animator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
+                animator.addUpdateListener(a -> setProgress((float) a.getAnimatedValue()));
+                animator.addListener(new android.animation.AnimatorListenerAdapter() {
+                    @Override
+                    public void onAnimationEnd(android.animation.Animator animation) {
+                        if (animator == animation) {
+                            animator = null;
+                            setProgress(target);
+                        }
+                    }
+                });
+                animator.start();
+            }
+
+            private void setProgress(float value) {
+                progress = value;
+                setVisibility(value <= 0f ? GONE : VISIBLE);
+                requestLayout();
+                // The section clip paths are recorded into the content layout's own display list, so it
+                // has to re-record on every frame, even once the sheet stops resizing at its max height.
+                if (getParent() instanceof View) {
+                    ((View) getParent()).invalidate();
+                }
+            }
+
+            @Override
+            protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+                super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
+                int full = body.getMeasuredHeight();
+                setMeasuredDimension(getMeasuredWidth(), progress >= 1f ? full : Math.round(full * progress));
+            }
+        }
+
         Row(int account, long dialogId, int[] editIds, int[] editLocalIds, Runnable onChanged) {
             this.account = account;
             this.dialogId = dialogId;
@@ -728,10 +798,12 @@ public final class EventScheduleHelper {
          * every non-blank pattern when regex mode is on. On success returns the extracted config; on
          * failure runs the exact same deferred UI failure path Done's own handler used to run inline
          * (auto-expand the text section first via doOnLayout when it isn't already open, because the bad
-         * row isn't laid out yet at that point) and returns null.
+         * row isn't laid out yet at that point) and returns null. textSection is the collapsible frame, not
+         * the rows inside it: only the frame's bounds are guaranteed to change when it opens, so a layout
+         * listener on anything inside can stay silent when its measure is cached.
          */
         private static ExtractedConfig extractAndValidate(Context context, ArrayList<PatternFieldRow> rows,
-                LinearLayout patternArea, ArrayList<TextCheckCell> typeGroup, TextCheckCell regexCell,
+                View textSection, ArrayList<TextCheckCell> typeGroup, TextCheckCell regexCell,
                 boolean[] typeExpanded, boolean[] textExpanded, Runnable[] syncGroupVisibility,
                 Runnable[] updateTypeHeader, Runnable[] updateTextHeader) {
             int[] typeBits = {EventScheduleEntry.TYPE_VOICE, EventScheduleEntry.TYPE_ROUND,
@@ -771,7 +843,7 @@ public final class EventScheduleHelper {
                             textExpanded[0] = true;
                             syncGroupVisibility[0].run();
                             updateTextHeader[0].run();
-                            org.telegram.messenger.AndroidUtilities.doOnLayout(patternArea, () -> {
+                            org.telegram.messenger.AndroidUtilities.doOnLayout(textSection, () -> {
                                 showRowMessage(badRow, getString(R.string.EventScheduleInvalidRegexRow), true);
                                 focusRow(badRow.field);
                                 AndroidUtil.showInputError(badRow.field);
@@ -815,6 +887,8 @@ public final class EventScheduleHelper {
             final Runnable[] collapseTextGroup = new Runnable[]{() -> {}};
             final Runnable[] syncTypeDividers = new Runnable[]{() -> {}};
             final Runnable[] syncTextDividers = new Runnable[]{() -> {}};
+            // Assigned once the Reset button exists; the header updaters call it after every draft edit.
+            final Runnable[] syncResetButton = new Runnable[]{() -> {}};
 
             final DisclosureHeaderCell typeHeader = new DisclosureHeaderCell(context);
             builder.addCustomView(typeHeader);
@@ -850,6 +924,15 @@ public final class EventScheduleHelper {
             typeGroup.add(videoCell);
             typeGroup.add(photoCell);
             typeGroup.add(textCell);
+            LinearLayout typeBody = new LinearLayout(context);
+            typeBody.setOrientation(LinearLayout.VERTICAL);
+            for (int i = 0; i < typeGroup.size(); i++) {
+                TextCheckCell cell = typeGroup.get(i);
+                ((android.view.ViewGroup) cell.getParent()).removeView(cell);
+                typeBody.addView(cell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            }
+            final CollapsibleFrame typeFrame = new CollapsibleFrame(context, typeBody);
+            builder.addCustomView(typeFrame);
 
             View sectionSpacer = builder.addCustomView(new View(context));
             sectionSpacer.setTag(RecyclerListView.TAG_NOT_SECTION);
@@ -859,9 +942,12 @@ public final class EventScheduleHelper {
             final DisclosureHeaderCell textHeader = new DisclosureHeaderCell(context);
             builder.addCustomView(textHeader);
 
+            LinearLayout textBody = new LinearLayout(context);
+            textBody.setOrientation(LinearLayout.VERTICAL);
+
             LinearLayout patternArea = new LinearLayout(context);
             patternArea.setOrientation(LinearLayout.VERTICAL);
-            builder.addCustomView(patternArea);
+            textBody.addView(patternArea, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
             LinearLayout patternRowsContainer = new LinearLayout(context);
             patternRowsContainer.setOrientation(LinearLayout.VERTICAL);
@@ -889,9 +975,17 @@ public final class EventScheduleHelper {
                         updateTextHeader[0].run();
                         return kotlin.Unit.INSTANCE;
                     });
+            ((android.view.ViewGroup) regexCell.getParent()).removeView(regexCell);
+            textBody.addView(regexCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            final CollapsibleFrame textFrame = new CollapsibleFrame(context, textBody);
+            builder.addCustomView(textFrame);
             final TextInfoPrivacyCell patternInfo = new TextInfoPrivacyCell(context, 21);
             patternInfo.setText(getString(R.string.EventScheduleMatchInfo));
-            builder.addCustomView(patternInfo);
+            // Its own frame, tagged: a TextInfoPrivacyCell is only kept out of the white card by its class,
+            // which the frame around it would hide.
+            final CollapsibleFrame infoFrame = new CollapsibleFrame(context, patternInfo);
+            infoFrame.setTag(RecyclerListView.TAG_NOT_SECTION);
+            builder.addCustomView(infoFrame);
             View textDelaySpacer = builder.addCustomView(new View(context));
             textDelaySpacer.setTag(RecyclerListView.TAG_NOT_SECTION);
             textDelaySpacer.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
@@ -971,8 +1065,8 @@ public final class EventScheduleHelper {
 
             final LinearLayout presetsContainer = new LinearLayout(context);
             presetsContainer.setOrientation(LinearLayout.VERTICAL);
-            presetsContainer.setVisibility(View.GONE);
-            builder.addCustomView(presetsContainer);
+            final CollapsibleFrame presetsFrame = new CollapsibleFrame(context, presetsContainer);
+            builder.addCustomView(presetsFrame);
 
             // Terminate this section run here -- without a TAG_NOT_SECTION spacer, delayCardContainer
             // (added further below) stays part of the same SectionsScrollView run as the Presets header
@@ -1046,7 +1140,7 @@ public final class EventScheduleHelper {
                         : org.telegram.messenger.LocaleController.formatPluralString("EventSchedulePresetsSaved", presetList.size());
                 presetsHeader.bind(getString(R.string.EventScheduleSectionPresets), summary, presetsExpanded[0]);
             };
-            syncPresetsVisibility[0] = () -> presetsContainer.setVisibility(presetsExpanded[0] ? View.VISIBLE : View.GONE);
+            syncPresetsVisibility[0] = () -> presetsFrame.setExpanded(presetsExpanded[0], false);
 
             presetsHeader.setOnClickListener(v -> {
                 // Minor-4: build the (up to 50) preset rows lazily, on first expand -- not at sheet
@@ -1056,7 +1150,7 @@ public final class EventScheduleHelper {
                     presetsBuilt[0] = true;
                 }
                 presetsExpanded[0] = !presetsExpanded[0];
-                syncPresetsVisibility[0].run();
+                presetsFrame.setExpanded(presetsExpanded[0], true);
                 updatePresetsHeader[0].run();
             });
             updatePresetsHeader[0].run();
@@ -1209,28 +1303,29 @@ public final class EventScheduleHelper {
             };
             syncTypeDividers[0] = () -> {
                 for (int i = 0; i < typeGroup.size(); i++) {
-                    typeGroup.get(i).setDivider(typeExpanded[0] && i < typeGroup.size() - 1);
+                    typeGroup.get(i).setDivider(i < typeGroup.size() - 1);
                 }
             };
             syncTextDividers[0] = () -> regexCell.setDivider(false);
             updateTypeHeader[0] = () -> {
                 typeHeader.bind(getString(R.string.EventScheduleSectionType), typeSummary.get(), typeExpanded[0]);
+                syncResetButton[0].run();
             };
             updateTextHeader[0] = () -> {
                 textHeader.bind(getString(R.string.EventScheduleSectionPattern), textSummary.get(), textExpanded[0]);
+                syncResetButton[0].run();
             };
-            syncGroupVisibility[0] = () -> {
-                int typeVisibility = typeExpanded[0] ? View.VISIBLE : View.GONE;
-                for (int i = 0; i < typeGroup.size(); i++) {
-                    typeGroup.get(i).setVisibility(typeVisibility);
-                }
-                int textVisibility = textExpanded[0] ? View.VISIBLE : View.GONE;
-                patternArea.setVisibility(textVisibility);
-                regexCell.setVisibility(textVisibility);
-                patternInfo.setVisibility(textVisibility);
+            // Only user-driven toggles animate. Validation's auto-expand stays instant because its
+            // doOnLayout focus and scroll must see the final layout, and a collapse that just dismissed the
+            // keyboard stays instant so it doesn't stack on BottomSheet's own keyboard animation.
+            final java.util.function.Consumer<Boolean> applyGroupVisibility = animated -> {
+                typeFrame.setExpanded(typeExpanded[0], animated);
+                textFrame.setExpanded(textExpanded[0], animated);
+                infoFrame.setExpanded(textExpanded[0], animated);
                 syncTypeDividers[0].run();
                 syncTextDividers[0].run();
             };
+            syncGroupVisibility[0] = () -> applyGroupVisibility.accept(false);
             collapseTextGroup[0] = () -> {
                 EditTextBoldCursor focused = focusedField(rows);
                 if (focused != null) {
@@ -1253,12 +1348,12 @@ public final class EventScheduleHelper {
                 }
                 clearAllRowMessages(rows);
                 textExpanded[0] = false;
-                syncGroupVisibility[0].run();
+                applyGroupVisibility.accept(focused == null);
                 updateTextHeader[0].run();
             };
             typeHeader.setOnClickListener(v -> {
                 typeExpanded[0] = !typeExpanded[0];
-                syncGroupVisibility[0].run();
+                applyGroupVisibility.accept(true);
                 updateTypeHeader[0].run();
             });
             textHeader.setOnClickListener(v -> {
@@ -1266,7 +1361,7 @@ public final class EventScheduleHelper {
                     collapseTextGroup[0].run();
                 } else {
                     textExpanded[0] = true;
-                    syncGroupVisibility[0].run();
+                    applyGroupVisibility.accept(true);
                     updateTextHeader[0].run();
                 }
             });
@@ -1336,6 +1431,7 @@ public final class EventScheduleHelper {
                     delayIndex[0] = step;
                     stagedDelay[0] = delayValues[step];
                     delayValue.setText(formatDelayLabel(stagedDelay[0]));
+                    syncResetButton[0].run();
                     if (stop) {
                         delaySeekBar.setProgress(step / (float) (delayValues.length - 1), true);
                     }
@@ -1363,7 +1459,8 @@ public final class EventScheduleHelper {
 
             // I-5: real bodies for the Presets section's apply/save actions, deferred to here because both
             // need delaySeekBar/stagedDelay/delayIndex/delayValue, which only exist from this point on.
-            applyPresetHolder[0] = (preset) -> {
+            // applyDraft replaces the draft fields only; preset apply and Reset each decide expand state.
+            final PresetApplier applyDraft = (preset) -> {
                 // I-7(i): unfocus + dismiss keyboard first, mirroring collapseTextGroup's own sequencing.
                 // Order matters: hide the keyboard while the field is still attached (hideKeyboard needs
                 // a live view to resolve its window token), then clear `rows`/the container BEFORE calling
@@ -1429,17 +1526,21 @@ public final class EventScheduleHelper {
                 stagedDelay[0] = preset.delaySeconds;
                 delayValue.setText(formatDelayLabel(stagedDelay[0]));
                 delaySeekBar.setProgress(floorIndex / (float) (delayValues.length - 1), true);
+            };
+            applyPresetHolder[0] = (preset) -> {
+                boolean animate = focusedField(rows) == null;
+                applyDraft.apply(preset);
 
                 // Full replace of the expand state too, mirroring the sheet's own initial-expand decision
                 // logic, applied independently per section.
                 typeExpanded[0] = preset.types != 0;
                 textExpanded[0] = !preset.patterns.isEmpty();
-                syncGroupVisibility[0].run();
+                applyGroupVisibility.accept(animate);
                 updateTypeHeader[0].run();
                 updateTextHeader[0].run();
 
                 presetsExpanded[0] = false;
-                syncPresetsVisibility[0].run();
+                presetsFrame.setExpanded(false, animate);
                 updatePresetsHeader[0].run();
             };
 
@@ -1448,7 +1549,7 @@ public final class EventScheduleHelper {
                     AlertUtil.showToast(getString(R.string.EventSchedulePresetLimitReached));
                     return;
                 }
-                ExtractedConfig extracted = extractAndValidate(context, rows, patternArea, typeGroup, regexCell,
+                ExtractedConfig extracted = extractAndValidate(context, rows, textFrame, typeGroup, regexCell,
                         typeExpanded, textExpanded, syncGroupVisibility, updateTypeHeader, updateTextHeader);
                 if (extracted == null) return;
                 boolean savedRegex = regexCell.isChecked();
@@ -1555,8 +1656,35 @@ public final class EventScheduleHelper {
                 });
             }
 
+            // Draft-only: never touches the armed trigger, the remembered last setup or presets, so Cancel
+            // still restores what the sheet opened with. Not offered on an armed trigger, where the red
+            // Remove trigger row is the clearing action.
+            if (!enabled) {
+                TextView resetButton = builder.addButton(getString(R.string.Reset), true, false, it -> {
+                    boolean animate = focusedField(rows) == null;
+                    applyDraft.apply(new EventSchedulePresetStore.Preset(null, "", 0, new ArrayList<>(), false, 0, 0));
+                    // Same rule the sheet opens with when nothing is configured.
+                    typeExpanded[0] = true;
+                    textExpanded[0] = false;
+                    applyGroupVisibility.accept(animate);
+                    updateTypeHeader[0].run();
+                    updateTextHeader[0].run();
+                    return kotlin.Unit.INSTANCE;
+                });
+                syncResetButton[0] = () -> {
+                    boolean anyType = false;
+                    for (int i = 0; i < typeGroup.size(); i++) {
+                        anyType |= typeGroup.get(i).isChecked();
+                    }
+                    boolean configured = anyType || hasAnyPattern(rows) || regexCell.isChecked() || stagedDelay[0] != 0;
+                    resetButton.setEnabled(configured);
+                    resetButton.setAlpha(configured ? 1f : 0.5f);
+                };
+                syncResetButton[0].run();
+            }
+
             TextView doneButton = builder.addButton(getString(R.string.Done), true, false, it -> {
-                ExtractedConfig extracted = extractAndValidate(context, rows, patternArea, typeGroup, regexCell,
+                ExtractedConfig extracted = extractAndValidate(context, rows, textFrame, typeGroup, regexCell,
                         typeExpanded, textExpanded, syncGroupVisibility, updateTypeHeader, updateTextHeader);
                 if (extracted == null) return kotlin.Unit.INSTANCE;
 
