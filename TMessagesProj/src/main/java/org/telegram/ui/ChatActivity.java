@@ -2768,6 +2768,12 @@ public class ChatActivity extends BaseFragment implements
                 if (state == 0) {
                     videoDraftToken++; // NagramX: a new recording session supersedes any still-in-flight finalize from a previous one
                     videoDraftOwnerTopicId = getTopicId(); // NagramX (#video-draft-guard): pin the origin topic for this recording
+                    // NagramX: this is the only place a new camera opens. With no texture left, a pending close from the
+                    // last send (restored draft, scheduled send) has nothing of its own to retire and would hit this one.
+                    if (instantCameraView.getTextureView() == null && closeInstantCameraAnimation != null) {
+                        AndroidUtilities.cancelRunOnUIThread(closeInstantCameraAnimation);
+                        closeInstantCameraAnimation = null;
+                    }
                     instantCameraView.showCamera(false);
                     chatListView.stopScroll();
                     chatAdapter.updateRowsSafe();
@@ -8980,6 +8986,7 @@ public class ChatActivity extends BaseFragment implements
         roundVideoRecordBackground.setBackground(d);
 
         contentView.addView(roundVideoRecordBackground, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        animatorRoundMessageCameraVisibility.setValue(false, false); // NagramX: the animator outlives a view rebuild; start it in step with this fresh, hidden scrim
         contentView.addView(chatInputViewsContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
         if (chatMode != MODE_EDIT_BUSINESS_LINK) {
@@ -12079,6 +12086,16 @@ public class ChatActivity extends BaseFragment implements
             public void startAnimation(boolean open, boolean fromPaused) {
                 super.startAnimation(open, fromPaused);
                 animatorRoundMessageCameraVisibility.setValue(open, true);
+            }
+
+            // NagramX: the send transition and the 3s fallback hide the camera without going through
+            // startAnimation, so tie the scrim to visibility too or it outlives the camera
+            @Override
+            public void setVisibility(int visibility) {
+                super.setVisibility(visibility);
+                if (visibility != View.VISIBLE) {
+                    animatorRoundMessageCameraVisibility.setValue(false, true);
+                }
             }
         };
         instantCameraView.setClipToPadding(false);
@@ -41408,7 +41425,9 @@ public class ChatActivity extends BaseFragment implements
                     int index;
                     if ((index = animatingMessageObjects.indexOf(message)) != -1) {
                         boolean applyAnimation = false;
-                        if (message.type == MessageObject.TYPE_ROUND_VIDEO && instantCameraView != null && instantCameraView.getTextureView() != null) {
+                        // NagramX: the pending close is what marks a sent camera still waiting to be retired. Without it,
+                        // the open camera belongs to a later recording and must not be flown away.
+                        if (message.type == MessageObject.TYPE_ROUND_VIDEO && instantCameraView != null && instantCameraView.getTextureView() != null && closeInstantCameraAnimation != null) {
                             applyAnimation = true;
                             if (closeInstantCameraAnimation != null) {
                                 AndroidUtilities.cancelRunOnUIThread(closeInstantCameraAnimation);
@@ -41630,7 +41649,12 @@ public class ChatActivity extends BaseFragment implements
                                 });
                             }
                         }
-                        if (applyAnimation || chatListItemAnimator == null) {
+                        if (!applyAnimation && message.type == MessageObject.TYPE_ROUND_VIDEO) {
+                            // NagramX: the camera transition is a round message's only animation, so one that missed it
+                            // is dropped here; left queued, it would fly a later recording's camera away. No composer
+                            // calls: they act on whatever send is pending now, not this one.
+                            animatingMessageObjects.remove(index);
+                        } else if (applyAnimation || chatListItemAnimator == null) {
                             animatingMessageObjects.remove(index);
                             chatActivityEnterView.startMessageTransition();
                             chatActivityEnterView.hideTopView(true);
