@@ -31,9 +31,9 @@ Save sets of auto-lock timeouts under Nagram Settings → Passcode and switch be
 
 A Panic Code that matches an unlock code is a security risk, so setup now requires yours to be unique — it can't match your app passcode or any account's passcode. The setup screens also name which code you're setting (App, Panic, or Account). Codes set before this check existed may clash, so the settings screen will prompt you to re-set your Panic Code.
 
-### Reply threads in private chats <!-- #personal-replies --> <!-- #reply-threads -->
+### Reply threads in private chats <!-- #personal-replies --> <!-- #reply-threads --> <!-- #thread-upwards -->
 
-Private chats now show a reply glyph and count next to a message's timestamp, bringing group-style reply threads to 1-to-1 chats. *View replies* in the message menu swaps the history for the message's whole thread, replies to replies included, without leaving the chat.
+Private chats now show a reply glyph and count next to a message's timestamp, bringing group-style reply threads to 1-to-1 chats. *View Thread* in the message menu, on any reply or replied-to message, swaps the history for the whole thread it belongs to and lands on the one you picked, without leaving the chat.
 
 <img height="150" alt="private chat message bubble showing a reply glyph and count next to its timestamp" src="docs/images/features/reply-threads.png" />
 
@@ -164,7 +164,7 @@ Select text in a message and tap *Cite* to drop it into your input box as a quot
 
 ### Scheduled message triggers <!-- #reschedule --> <!-- #eventschedule -->
 
-Pick several scheduled messages and use *Reschedule* to move them all at once with a base time and interval. *Send on event* arms from the schedule picker or from bulk *Reschedule*: one trigger watches message type, text patterns, or both, and sends early while each message keeps its fallback schedule. Setups save as presets, and armed triggers live under Chats nav ⋯ → *Message Triggers*.
+Pick several scheduled messages and use *Reschedule* to move them all at once with a base time and interval. *Send on event* arms from the schedule picker or from bulk *Reschedule*: one trigger watches message type, text patterns, or both, and sends early while each message keeps its fallback schedule. Setups save as presets or clear with *Reset*, and armed triggers live under Chats nav ⋯ → *Message Triggers*.
 
 <img height="260" alt="bulk Reschedule sheet with a base time, per-message interval, and a delay slider" src="docs/images/features/reschedule.png" />
 <img height="260" alt="Send on event trigger editor with By message type and Or by text collapsible sections" src="docs/images/features/trigger-editor.png" />

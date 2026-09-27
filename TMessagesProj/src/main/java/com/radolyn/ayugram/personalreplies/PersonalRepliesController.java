@@ -135,6 +135,61 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
         return getInstance(account).count(dialogId, message.getId());
     }
 
+    /**
+     * Whether the message menu offers the thread view: the message has stored
+     * replies, or is itself a reply to something in this chat.
+     */
+    public static boolean canViewThread(int account, MessageObject message) {
+        if (message == null || message.messageOwner == null || message.getId() <= 0 || message.scheduled) {
+            return false;
+        }
+        long dialogId = message.getDialogId();
+        if (!isEligibleDialog(account, dialogId)) {
+            return false;
+        }
+        return getInstance(account).count(dialogId, message.getId()) > 0
+                || PersonalRepliesStorage.isReplyInDialog(message.messageOwner, dialogId);
+    }
+
+    /**
+     * The message a thread should be looked up from. A reply to an album targets
+     * whichever member was pressed, so any member can hold its replies or its
+     * own reply link: the pressed member is used when it qualifies, then the
+     * primary, as the item opened from it before threads walked upward, then the
+     * first member that does. For anything but an album it's the message itself.
+     */
+    public static MessageObject threadAnchor(int account, MessageObject message, MessageObject.GroupedMessages group) {
+        if (group == null || group.messages.isEmpty()) {
+            return message;
+        }
+        if (canViewThread(account, message)) {
+            return message;
+        }
+        MessageObject primary = group.findPrimaryMessageObject();
+        if (primary == null) {
+            primary = message;
+        }
+        if (primary != message && canViewThread(account, primary)) {
+            return primary;
+        }
+        for (int i = 0; i < group.messages.size(); i++) {
+            MessageObject member = group.messages.get(i);
+            if (member != primary && member != message && canViewThread(account, member)) {
+                return member;
+            }
+        }
+        return primary;
+    }
+
+    /** Stored replies to every member of an album together, 0 while unknown or ineligible. */
+    public static int getCount(int account, MessageObject.GroupedMessages group) {
+        int total = 0;
+        for (int i = 0; i < group.messages.size(); i++) {
+            total += getCount(account, group.messages.get(i));
+        }
+        return Math.min(total, PersonalRepliesStorage.THREAD_LIMIT);
+    }
+
     private int count(long dialogId, int messageId) {
         if (dialogId != cachedDialogId) {
             cachedDialogId = dialogId;
@@ -339,13 +394,15 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
     }
 
     /**
-     * Loads the message plus every stored reply below it for the in-place
-     * thread view, root first, and hands back ready-to-render message objects.
+     * Loads the whole stored thread {@code messageId} belongs to for the in-place
+     * thread view: the highest stored message it replies up to, then every stored
+     * reply below that, root first. Hands back ready-to-render message objects.
      */
-    public static void loadThread(int account, long dialogId, int topId, Utilities.Callback<ArrayList<MessageObject>> onDone) {
+    public static void loadThread(int account, long dialogId, int messageId, Utilities.Callback<ArrayList<MessageObject>> onDone) {
         MessagesStorage.getInstance(account).getStorageQueue().postRunnable(() -> {
             ArrayList<Long> usersToLoad = new ArrayList<>();
             ArrayList<Long> chatsToLoad = new ArrayList<>();
+            int topId = PersonalRepliesStorage.findThreadTop(account, dialogId, messageId);
             ArrayList<TLRPC.Message> loaded = PersonalRepliesStorage.loadThread(account, dialogId, topId, usersToLoad, chatsToLoad);
             ArrayList<TLRPC.User> users = new ArrayList<>();
             ArrayList<TLRPC.Chat> chats = new ArrayList<>();
