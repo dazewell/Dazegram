@@ -259,6 +259,9 @@ public class CameraSession {
                     if (initial && BuildVars.LOGS_ENABLED) {
                         FileLog.d("camera1 zoom levels " + maxZoom + " smooth " + smoothZoomSupported + " ratios " + zoomRatios);
                     }
+                    if (initial) {
+                        xyz.nextalone.nagram.helper.CameraZoomProbe.camera1Opened(cameraInfo.cameraId, cameraInfo.isFrontface(), maxZoom, zoomRatios, smoothZoomSupported); // NagramX: temporary NAX_SMOKE_video-zoom-presets survey
+                    }
 
                     String desiredMode = Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO;
                     if (params.getSupportedFocusModes().contains(desiredMode)) {
