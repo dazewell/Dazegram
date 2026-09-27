@@ -1641,10 +1641,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         updateFlash();
         updateZoomControlAvailability();
         if (cameraThread != null) {
-            cameraThread.setCurrentSession(camera2SessionCurrent);
-            if (!keep) {
-                cameraThread.openSession(camera2SessionCurrent);
-            }
+            cameraThread.handOverSession(camera2SessionCurrent, !keep);
         }
     }
 
@@ -2487,19 +2484,27 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     break;
                 }
                 case DO_OPEN_SESSION: // NagramX (#round-dual-camera-fix)
-                    if (cameraSurface[0] != null) {
+                    currentSession = inputMessage.obj;
+                    if (inputMessage.arg1 != 0 && cameraSurface[0] != null) {
                         ((Camera2Session) inputMessage.obj).open(cameraSurface[0]);
                     }
                     break;
             }
         }
 
-        // NagramX (#round-dual-camera-fix): opens the dual-fallback session on surface 0 from this thread, which owns
-        // cameraSurface. No handler yet means initGL hasn't finished, and its own createCamera(0) opens the session.
-        public void openSession(Camera2Session session) {
+        // NagramX (#round-dual-camera-fix): hands the dual-fallback session to this thread, which owns cameraSurface,
+        // and opens it on surface 0 when asked. The handler only exists once initGL returns, so until then retry on
+        // the UI thread for as long as this thread and this session are still the live ones.
+        public void handOverSession(Camera2Session session, boolean open) {
             Handler handler = getHandler();
             if (handler != null) {
-                sendMessage(handler.obtainMessage(DO_OPEN_SESSION, session), 0);
+                sendMessage(handler.obtainMessage(DO_OPEN_SESSION, open ? 1 : 0, 0, session), 0);
+            } else {
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (cameraThread == this && camera2SessionCurrent == session) {
+                        handOverSession(session, open);
+                    }
+                }, 16);
             }
         }
 
