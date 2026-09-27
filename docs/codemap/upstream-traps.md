@@ -2283,6 +2283,70 @@ from "chose this one", and it is the only safe trigger for overriding.
 
 *(Established 2026-09-20, `#ribbon-icons`.)*
 
+## The round-video scrim outlives the camera when a send transition fires on a later recording
+
+Upstream, `roundVideoRecordBackground`, the full-screen scrim behind the
+round-video recorder, is driven by one `BoolAnimator`, and only two things move
+it: `InstantCameraView.startAnimation(open)` through the anonymous subclass in
+`checkInstantCameraView` (`ChatActivity.java:12086-12089`), and
+`ChatActivity.sendMedia` lowering it (`ChatActivity.java:39061`). The two paths
+that actually retire the camera after a send, the fly-into-the-bubble transition
+and the 3-second fallback, call `hideCamera(true)` and `setVisibility(INVISIBLE)`
+directly (`ChatActivity.java:41513-41517`, `:39289-39293`) and never lower the
+scrim. That is harmless only while they run on the camera that just sent.
+
+Upstream, they can run on a *later* recording. A just-sent round message sits in
+`animatingMessageObjects` until a bind finds `getTextureView() != null`
+(`ChatActivity.java:41432`), and it is removed only when
+`applyAnimation || chatListItemAnimator == null` (`:41659-41660`), so a bind
+without a camera leaves it there. The next bind of that cell while any new camera
+is open plays the transition on the new camera. Starting a recording makes that
+bind immediate when something is playing: `showCamera` stops the player
+(`InstantCameraView.java:1019`) before it creates the texture view (`:1064`), and
+`messagePlayingDidReset` rebinds every visible round cell
+(`ChatActivity.java:25230-25245`). The camera is flown away and hidden within
+~400 ms, but the composer keeps its recording controls: removing the texture view
+stops the camera thread through `onSurfaceTextureDestroyed`, and nothing on that
+path posts `recordStopped` (only `InstantCameraView.java:837`, `:1367` and
+`:1490` do). Send or cancel then no-ops, because `send()` and `cancel()` both
+return early on a null texture view (`:1292`, `:1483-1485`) before reaching
+`startAnimation(false)`. Nothing is sent, and the scrim is left over an idle
+composer.
+
+A scrim left behind after Send, with no circle, means the texture view was
+already null. `textureView` is nulled only in `hideCamera` (`:1554`), and the only
+callers besides the close animation (which lowers the scrim first) are these two
+paths and the pause-resume at `:858`. A resume whose `showCamera(true)` fails
+leaves the view visible with the placeholder circle, which is not what this
+looks like.
+
+A round message is bound without a camera whenever the 3-second fallback
+(`ChatActivity.java:39076-39080`) closes the camera before the message is
+inserted, which a slow `prepareSendingVideo` can cause (it blocks on
+`MessagesStorage.getSentFile`, `MessagesStorage.java:10103-10109`). The fork adds
+a deterministic source: sending a restored `#video-draft-guard` draft goes
+through `send(4)` with no texture view by design (`InstantCameraView.java:1292`).
+Its fallback timer, like a scheduled send's, can also hit a recording opened
+within 3 s, either still pending or during its 300 ms animation. Code-verified;
+not yet caught on a device.
+
+The fork guards it, `#round-video-stuck-overlay-fix`. The transition also
+requires the pending close, which only a real send arms (`ChatActivity.java:41432`).
+The one camera opener, `needStartRecordVideo(0)`, cancels a close left with no
+texture to retire (`:2771-2776`). The fallback skips its animation when there is
+no texture (`:39272`). A round entry that missed its transition is dropped
+without the composer calls (`:41654-41658`). The scrim follows the camera's
+visibility (`:12092-12099`) and is re-synced after a view rebuild (`:8989`).
+
+Still upstream and not guarded: a start inside the retirement window, while the
+sent camera's texture is still up, no-ops in `showCamera`
+(`InstantCameraView.java:972-975`) yet puts the composer into recording.
+`cameraFile` still names the just-sent file, because the early return comes
+before it is regenerated (`:1026`). A slide-cancel then reaches `cancel()`, which
+deletes that file (`:1498-1504`), possibly mid-upload.
+
+*(Established 2026-09-26, investigating a stuck overlay on a video-message start.)*
+
 ## Removing a view from its own focus-loss callback during a focus handoff can leave two views focused
 
 `ViewGroup.requestChildFocus` unfocuses the old child and only then assigns
