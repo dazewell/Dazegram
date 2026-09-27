@@ -2282,3 +2282,42 @@ still being at `DEFAULT` — that condition is what distinguishes "never chose"
 from "chose this one", and it is the only safe trigger for overriding.
 
 *(Established 2026-09-20, `#ribbon-icons`.)*
+
+## The round-video scrim outlives the camera when a send transition fires on a later recording
+
+`roundVideoRecordBackground`, the full-screen scrim behind the round-video
+recorder, is driven by one `BoolAnimator`, and only two things move it:
+`InstantCameraView.startAnimation(open)` through the anonymous subclass in
+`checkInstantCameraView` (`ChatActivity.java:12062-12065`), and
+`ChatActivity.sendMedia` lowering it (`ChatActivity.java:39027`). The two
+paths that actually retire the camera after a send, the fly-into-the-bubble
+transition and the 3-second fallback, both call `hideCamera(true)` and
+`setVisibility(INVISIBLE)` directly (`ChatActivity.java:41475-41479`,
+`:39253-39257`) and never touch the scrim. That is harmless only while they run
+on the camera that just sent.
+
+They can run on a *later* recording. A just-sent round message sits in
+`animatingMessageObjects` until a bind finds `getTextureView() != null`
+(`ChatActivity.java:41394`); a bind without one leaves it there, because it is
+removed only when `applyAnimation || chatListItemAnimator == null`
+(`:41616-41617`). The next bind of that cell while any new camera is open plays
+the transition on the new camera. Starting a recording makes that bind
+immediate when something is playing: `showCamera` stops the player
+(`InstantCameraView.java:1019`) before it creates the texture view (`:1064`),
+and `messagePlayingDidReset` rebinds every visible round cell
+(`ChatActivity.java:25196-25211`). The camera is flown away and hidden within
+~400 ms, and the release then no-ops, because `send()` and `cancel()` both
+return early on a null texture view (`InstantCameraView.java:1292`, `:1483-1485`)
+before reaching `startAnimation(false)`. What is left is the scrim alone over an
+idle composer.
+
+A round message is bound without a camera whenever the 3-second fallback
+(`ChatActivity.java:39042-39046`) closes the camera before the message is
+inserted, which a slow `prepareSendingVideo` can cause (it blocks on
+`MessagesStorage.getSentFile`, `MessagesStorage.java:10103-10109`). The fork adds
+a deterministic source: sending a restored `#video-draft-guard` draft goes
+through `send(4)` with no texture view by design (`InstantCameraView.java:1292`),
+so its message is never consumed, and its fallback timer can also hit a
+recording started within 3 s. Code-verified; not yet caught on a device.
+
+*(Established 2026-09-26, investigating a stuck overlay on a video-message start.)*
