@@ -1461,7 +1461,8 @@ public final class EventScheduleHelper {
 
             // I-5: real bodies for the Presets section's apply/save actions, deferred to here because both
             // need delaySeekBar/stagedDelay/delayIndex/delayValue, which only exist from this point on.
-            // applyDraft replaces the draft fields only; preset apply and Reset each decide expand state.
+            // applyDraft replaces the draft fields only; preset apply also replaces section expand state,
+            // Reset leaves it alone.
             final PresetApplier applyDraft = (preset) -> {
                 // I-7(i): unfocus + dismiss keyboard first, mirroring collapseTextGroup's own sequencing.
                 // Order matters: hide the keyboard while the field is still attached (hideKeyboard needs
