@@ -39267,7 +39267,9 @@ public class ChatActivity extends BaseFragment implements
 
     private void runCloseInstantCameraAnimation() {
         keepRecordingSegmentPaths.clear();
-        if (instantCameraView == null) {
+        // NagramX: no texture means the sent camera is already gone (restored draft, scheduled send). Animating
+        // anyway would let a recording opened during the animation be hidden when it ends.
+        if (instantCameraView == null || instantCameraView.getTextureView() == null) {
             return;
         }
 
