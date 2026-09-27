@@ -1643,10 +1643,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 return;
             }
             session.setRecordingVideo(true);
+            session.setUseZoomRatio(); // NagramX (#video-zoom)
             camera2SessionCurrent = session;
             previewSize[0] = new Size(session.getPreviewWidth(), session.getPreviewHeight());
         }
         camera2Sessions[isFrontface ? 0 : 1] = camera2SessionCurrent;
+        adaptZoomToSession(0f); // NagramX (#video-zoom)
         applyLockedZoomToCamera();
         updateFlash();
         updateZoomControlAvailability();
