@@ -1033,7 +1033,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         if (BuildVars.LOGS_ENABLED) {
             FileLog.d("InstantCamera show round camera " + cameraFile.getAbsolutePath());
         }
-        xyz.nextalone.nagram.helper.CameraZoomProbe.dump(useCamera2); // NagramX: temporary NAX_SMOKE_video-zoom-presets survey
 
         if (useCamera2) {
             bothCameras = DualCameraView.roundDualAvailableStatic(getContext());
@@ -1060,7 +1059,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 previewSize[0] = new Size(camera2SessionCurrent.getPreviewWidth(), camera2SessionCurrent.getPreviewHeight());
             }
             applyLockedZoomToCamera();
-            xyz.nextalone.nagram.helper.CameraZoomProbe.camera2Opened(camera2SessionCurrent.cameraId, isFrontface); // NagramX: temporary NAX_SMOKE_video-zoom-presets survey
         }
         updateZoomControlAvailability();
         textureView = new TextureView(getContext());
