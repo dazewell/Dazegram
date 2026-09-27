@@ -1073,7 +1073,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             if (bothCameras) {
                 for (int a = 0; a < 2; ++a) {
                     if (camera2Sessions[a] == null) {
-                        camera2Sessions[a] = createRoundCamera2Session(a == (isFrontface ? 0 : 1)); // NagramX (#video-zoom)
+                        camera2Sessions[a] = Camera2Session.create(a == (isFrontface ? 0 : 1), MessagesController.getInstance(UserConfig.selectedAccount).roundVideoSize, MessagesController.getInstance(UserConfig.selectedAccount).roundVideoSize);
                         if (camera2Sessions[a] != null) {
                             camera2Sessions[a].setRecordingVideo(true);
                             camera2Sessions[a].setUseZoomRatio(); // NagramX: per session, so the idle one of a dual pair matches
@@ -1089,7 +1089,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 }
                 if (camera2SessionCurrent == null) return;
             } else {
-                camera2SessionCurrent = camera2Sessions[isFrontface ? 0 : 1] = createRoundCamera2Session(isFrontface); // NagramX (#video-zoom)
+                camera2SessionCurrent = camera2Sessions[isFrontface ? 0 : 1] = Camera2Session.create(isFrontface, MessagesController.getInstance(UserConfig.selectedAccount).roundVideoSize, MessagesController.getInstance(UserConfig.selectedAccount).roundVideoSize);
                 if (camera2SessionCurrent == null) return;
                 camera2SessionCurrent.setRecordingVideo(true);
                 camera2SessionCurrent.setUseZoomRatio(); // NagramX
@@ -1645,7 +1645,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     camera2SessionCurrent = null;
                     camera2Sessions[isFrontface ? 1 : 0] = null;
                 }
-                camera2SessionCurrent = camera2Sessions[isFrontface ? 0 : 1] = createRoundCamera2Session(isFrontface); // NagramX (#video-zoom)
+                camera2SessionCurrent = camera2Sessions[isFrontface ? 0 : 1] = Camera2Session.create(isFrontface, MessagesController.getInstance(UserConfig.selectedAccount).roundVideoSize, MessagesController.getInstance(UserConfig.selectedAccount).roundVideoSize);
                 if (camera2SessionCurrent == null) return;
                 camera2SessionCurrent.setRecordingVideo(true);
                 camera2SessionCurrent.setUseZoomRatio(); // NagramX
@@ -1693,7 +1693,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
         if (!keep) {
             // both old cameras are closed first, so the replacement is the only one open
-            Camera2Session session = createRoundCamera2Session(isFrontface); // NagramX (#video-zoom)
+            Camera2Session session = Camera2Session.create(isFrontface, MessagesController.getInstance(UserConfig.selectedAccount).roundVideoSize, MessagesController.getInstance(UserConfig.selectedAccount).roundVideoSize);
             if (session == null) {
                 return;
             }
@@ -5156,17 +5156,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     private boolean zoomHomePending;
-
-    // NagramX: where ratio zoom applies, ask for a 4:3 stream sized like Camera1's round preview and let the
-    // renderer crop it to the circle, as it does on Camera1. A square stream off a MediaTek ultrawide comes
-    // out with a band of smeared edge columns.
-    private Camera2Session createRoundCamera2Session(boolean front) {
-        if (Build.VERSION.SDK_INT < 30) {
-            final int size = MessagesController.getInstance(UserConfig.selectedAccount).roundVideoSize;
-            return Camera2Session.create(front, size, size);
-        }
-        return allowBigSizeCamera() ? Camera2Session.create(front, 1440, 1080) : Camera2Session.create(front, 1280, 960);
-    }
 
     // NagramX: called once camera2SessionCurrent is the camera about to show, before its zoom is applied.
     // carriedZoom is the ratio to keep across a flip, or 0 to leave the slider where it is
