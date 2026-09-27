@@ -70,6 +70,10 @@ Clear Message Database now removes only the media this install has database rows
 
 Each chat's Notifications screen (open a chat → its name → Notifications) has a **Show on Watch** switch under Message Preview, on by default. Turn it off and that chat's message notifications stop reaching a paired Wear OS watch, while the phone notification is unaffected. It isn't available on secret chats — set it on a forum's main chat to cover every topic.
 
+### Swipe to next channel within the folder <!-- #next-channel-in-folder -->
+
+Swiping up at the end of a channel normally jumps to the next unread channel, and once the current folder runs out it moves on to other folders and the archive. N-Settings → Chat → Channels → *Swipe to Next Within Folder* keeps it in the folder you opened the channel from. Off by default.
+
 ## Composer and input
 
 ### Composer toolbar <!-- #composer-toolbar --> <!-- #composer-bubbles --> <!-- #toggle-formatting -->

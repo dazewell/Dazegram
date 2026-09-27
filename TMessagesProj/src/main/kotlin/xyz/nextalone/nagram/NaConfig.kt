@@ -449,6 +449,12 @@ object NaConfig {
             ConfigItem.configTypeBool,
             false
         )
+    val swipeToNextWithinFolder =
+        addConfig(
+            "SwipeToNextWithinFolder",
+            ConfigItem.configTypeBool,
+            false
+        )
     val disablePreviewVideoSoundShortcut =
         addConfig(
             "DisablePreviewVideoSoundShortcut",
