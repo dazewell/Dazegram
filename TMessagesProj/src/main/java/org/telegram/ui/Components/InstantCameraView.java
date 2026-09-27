@@ -837,6 +837,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     public void togglePause() {
+        if (!recording && cameraThread != null) {
+            return; // NagramX (#round-video-restart-guard-fix): the last resume's camera is still coming up; a second resume would stop it as a terminal stop
+        }
         if (cameraFileHandedOff || encoderTeardownPending) {
             android.util.Log.w("NaxSmoke", "NAX_SMOKE_round-video-restart-guard PAUSE_BLOCKED handedOff=" + cameraFileHandedOff + " pending=" + encoderTeardownPending);
             return; // NagramX (#round-video-restart-guard-fix): a resume here would reopen the camera into the finished recorder
