@@ -19527,6 +19527,9 @@ public class ChatActivity extends BaseFragment implements
                 }
                 canvas.restore();
             } else {
+                if (child == roundVideoRecordBackground) {
+                    naxDrawHeaderDivider(canvas); // NagramX: under the scrim, not over it
+                }
                 if (child == chatInputViewsContainer && instantCameraView != null && instantCameraView.getVisibility() == VISIBLE) {
                     super.drawChild(canvas, instantCameraView, drawingTime);
                 }
@@ -19619,6 +19622,17 @@ public class ChatActivity extends BaseFragment implements
             scrimBlur3Factory.invalidateAllLinkedViews();
         }
 
+        // NagramX: MD3 hairline under the whole header group, following the pinned panel as it grows and collapses.
+        private void naxDrawHeaderDivider(Canvas canvas) {
+            if (actionBar != null && actionBar.getVisibility() == VISIBLE && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() && xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividers()) {
+                float naxHeaderBottom = actionBar.getTranslationY() + actionBar.getMeasuredHeight() + (actionBarSearchTags != null ? actionBarSearchTags.getCurrentHeight() : 0) + (hashtagSearchTabs != null ? hashtagSearchTabs.getCurrentHeight() : 0) + (inPreviewMode ? AndroidUtilities.statusBarHeight : 0);
+                if (topPanelLayout != null && topPanelLayout.getMetadata().getTotalVisibility() > 0) {
+                    naxHeaderBottom = Math.max(naxHeaderBottom, topPanelLayout.getY() + topPanelLayout.getMetadata().getTotalHeight());
+                }
+                canvas.drawRect(0, naxHeaderBottom, getMeasuredWidth(), naxHeaderBottom + Math.max(1, AndroidUtilities.dp(0.66f)), xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividerPaint(xyz.nextalone.nagram.helpers.InterfaceStyleController.chatHeaderSurfaceColor(themeDelegate), themeDelegate));
+            }
+        }
+
         @Override
         protected void dispatchDraw(Canvas canvas) {
             chatActivityEnterView.checkAnimation();
@@ -19642,13 +19656,9 @@ public class ChatActivity extends BaseFragment implements
                 canvas.scale(s, s, getMeasuredWidth() / 2f, getMeasuredHeight() / 2f);
             }
             super.dispatchDraw(canvas);
-            // NagramX: MD3 hairline under the whole header group, following the pinned panel as it grows and collapses.
-            if (actionBar != null && actionBar.getVisibility() == VISIBLE && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() && xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividers()) {
-                float naxHeaderBottom = actionBar.getTranslationY() + actionBar.getMeasuredHeight() + (actionBarSearchTags != null ? actionBarSearchTags.getCurrentHeight() : 0) + (hashtagSearchTabs != null ? hashtagSearchTabs.getCurrentHeight() : 0) + (inPreviewMode ? AndroidUtilities.statusBarHeight : 0);
-                if (topPanelLayout != null && topPanelLayout.getMetadata().getTotalVisibility() > 0) {
-                    naxHeaderBottom = Math.max(naxHeaderBottom, topPanelLayout.getY() + topPanelLayout.getMetadata().getTotalHeight());
-                }
-                canvas.drawRect(0, naxHeaderBottom, getMeasuredWidth(), naxHeaderBottom + Math.max(1, AndroidUtilities.dp(0.66f)), xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividerPaint(xyz.nextalone.nagram.helpers.InterfaceStyleController.chatHeaderSurfaceColor(themeDelegate), themeDelegate));
+            // NagramX: while the round video scrim shows, drawChild paints the hairline under it instead
+            if (roundVideoRecordBackground == null || roundVideoRecordBackground.getVisibility() != VISIBLE) {
+                naxDrawHeaderDivider(canvas);
             }
             //if (fragmentContextView != null && fragmentContextView.isCallStyle()) {
             //    float alpha = (blurredView != null && blurredView.getVisibility() == View.VISIBLE) ? 1f - blurredView.getAlpha() : 1f;
