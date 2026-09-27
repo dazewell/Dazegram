@@ -51,6 +51,9 @@ public final class PersonalRepliesStorage {
     /** Backstop on the queries one thread walk may put on the storage queue. */
     private static final int THREAD_QUERY_LIMIT = 1000;
 
+    /** Ceiling on the parents one upward walk may look up, so a malformed chain can't hold the storage queue. */
+    private static final int THREAD_ANCESTOR_LIMIT = 500;
+
     private PersonalRepliesStorage() {}
 
     /**
@@ -244,6 +247,65 @@ public final class PersonalRepliesStorage {
             }
         }
         return result;
+    }
+
+    /**
+     * Climbs from {@code messageId} through the parents it replies to and returns
+     * the highest one stored on this device: the first that isn't a reply in this
+     * chat, or whose parent isn't stored. Returns {@code messageId} itself when
+     * that isn't stored either.
+     *
+     * <p>Each step is held to the same rule {@link #readRow} applies on the way
+     * down (a reply in this dialog whose {@code reply_to_msg_id} matches its
+     * {@code thread_reply_id}), so {@link #loadThread} from the returned top
+     * walks the same edges back to {@code messageId}.
+     */
+    static int findThreadTop(int account, long dialogId, int messageId) {
+        SQLiteDatabase database = MessagesStorage.getInstance(account).getDatabase();
+        if (database == null) {
+            return messageId;
+        }
+        int top = messageId;
+        int id = messageId;
+        HashSet<Integer> visited = new HashSet<>();
+        visited.add(messageId);
+        SQLiteCursor cursor = null;
+        try {
+            for (int steps = 0; steps < THREAD_ANCESTOR_LIMIT; steps++) {
+                cursor = database.queryFinalized(String.format(Locale.US,
+                        "SELECT data, thread_reply_id FROM messages_v2 WHERE uid = %d AND mid = %d", dialogId, id));
+                TLRPC.Message message = null;
+                int threadReplyId = 0;
+                if (cursor.next()) {
+                    NativeByteBuffer data = cursor.byteBufferValue(0);
+                    if (data != null) {
+                        message = TLRPC.Message.TLdeserialize(data, data.readInt32(false), false);
+                        data.reuse();
+                    }
+                    threadReplyId = cursor.intValue(1);
+                }
+                cursor.dispose();
+                cursor = null;
+                if (message == null) {
+                    break;
+                }
+                top = id;
+                if (!isReplyInDialog(message, dialogId) || message.reply_to.reply_to_msg_id != threadReplyId) {
+                    break;
+                }
+                id = threadReplyId;
+                if (!visited.add(id)) {
+                    break;
+                }
+            }
+        } catch (Throwable t) {
+            FileLog.e(t);
+        } finally {
+            if (cursor != null) {
+                cursor.dispose();
+            }
+        }
+        return top;
     }
 
     /**
