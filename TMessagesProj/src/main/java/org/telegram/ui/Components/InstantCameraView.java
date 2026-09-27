@@ -1126,9 +1126,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             @Override
             public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
                 if (cameraThread != null) {
-                    // NagramX (#round-video-restart-guard-fix): a camera resumed onto a still-paused recorder only pauses
-                    // again when its surface goes (e.g. backgrounding), so the stop forward can't cancel the paused clip
-                    cameraThread.shutdown(0, true, 0, 0, videoEncoder != null && videoEncoder.pauseRecorder ? -2 : 0, 0);
+                    cameraThread.shutdown(0, true, 0, 0, 0, 0);
                     cameraThread = null;
                 }
                 if (useCamera2) {
