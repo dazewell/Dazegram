@@ -2306,10 +2306,20 @@ immediate when something is playing: `showCamera` stops the player
 (`InstantCameraView.java:1019`) before it creates the texture view (`:1064`),
 and `messagePlayingDidReset` rebinds every visible round cell
 (`ChatActivity.java:25196-25211`). The camera is flown away and hidden within
-~400 ms, and the release then no-ops, because `send()` and `cancel()` both
-return early on a null texture view (`InstantCameraView.java:1292`, `:1483-1485`)
-before reaching `startAnimation(false)`. What is left is the scrim alone over an
-idle composer.
+~400 ms, but the composer keeps its recording controls: removing the texture
+view stops the camera thread through `onSurfaceTextureDestroyed`, and nothing on
+that path posts `recordStopped` (only `:837`, `:1367` and `:1490` do). The
+user's Send or cancel then no-ops, because `send()` and `cancel()` both return
+early on a null texture view (`InstantCameraView.java:1292`, `:1483-1485`) before
+reaching `startAnimation(false)`. Nothing is sent, and the scrim is left alone
+over an idle composer.
+
+So a scrim left behind after Send, with no circle, means the texture view was
+already null. `textureView` is nulled only in `hideCamera` (`:1554`), and the
+only callers besides the close animation (which lowers the scrim first) are
+these two paths and the pause-resume at `:858`. A resume whose `showCamera(true)`
+fails leaves the view visible with the placeholder circle, which is not what
+this looks like.
 
 A round message is bound without a camera whenever the 3-second fallback
 (`ChatActivity.java:39042-39046`) closes the camera before the message is
