@@ -439,7 +439,9 @@ public final class EventScheduleHelper {
                     running.cancel();
                 }
                 float target = expanded ? 1f : 0f;
-                if (!animated || !isLaidOut()) {
+                // Attachment, not isLaidOut(): a frame that starts GONE is never laid out before its first
+                // expand, but it is attached once the sheet shows; the pre-show initial sync is not.
+                if (!animated || !isAttachedToWindow()) {
                     setProgress(target);
                     return;
                 }
