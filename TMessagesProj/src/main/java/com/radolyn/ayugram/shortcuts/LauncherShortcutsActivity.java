@@ -25,11 +25,9 @@ import com.radolyn.ayugram.videonote.VideoNoteTarget;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.DialogObject;
-import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MediaDataController;
 import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.R;
-import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
@@ -80,12 +78,10 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
             getString(R.string.CameraInVideoMessagesFront),
             getString(R.string.CameraInVideoMessagesRear)
     }, null));
+    private final ConfigCellText videoNoteTargetRow = (ConfigCellText) cellGroup.appendCell(new ConfigCellText("VideoNoteShortcutTarget", null));
     private final AbstractConfigCell dividerVideoNote = cellGroup.appendCell(new ConfigCellDivider());
-
-    private final AbstractConfigCell headerTarget = cellGroup.appendCell(new ConfigCellHeader(targetHeaderText()));
-    private final ConfigCellText targetRow = (ConfigCellText) cellGroup.appendCell(new ConfigCellText("VideoNoteShortcutTarget", null));
-    private final AbstractConfigCell dividerTarget = cellGroup.appendCell(new ConfigCellDivider());
-    private final List<AbstractConfigCell> targetRows = Arrays.asList(headerTarget, targetRow, dividerTarget);
+    // Shown only while the shortcut is on, in this order right under its switch
+    private final List<AbstractConfigCell> videoNoteOptionRows = Arrays.asList(videoNoteCameraRow, videoNoteTargetRow);
 
     private ListAdapter listAdapter;
     private PreviewCell previewCell;
@@ -167,41 +163,21 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
         if (show == cellGroup.rows.contains(videoNoteCameraRow)) {
             return;
         }
-        boolean notify = animated && listAdapter != null;
+        int index = cellGroup.rows.indexOf(videoNoteRow) + 1;
         if (show) {
-            int cameraIndex = cellGroup.rows.indexOf(videoNoteRow) + 1;
-            cellGroup.rows.add(cameraIndex, videoNoteCameraRow);
-            int targetIndex = cellGroup.rows.indexOf(dividerVideoNote) + 1;
-            cellGroup.rows.addAll(targetIndex, targetRows);
-            if (notify) {
-                listAdapter.notifyItemInserted(cameraIndex);
-                listAdapter.notifyItemRangeInserted(targetIndex, targetRows.size());
-            }
+            cellGroup.rows.addAll(index, videoNoteOptionRows);
         } else {
-            int targetIndex = cellGroup.rows.indexOf(headerTarget);
-            cellGroup.rows.removeAll(targetRows);
-            int cameraIndex = cellGroup.rows.indexOf(videoNoteCameraRow);
-            cellGroup.rows.remove(videoNoteCameraRow);
-            if (notify) {
-                listAdapter.notifyItemRangeRemoved(targetIndex, targetRows.size());
-                listAdapter.notifyItemRemoved(cameraIndex);
-            }
+            cellGroup.rows.removeAll(videoNoteOptionRows);
         }
-        if (notify) {
-            listAdapter.notifyItemChanged(cellGroup.rows.indexOf(videoNoteRow)); // its divider follows the next row
+        if (animated && listAdapter != null) {
+            if (show) {
+                listAdapter.notifyItemRangeInserted(index, videoNoteOptionRows.size());
+            } else {
+                listAdapter.notifyItemRangeRemoved(index, videoNoteOptionRows.size());
+            }
+            listAdapter.notifyItemChanged(index - 1); // the switch: its divider follows the next row
         }
         addRowsToMap(cellGroup);
-    }
-
-    // The recipient is per account, so with several logged in the header says whose it is
-    private String targetHeaderText() {
-        if (UserConfig.getActivatedAccountsCount() > 1) {
-            TLRPC.User self = getUserConfig().getCurrentUser();
-            if (self != null) {
-                return LocaleController.formatString(R.string.VideoNoteShortcutTargetHeaderAccount, UserObject.getFirstName(self));
-            }
-        }
-        return getString(R.string.VideoNoteShortcutTargetHeader);
     }
 
     private void updateTargetValue() {
@@ -209,10 +185,10 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
         long id = VideoNoteTarget.get(currentAccount);
         TLRPC.User user = id != 0 ? getMessagesController().getUser(id) : null;
         if (id == 0 || user != null) {
-            targetRow.setValue(user != null ? UserObject.getUserName(user) : getString(R.string.SavedMessages));
+            videoNoteTargetRow.setValue(user != null ? UserObject.getUserName(user) : getString(R.string.SavedMessages));
             return;
         }
-        targetRow.setValue("");
+        videoNoteTargetRow.setValue("");
         MessagesStorage storage = getMessagesStorage();
         storage.getStorageQueue().postRunnable(() -> {
             TLRPC.User stored = storage.getUser(id);
@@ -224,7 +200,7 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
                     getMessagesController().putUser(stored, true);
                 }
                 // Unknown here means the shortcut falls back to Saved Messages, so say so
-                targetRow.setValue(stored != null ? UserObject.getUserName(stored) : getString(R.string.SavedMessages));
+                videoNoteTargetRow.setValue(stored != null ? UserObject.getUserName(stored) : getString(R.string.SavedMessages));
             });
         });
     }
@@ -236,7 +212,7 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
 
     @Override
     protected void handleCellClick(View view, int position, float x, float y) {
-        if (position >= 0 && position < cellGroup.rows.size() && cellGroup.rows.get(position) == targetRow) {
+        if (position >= 0 && position < cellGroup.rows.size() && cellGroup.rows.get(position) == videoNoteTargetRow) {
             onTargetClick(view);
             return;
         }
