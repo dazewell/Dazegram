@@ -24,6 +24,7 @@ import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
 import org.telegram.ui.ActionBar.BaseFragment;
+import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.Components.ChatActivityEnterView;
 import org.telegram.ui.LaunchActivity;
@@ -303,7 +304,8 @@ public final class VideoNoteShortcut {
                 super.layout(0, 0, ((View) getParent()).getWidth(), b);
             }
         };
-        shield.setBackgroundColor(0xff000000);
+        // the recorder picks its glyph and glass colours from this key, so its controls read right in any theme
+        shield.setBackgroundColor(Theme.getColor(Theme.key_chat_messagePanelBackground, chat.getResourceProvider()));
         shield.setClickable(true);
         int index = contentView.indexOfChild(inputContainer);
         contentView.addView(shield, index < 0 ? contentView.getChildCount() : index, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
