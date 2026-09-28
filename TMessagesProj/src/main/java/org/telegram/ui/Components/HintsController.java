@@ -19,7 +19,6 @@ public class HintsController {
         GroupEmojiPackHintShown("groupEmojiPackShownHint", 1, 1),
         AccountSwitchHint("accountswitchhint", 3, 1f),
         GiftMessageHint("giftMessaheHint", 3, 1f),
-        VideoHoldToSendHint("nax_videoholdsendhint", 3, 1f), // NagramX (#video-hold-send)
 
         GuestBotPrivacy(3, 1f);
 

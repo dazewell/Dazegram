@@ -5096,8 +5096,6 @@ public class ChatActivityEnterView extends FrameLayout implements
         snap.setDuration(250);
 
         SharedConfig.removeLockRecordAudioVideoHint();
-        // NagramX (#video-hold-send): every lock funnels through here; updateRecordInterface's pause re-assert doesn't
-        if (isInVideoMode() && parentFragment != null) com.radolyn.ayugram.videonote.VideoHoldToSend.onRecordLocked(parentFragment.instantCameraView);
 
         animatorSet.playTogether(
                 snap,

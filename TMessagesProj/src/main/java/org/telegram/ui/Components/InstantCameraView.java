@@ -806,6 +806,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
             canvas.restore();
         }
+        holdToSend.drawLabel(canvas, this, cameraContainer); // NagramX (#video-hold-send): above the circle and its arc
     }
 
     private boolean setVisibilityFromPause;
