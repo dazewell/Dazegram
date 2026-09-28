@@ -19,7 +19,6 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
-import org.telegram.messenger.MediaDataController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
@@ -59,10 +58,6 @@ public final class VideoNoteShortcut {
         return NaConfig.INSTANCE.getVideoNoteShortcut().Bool();
     }
 
-    public static void onSettingChanged(int account) {
-        MediaDataController.getInstance(account).buildShortcuts();
-    }
-
     /** MediaDataController.buildShortcuts: the ids it keeps when pruning stale shortcuts. */
     public static void addShortcutId(List<String> wantedIds) {
         if (isEnabled()) {
@@ -99,7 +94,7 @@ public final class VideoNoteShortcut {
     }
 
     // Same look as the Ayu Mode shortcut: white glyph on the Telegram-blue disc, rasterized for picky OEM launchers.
-    private static Bitmap createIcon() {
+    public static Bitmap createIcon() {
         int size = AndroidUtilities.dp(48);
         Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);

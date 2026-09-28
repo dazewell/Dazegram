@@ -100,6 +100,7 @@ public class NekoGeneralSettingsActivity extends BaseNekoXSettingsActivity {
     private final AbstractConfigCell disableNumberRoundingRow = cellGroup.appendCell(new ConfigCellTextCheck(NekoConfig.disableNumberRounding, "4.8K -> 4777"));
     private final AbstractConfigCell preferCommonGroupsTabRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getPreferCommonGroupsTab(), getString(R.string.PreferCommonGroupsTabNotice)));
     private final AbstractConfigCell physicalKeyboardHotkeysRow = cellGroup.appendCell(new ConfigCellTextCheckPage(NaConfig.INSTANCE.getPhysicalKeyboardHotkeys(), getString(R.string.PhysicalKeyboardHotkeysValue), () -> presentFragment(new HotkeysActivity())));
+    private final AbstractConfigCell launcherShortcutsRow = cellGroup.appendCell(new ConfigCellText("LauncherShortcuts", () -> presentFragment(new com.radolyn.ayugram.shortcuts.LauncherShortcutsActivity())));
     private final AbstractConfigCell usePersianCalendarRow = cellGroup.appendCell(new ConfigCellTextCheck(NekoConfig.usePersianCalendar, getString(R.string.UsePersianCalendarInfo)));
     private final AbstractConfigCell displayPersianCalendarByLatinRow = cellGroup.appendCell(new ConfigCellTextCheck(NekoConfig.displayPersianCalendarByLatin));
     private final AbstractConfigCell showIdAndDcRow = cellGroup.appendCell(new ConfigCellSelectBox("ShowIdAndDc", NaConfig.INSTANCE.getIdDcType(), new String[]{

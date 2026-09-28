@@ -347,6 +347,7 @@ public class BaseNekoXSettingsActivity extends BaseFragment {
             builder.setPositiveButton(getString(R.string.Import), (dialogInter, i) -> {
                 config.changed(new_value);
                 config.saveConfig();
+                onConfigImported(config.getKey(), new_value);
                 updateRows();
                 scrollToRow(key, unknown);
             });
@@ -377,6 +378,10 @@ public class BaseNekoXSettingsActivity extends BaseFragment {
 
     public HashMap<Integer, String> getRowMapReverse() {
         return rowMapReverse;
+    }
+
+    // NagramX: an imported value skips the cell's click path, so a page that reacts to a setting changing hooks in here
+    protected void onConfigImported(String key, Object value) {
     }
 
     @Override

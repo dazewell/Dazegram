@@ -1059,6 +1059,12 @@ object NaConfig {
             ConfigItem.configTypeInt,
             0 // 0: front; 1: rear
         )
+    val ghostModeShortcut =
+        addConfig(
+            "GhostModeShortcut",
+            ConfigItem.configTypeBool,
+            true // shipped always-on before it had a switch
+        )
     val messageColoredBackground =
         addConfig(
             "MessageColoredBackground",

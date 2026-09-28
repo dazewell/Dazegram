@@ -1,0 +1,83 @@
+package com.radolyn.ayugram.shortcuts;
+
+import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.drawable.Drawable;
+
+import androidx.core.content.pm.ShortcutInfoCompat;
+import androidx.core.content.pm.ShortcutManagerCompat;
+import androidx.core.graphics.drawable.IconCompat;
+
+import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.ApplicationLoader;
+import org.telegram.messenger.FileLog;
+import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.R;
+import org.telegram.ui.LaunchActivity;
+
+import java.util.Collections;
+import java.util.List;
+
+import xyz.nextalone.nagram.NaConfig;
+
+/**
+ * Launcher shortcut that opens the app with Ghost Mode turned on, labeled "Ayu Mode" so it doesn't advertise itself.
+ * LaunchActivity.handleIntent does the switching.
+ */
+public final class GhostModeShortcut {
+
+    public static final String ACTION = "enable_ayu_mode";
+    private static final String SHORTCUT_ID = "ayu_mode";
+
+    private GhostModeShortcut() {
+    }
+
+    public static boolean isEnabled() {
+        return NaConfig.INSTANCE.getGhostModeShortcut().Bool();
+    }
+
+    /** MediaDataController.buildShortcuts: the ids it keeps when pruning stale shortcuts. */
+    public static void addShortcutId(List<String> wantedIds) {
+        if (isEnabled()) {
+            wantedIds.add(SHORTCUT_ID);
+        }
+    }
+
+    /** MediaDataController.buildShortcuts, on its queue. Own try so a launcher rejecting it can't abort the rest. */
+    public static void publish(boolean recreate, List<String> existingIds, int rank) {
+        if (!isEnabled()) {
+            return;
+        }
+        try {
+            Intent intent = new Intent(ApplicationLoader.applicationContext, LaunchActivity.class);
+            intent.setAction(ACTION);
+            ShortcutInfoCompat shortcut = new ShortcutInfoCompat.Builder(ApplicationLoader.applicationContext, SHORTCUT_ID)
+                    .setShortLabel(LocaleController.getString(R.string.AyuModeShortcut))
+                    .setLongLabel(LocaleController.getString(R.string.AyuModeShortcut))
+                    .setIcon(IconCompat.createWithBitmap(createIcon()))
+                    .setRank(rank)
+                    .setIntent(intent)
+                    .build();
+            if (recreate) {
+                ShortcutManagerCompat.pushDynamicShortcut(ApplicationLoader.applicationContext, shortcut);
+            } else if (existingIds.contains(SHORTCUT_ID)) {
+                ShortcutManagerCompat.updateShortcuts(ApplicationLoader.applicationContext, Collections.singletonList(shortcut));
+            } else {
+                ShortcutManagerCompat.addDynamicShortcuts(ApplicationLoader.applicationContext, Collections.singletonList(shortcut));
+            }
+        } catch (Throwable e) {
+            FileLog.e(e);
+        }
+    }
+
+    // Rasterized: some OEM launchers (e.g. ColorOS) reject a vector resource passed straight to setIcon.
+    public static Bitmap createIcon() {
+        int size = AndroidUtilities.dp(48);
+        Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Drawable drawable = ApplicationLoader.applicationContext.getResources().getDrawable(R.drawable.shortcut_ayu, null);
+        drawable.setBounds(0, 0, size, size);
+        drawable.draw(new Canvas(bitmap));
+        return bitmap;
+    }
+}
