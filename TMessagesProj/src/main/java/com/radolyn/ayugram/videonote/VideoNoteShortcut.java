@@ -317,7 +317,7 @@ public final class VideoNoteShortcut {
         smoke("recordState state=" + state);
         if (state == 0 && phase == STARTING) {
             setPhase(RECORDING);
-        } else if ((state == 1 || state == 4) && phase == RECORDING) {
+        } else if ((state == 1 || state == 4) && (phase == RECORDING || phase == FINALIZING)) {
             setPhase(SENDING);
         } else if (state == 2 || state == 5) {
             lockNow();
@@ -327,7 +327,7 @@ public final class VideoNoteShortcut {
     /** ChatActivity.sendMedia, once the clip has been handed to SendMessagesHelper. */
     public static void onMediaSent(ChatActivity chat) {
         smoke("mediaSent session=" + isSessionChat(chat));
-        if (isSessionChat(chat) && (phase == RECORDING || phase == SENDING)) {
+        if (isSessionChat(chat) && (phase == RECORDING || phase == FINALIZING || phase == SENDING)) {
             lockNow();
         }
     }
