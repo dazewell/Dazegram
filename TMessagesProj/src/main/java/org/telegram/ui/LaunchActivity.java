@@ -3017,9 +3017,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                     open_settings = 1;
                 } else if (intent.getAction().equals("new_dialog")) {
                     open_new_dialog = 1;
-                } else if (intent.getAction().equals("enable_ayu_mode")) {
-                    // NagramX: "Ayu Mode" launcher shortcut flips Ghost Mode on (and pushes us offline now), then the app opens as usual
-                    if (!NekoConfig.isGhostModeActive()) {
+                } else if (intent.getAction().equals(com.radolyn.ayugram.shortcuts.GhostModeShortcut.ACTION)) {
+                    // NagramX: "Ayu Mode" launcher shortcut flips Ghost Mode on (and pushes us offline now), then the app opens as usual.
+                    // A pinned copy outlives its setting, so it only works while that is on.
+                    if (com.radolyn.ayugram.shortcuts.GhostModeShortcut.isEnabled() && !NekoConfig.isGhostModeActive()) {
                         NekoConfig.toggleGhostMode();
                         BaseFragment lastFragment = getSafeLastFragment();
                         if (lastFragment != null) {
