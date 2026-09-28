@@ -208,6 +208,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     // recorder is reused by the next open, and its pending UI posts read videoFile, file, size and recordedTime
     // live, so no new recording may start until it is done. UI thread only.
     private boolean encoderTeardownPending;
+    // NagramX (#video-hold-send): hold the circle to send a locked recording. The same busy flags send() checks,
+    // because the composer wind-down the send runs doesn't guard against a stopped or handed-off camera
+    private final com.radolyn.ayugram.videonote.VideoHoldToSend holdToSend = new com.radolyn.ayugram.videonote.VideoHoldToSend(
+            () -> recording && !cameraFileHandedOff && !encoderTeardownPending && delegate != null && delegate.isRecordLocked(),
+            () -> delegate.sendLockedRecording());
     private long recordedTime;
     private boolean cancelled;
 
@@ -1463,6 +1468,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         if (cameraThread == null || videoEncoder == null || !recording || cancelled) {
             return;
         }
+        holdToSend.reset(); // NagramX (#video-hold-send): a hold must not send across a segment boundary
         final long segmentDuration = recordedTime;
         final File nextFile = generateCameraFile();
         AutoDeleteMediaTask.lockFile(nextFile);
@@ -4821,6 +4827,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 imageReceiver.setAlpha(oldAlpha);
                 canvas.restore();
             }
+            holdToSend.draw(canvas, this); // NagramX (#video-hold-send): here, not onDraw, which the camera covers
         }
     }
 
@@ -4830,6 +4837,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         if (ev.getAction() == MotionEvent.ACTION_DOWN && ev.getY() > getMeasuredHeight() - getPaddingBottom()) {
             return false;
         }
+        holdToSend.onTouchEvent(ev, cameraContainer); // NagramX (#video-hold-send): observes only; pinch-to-zoom below still needs the DOWN
 
         if (ev.getAction() == MotionEvent.ACTION_DOWN && delegate != null) {
             if (videoPlayer != null) {
@@ -5140,6 +5148,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     private void cancelZoomInteractions() {
+        holdToSend.reset(); // NagramX (#video-hold-send): same open/close/pause/detach points a hold must not outlive
         AndroidUtilities.cancelRunOnUIThread(zoomGlideStarter);
         zoomGliding = false;
         cancelFinishZoomTransition();
@@ -5239,6 +5248,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
         default int toggleInfiniteRecording() {
             return INFINITE_RECORDING_UNAVAILABLE;
+        }
+
+        // NagramX (#video-hold-send): the host's locked state and its locked-send button, for a hold on the circle
+        default boolean isRecordLocked() {
+            return false;
+        }
+
+        default void sendLockedRecording() {
         }
 
         // NagramX: infinite video message: send a finished segment while the recorder keeps going. The normal
