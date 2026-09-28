@@ -117,6 +117,18 @@ public class PasscodeViewDialog extends Dialog {
         }
     }
 
+    // NagramX (#video-note-shortcut): off screen without unlocking, for the video memo shortcut. dismiss() above means
+    // "leave the app", and a passcode view left VISIBLE would make the next onShow a no-op and keep the drawer zoomed.
+    public void hideKeepingLock() {
+        passcodeView.onPause();
+        passcodeView.setVisibility(View.GONE);
+        if (LaunchActivity.instance != null) {
+            LaunchActivity.instance.drawerLayoutContainer.setScaleX(1f);
+            LaunchActivity.instance.drawerLayoutContainer.setScaleY(1f);
+        }
+        super.dismiss();
+    }
+
     @Override
     public boolean dispatchKeyEvent(@NonNull KeyEvent event) {
         if (event.getKeyCode() == KeyEvent.KEYCODE_BACK && event.getRepeatCount() == 0) {

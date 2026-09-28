@@ -2798,6 +2798,7 @@ public class ChatActivity extends BaseFragment implements
                     instantCameraView.rollOverSegment(notify, scheduleDate, ttl, effectId, stars);
                 }
             }
+            com.radolyn.ayugram.videonote.VideoNoteShortcut.onRecordVideoState(ChatActivity.this, state); // NagramX: tracks a video memo recorded under the lock
         }
 
         @Override
@@ -8994,6 +8995,7 @@ public class ChatActivity extends BaseFragment implements
         contentView.addView(roundVideoRecordBackground, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
         animatorRoundMessageCameraVisibility.setValue(false, false); // NagramX: the animator outlives a view rebuild; start it in step with this fresh, hidden scrim
         contentView.addView(chatInputViewsContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        com.radolyn.ayugram.videonote.VideoNoteShortcut.onChatViewCreated(this, contentView, chatInputViewsContainer, roundVideoBackgroundDrawableFactory); // NagramX: hides the history while a video memo records under the lock
 
         if (chatMode != MODE_EDIT_BUSINESS_LINK) {
             chatActivityEnterView.checkChannelRights();
@@ -29750,6 +29752,9 @@ public class ChatActivity extends BaseFragment implements
 //                createChatAttachView();
 //            }
             checkGroupCallJoin(lastCallCheckFromServer);
+            if (!backward) {
+                com.radolyn.ayugram.videonote.VideoNoteShortcut.onChatOpened(this); // NagramX: video memo shortcut autostarts here, after the chat is on screen
+            }
 
             boolean hintShown = false;
             if (ChatObject.isMonoForum(currentChat) && !ChatObject.canManageMonoForum(currentAccount, currentChat)) {
@@ -37741,6 +37746,9 @@ public class ChatActivity extends BaseFragment implements
 
     @Override
     public boolean onBackPressed(boolean invoked) {
+        if (com.radolyn.ayugram.videonote.VideoNoteShortcut.onBackPressed(this, invoked)) {
+            return false; // NagramX: back from a video memo recorded under the lock goes to the passcode, not the app
+        }
         final Bulletin bulletin = Bulletin.getVisibleBulletin();
         if (bulletin != null && bulletin.getLayout() instanceof Bulletin.LottieLayoutWithReactions) {
             if (invoked) {
@@ -39131,6 +39139,7 @@ public class ChatActivity extends BaseFragment implements
                 }
             }
             afterMessageSend();
+            com.radolyn.ayugram.videonote.VideoNoteShortcut.onMediaSent(this); // NagramX: a video memo recorded under the lock locks only once its clip is queued
         }, stars);
     }
 
@@ -39165,6 +39174,16 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public int getVideoDraftToken() {
         return videoDraftToken;
+    }
+
+    // NagramX (#video-note-shortcut): the finalize onPause does, for a lock raised while the app stays in the foreground.
+    // True if a live recording was stopped into the preview.
+    public boolean finalizeRoundVideoForLock() {
+        if (instantCameraView != null && instantCameraView.isRecording()) {
+            instantCameraView.send(3, true, 0, 0, 0, 0, 0);
+            return true;
+        }
+        return false;
     }
 
     // NagramX (#video-draft-guard): the fragment's single current enter view. A passcode unlock leaves the
@@ -40488,6 +40507,9 @@ public class ChatActivity extends BaseFragment implements
 
     @Override
     public boolean isSwipeBackEnabled(MotionEvent event) {
+        if (com.radolyn.ayugram.videonote.VideoNoteShortcut.blocksSwipeBack(this)) {
+            return false; // NagramX: a swipe back would reveal the locked app under a video memo
+        }
         if (chatMode == MODE_QUICK_REPLIES && (messages.isEmpty() || threadMessageId == 0)) {
             return false;
         }

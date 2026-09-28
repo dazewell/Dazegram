@@ -1047,6 +1047,18 @@ object NaConfig {
             // ChatActivityEnterView.getInfiniteVideoMaxSegments() for how it's read
             10
         )
+    val videoNoteShortcut =
+        addConfig(
+            "VideoNoteShortcut",
+            ConfigItem.configTypeBool,
+            false
+        )
+    val videoNoteShortcutCamera =
+        addConfig(
+            "VideoNoteShortcutCamera",
+            ConfigItem.configTypeInt,
+            0 // 0: front; 1: rear
+        )
     val messageColoredBackground =
         addConfig(
             "MessageColoredBackground",

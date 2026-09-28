@@ -261,6 +261,10 @@ The pause button and the view-once "(1)" toggle are larger and lifted slightly h
 
 A round video message you've recorded but haven't sent survives backing out of the chat, switching apps mid-recording, or the chat locking behind a passcode — the clip waits in the preview, trimmed the way you left it, for up to a day. What comes back after the app or chat was torn down is the trim strip and send button rather than the round preview itself.
 
+### Video memo shortcut <!-- #video-note-shortcut -->
+
+Turn on *Video memo shortcut* under N-Settings → Chat → Camera (off by default) and long-pressing the app icon offers *Video memo*: it opens your Saved Messages and starts a hands-free round video right away, on the camera picked in *Video memo camera* (front by default). It works while the app is locked: you record first, and the passcode comes up once you send or discard.
+
 ### Custom file names for saved media <!-- #custom-file-names -->
 
 Turn on *Custom File Names* (N-Settings → General → Storage) to save videos, voice, and round messages under the message's send date and time — `20260101_173812.mp4` by default — instead of Telegram's generic `video.mp4`. The setting's dialog lets you customize the pattern with `{date}`, `{time}`, and `{name}` (the sender's original filename), with a live preview as you type. Saved photos are unaffected.

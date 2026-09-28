@@ -1452,6 +1452,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     }
 
     public void showPasscodeActivity(boolean fingerprint, boolean animated, int x, int y, Runnable onShow, Runnable onStart) {
+        com.radolyn.ayugram.videonote.VideoNoteShortcut.onPasscodeShown(); // NagramX: any lock ends a video memo recorded under the lock; above the early return so none slips past
         if (drawerLayoutContainer == null || isFinishing()) {
             return;
         }
@@ -1530,6 +1531,21 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         }
     }
 
+    // NagramX (#video-note-shortcut): the video memo shortcut records before the passcode; take a lock screen that is
+    // already up off the display (still locked) and show the fragments it had hidden, as the unlock path would
+    public void hidePasscodeForVideoNote() {
+        if (passcodeDialog != null && passcodeDialog.isShowing()) {
+            passcodeDialog.hideKeepingLock();
+        }
+        actionBarLayout.getView().setVisibility(View.VISIBLE);
+        if (AndroidUtilities.isTablet()) {
+            if (layersActionBarLayout.getView().getVisibility() == View.INVISIBLE) {
+                layersActionBarLayout.getView().setVisibility(View.VISIBLE);
+            }
+            rightActionBarLayout.getView().setVisibility(View.VISIBLE);
+        }
+    }
+
     public boolean allowShowFingerprintDialog(PasscodeView passcodeView) {
         return overlayPasscodeViews.isEmpty() && this.passcodeDialog != null ? passcodeView == this.passcodeDialog.passcodeView : overlayPasscodeViews.get(overlayPasscodeViews.size() - 1) == passcodeView;
     }
@@ -1569,7 +1585,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         if ((isVoipIntent || isVoipAnswerIntent) && !isNew && ApplicationLoader.mainInterfacePaused) {
             voipLaunchedInBackground = true;
         }
-        if (!fromPassword && (AndroidUtilities.needShowPasscode(true) || SharedConfig.isWaitingForPasscodeEnter)) {
+        if (!fromPassword && (AndroidUtilities.needShowPasscode(true) || SharedConfig.isWaitingForPasscodeEnter)
+                && !com.radolyn.ayugram.videonote.VideoNoteShortcut.bypassLock(this, intent)) { // NagramX: the video memo shortcut records first and locks after
             showPasscodeActivity(true, false, -1, -1, null, null);
             UserConfig.getInstance(currentAccount).saveConfig(false);
             if (!isVoipIntent && !isVoipAnswerIntent) {
@@ -3008,6 +3025,14 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                         if (lastFragment != null) {
                             BulletinFactory.of(lastFragment).createSuccessBulletin(LocaleController.getString(R.string.GhostModeEnabled)).show();
                         }
+                    }
+                } else if (intent.getAction().equals(com.radolyn.ayugram.videonote.VideoNoteShortcut.ACTION)) {
+                    // NagramX: "Video memo" launcher shortcut opens Saved Messages through the normal chat push below,
+                    // and that chat starts the round video once it has opened
+                    long selfId = com.radolyn.ayugram.videonote.VideoNoteShortcut.accept(intent, intentAccount[0]);
+                    if (selfId != 0) {
+                        NotificationCenter.getInstance(intentAccount[0]).postNotificationName(NotificationCenter.closeChats);
+                        push_user_id = selfId;
                     }
                 } else if (intent.getAction().startsWith("com.tmessages.openchat")) {
 //                    Integer chatIdInt = intent.getIntExtra("chatId", 0);
@@ -8705,6 +8730,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
     @Override
     public boolean needPresentFragment(INavigationLayout layout, INavigationLayout.NavigationParams params) {
+        com.radolyn.ayugram.videonote.VideoNoteShortcut.onNavigation(params.fragment); // NagramX: leaving the video memo recorder while locked brings the passcode
         BaseFragment fragment = params.fragment;
         boolean removeLast = params.removeLast;
         boolean forceWithoutAnimation = params.noAnimation;
@@ -8829,6 +8855,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
     @Override
     public boolean needAddFragmentToStack(BaseFragment fragment, INavigationLayout layout) {
+        com.radolyn.ayugram.videonote.VideoNoteShortcut.onNavigation(fragment); // NagramX: same as needPresentFragment
         if (AndroidUtilities.isTablet()) {
             if (fragment instanceof DialogsActivity || fragment instanceof MainTabsActivity) {
                 boolean needReplace = layout != actionBarLayout;

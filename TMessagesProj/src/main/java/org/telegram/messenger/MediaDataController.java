@@ -5086,6 +5086,7 @@ public class MediaDataController extends BaseController {
                     if (currentShortcuts != null && !currentShortcuts.isEmpty()) {
                         newShortcutsIds.add("compose");
                         newShortcutsIds.add("ayu_mode"); // NagramX: keep the Ghost Mode launcher shortcut from being pruned as stale
+                        com.radolyn.ayugram.videonote.VideoNoteShortcut.addShortcutId(newShortcutsIds); // NagramX: same, while its setting is on
                         for (int a = 0; a < hintsFinal.size(); a++) {
                             TLRPC.TL_topPeer hint = hintsFinal.get(a);
                             newShortcutsIds.add("did3_" + MessageObject.getPeerId(hint.peer));
@@ -5161,6 +5162,7 @@ public class MediaDataController extends BaseController {
                 } catch (Throwable e) {
                     FileLog.e(e);
                 }
+                com.radolyn.ayugram.videonote.VideoNoteShortcut.publish(recreateShortcuts, shortcutsToUpdate, 2); // NagramX: video memo launcher shortcut
 
 
                 HashSet<String> category = new HashSet<>(1);
@@ -5245,7 +5247,7 @@ public class MediaDataController extends BaseController {
                     ShortcutInfoCompat.Builder builder = new ShortcutInfoCompat.Builder(ApplicationLoader.applicationContext, id)
                             .setShortLabel(name)
                             .setLongLabel(name)
-                            .setRank(2 + a)
+                            .setRank(3 + a)
                             .setIntent(shortcutIntent);
                     if (SharedConfig.directShare) {
                         builder.setCategories(category);

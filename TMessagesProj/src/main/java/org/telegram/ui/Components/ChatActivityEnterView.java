@@ -19241,6 +19241,30 @@ public class ChatActivityEnterView extends FrameLayout implements
         return true;
     }
 
+    // NagramX (#video-note-shortcut): the launcher shortcut's way in. Same hands-free start as the long-press "Record
+    // video" item, but on a fixed camera with no camera-choice popup, and it only asks for permissions when allowed to:
+    // under the app lock a permission prompt would background us and the recording could never start.
+    public boolean startRoundVideoFromShortcut(boolean frontCamera, boolean mayRequestPermissions) {
+        if (delegate == null || parentActivity == null || destroyed || recordingAudioVideo || refuseRoundVideoIfBusy()) {
+            return false;
+        }
+        if (Build.VERSION.SDK_INT >= 23 && (parentActivity.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
+                || parentActivity.checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)) {
+            if (mayRequestPermissions) {
+                checkMenuPermissions(true);
+            }
+            return false;
+        }
+        infiniteVideoMessage = false;
+        infiniteVideoSegments = 0;
+        infiniteVideoBaseDate = 0;
+        infiniteVideoNotify = true;
+        closeKeyboard();
+        pendingCameraFront = frontCamera;
+        startVideoRecordingSession();
+        return recordingAudioVideo;
+    }
+
     private void startVideoRecordingSession() {
         if (refuseRoundVideoIfBusy()) {
             return; // NagramX (#round-video-restart-guard-fix): the camera-choice popup and schedule sheet land here later
