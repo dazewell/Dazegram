@@ -43,7 +43,7 @@ Bookmarks come from NagramX; this fork raises the per-chat cap from 30 to 300. S
 
 ### Ayu Mode shortcut <!-- #ayu-mode -->
 
-A launcher shortcut (long-press the app icon, or pin it to your home screen) that opens the app with Ghost Mode already on. Tapping it flips every Ghost toggle you haven't locked and pushes you offline, then opens as normal.
+A launcher shortcut (long-press the app icon, or pin it to your home screen) that opens the app with Ghost Mode already on. Tapping it flips every Ghost toggle you haven't locked and pushes you offline, then opens as normal. On by default; switch it off under N-Settings → General → Launcher shortcuts.
 
 ### Hold messages while Ghost Mode is on <!-- #ghost-hold -->
 
@@ -263,7 +263,7 @@ A round video message you've recorded but haven't sent survives backing out of t
 
 ### Video memo shortcut <!-- #video-note-shortcut -->
 
-Turn on *Video memo shortcut* under N-Settings → Chat → Camera (off by default) and long-pressing the app icon offers *Video memo*: it opens your Saved Messages and starts a hands-free round video right away, on the camera picked in *Video memo camera* (front by default). It works while the app is locked: you record first, and the passcode comes up once you send or discard.
+Turn on *Video memo shortcut* under N-Settings → General → Launcher shortcuts (off by default) and long-pressing the app icon offers *Video memo*: it opens your Saved Messages and starts a hands-free round video right away, on the camera picked in *Video memo camera* (front by default). It works while the app is locked: you record first, and the passcode comes up once you send or discard.
 
 ### Custom file names for saved media <!-- #custom-file-names -->
 

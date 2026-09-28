@@ -69,6 +69,9 @@ public class SettingsHelper {
                 case xyz.nextalone.nagram.ui.InterfaceStyleActivity.SETTINGS_KEY:
                     fragment = interfaceStyleFragment = new xyz.nextalone.nagram.ui.InterfaceStyleActivity();
                     break;
+                case com.radolyn.ayugram.shortcuts.LauncherShortcutsActivity.SETTINGS_KEY:
+                    fragment = nekox_fragment = new com.radolyn.ayugram.shortcuts.LauncherShortcutsActivity();
+                    break;
                 case "translator":
                 case "translate":
                 case "t":
@@ -122,6 +125,7 @@ public class SettingsHelper {
         fragments.add(new NekoChatSettingsActivity());
         fragments.add(new NekoExperimentalSettingsActivity());
         fragments.add(new NekoTranslatorSettingsActivity());
+        fragments.add(new com.radolyn.ayugram.shortcuts.LauncherShortcutsActivity());
 
         String n_title = getString(R.string.NekoSettings);
         for (BaseNekoXSettingsActivity fragment: fragments) {
