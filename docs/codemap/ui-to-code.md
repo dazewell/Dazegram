@@ -99,11 +99,13 @@ header and its status-bar composite (`ChatActivity.java:5398,19100`;
 **not** header-private: the pinned/join strip and the hashtag and topic tabs use it
 too (`ChatActivity.java:8646,9918,11180-11181`). Foregrounds go through
 `ChatAvatarContainer.getThemedColor` for avatar containers whose `parentFragment`
-is set, which only ChatActivity does (`ChatAvatarContainer.java:2039-2042`).
+is set, which only ChatActivity does (`ChatAvatarContainer.java:2040-2043`).
 They are also pushed onto the ActionBar after `setupGlass` and again from
 `selectedBackgroundDelegate` (`ChatActivity.java:5401-5402,46316-46321`). The mute and
 lock icons are shared static drawables, so the header gets tinted copies
-(`ChatActivity.java:21689-21695`). A provider-level hook on `themeDelegate` is
+(`ChatActivity.java:21689-21695`). The auto-delete timer draws its ring and label
+from `key_actionBarDefaultTitle` through its own provider (`TimerDrawable.java:160,168`),
+so it gets a scoped `wrapChatHeader` one (`ChatAvatarContainer.java:456-457`). A provider-level hook on `themeDelegate` is
 the wrong chokepoint: `MessagePreviewView` reads the same title keys through it.
 
 Chat list: DialogsActivity has no provider, so its `getThemedColor` override

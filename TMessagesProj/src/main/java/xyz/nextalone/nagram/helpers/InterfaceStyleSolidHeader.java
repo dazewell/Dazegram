@@ -228,20 +228,33 @@ public final class InterfaceStyleSolidHeader {
 
     // Filter tabs read their keys at draw time through their own provider, so they get a scoped one.
     public static Theme.ResourcesProvider wrapChatListTopBar(Theme.ResourcesProvider base) {
+        return wrap(base, false);
+    }
+
+    // The auto-delete timer in the chat header reads the title key through its own provider at draw time.
+    public static Theme.ResourcesProvider wrapChatHeader(Theme.ResourcesProvider base) {
+        return wrap(base, true);
+    }
+
+    private static Theme.ResourcesProvider wrap(Theme.ResourcesProvider base, boolean chatHeader) {
         return new Theme.ResourcesProvider() {
+            private int map(int key, int color) {
+                return chatHeader ? chatHeaderColor(key, color) : chatListColor(key, color);
+            }
+
             @Override
             public int getColor(int key) {
-                return chatListColor(key, Theme.getColor(key, base));
+                return map(key, Theme.getColor(key, base));
             }
 
             @Override
             public int getColorOrDefault(int key) {
-                return chatListColor(key, base != null ? base.getColorOrDefault(key) : Theme.getColor(key));
+                return map(key, base != null ? base.getColorOrDefault(key) : Theme.getColor(key));
             }
 
             @Override
             public int getCurrentColor(int key) {
-                return chatListColor(key, base != null ? base.getCurrentColor(key) : Theme.getColor(key));
+                return map(key, base != null ? base.getCurrentColor(key) : Theme.getColor(key));
             }
 
             @Override
