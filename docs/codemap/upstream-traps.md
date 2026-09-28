@@ -2442,3 +2442,35 @@ chipsets are untested.
 
 *(Established 2026-09-27, `#video-zoom`, PR #439; device facts from
 `dumpsys media.camera` and ADB traces.)*
+
+## Navigation hooks see a fragment before it has read its arguments
+
+`LaunchActivity.needPresentFragment` / `needAddFragmentToStack` are called from
+`ActionBarLayout.presentFragment` / `addFragmentToStack` *before*
+`fragment.onFragmentCreate()` (`ActionBarLayout.java:2131`, `:2529`). A
+`ChatActivity` passing through them still has `dialog_id == 0` and
+`chatMode == 0`, so `getDialogId()` there never matches anything. Read the
+Bundle instead (`getArguments().getLong("user_id")`, `"chat_id"`,
+`"chatMode"`).
+
+Missed once: the video memo shortcut's own Saved Messages push looked like
+"navigating away" and locked the app the instant it opened, which a traced
+device run showed as a lock with no chat bound.
+
+*(Established 2026-09-28, `#video-note-shortcut`.)*
+
+## ChatActivity lays ordinary children out below its action bar
+
+A plain `MATCH_PARENT` child added to `ChatActivity.contentView` does not start
+at the top. `ChatActivityFragmentView.onLayout` pushes every `Gravity.TOP`
+child that isn't the action bar down by the action bar's height
+(`ChatActivity.java:20504-20507`). Only the special-cased views reset
+`childTop` before `child.layout(...)` (`:20564`), e.g.
+`isFullSizeIgnoreInsersChild`, `chatInputViewsContainer` and
+`instantCameraView`. An overlay meant to cover the header is therefore short
+by exactly the header, and the header stays tappable above it.
+
+`#video-note-shortcut`'s shield overrides its own `layout()` to take
+`(0, 0, parentWidth, b)` rather than touching that list.
+
+*(Established 2026-09-28, `#video-note-shortcut`.)*
