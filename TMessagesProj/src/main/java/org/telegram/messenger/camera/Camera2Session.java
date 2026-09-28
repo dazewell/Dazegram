@@ -367,7 +367,7 @@ public class Camera2Session {
         if (!isInitiated()) return;
         if (captureRequestBuilder == null || cameraDevice == null || sensorSize == null) return;
 
-        currentZoom = Utilities.clamp(value, maxZoom, 1f);
+        currentZoom = Utilities.clamp(value, maxZoom, getMinZoom()); // NagramX: ratio mode can go below 1x
         updateCaptureRequest();
 
         try {
@@ -398,19 +398,20 @@ public class Camera2Session {
 
     public float getMinZoom() {
         // TODO: support wide zoom camera switching
-        return 1f;
+        return zoomRatioMode ? zoomRatioMin : 1f; // NagramX
     }
 
-    // NagramX: CONTROL_ZOOM_RATIO lets a logical multi-camera switch to its telephoto on its own. Opt-in so
-    // the stories camera keeps the crop path. Floored at 1x: below it a MediaTek ultrawide smears a band of
-    // edge columns on square and 4:3 streams alike. Set on the UI thread before open(); read on the camera
-    // thread.
+    // NagramX: CONTROL_ZOOM_RATIO lets a logical multi-camera switch lenses on its own. Opt-in so the stories
+    // camera, which maps its zoom over [getMinZoom, getMaxZoom], keeps the crop path and doesn't open on the
+    // ultrawide. Set on the UI thread before open(); read on the camera thread.
     private volatile boolean zoomRatioMode;
+    private volatile float zoomRatioMin = 1f;
 
     public void setUseZoomRatio() {
         if (Build.VERSION.SDK_INT < 30 || cameraCharacteristics == null) return;
         final Range<Float> range = cameraCharacteristics.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE);
         if (range == null || range.getUpper() <= 1f) return;
+        zoomRatioMin = xyz.nextalone.nagram.helper.RoundLensPresets.ultrawideAllowed() ? Math.min(1f, range.getLower()) : 1f;
         maxZoom = range.getUpper();
         zoomRatioMode = true;
     }

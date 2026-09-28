@@ -16,8 +16,8 @@ import java.util.Locale;
 import java.util.Set;
 
 // Fixed zoom stops for the round video recorder, matching the lenses a logical multi-camera reports:
-// 1x, each telephoto, and twice the longest telephoto. No ultrawide stop: the recorder zooms from 1x up
-// (see Camera2Session.setUseZoomRatio). Hardware facts, so cached per camera id for the process.
+// the ultrawide floor where allowed, 1x, each telephoto, and twice the longest telephoto. Hardware facts,
+// so cached per camera id for the process.
 public final class RoundLensPresets {
 
     private static final float[] NONE = new float[0];
@@ -25,6 +25,16 @@ public final class RoundLensPresets {
     private static final HashMap<String, float[]> cache = new HashMap<>();
 
     private RoundLensPresets() {
+    }
+
+    // Below 1x a MediaTek logical camera's ultrawide smears a band of edge columns across the round video
+    // stream, square or 4:3 alike (seen on an OPPO Find X9 Pro), so the zoom floor stays at 1x there.
+    // Other chipsets are untested.
+    public static boolean ultrawideAllowed() {
+        if (Build.VERSION.SDK_INT >= 31) {
+            return !"mediatek".equalsIgnoreCase(Build.SOC_MANUFACTURER);
+        }
+        return Build.HARDWARE == null || !Build.HARDWARE.toLowerCase(Locale.US).startsWith("mt");
     }
 
     // empty when the camera has a single lens, or the platform can't zoom by ratio
@@ -53,7 +63,10 @@ public final class RoundLensPresets {
             if (range == null) return NONE;
             final float min = range.getLower(), max = range.getUpper();
             final ArrayList<Float> stops = new ArrayList<>();
-            stops.add(Math.max(1f, min));
+            if (min < 0.95f && ultrawideAllowed()) {
+                stops.add(Math.max(min, Math.round(min * 10f) / 10f));
+            }
+            stops.add(1f);
             final float base = equivalentFocal(c);
             float longest = 0f;
             final Set<String> physical = c.getPhysicalCameraIds();
