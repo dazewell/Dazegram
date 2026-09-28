@@ -2483,3 +2483,36 @@ by exactly the header, and the header stays tappable above it.
 `(0, 0, parentWidth, b)` rather than touching that list.
 
 *(Established 2026-09-28, `#video-note-shortcut`.)*
+
+## Opening a chat for an arbitrary user id: the gate passes it, ChatActivity blocks on it
+
+`MessagesController.checkCanOpenChat` only checks a restriction reason when the
+user is already in memory. An uncached id returns `true` untouched
+(`MessagesController.java:23151-23152`). `ChatActivity.onFragmentCreate` then
+reads the user from the database on the storage queue while the UI thread waits
+on a `CountDownLatch` with no timeout, and returns `false` if the row is missing
+(`ChatActivity.java:3162-3178`). The push then fails with nothing on screen and
+no fallback.
+
+A launcher or intent path that pushes a stored user id has to resolve the user
+itself first. `#video-note-shortcut`'s `VideoNoteTarget.resolve` does a bounded
+storage-queue read and `putUser`s the result, so ChatActivity never latches.
+
+*(Established 2026-09-28, `#video-note-shortcut`.)*
+
+## A people-only chat picker: the attach-bot chooser, whose recent strip isn't filtered
+
+`DialogsActivity` with `dialogsType = DIALOGS_TYPE_START_ATTACH_BOT`, `onlySelect`,
+and `allowUsers` as the only `allow*` flag set lists existing chats with people:
+non-deleted, not bots, not yourself (`DialogsActivity.java:11448-11458`), under
+the title *Choose User* (`:3664-3665`). `DialogsSearchAdapter.filter` applies the same
+flags to search results (`DialogsSearchAdapter.java:287-300`).
+`DIALOGS_TYPE_USERS_ONLY` looks like the obvious choice but keeps bots, and its
+search results aren't filtered.
+
+The recent-contacts strip above the list shows whenever `allowUsers` is set
+(`DialogsSearchAdapter.java:1709-1711`) and skips `filter()`. The delegate must
+check the pick itself, and return `false` to keep the picker open. Service
+accounts (777000 and friends) also pass the list filter.
+
+*(Established 2026-09-28, `#video-note-shortcut`.)*

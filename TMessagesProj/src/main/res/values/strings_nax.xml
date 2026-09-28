@@ -436,9 +436,13 @@
     <string name="InfiniteRecordingScheduleOrderingHint">Telegram can send a minute or two late, so segments may still go out of order.</string>
     <string name="CameraSettings">Camera</string>
     <string name="VideoNoteShortcut">Video memo shortcut</string>
-    <string name="VideoNoteShortcutNotice">Adds a launcher shortcut that records a video message to Saved Messages, even while the app is locked. The passcode is asked right after.</string>
+    <string name="VideoNoteShortcutNotice">Adds a launcher shortcut that records a video message to Saved Messages or a person you pick, even while the app is locked. The passcode is asked right after.</string>
     <string name="VideoNoteShortcutLabel">Video memo</string>
     <string name="VideoNoteShortcutCamera">Video memo camera</string>
+    <string name="VideoNoteShortcutTargetHeader">Send to</string>
+    <string name="VideoNoteShortcutTargetHeaderAccount">Send to · %1$s</string>
+    <string name="VideoNoteShortcutTarget">Video memo recipient</string>
+    <string name="VideoNoteShortcutTargetUnsupported">Video memos can only go to a person.</string>
     <string name="LauncherShortcuts">Launcher shortcuts</string>
     <string name="GhostModeShortcut">Ghost Mode shortcut</string>
     <string name="GhostModeShortcutNotice">Adds an “Ayu Mode” launcher shortcut that opens the app with Ghost Mode already on.</string>
