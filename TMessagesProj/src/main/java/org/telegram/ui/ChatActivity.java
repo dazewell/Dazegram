@@ -20554,7 +20554,8 @@ public class ChatActivity extends BaseFragment implements
                     }
                 } else if (child == actionBar) {
                     childTop -= getPaddingTop();
-                    if (isInPreviewMode()) {
+                    // NagramX: the 1dp drop suits the floating glass pill; a flat MD3 bar would bare a strip of wallpaper above it
+                    if (isInPreviewMode() && !xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader()) {
                         childTop += dp(1);
                     }
                 } else if (child == videoPlayerContainer) {
