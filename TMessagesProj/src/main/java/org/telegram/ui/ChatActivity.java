@@ -19479,6 +19479,9 @@ public class ChatActivity extends BaseFragment implements
                 return true;
             }
             if (switchingFromTopics && child == actionBar) {
+                if (naxIsHeaderDividerAnchor(child)) {
+                    naxDrawHeaderDivider(canvas); // NagramX: the bar itself is drawn after the fade, but its hairline keeps its depth
+                }
                 return true;
             }
             if (child == instantCameraView) {
@@ -19535,13 +19538,13 @@ public class ChatActivity extends BaseFragment implements
                 }
                 canvas.restore();
             } else {
-                if (child == roundVideoRecordBackground) {
-                    naxDrawHeaderDivider(canvas); // NagramX: under the scrim, not over it
-                }
                 if (child == chatInputViewsContainer && instantCameraView != null && instantCameraView.getVisibility() == VISIBLE) {
                     super.drawChild(canvas, instantCameraView, drawingTime);
                 }
                 result = super.drawChild(canvas, child, drawingTime);
+                if (naxIsHeaderDividerAnchor(child)) {
+                    naxDrawHeaderDivider(canvas);
+                }
                 if (isVideo && child == chatListView && messageObject.type != MessageObject.TYPE_ROUND_VIDEO && videoPlayerContainer != null && videoPlayerContainer.getTag() != null) {
                     canvas.save();
                     float transitionOffset = 0;
@@ -19630,10 +19633,18 @@ public class ChatActivity extends BaseFragment implements
             scrimBlur3Factory.invalidateAllLinkedViews();
         }
 
+        // NagramX: the hairline is part of the header group, so it is drawn straight after the group's topmost
+        // child and everything added later (forward options, round video scrim, selection handles) covers it.
+        // actionBarSearchTags is the only group member added after actionBar.
+        private boolean naxIsHeaderDividerAnchor(View child) {
+            return child == (actionBarSearchTags != null && actionBarSearchTags.getVisibility() == VISIBLE ? actionBarSearchTags : actionBar);
+        }
+
         // NagramX: MD3 hairline under the whole header group, following the pinned panel as it grows and collapses.
+        // The preview header does not occupy the status bar, so its real bottom is read off the bar, not padded.
         private void naxDrawHeaderDivider(Canvas canvas) {
             if (actionBar != null && actionBar.getVisibility() == VISIBLE && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() && xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividers()) {
-                float naxHeaderBottom = actionBar.getTranslationY() + actionBar.getMeasuredHeight() + (actionBarSearchTags != null ? actionBarSearchTags.getCurrentHeight() : 0) + (hashtagSearchTabs != null ? hashtagSearchTabs.getCurrentHeight() : 0) + (inPreviewMode ? AndroidUtilities.statusBarHeight : 0);
+                float naxHeaderBottom = actionBar.getY() + actionBar.getMeasuredHeight() + (actionBarSearchTags != null ? actionBarSearchTags.getCurrentHeight() : 0) + (hashtagSearchTabs != null ? hashtagSearchTabs.getCurrentHeight() : 0);
                 if (topPanelLayout != null && topPanelLayout.getMetadata().getTotalVisibility() > 0) {
                     naxHeaderBottom = Math.max(naxHeaderBottom, topPanelLayout.getY() + topPanelLayout.getMetadata().getTotalHeight());
                 }
@@ -19664,10 +19675,6 @@ public class ChatActivity extends BaseFragment implements
                 canvas.scale(s, s, getMeasuredWidth() / 2f, getMeasuredHeight() / 2f);
             }
             super.dispatchDraw(canvas);
-            // NagramX: while the round video scrim shows, drawChild paints the hairline under it instead
-            if (roundVideoRecordBackground == null || roundVideoRecordBackground.getVisibility() != VISIBLE) {
-                naxDrawHeaderDivider(canvas);
-            }
             //if (fragmentContextView != null && fragmentContextView.isCallStyle()) {
             //    float alpha = (blurredView != null && blurredView.getVisibility() == View.VISIBLE) ? 1f - blurredView.getAlpha() : 1f;
             //    if (alpha > 0) {
