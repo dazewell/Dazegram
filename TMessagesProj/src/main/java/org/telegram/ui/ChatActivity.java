@@ -39168,11 +39168,14 @@ public class ChatActivity extends BaseFragment implements
         return videoDraftToken;
     }
 
-    // NagramX (#video-note-shortcut): the finalize onPause does, for a lock raised while the app stays in the foreground
-    public void finalizeRoundVideoForLock() {
+    // NagramX (#video-note-shortcut): the finalize onPause does, for a lock raised while the app stays in the foreground.
+    // True if a live recording was stopped into the preview.
+    public boolean finalizeRoundVideoForLock() {
         if (instantCameraView != null && instantCameraView.isRecording()) {
             instantCameraView.send(3, true, 0, 0, 0, 0, 0);
+            return true;
         }
+        return false;
     }
 
     // NagramX (#video-draft-guard): the fragment's single current enter view. A passcode unlock leaves the

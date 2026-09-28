@@ -206,6 +206,7 @@ public final class VideoNoteShortcut {
     private static int phase = IDLE;
     private static long phaseSince;
     private static long idleSince;
+    private static boolean stopRequested; // a stop into the preview (state 3) is under way or done: nothing left to cancel
     private static WeakReference<ChatActivity> sessionChat;
     private static final Runnable poll = VideoNoteShortcut::poll;
 
@@ -213,6 +214,9 @@ public final class VideoNoteShortcut {
         phase = newPhase;
         phaseSince = SystemClock.elapsedRealtime();
         idleSince = 0;
+        if (newPhase == STARTING) {
+            stopRequested = false;
+        }
     }
 
     private static boolean isSessionChat(ChatActivity chat) {
@@ -240,15 +244,20 @@ public final class VideoNoteShortcut {
             return;
         }
         ChatActivity chat = sessionChat != null ? sessionChat.get() : null;
+        boolean cameraMayBeOpening = phase == STARTING || phase == RECORDING && !stopRequested;
         setPhase(IDLE);
         sessionChat = null;
         pendingAccount = -1;
         pendingDialogId = 0;
         AndroidUtilities.cancelRunOnUIThread(poll);
-        if (chat != null) {
-            // a lock raised in the foreground gets no onPause, so stop a live recording into the preview here or the
-            // unlock rebuild throws it away
-            chat.finalizeRoundVideoForLock();
+        if (chat != null && !chat.finalizeRoundVideoForLock() && cameraMayBeOpening) {
+            // A lock raised in the foreground gets no onPause, so a live recording is stopped into the preview above or
+            // the unlock rebuild throws it away. A camera still opening has recorded nothing yet, and left alone it
+            // would start recording behind the passcode, so cancel it.
+            ChatActivityEnterView enterView = chat.getChatActivityEnterView();
+            if (enterView != null && enterView.isRecordingAudioVideo()) {
+                enterView.cancelRecordingAudioVideo();
+            }
         }
     }
 
@@ -263,9 +272,7 @@ public final class VideoNoteShortcut {
     // Back while the camera is live: stop into the preview first and lock once the clip is safely bound, so a quick
     // fingerprint unlock can't race the finalize.
     private static void lockKeepingClip(ChatActivity chat) {
-        ChatActivityEnterView enterView = chat.getChatActivityEnterView();
-        if (phase == RECORDING && enterView != null && enterView.isRecordingAudioVideo()) {
-            chat.finalizeRoundVideoForLock();
+        if (phase == RECORDING && chat.finalizeRoundVideoForLock()) {
             setPhase(FINALIZING);
         } else if (phase != FINALIZING) {
             lockNow();
@@ -303,6 +310,8 @@ public final class VideoNoteShortcut {
         }
         if (state == 0 && phase == STARTING) {
             setPhase(RECORDING);
+        } else if (state == 3) {
+            stopRequested = true;
         } else if ((state == 1 || state == 4) && (phase == RECORDING || phase == FINALIZING)) {
             setPhase(SENDING);
         } else if (state == 2 || state == 5) {
