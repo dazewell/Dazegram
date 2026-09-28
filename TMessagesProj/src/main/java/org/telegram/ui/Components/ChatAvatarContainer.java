@@ -453,7 +453,8 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             timeItem = new ImageView(context);
             timeItem.setScaleType(ImageView.ScaleType.CENTER);
             timeItem.setVisibility(GONE);
-            timeItem.setImageDrawable(timerDrawable = new TimerDrawable(context, resourcesProvider));
+            // NagramX: the timer draws from its own provider, not getThemedColor, so the Classic header needs a scoped one.
+            timeItem.setImageDrawable(timerDrawable = new TimerDrawable(context, parentFragment.isReport() ? resourcesProvider : xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.wrapChatHeader(resourcesProvider)));
             timerDrawable.setBackgroundColor(0);
             addView(timeItem);
             secretChatTimer = needTime;

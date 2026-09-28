@@ -1018,9 +1018,9 @@ Two independent reservations cap the text far below that ceiling first:
   (`ChatActivity.java:4964`), so the container measures at about `W - 104dp` --
   which is also exactly `widthDefault` (`ActionBar.java:2332`).
 - Inside it, centered glass mode reserves the two side bubbles again,
-  `availableWidth = width - 2 * dp(58)` (`ChatAvatarContainer.java:899`), and the
+  `availableWidth = width - 2 * dp(58)` (`ChatAvatarContainer.java:900`), and the
   title-plus-pill group and the status line are then capped at
-  `availableWidth - dp(10)` (`ChatAvatarContainer.java:915-919`).
+  `availableWidth - dp(10)` (`ChatAvatarContainer.java:916-920`).
 
 So the text ceiling is about `W - 230dp` against a pill ceiling of `W - 104dp`:
 roughly 54dp of slack left over even at the widest padding this fork has shipped.
