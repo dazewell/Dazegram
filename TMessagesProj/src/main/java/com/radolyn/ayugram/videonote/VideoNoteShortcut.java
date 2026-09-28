@@ -294,7 +294,15 @@ public final class VideoNoteShortcut {
         // and the round camera (added later, just above the input container) stay on top. Not persisted: the unlock
         // rebuild re-runs createView after the session has ended, and the shield is gone.
         smoke("shield index=" + contentView.indexOfChild(inputContainer));
-        View shield = new View(contentView.getContext());
+        View shield = new View(contentView.getContext()) {
+            // The chat view lays its ordinary children out below the action bar, which would leave the header drawn and
+            // tappable (its menu can clear the history). Stretch to the container's top edge so the shield covers it
+            // for both drawing and hit-testing.
+            @Override
+            public void layout(int l, int t, int r, int b) {
+                super.layout(0, 0, ((View) getParent()).getWidth(), b);
+            }
+        };
         shield.setBackgroundColor(0xff000000);
         shield.setClickable(true);
         int index = contentView.indexOfChild(inputContainer);
