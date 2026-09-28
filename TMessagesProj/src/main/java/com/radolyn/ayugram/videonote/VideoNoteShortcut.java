@@ -54,6 +54,14 @@ public final class VideoNoteShortcut {
     private VideoNoteShortcut() {
     }
 
+    private static void smoke(String what) {
+        android.util.Log.i("NaxVideoNote", "NAX_SMOKE_video-note-shortcut " + what + " phase=" + phase);
+    }
+
+    private static void smokeTrace(String what) {
+        android.util.Log.i("NaxVideoNote", "NAX_SMOKE_video-note-shortcut " + what + " phase=" + phase, new Throwable());
+    }
+
     public static boolean isEnabled() {
         return NaConfig.INSTANCE.getVideoNoteShortcut().Bool();
     }
@@ -124,6 +132,7 @@ public final class VideoNoteShortcut {
      */
     public static long accept(Intent intent, int account) {
         boolean genuine = isGenuine(intent);
+        smoke("BEGIN accept genuine=" + genuine + " enabled=" + isEnabled() + " account=" + account + " build=" + org.telegram.messenger.BuildConfig.BUILD_VERSION_STRING + " app=" + org.telegram.messenger.BuildConfig.APPLICATION_ID);
         intent.setAction(null);
         intent.removeExtra(EXTRA_HASH);
         if (!genuine || !UserConfig.getInstance(account).isClientActivated()) {
@@ -155,6 +164,7 @@ public final class VideoNoteShortcut {
             return;
         }
         boolean locked = phase == STARTING;
+        smoke("chatOpened locked=" + locked);
         if (locked) {
             sessionChat = new WeakReference<>(chat);
         }
@@ -168,6 +178,7 @@ public final class VideoNoteShortcut {
             boolean front = NaConfig.INSTANCE.getVideoNoteShortcutCamera().Int() != 1;
             boolean started = enterView != null && !chat.isFinished && chat.getParentActivity() != null
                     && enterView.startRoundVideoFromShortcut(front, !locked);
+            smoke("start started=" + started + " front=" + front + " enterView=" + (enterView != null));
             if (locked && !started) {
                 lockNow();
             }
@@ -218,6 +229,7 @@ public final class VideoNoteShortcut {
         SharedConfig.isWaitingForPasscodeEnter = true;
         SharedConfig.saveConfig();
         setPhase(STARTING);
+        smoke("bypass");
         AndroidUtilities.cancelRunOnUIThread(poll);
         AndroidUtilities.runOnUIThread(poll, POLL_MS);
         activity.hidePasscodeForVideoNote();
@@ -230,6 +242,7 @@ public final class VideoNoteShortcut {
             return;
         }
         ChatActivity chat = sessionChat != null ? sessionChat.get() : null;
+        smokeTrace("END passcodeShown chat=" + (chat != null));
         setPhase(IDLE);
         sessionChat = null;
         pendingAccount = -1;
@@ -243,6 +256,7 @@ public final class VideoNoteShortcut {
     }
 
     private static void lockNow() {
+        smokeTrace("lockNow");
         LaunchActivity activity = LaunchActivity.instance;
         if (activity != null && !activity.isFinishing()) {
             activity.showPasscodeActivity(true, false, -1, -1, null, null);
@@ -270,6 +284,7 @@ public final class VideoNoteShortcut {
         // Keeps the history, the action bar and every button on them out of sight and out of reach. The input container
         // and the round camera (added later, just above the input container) stay on top. Not persisted: the unlock
         // rebuild re-runs createView after the session has ended, and the shield is gone.
+        smoke("shield index=" + contentView.indexOfChild(inputContainer));
         View shield = new View(contentView.getContext());
         shield.setBackgroundColor(0xff000000);
         shield.setClickable(true);
@@ -282,6 +297,7 @@ public final class VideoNoteShortcut {
         if (!isSessionChat(chat)) {
             return;
         }
+        smoke("recordState state=" + state);
         if (state == 0 && phase == STARTING) {
             setPhase(RECORDING);
         } else if ((state == 1 || state == 4) && phase == RECORDING) {
@@ -293,6 +309,7 @@ public final class VideoNoteShortcut {
 
     /** ChatActivity.sendMedia, once the clip has been handed to SendMessagesHelper. */
     public static void onMediaSent(ChatActivity chat) {
+        smoke("mediaSent session=" + isSessionChat(chat));
         if (isSessionChat(chat) && (phase == RECORDING || phase == SENDING)) {
             lockNow();
         }
@@ -318,6 +335,7 @@ public final class VideoNoteShortcut {
         if (phase == IDLE || phase == STARTING && fragment instanceof ChatActivity && isPendingChat((ChatActivity) fragment)) {
             return;
         }
+        smoke("navigation fragment=" + (fragment != null ? fragment.getClass().getSimpleName() : "null"));
         lockNow();
     }
 
