@@ -67,6 +67,7 @@ public final class VideoHoldToSend {
         switch (ev.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 reset();
+                android.util.Log.i("VideoHoldToSend", "NAX_SMOKE_video-hold-send DOWN enabled=" + NaConfig.INSTANCE.getVideoMessagesHoldToSend().Bool() + " inside=" + contains(circle, ev) + " canSend=" + canSend.run());
                 if (!NaConfig.INSTANCE.getVideoMessagesHoldToSend().Bool() || !contains(circle, ev) || !canSend.run()) {
                     return;
                 }
@@ -85,6 +86,7 @@ public final class VideoHoldToSend {
                 }
                 break;
             case MotionEvent.ACTION_UP:
+                android.util.Log.i("VideoHoldToSend", "NAX_SMOKE_video-hold-send END up tracking=" + tracking + " armed=" + armed);
                 if (tracking && armed && canSend.run()) {
                     // cleared before sending: a paid-message confirmation pauses into the preview instead of
                     // closing the camera, and the disc must not stay painted over it
@@ -144,6 +146,7 @@ public final class VideoHoldToSend {
 
     // Called once per lock of a round video recording; shows the "hold to send" hint above the circle a few times.
     public static void onRecordLocked(InstantCameraView cameraView) {
+        android.util.Log.i("VideoHoldToSend", "NAX_SMOKE_video-hold-send BEGIN locked build=" + org.telegram.messenger.BuildConfig.BUILD_VERSION_STRING + " app=" + org.telegram.messenger.BuildConfig.APPLICATION_ID + " view=" + (cameraView != null) + " enabled=" + NaConfig.INSTANCE.getVideoMessagesHoldToSend().Bool() + " hintAllowed=" + HintsController.Hint.VideoHoldToSendHint.show());
         if (cameraView == null || !NaConfig.INSTANCE.getVideoMessagesHoldToSend().Bool()) {
             return;
         }
@@ -177,6 +180,7 @@ public final class VideoHoldToSend {
             return;
         }
         armed = true;
+        android.util.Log.i("VideoHoldToSend", "NAX_SMOKE_video-hold-send armed");
         if (circle != null && !NekoConfig.disableVibration.Bool()) {
             try {
                 circle.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
