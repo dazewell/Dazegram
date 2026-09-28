@@ -3687,7 +3687,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             } else {
                 actionBar.setTitle(actionBarTitleNax = getString(R.string.SelectChat));
             }
-            actionBar.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
+            // NagramX: the MD3 top surface is painted under the bar by the content view, so an opaque bar would hide it
+            if (!xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()) {
+                actionBar.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
+            }
             actionBar.setOnLongClickListener(v -> {
                 if (NekoConfig.hideAllTab.Bool() && filterTabsView != null && filterTabsView.getDefaultTabId() != filterTabsView.getCurrentTabId()) {
                     filterTabsView.toggleAllTabs(true);
@@ -12611,7 +12614,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
 
         if (folderId == 0) {
-            if (onlySelect) {
+            if (onlySelect && !xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()) { // NagramX: see createView
                 arrayList.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_windowBackgroundWhite));
             }
             arrayList.add(new ThemeDescription(fragmentView, 0, null, actionBarDefaultPaint, null, null, getDialogsTopSurfaceColorKey()));
