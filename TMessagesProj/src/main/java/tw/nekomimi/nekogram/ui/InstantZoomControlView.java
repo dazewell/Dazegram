@@ -185,6 +185,10 @@ public class InstantZoomControlView extends View {
         return zoomEnabled && presetFractions != null && compact < 1f;
     }
 
+    public boolean hasPresets() {
+        return presetFractions != null;
+    }
+
     private float stripHeight() {
         return AndroidUtilities.dp(20);
     }

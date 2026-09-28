@@ -1300,7 +1300,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             zoomControlCenterY = Math.min(Math.max((cameraBottom + bottomControlsTop) / 2f, lo), hi);
         }
         zoomControlView.setTranslationY(zoomControlCenterY);
-        if (compact) {
+        // NagramX: the lens strip fills the band above the slider, so the ratio readout docks in the circle
+        if (compact || zoomControlView.hasPresets()) {
             // no vertical room above the row: dock the label inside the camera circle, bottom-center
             zoomLabel.setTranslationY(translationY + textureViewSize / 2f - dp(30));
         } else {
@@ -5174,6 +5175,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
     // NagramX: lens stops for the camera now showing; their slider spots depend on its zoom range
     private void updateZoomPresets(Camera2Session session, boolean hasZoom) {
+        final boolean hadPresets = zoomControlView.hasPresets();
+        applyZoomPresets(session, hasZoom);
+        if (hadPresets != zoomControlView.hasPresets()) {
+            updateTranslationY();
+        }
+    }
+
+    private void applyZoomPresets(Camera2Session session, boolean hasZoom) {
         final float[] stops = hasZoom && session.isZoomRatioMode() ? xyz.nextalone.nagram.helper.RoundLensPresets.get(session.cameraId) : null;
         if (stops == null || stops.length < 2) {
             zoomControlView.setPresets(null, null);
