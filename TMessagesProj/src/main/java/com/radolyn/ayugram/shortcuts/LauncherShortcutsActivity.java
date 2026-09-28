@@ -111,21 +111,28 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
         listView.setAdapter(listAdapter);
         setupDefaultListeners();
 
-        cellGroup.callBackSettingsChanged = (key, newValue) -> {
-            boolean videoNote = key.equals(NaConfig.INSTANCE.getVideoNoteShortcut().getKey());
-            if (!videoNote && !key.equals(NaConfig.INSTANCE.getGhostModeShortcut().getKey())) {
-                return;
-            }
-            MediaDataController.getInstance(currentAccount).buildShortcuts();
-            if (videoNote) {
-                updateCameraRow(true);
-            }
-            if (previewCell != null) {
-                previewCell.update();
-            }
-        };
+        cellGroup.callBackSettingsChanged = (key, newValue) -> onShortcutSettingChanged(key);
 
         return superView;
+    }
+
+    @Override
+    protected void onConfigImported(String key, Object value) {
+        onShortcutSettingChanged(key);
+    }
+
+    private void onShortcutSettingChanged(String key) {
+        boolean videoNote = key.equals(NaConfig.INSTANCE.getVideoNoteShortcut().getKey());
+        if (!videoNote && !key.equals(NaConfig.INSTANCE.getGhostModeShortcut().getKey())) {
+            return;
+        }
+        MediaDataController.getInstance(currentAccount).buildShortcuts();
+        if (videoNote) {
+            updateCameraRow(true);
+        }
+        if (previewCell != null) {
+            previewCell.update();
+        }
     }
 
     // The camera only means something while the shortcut is on. ConfigCellSelectBox can't be dimmed, so the row is
