@@ -74,11 +74,8 @@ public final class VideoNoteTarget {
         long selfId = UserConfig.getInstance(account).getClientUserId();
         long id = get(account);
         if (id == 0 || id == selfId) {
-            android.util.Log.i("NaxVideoNote", "NAX_SMOKE_video-memo-target resolve set=false result=saved");
             return selfId;
         }
-        long smokeStart = android.os.SystemClock.elapsedRealtime();
-        String smokeSource = "memory";
         MessagesController controller = MessagesController.getInstance(account);
         TLRPC.User user = controller.getUser(id);
         TLRPC.UserFull full = controller.getUserFull(id);
@@ -112,9 +109,7 @@ public final class VideoNoteTarget {
             } catch (InterruptedException e) {
                 loaded = false;
             }
-            smokeSource = "db needUser=" + needUser + " needFull=" + needFull + " waitMs=" + (android.os.SystemClock.elapsedRealtime() - smokeStart);
             if (!loaded) {
-                android.util.Log.i("NaxVideoNote", "NAX_SMOKE_video-memo-target resolve set=true source=" + smokeSource + " timeout=true result=saved");
                 return selfId;
             }
             if (needUser && dbUser[0] != null) {
@@ -125,15 +120,7 @@ public final class VideoNoteTarget {
                 full = dbFull[0]; // for this check only, the chat loads its own
             }
         }
-        boolean smokeOk = canReceive(account, controller, user, full);
-        android.util.Log.i("NaxVideoNote", "NAX_SMOKE_video-memo-target resolve set=true source=" + smokeSource
-                + " user=" + (user != null) + " full=" + (full != null) + " eligible=" + isEligible(account, user)
-                + " blocked=" + (full != null && full.blocked || user != null && controller.blockePeers.indexOfKey(user.id) >= 0)
-                + " voiceForbidden=" + (full != null && full.voice_messages_forbidden)
-                + " paid=" + (user != null && user.send_paid_messages_stars > 0 || full != null && full.send_paid_messages_stars > 0)
-                + " premiumGate=" + (full != null && full.contact_require_premium)
-                + " result=" + (smokeOk ? "target" : "saved"));
-        return smokeOk ? id : selfId;
+        return canReceive(account, controller, user, full) ? id : selfId;
     }
 
     // What we don't know counts as no: the recording happens behind the lock shield, where the user can't see which

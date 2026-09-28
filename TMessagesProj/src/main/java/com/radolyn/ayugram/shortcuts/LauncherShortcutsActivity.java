@@ -253,7 +253,6 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
         picker.setDelegate((fragment, dids, message, param, notify, scheduleDate, scheduleRepeatPeriod, topicsFragment) -> {
             long id = dids == null || dids.isEmpty() ? 0 : dids.get(0).dialogId;
             TLRPC.User user = DialogObject.isUserDialog(id) ? getMessagesController().getUser(id) : null;
-            android.util.Log.i("NaxVideoNote", "NAX_SMOKE_video-memo-target pick user=" + (user != null) + " eligible=" + VideoNoteTarget.isEligible(currentAccount, user));
             if (!VideoNoteTarget.isEligible(currentAccount, user)) {
                 BulletinFactory.of(fragment).createErrorBulletin(getString(R.string.VideoNoteShortcutTargetUnsupported)).show();
                 return false;
