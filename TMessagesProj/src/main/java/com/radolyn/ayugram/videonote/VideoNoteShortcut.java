@@ -152,6 +152,15 @@ public final class VideoNoteShortcut {
         return pendingAccount == chat.getCurrentAccount() && pendingDialogId == chat.getDialogId() && chat.getChatMode() == 0;
     }
 
+    // The navigation hooks see the fragment before onFragmentCreate has read its arguments, so its dialog id is still 0
+    private static boolean isPendingChatPush(BaseFragment fragment) {
+        if (!(fragment instanceof ChatActivity) || fragment.getArguments() == null || pendingAccount != fragment.getCurrentAccount()) {
+            return false;
+        }
+        android.os.Bundle args = fragment.getArguments();
+        return args.getLong("user_id", 0) == pendingDialogId && args.getInt("chatMode", 0) == 0;
+    }
+
     /** ChatActivity.onTransitionAnimationEnd, forward open. */
     public static void onChatOpened(ChatActivity chat) {
         if (!isPendingChat(chat)) {
@@ -332,7 +341,7 @@ public final class VideoNoteShortcut {
 
     /** LaunchActivity.needPresentFragment / needAddFragmentToStack. Opening anything but our own chat locks. */
     public static void onNavigation(BaseFragment fragment) {
-        if (phase == IDLE || phase == STARTING && fragment instanceof ChatActivity && isPendingChat((ChatActivity) fragment)) {
+        if (phase == IDLE || phase == STARTING && isPendingChatPush(fragment)) {
             return;
         }
         smoke("navigation fragment=" + (fragment != null ? fragment.getClass().getSimpleName() : "null"));
