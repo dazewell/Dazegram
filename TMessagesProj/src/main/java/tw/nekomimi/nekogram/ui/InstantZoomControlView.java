@@ -130,7 +130,7 @@ public class InstantZoomControlView extends View {
         pressedKnobDrawable = context.getResources().getDrawable(R.drawable.zoom_round_b);
         ringPaint.setStyle(Paint.Style.STROKE);
         ringPaint.setStrokeWidth(AndroidUtilities.dpf2(1.5f));
-        presetPaint.setTextSize(AndroidUtilities.dp(11));
+        presetPaint.setTextSize(AndroidUtilities.dp(13));
         presetPaint.setTextAlign(Paint.Align.CENTER);
         presetPaint.setTypeface(AndroidUtilities.bold());
         updateColors(chipBackgroundColor, glyphColor);
@@ -151,7 +151,7 @@ public class InstantZoomControlView extends View {
             for (String label : labels) {
                 widest = Math.max(widest, presetPaint.measureText(label));
             }
-            presetSegment = widest + AndroidUtilities.dp(22);
+            presetSegment = widest + AndroidUtilities.dp(28);
         }
         animatePresetShift(fractions != null ? 1f : 0f);
         invalidate();
@@ -190,11 +190,12 @@ public class InstantZoomControlView extends View {
     }
 
     private float stripHeight() {
-        return AndroidUtilities.dp(20);
+        return AndroidUtilities.dp(28);
     }
 
+    // 2dp under the view's top edge in the roomy layout, where the track sits at 42dp while the strip is up
     private float stripTop() {
-        return trackY - AndroidUtilities.dp(31);
+        return trackY - AndroidUtilities.dp(40);
     }
 
     private float stripLeft() {
@@ -222,7 +223,8 @@ public class InstantZoomControlView extends View {
             return -1;
         }
         final float top = stripTop(), left = stripLeft();
-        if (y < top - slop || y > top + stripHeight() + slop || x < left - slop || x > left + presetSegment * presetFractions.length + slop) {
+        // slop reaches past the top and sides but barely below, where the knob's own touch zone starts
+        if (y < top - slop || y > top + stripHeight() + Math.min(slop, AndroidUtilities.dp(2)) || x < left - slop || x > left + presetSegment * presetFractions.length + slop) {
             return -1;
         }
         return Math.max(0, Math.min(presetFractions.length - 1, (int) ((x - left) / presetSegment)));
@@ -371,14 +373,16 @@ public class InstantZoomControlView extends View {
         trackLeft = lerp(roomyLeft, AndroidUtilities.dp(20), compact);
         // in compact the slider stops short of the flip button, not the minus button
         trackRight = lerp(roomyLeft + roomyWidth, compactSwitchCx - AndroidUtilities.dp(20 + 16), compact);
-        trackY = lerp(lerp(AndroidUtilities.dp(24), AndroidUtilities.dp(32), presetShift), AndroidUtilities.dp(52), compact);
+        // the lens strip pushes the roomy rows down (track 24 to 42dp, buttons 68 to 76dp) instead of growing
+        // the view: the pressed knob clears the strip above and the buttons below, which end 4dp inside it
+        trackY = lerp(lerp(AndroidUtilities.dp(24), AndroidUtilities.dp(42), presetShift), AndroidUtilities.dp(52), compact);
         // roomy centers the [flip][-][+] trio (60dp apart) so the group stays under the circle's center
         switchCx = lerp(w / 2f - AndroidUtilities.dp(60), compactSwitchCx, compact);
         minusCx = lerp(w / 2f, compactMinusCx, compact);
         plusCx = lerp(w / 2f + AndroidUtilities.dp(60), compactPlusCx, compact);
         // roomy row sits at 68dp (was 76): pulling it up shortens the two-row block so it still fits
         // above the input island when a reply's top view eats into the space below the camera circle
-        buttonCy = lerp(AndroidUtilities.dp(68), AndroidUtilities.dp(52), compact);
+        buttonCy = lerp(lerp(AndroidUtilities.dp(68), AndroidUtilities.dp(76), presetShift), AndroidUtilities.dp(52), compact);
         buttonRadius = lerp(AndroidUtilities.dp(24), AndroidUtilities.dp(20), compact);
         glyphHalf = lerp(AndroidUtilities.dp(11), AndroidUtilities.dp(9), compact);
         switchGlyphHalf = lerp(AndroidUtilities.dp(13), AndroidUtilities.dp(11), compact);
@@ -629,7 +633,7 @@ public class InstantZoomControlView extends View {
             canvas.drawRoundRect(stripRect, radius, radius, ringPaint);
         }
         final float selection = presetSelection();
-        final float inset = AndroidUtilities.dp(2);
+        final float inset = AndroidUtilities.dp(3);
         final float hx = left + presetSegment * selection;
         stripRect.set(hx + inset, top + inset, hx + presetSegment - inset, top + h - inset);
         chipPaint.setColor(ColorUtils.setAlphaComponent(glyphColor, presetPressed != -1 ? 0x44 : 0x2E));
