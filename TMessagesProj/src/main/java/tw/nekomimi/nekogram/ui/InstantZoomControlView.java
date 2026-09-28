@@ -157,8 +157,8 @@ public class InstantZoomControlView extends View {
         invalidate();
     }
 
-    // in the roomy layout the track drops 8dp while the strip is up, so the strip gets its own band
-    // above the pressed knob instead of the view growing
+    // in the roomy layout the rows drop while the strip is up (track 18dp, buttons 8dp), so the strip gets
+    // its own band above the pressed knob instead of the view growing
     private void animatePresetShift(float target) {
         if (presetShiftAnimator != null) {
             presetShiftAnimator.cancel();
@@ -361,8 +361,8 @@ public class InstantZoomControlView extends View {
         // compact keeps a right column clear of that button (the recorder draws it hard against the right
         // edge, centered at width - 26dp) since its -/+ dock on the right of the single row.
         final float compactW = w - AndroidUtilities.dp(56);
-        // roomy: slider row on top (centerline 24dp), 48dp rocker pair centered at 68dp, 12dp apart.
-        // trim the line ~20dp so it doesn't run edge to edge; roomyLeft keeps it centered.
+        // roomy without the lens strip: slider row on top (centerline 24dp), 48dp rocker pair centered at
+        // 68dp, 12dp apart. trim the line ~20dp so it doesn't run edge to edge; roomyLeft keeps it centered.
         final float roomyWidth = Math.min(w - AndroidUtilities.dp(64), AndroidUtilities.dp(300)) - AndroidUtilities.dp(20);
         final float roomyLeft = (w - roomyWidth) / 2f;
         // compact: one row at 52dp, 20dp side margins, [slider] 16dp [flip] 10dp [-] 10dp [+], 40dp buttons
@@ -381,7 +381,8 @@ public class InstantZoomControlView extends View {
         minusCx = lerp(w / 2f, compactMinusCx, compact);
         plusCx = lerp(w / 2f + AndroidUtilities.dp(60), compactPlusCx, compact);
         // roomy row sits at 68dp (was 76): pulling it up shortens the two-row block so it still fits
-        // above the input island when a reply's top view eats into the space below the camera circle
+        // above the input island when a reply's top view eats into the space below the camera circle.
+        // the lens strip takes it back to 76dp; the recorder gives that taller block a wider roomy gate
         buttonCy = lerp(lerp(AndroidUtilities.dp(68), AndroidUtilities.dp(76), presetShift), AndroidUtilities.dp(52), compact);
         buttonRadius = lerp(AndroidUtilities.dp(24), AndroidUtilities.dp(20), compact);
         glyphHalf = lerp(AndroidUtilities.dp(11), AndroidUtilities.dp(9), compact);

@@ -1281,10 +1281,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         // above (which now frees the circle to open the gap to ~100dp when a reply squeezes it) and this
         // floor gate, two rows win whenever they physically fit; feeding dp(132)/<dp(108) keeps the
         // values clear of the [112..126] band. compact only when it genuinely can't fit (very small gaps).
-        // NagramX: with the lens strip up the rows reach 50dp above and 48dp below center, not 44 (see
-        // InstantZoomControlView.updateGeometry), so the roomy gate and the placement margin grow to match
+        // NagramX: with the lens strip up the rows reach 50dp above and 48dp below center, not 44 and 40 (see
+        // InstantZoomControlView.updateGeometry), so the roomy gate (twice the reach below) and the placement
+        // margin grow to match. the 80dp gate and 68dp rows described above are the no-strip case
         final boolean presetRows = zoomControlView.hasPresets();
-        zoomControlView.setAvailableGap(gapAfterLift >= dp(presetRows ? 88 : 80) ? dp(132) : Math.min(gapAfterLift, dp(108)));
+        zoomControlView.setAvailableGap(gapAfterLift >= dp(presetRows ? 96 : 80) ? dp(132) : Math.min(gapAfterLift, dp(108)));
         final boolean compact = zoomControlView.isCompact();
 
         final float cameraBottom = translationY + textureViewSize / 2f + dp(8);
