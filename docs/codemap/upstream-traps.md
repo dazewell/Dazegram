@@ -2414,3 +2414,31 @@ child, including the full-screen round-video scrim added after the action bar
 just before the scrim (`:19532-19533`, `:19663`).
 
 *(Established 2026-09-27, `#solid-header-panel-fix`, `#round-video-divider-fix`.)*
+
+## Round video records on Camera1 by default, and Camera2 there zooms by crop from 1x
+
+`InstantCameraView.useCamera2` (`InstantCameraView.java:232`) comes from
+`SharedConfig.isUsingCamera2` (`SharedConfig.java:1968-1969`), which follows
+the server flag `androidDisableRoundCamera2`, default **true**
+(`MessagesController.java:1820`), unless the Debug menu forced a value. The
+fork's N-Settings switch `VideoMessagesCamera2` is OR-ed in only while that
+Debug force is unset, and a force stays set once the Debug row is touched. So
+round video usually runs on Camera1, whose `Parameters.getZoomRatios()`
+(`CameraSession.java:257`) starts at 1x on the main sensor. Its
+`isSmoothZoomSupported()` was false on the OPPO below, which says nothing
+about Camera2 support.
+
+Upstream Camera2 round zoom is a `SCALER_CROP_REGION` with `getMinZoom()`
+fixed at 1 (`Camera2Session.java:399`). The fork's ratio mode
+(`setUseZoomRatio`, `:410`; `CONTROL_ZOOM_RATIO` at `:539`) is opt-in per
+session so the Stories camera, which maps zoom over `[getMinZoom, getMaxZoom]`
+(`CameraSessionWrapper.java:148`), keeps the crop path. On an OPPO Find X9 Pro
+(MediaTek, logical rear camera 0 over physical 2/3/4, ratio range 0.6–20), the
+crop region already switches to the telephoto at about 3.1x. Ratios below 1x
+reach the ultrawide, but the round stream then smears a band of edge columns,
+so the ratio floor stays at 1x on MediaTek chipsets
+(`RoundLensPresets.ultrawideAllowed`, read in `setUseZoomRatio`). Other
+chipsets are untested.
+
+*(Established 2026-09-27, `#video-zoom`, PR #439; device facts from
+`dumpsys media.camera` and ADB traces.)*

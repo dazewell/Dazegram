@@ -69,6 +69,19 @@ public class InstantZoomControlView extends View {
     // the slider + -/+ rocker hide when the current camera has no zoom range; the flip button stays
     private boolean zoomEnabled = true;
 
+    // fixed lens stops drawn as a segmented glass strip above the track, with a highlight that follows the knob
+    private float[] presetFractions;
+    private String[] presetLabels;
+    private final android.text.TextPaint presetPaint = new android.text.TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private int presetPointer = -1;
+    private int presetPressed = -1;
+    private float presetSegment;
+    private float presetShift;
+    private ValueAnimator presetShiftAnimator;
+    private BlurredBackgroundDrawable stripChip;
+    private float stripChipRadius = -1f;
+    private final RectF stripRect = new RectF();
+
     private boolean knobPressed;
     private float knobOffsetX;
     private boolean trackPressed;
@@ -117,7 +130,104 @@ public class InstantZoomControlView extends View {
         pressedKnobDrawable = context.getResources().getDrawable(R.drawable.zoom_round_b);
         ringPaint.setStyle(Paint.Style.STROKE);
         ringPaint.setStrokeWidth(AndroidUtilities.dpf2(1.5f));
+        presetPaint.setTextSize(AndroidUtilities.dp(13));
+        presetPaint.setTextAlign(Paint.Align.CENTER);
+        presetPaint.setTypeface(AndroidUtilities.bold());
         updateColors(chipBackgroundColor, glyphColor);
+    }
+
+    // fractions are slider positions (0..1) for the matching labels; null or fewer than two hides them
+    public void setPresets(float[] fractions, String[] labels) {
+        if (fractions == null || labels == null || fractions.length < 2 || fractions.length != labels.length) {
+            fractions = null;
+            labels = null;
+        }
+        presetFractions = fractions;
+        presetLabels = labels;
+        presetPointer = -1;
+        presetPressed = -1;
+        if (labels != null) {
+            float widest = 0f;
+            for (String label : labels) {
+                widest = Math.max(widest, presetPaint.measureText(label));
+            }
+            presetSegment = widest + AndroidUtilities.dp(28);
+        }
+        animatePresetShift(fractions != null ? 1f : 0f);
+        invalidate();
+    }
+
+    // in the roomy layout the rows drop while the strip is up (track 18dp, buttons 8dp), so the strip gets
+    // its own band above the pressed knob instead of the view growing
+    private void animatePresetShift(float target) {
+        if (presetShiftAnimator != null) {
+            presetShiftAnimator.cancel();
+            presetShiftAnimator = null;
+        }
+        if (presetShift == target) {
+            return;
+        }
+        if (getAlpha() <= 0f || !isAttachedToWindow()) {
+            presetShift = target;
+            return;
+        }
+        presetShiftAnimator = ValueAnimator.ofFloat(presetShift, target);
+        presetShiftAnimator.setDuration(150);
+        presetShiftAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT);
+        presetShiftAnimator.addUpdateListener(a -> {
+            presetShift = (float) a.getAnimatedValue();
+            invalidate();
+        });
+        presetShiftAnimator.start();
+    }
+
+    private boolean presetsShown() {
+        return zoomEnabled && presetFractions != null && compact < 1f;
+    }
+
+    public boolean hasPresets() {
+        return presetFractions != null;
+    }
+
+    private float stripHeight() {
+        return AndroidUtilities.dp(28);
+    }
+
+    // 2dp under the view's top edge in the roomy layout, where the track sits at 42dp while the strip is up
+    private float stripTop() {
+        return trackY - AndroidUtilities.dp(40);
+    }
+
+    private float stripLeft() {
+        return (getMeasuredWidth() - presetSegment * presetFractions.length) / 2f;
+    }
+
+    // where the knob sits in segment units: whole numbers on a stop, fractional in between, so the
+    // highlight slides along with a drag or a tap's eased jump
+    private float presetSelection() {
+        final float[] f = presetFractions;
+        final int n = f.length;
+        if (zoom <= f[0]) return 0f;
+        if (zoom >= f[n - 1]) return n - 1;
+        for (int i = 0; i < n - 1; i++) {
+            if (zoom <= f[i + 1]) {
+                return i + (zoom - f[i]) / Math.max(0.0001f, f[i + 1] - f[i]);
+            }
+        }
+        return n - 1;
+    }
+
+    // the strip's hit box reaches a few dp past its edges; a hit anywhere inside picks that segment
+    private int findPreset(float x, float y, float slop) {
+        if (!presetsShown()) {
+            return -1;
+        }
+        final float top = stripTop(), left = stripLeft();
+        // slop reaches past the top and sides but barely below, where the knob's own touch zone starts
+        if (y < top - slop || y > top + stripHeight() + Math.min(slop, AndroidUtilities.dp(2)) || x < left - slop || x > left + presetSegment * presetFractions.length + slop) {
+            return -1;
+        }
+        return Math.max(0, Math.min(presetFractions.length - 1, (int) ((x - left) / presetSegment)));
     }
 
     // re-read the recorder's colors so the chips follow a live theme flip (e.g. battery-saver dark
@@ -144,7 +254,9 @@ public class InstantZoomControlView extends View {
         minusChip = factory.create(this, colorProvider);
         plusChip = factory.create(this, colorProvider);
         switchChip = factory.create(this, colorProvider);
+        stripChip = factory.create(this, colorProvider);
         chipRadius = -1f;
+        stripChipRadius = -1f;
         invalidate();
     }
 
@@ -190,6 +302,8 @@ public class InstantZoomControlView extends View {
         if (!enabled) {
             knobPressed = false;
             trackPressed = false;
+            presetPointer = -1;
+            presetPressed = -1;
             if (buttonPointerId != -1) {
                 releaseButton(true);
             }
@@ -247,8 +361,8 @@ public class InstantZoomControlView extends View {
         // compact keeps a right column clear of that button (the recorder draws it hard against the right
         // edge, centered at width - 26dp) since its -/+ dock on the right of the single row.
         final float compactW = w - AndroidUtilities.dp(56);
-        // roomy: slider row on top (centerline 24dp), 48dp rocker pair centered at 68dp, 12dp apart.
-        // trim the line ~20dp so it doesn't run edge to edge; roomyLeft keeps it centered.
+        // roomy without the lens strip: slider row on top (centerline 24dp), 48dp rocker pair centered at
+        // 68dp, 12dp apart. trim the line ~20dp so it doesn't run edge to edge; roomyLeft keeps it centered.
         final float roomyWidth = Math.min(w - AndroidUtilities.dp(64), AndroidUtilities.dp(300)) - AndroidUtilities.dp(20);
         final float roomyLeft = (w - roomyWidth) / 2f;
         // compact: one row at 52dp, 20dp side margins, [slider] 16dp [flip] 10dp [-] 10dp [+], 40dp buttons
@@ -259,14 +373,17 @@ public class InstantZoomControlView extends View {
         trackLeft = lerp(roomyLeft, AndroidUtilities.dp(20), compact);
         // in compact the slider stops short of the flip button, not the minus button
         trackRight = lerp(roomyLeft + roomyWidth, compactSwitchCx - AndroidUtilities.dp(20 + 16), compact);
-        trackY = lerp(AndroidUtilities.dp(24), AndroidUtilities.dp(52), compact);
+        // the lens strip pushes the roomy rows down (track 24 to 42dp, buttons 68 to 76dp) instead of growing
+        // the view: the pressed knob clears the strip above and the buttons below, which end 4dp inside it
+        trackY = lerp(lerp(AndroidUtilities.dp(24), AndroidUtilities.dp(42), presetShift), AndroidUtilities.dp(52), compact);
         // roomy centers the [flip][-][+] trio (60dp apart) so the group stays under the circle's center
         switchCx = lerp(w / 2f - AndroidUtilities.dp(60), compactSwitchCx, compact);
         minusCx = lerp(w / 2f, compactMinusCx, compact);
         plusCx = lerp(w / 2f + AndroidUtilities.dp(60), compactPlusCx, compact);
         // roomy row sits at 68dp (was 76): pulling it up shortens the two-row block so it still fits
-        // above the input island when a reply's top view eats into the space below the camera circle
-        buttonCy = lerp(AndroidUtilities.dp(68), AndroidUtilities.dp(52), compact);
+        // above the input island when a reply's top view eats into the space below the camera circle.
+        // the lens strip takes it back to 76dp; the recorder gives that taller block a wider roomy gate
+        buttonCy = lerp(lerp(AndroidUtilities.dp(68), AndroidUtilities.dp(76), presetShift), AndroidUtilities.dp(52), compact);
         buttonRadius = lerp(AndroidUtilities.dp(24), AndroidUtilities.dp(20), compact);
         glyphHalf = lerp(AndroidUtilities.dp(11), AndroidUtilities.dp(9), compact);
         switchGlyphHalf = lerp(AndroidUtilities.dp(13), AndroidUtilities.dp(11), compact);
@@ -333,10 +450,42 @@ public class InstantZoomControlView extends View {
             }
             return true;
         }
+        if (presetPointer != -1) {
+            final int index = event.findPointerIndex(presetPointer);
+            if (action == MotionEvent.ACTION_CANCEL || index == -1) {
+                presetPointer = -1;
+                presetPressed = -1;
+                invalidate();
+            } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP && event.getPointerId(event.getActionIndex()) == presetPointer) {
+                final int pressed = presetPressed;
+                final boolean inside = pressed != -1 && findPreset(event.getX(index), event.getY(index), AndroidUtilities.dp(16)) == pressed;
+                presetPointer = -1;
+                presetPressed = -1;
+                if (inside) {
+                    if (!tw.nekomimi.nekogram.NekoConfig.disableVibration.Bool()) {
+                        performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+                    }
+                    // same route as a tap on the rail: the recorder eases the knob over to it
+                    zoom = presetFractions[pressed];
+                    if (delegate != null) {
+                        delegate.didSetZoom(zoom);
+                    }
+                }
+                invalidate();
+            }
+            return true;
+        }
         final float x = event.getX();
         final float y = event.getY();
         final float knobX = travelLeft() + travelWidth() * zoom;
         if (action == MotionEvent.ACTION_DOWN) {
+            final int preset = findPreset(x, y, AndroidUtilities.dp(6));
+            if (preset != -1) {
+                presetPointer = event.getPointerId(0);
+                presetPressed = preset;
+                invalidate();
+                return true;
+            }
             // the flip / -/+ buttons share a row and their 28dp hit boxes overlap; the nearest present
             // center wins. the flip button is always live; the rocker responds only when zoom is enabled.
             if (Math.abs(y - buttonCy) <= AndroidUtilities.dp(28)) {
@@ -443,6 +592,10 @@ public class InstantZoomControlView extends View {
             trackRect.set(lineLeft, trackY - half, knobX, trackY + half);
             canvas.drawRoundRect(trackRect, half, half, trackPaint);
 
+            if (presetsShown()) {
+                drawPresetStrip(canvas);
+            }
+
             final Drawable knob = knobPressed ? pressedKnobDrawable : knobDrawable;
             final int knobHalf = knob.getIntrinsicWidth() / 2;
             knob.setBounds((int) knobX - knobHalf, (int) trackY - knobHalf, (int) knobX + knobHalf, (int) trackY + knobHalf);
@@ -452,6 +605,47 @@ public class InstantZoomControlView extends View {
             drawButton(canvas, plusDrawable, plusAccent, plusChip, plusCx, glyphHalf);
         }
         drawButton(canvas, switchDrawable, switchAccent, switchChip, switchCx, switchGlyphHalf);
+    }
+
+    // one glass capsule split into segments, the StoryModeTabs look: a highlight lerped between the two
+    // segments the knob sits between. fades with the compact layout and the track's drop
+    private void drawPresetStrip(Canvas canvas) {
+        final int n = presetFractions.length;
+        final float alpha = (1f - compact) * presetShift;
+        if (alpha <= 0f) {
+            return;
+        }
+        final float top = stripTop(), left = stripLeft(), h = stripHeight();
+        final int l = Math.round(left), t = Math.round(top), r = Math.round(left + presetSegment * n), b = Math.round(top + h);
+        final int radius = Math.round(h / 2f);
+        final int save = alpha < 1f ? canvas.saveLayerAlpha(l - radius, t - radius, r + radius, b + radius, (int) (0xFF * alpha)) : canvas.save();
+        if (stripChip != null) {
+            stripChip.setBounds(l, t, r, b);
+            if (stripChipRadius != radius) {
+                stripChipRadius = radius;
+                stripChip.setRadius(radius);
+            }
+            stripChip.draw(canvas);
+        } else {
+            stripRect.set(l, t, r, b);
+            chipPaint.setColor(chipColor);
+            canvas.drawRoundRect(stripRect, radius, radius, chipPaint);
+            ringPaint.setColor(ColorUtils.setAlphaComponent(glyphColor, 0x22));
+            canvas.drawRoundRect(stripRect, radius, radius, ringPaint);
+        }
+        final float selection = presetSelection();
+        final float inset = AndroidUtilities.dp(3);
+        final float hx = left + presetSegment * selection;
+        stripRect.set(hx + inset, top + inset, hx + presetSegment - inset, top + h - inset);
+        chipPaint.setColor(ColorUtils.setAlphaComponent(glyphColor, presetPressed != -1 ? 0x44 : 0x2E));
+        canvas.drawRoundRect(stripRect, radius - inset, radius - inset, chipPaint);
+        final float baseline = top + h / 2f - (presetPaint.descent() + presetPaint.ascent()) / 2f;
+        for (int i = 0; i < n; i++) {
+            final float near = Math.max(0f, 1f - Math.abs(selection - i));
+            presetPaint.setColor(ColorUtils.setAlphaComponent(glyphColor, (int) (0x99 + (0xFF - 0x99) * near)));
+            canvas.drawText(presetLabels[i], left + presetSegment * (i + 0.5f), baseline, presetPaint);
+        }
+        canvas.restoreToCount(save);
     }
 
     private void drawButton(Canvas canvas, Drawable glyph, ButtonAccent accent, BlurredBackgroundDrawable chip, float cx, float glyphHalfPx) {

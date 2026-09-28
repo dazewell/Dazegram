@@ -1035,3 +1035,21 @@ normalise against -- which is why `getCenteredContentCap()` records it in
 `onMeasure` rather than recomputing it at draw time.
 
 *(Established 2026-09-19, #title-pill-fix.)*
+
+## A 4:3 Camera2 stream does not fix the ultrawide smear in round video
+
+On the OPPO Find X9 Pro, round video at `CONTROL_ZOOM_RATIO` below 1x shows
+horizontal streaks over the left part of the circle as soon as the ultrawide
+takes over. Today's square stream (a 1088×1088 `ImageReader` beside the
+preview, seen in `dumpsys media.camera` with `zoomRatio 0.6` and a full
+4096×3072 `cropRegion`) was the suspect. Requesting a 4:3 stream at Camera1's
+round-preview cap of 1440 on the long side (`InstantCameraView.java:1792-1830`,
+which itself picks the squarest size under that cap) left the streaks
+unchanged (commit `3df14ccb11`, reverted in `f1f5e78c74`). The renderer takes
+non-square previews through `updateScale`'s `scaleX`/`scaleY` (`:2068-2094`)
+and the texture coordinates built from them (`:2183`). Caveat: the 4:3 delivery
+itself was not read back from the device. The working theory is MediaTek's
+spatial-alignment step (`multiCamMtkSat` in the camera dump), not the stream
+shape.
+
+*(Established 2026-09-27, `#video-zoom`, PR #439.)*

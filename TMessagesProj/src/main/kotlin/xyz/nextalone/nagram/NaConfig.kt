@@ -1021,6 +1021,12 @@ object NaConfig {
             ConfigItem.configTypeBool,
             false
         )
+    val videoMessagesCamera2 =
+        addConfig(
+            "VideoMessagesCamera2",
+            ConfigItem.configTypeBool,
+            false
+        )
     val videoMessagesWarningVibration =
         addConfig(
             "VideoMessagesWarningVibration",
