@@ -2430,13 +2430,15 @@ about Camera2 support.
 
 Upstream Camera2 round zoom is a `SCALER_CROP_REGION` with `getMinZoom()`
 fixed at 1 (`Camera2Session.java:399`). The fork's ratio mode
-(`setUseZoomRatio`, `:410`; `CONTROL_ZOOM_RATIO` at `:538`) is opt-in per
+(`setUseZoomRatio`, `:410`; `CONTROL_ZOOM_RATIO` at `:539`) is opt-in per
 session so the Stories camera, which maps zoom over `[getMinZoom, getMaxZoom]`
 (`CameraSessionWrapper.java:148`), keeps the crop path. On an OPPO Find X9 Pro
 (MediaTek, logical rear camera 0 over physical 2/3/4, ratio range 0.6–20), the
 crop region already switches to the telephoto at about 3.1x. Ratios below 1x
 reach the ultrawide, but the round stream then smears a band of edge columns,
-so ratio mode stays floored at 1x.
+so the ratio floor stays at 1x on MediaTek chipsets
+(`RoundLensPresets.ultrawideAllowed`, read in `setUseZoomRatio`). Other
+chipsets are untested.
 
 *(Established 2026-09-27, `#video-zoom`, PR #439; device facts from
 `dumpsys media.camera` and ADB traces.)*
