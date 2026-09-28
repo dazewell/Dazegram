@@ -29742,6 +29742,9 @@ public class ChatActivity extends BaseFragment implements
 //                createChatAttachView();
 //            }
             checkGroupCallJoin(lastCallCheckFromServer);
+            if (!backward) {
+                com.radolyn.ayugram.videonote.VideoNoteShortcut.onChatOpened(this); // NagramX: video memo shortcut autostarts here, after the chat is on screen
+            }
 
             boolean hintShown = false;
             if (ChatObject.isMonoForum(currentChat) && !ChatObject.canManageMonoForum(currentAccount, currentChat)) {
