@@ -8995,7 +8995,7 @@ public class ChatActivity extends BaseFragment implements
         contentView.addView(roundVideoRecordBackground, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
         animatorRoundMessageCameraVisibility.setValue(false, false); // NagramX: the animator outlives a view rebuild; start it in step with this fresh, hidden scrim
         contentView.addView(chatInputViewsContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
-        com.radolyn.ayugram.videonote.VideoNoteShortcut.onChatViewCreated(this, contentView, chatInputViewsContainer); // NagramX: hides the history while a video memo records under the lock
+        com.radolyn.ayugram.videonote.VideoNoteShortcut.onChatViewCreated(this, contentView, chatInputViewsContainer, roundVideoBackgroundDrawableFactory); // NagramX: hides the history while a video memo records under the lock
 
         if (chatMode != MODE_EDIT_BUSINESS_LINK) {
             chatActivityEnterView.checkChannelRights();

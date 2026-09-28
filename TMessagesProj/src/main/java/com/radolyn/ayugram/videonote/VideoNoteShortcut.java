@@ -280,7 +280,7 @@ public final class VideoNoteShortcut {
     }
 
     /** ChatActivity.createView, right after the input container is added. */
-    public static void onChatViewCreated(ChatActivity chat, ViewGroup contentView, View inputContainer) {
+    public static void onChatViewCreated(ChatActivity chat, ViewGroup contentView, View inputContainer, org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory wallpaperBlurFactory) {
         if (!(phase == STARTING && isPendingChat(chat)) && !isSessionChat(chat)) {
             return;
         }
@@ -296,8 +296,22 @@ public final class VideoNoteShortcut {
                 super.layout(0, 0, ((View) getParent()).getWidth(), b);
             }
         };
-        // the recorder picks its glyph and glass colours from this key, so its controls read right in any theme
+        // Same surface as the normal recording scrim: the chat's wallpaper blurred, which has no messages in it and is
+        // what the recorder's controls (the white zoom slider included) are drawn for. Opaque here, not 232, since
+        // this one hides real content. The composer panel colour is the fallback.
         shield.setBackgroundColor(Theme.getColor(Theme.key_chat_messagePanelBackground, chat.getResourceProvider()));
+        if (wallpaperBlurFactory != null) {
+            try {
+                org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable wallpaper = wallpaperBlurFactory.create(shield);
+                wallpaper.setAlpha(255);
+                shield.setBackground(new android.graphics.drawable.LayerDrawable(new Drawable[]{
+                        new android.graphics.drawable.ColorDrawable(Theme.getColor(Theme.key_chat_messagePanelBackground, chat.getResourceProvider())),
+                        wallpaper
+                }));
+            } catch (Throwable e) {
+                FileLog.e(e);
+            }
+        }
         shield.setClickable(true);
         int index = contentView.indexOfChild(inputContainer);
         contentView.addView(shield, index < 0 ? contentView.getChildCount() : index, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
