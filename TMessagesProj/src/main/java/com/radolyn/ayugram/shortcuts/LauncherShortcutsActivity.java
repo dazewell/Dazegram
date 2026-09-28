@@ -3,6 +3,7 @@ package com.radolyn.ayugram.shortcuts;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.LocaleController.getString;
 
+import android.animation.LayoutTransition;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.drawable.GradientDrawable;
@@ -199,8 +200,15 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
      */
     private static class PreviewCell extends FrameLayout {
 
+        private static final int ITEM_HEIGHT = 48;
+        private static final int POPUP_PADDING = 6;
+        private static final int POPUP_TOP = 8;
+        private static final int POPUP_BOTTOM = 16;
+        private static final int ITEM_COUNT = 3;
+
         private final LinearLayout popup;
-        private final TextView[] labels = new TextView[3];
+        private final GradientDrawable popupBackground = new GradientDrawable();
+        private final TextView[] labels = new TextView[ITEM_COUNT];
         private final View ghostModeItem;
         private final View videoNoteItem;
 
@@ -208,8 +216,10 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
             super(context);
             popup = new LinearLayout(context);
             popup.setOrientation(LinearLayout.VERTICAL);
-            popup.setPadding(0, dp(6), 0, dp(6));
-            addView(popup, LayoutHelper.createFrame(240, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 0, 8, 0, 16));
+            popup.setPadding(0, dp(POPUP_PADDING), 0, dp(POPUP_PADDING));
+            popupBackground.setCornerRadius(dp(20));
+            popup.setBackground(popupBackground);
+            addView(popup, LayoutHelper.createFrame(240, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 0, POPUP_TOP, 0, 0));
 
             addItem(context, 0, R.drawable.shortcut_compose, null, R.string.NewConversationShortcut);
             // Built once, not per bind: both are fresh bitmaps, and the base page rebinds everything on resume.
@@ -218,6 +228,25 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
 
             setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
             update();
+
+            // Set last so the initial state doesn't animate in. Items fade in and out and the card eases to its new
+            // height instead of snapping. Kept off the parent hierarchy, which would reach into the RecyclerView.
+            LayoutTransition itemTransition = new LayoutTransition();
+            itemTransition.setAnimateParentHierarchy(false);
+            itemTransition.setDuration(220);
+            popup.setLayoutTransition(itemTransition);
+            LayoutTransition cardTransition = new LayoutTransition();
+            cardTransition.enableTransitionType(LayoutTransition.CHANGING);
+            cardTransition.setAnimateParentHierarchy(false);
+            cardTransition.setDuration(220);
+            setLayoutTransition(cardTransition);
+        }
+
+        // Always as tall as the card with every item showing, so a switch only changes the card, never the rows below
+        @Override
+        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            int height = dp(POPUP_TOP + 2 * POPUP_PADDING + ITEM_COUNT * ITEM_HEIGHT + POPUP_BOTTOM);
+            super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY));
         }
 
         private View addItem(Context context, int index, int iconRes, Bitmap iconBitmap, int labelRes) {
@@ -242,16 +271,13 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
             item.addView(label, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, Gravity.CENTER_VERTICAL, 0, 0, 16, 0));
             labels[index] = label;
 
-            popup.addView(item, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48));
+            popup.addView(item, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, ITEM_HEIGHT));
             return item;
         }
 
         void update() {
             setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
-            GradientDrawable background = new GradientDrawable();
-            background.setCornerRadius(dp(20));
-            background.setColor(Theme.getColor(Theme.key_windowBackgroundGray));
-            popup.setBackground(background);
+            popupBackground.setColor(Theme.getColor(Theme.key_windowBackgroundGray));
             for (TextView label : labels) {
                 label.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
             }
