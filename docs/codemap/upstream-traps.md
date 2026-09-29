@@ -2483,3 +2483,21 @@ by exactly the header, and the header stays tappable above it.
 `(0, 0, parentWidth, b)` rather than touching that list.
 
 *(Established 2026-09-28, `#video-note-shortcut`.)*
+
+## The chat list's scroll-anchor skips rows under a collapsed header
+
+With stories or the idle search field collapsed, the hidden header height is
+still inside the list's top padding, so the first on-screen row sits *above*
+`getPaddingTop()`. `findFirstVisibleItemPosition()` checks against the padding
+and skips it. `DialogsRecyclerView.onMeasure` re-anchors on that result every
+measure (`DialogsActivity.java:2155`, `:2173`), so the row that really sits at
+the top is laid out *above* the next one. If it gets taller after the first
+layout, it grows upward under the tabs. The real visible top is
+`getPaddingTop() + scrollYOffset`, the same value `setScrollY` uses for the
+glow offset (`:9299`).
+
+Missed once: a top chat with a folder tag opened with exactly the tag's extra
+3dp (`DialogCell.addHeightForTags`) clipped under the tabs. From the
+screenshots, the row below sat where an untagged row would have put it.
+
+*(Established 2026-09-28, `#dialog-tags-fix`.)*
