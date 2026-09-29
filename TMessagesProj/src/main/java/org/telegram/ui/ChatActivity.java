@@ -39170,6 +39170,19 @@ public class ChatActivity extends BaseFragment implements
         return chatActivityEnterView == null ? InstantCameraView.INFINITE_RECORDING_UNAVAILABLE : chatActivityEnterView.toggleInfiniteRecording();
     }
 
+    // NagramX (#video-hold-send): a hold on the round video sends through the locked-state send button's own path
+    @Override
+    public boolean isRecordLocked() {
+        return chatActivityEnterView != null && chatActivityEnterView.isRecordLocked();
+    }
+
+    @Override
+    public void sendLockedRecording() {
+        if (isRecordLocked()) {
+            chatActivityEnterView.sendLockedRecording();
+        }
+    }
+
     // NagramX: draft-guard generation the recorder snapshots into a finalize request; see videoDraftToken.
     @Override
     public int getVideoDraftToken() {

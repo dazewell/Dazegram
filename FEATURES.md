@@ -257,6 +257,10 @@ The preview you get after recording a round video message has a playback cursor 
 
 The pause button and the view-once "(1)" toggle are larger and lifted slightly higher off the send button to prevent accidental sends.
 
+### Hold the video to send <!-- #video-hold-send -->
+
+While a round video message records hands-free, press and hold the video instead of the corner send button: it fills from the centre with a building buzz and sends when you let go. Let go early or slide off to keep recording. N-Settings → Chat → Camera → *Hold the video to send*, on by default.
+
 ### Don't lose an unsent video message <!-- #video-draft-guard -->
 
 A round video message you've recorded but haven't sent survives backing out of the chat, switching apps mid-recording, or the chat locking behind a passcode — the clip waits in the preview, trimmed the way you left it, for up to a day. What comes back after the app or chat was torn down is the trim strip and send button rather than the round preview itself.

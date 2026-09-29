@@ -1039,6 +1039,12 @@ object NaConfig {
             ConfigItem.configTypeInt,
             2 // 0: off; 1: light; 2: medium; 3: strong
         )
+    val videoMessagesHoldToSend =
+        addConfig(
+            "VideoMessagesHoldToSend",
+            ConfigItem.configTypeBool,
+            true
+        )
     val infiniteRecordingCeiling =
         addConfig(
             "InfiniteRecordingCeiling",

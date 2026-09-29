@@ -3283,60 +3283,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 createRecordCircle();
                 if (motionEvent.getAction() == MotionEvent.ACTION_DOWN) {
                     if (recordCircle.isSendButtonVisible()) {
-                        if (!hasRecordVideo || calledRecordRunnable) {
-                            startedDraggingX = -1;
-                            if (hasRecordVideo && isInVideoMode()) {
-                                if (AlertsCreator.needsPaidMessageAlert(currentAccount, dialog_id)) {
-                                    if (slideText != null) {
-                                        slideText.setEnabled(false);
-                                    }
-                                    delegate.toggleVideoRecordingPause();
-                                    AlertsCreator.ensurePaidMessageConfirmation(currentAccount, dialog_id, 1, payStars -> {
-                                        sendMessageInternal(!NaConfig.INSTANCE.getSilentMessageByDefault().Bool(), 0, 0, payStars, false);
-                                    });
-                                    return true;
-                                }
-                                delegate.needStartRecordVideo(NekoConfig.confirmAVMessage.Bool() ? 3 : 1, infiniteVideoNotify, infiniteSegmentScheduleDate(infiniteVideoSegments), 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, 0);
-                                sendButton.setEffect(effectId = 0);
-                            } else if (NekoConfig.confirmAVMessage.Bool()) {
-                                MediaController.getInstance().stopRecording(2, true, 0, voiceOnce, 0);
-                            } else {
-                                if (recordingAudioVideo && isInScheduleMode()) {
-                                    AlertsCreator.createScheduleDatePickerDialog(parentActivity, parentFragment.getDialogId(), (notify, scheduleDate, scheduleRepeatPeriod) -> MediaController.getInstance().stopRecording(1, notify, scheduleDate, false, 0), () -> MediaController.getInstance().stopRecording(0, false, 0, false, 0), resourcesProvider);
-                                }
-                                if (AlertsCreator.needsPaidMessageAlert(currentAccount, dialog_id)) {
-                                    if (isInVideoMode()) {
-                                        if (slideText != null) {
-                                            slideText.setEnabled(false);
-                                        }
-                                        delegate.toggleVideoRecordingPause();
-                                    } else {
-                                        if (sendButtonVisible) {
-                                            calledRecordRunnable = true;
-                                        }
-                                        MediaController.getInstance().toggleRecordingPause(voiceOnce);
-                                        delegate.needStartRecordAudio(0);
-                                        if (slideText != null) {
-                                            slideText.setEnabled(false);
-                                        }
-                                    }
-                                    AlertsCreator.ensurePaidMessageConfirmation(currentAccount, dialog_id, 1, payStars -> {
-                                        sendMessageInternal(!NaConfig.INSTANCE.getSilentMessageByDefault().Bool(), 0, 0, payStars, false);
-                                    });
-                                    return true;
-                                }
-                                MediaController.getInstance().stopRecording(isInScheduleMode() ? 3 : 1, true, 0, voiceOnce, 0);
-                                delegate.needStartRecordAudio(0);
-                            }
-                            if (!NekoConfig.confirmAVMessage.Bool()) {
-                                recordingAudioVideo = false;
-                                messageTransitionIsRunning = false;
-                                AndroidUtilities.runOnUIThread(moveToSendStateRunnable = () -> {
-                                    moveToSendStateRunnable = null;
-                                    updateRecordInterface(RECORD_STATE_SENDING, true);
-                                }, 200);
-                            }
-                        }
+                        sendLockedRecording(); // NagramX (#video-hold-send): moved out so a hold on the round video can share it
                         getParent().requestDisallowInterceptTouchEvent(true);
                         return true;
                     }
@@ -8127,6 +8074,64 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     public boolean isRecordLocked() {
         return recordingAudioVideo && recordCircle.isSendButtonVisible();
+    }
+
+    // NagramX (#video-hold-send): the locked-state send button's action, verbatim, shared with a hold on the round video
+    public void sendLockedRecording() {
+        if (!hasRecordVideo || calledRecordRunnable) {
+            startedDraggingX = -1;
+            if (hasRecordVideo && isInVideoMode()) {
+                if (AlertsCreator.needsPaidMessageAlert(currentAccount, dialog_id)) {
+                    if (slideText != null) {
+                        slideText.setEnabled(false);
+                    }
+                    delegate.toggleVideoRecordingPause();
+                    AlertsCreator.ensurePaidMessageConfirmation(currentAccount, dialog_id, 1, payStars -> {
+                        sendMessageInternal(!NaConfig.INSTANCE.getSilentMessageByDefault().Bool(), 0, 0, payStars, false);
+                    });
+                    return;
+                }
+                delegate.needStartRecordVideo(NekoConfig.confirmAVMessage.Bool() ? 3 : 1, infiniteVideoNotify, infiniteSegmentScheduleDate(infiniteVideoSegments), 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, 0);
+                sendButton.setEffect(effectId = 0);
+            } else if (NekoConfig.confirmAVMessage.Bool()) {
+                MediaController.getInstance().stopRecording(2, true, 0, voiceOnce, 0);
+            } else {
+                if (recordingAudioVideo && isInScheduleMode()) {
+                    AlertsCreator.createScheduleDatePickerDialog(parentActivity, parentFragment.getDialogId(), (notify, scheduleDate, scheduleRepeatPeriod) -> MediaController.getInstance().stopRecording(1, notify, scheduleDate, false, 0), () -> MediaController.getInstance().stopRecording(0, false, 0, false, 0), resourcesProvider);
+                }
+                if (AlertsCreator.needsPaidMessageAlert(currentAccount, dialog_id)) {
+                    if (isInVideoMode()) {
+                        if (slideText != null) {
+                            slideText.setEnabled(false);
+                        }
+                        delegate.toggleVideoRecordingPause();
+                    } else {
+                        if (sendButtonVisible) {
+                            calledRecordRunnable = true;
+                        }
+                        MediaController.getInstance().toggleRecordingPause(voiceOnce);
+                        delegate.needStartRecordAudio(0);
+                        if (slideText != null) {
+                            slideText.setEnabled(false);
+                        }
+                    }
+                    AlertsCreator.ensurePaidMessageConfirmation(currentAccount, dialog_id, 1, payStars -> {
+                        sendMessageInternal(!NaConfig.INSTANCE.getSilentMessageByDefault().Bool(), 0, 0, payStars, false);
+                    });
+                    return;
+                }
+                MediaController.getInstance().stopRecording(isInScheduleMode() ? 3 : 1, true, 0, voiceOnce, 0);
+                delegate.needStartRecordAudio(0);
+            }
+            if (!NekoConfig.confirmAVMessage.Bool()) {
+                recordingAudioVideo = false;
+                messageTransitionIsRunning = false;
+                AndroidUtilities.runOnUIThread(moveToSendStateRunnable = () -> {
+                    moveToSendStateRunnable = null;
+                    updateRecordInterface(RECORD_STATE_SENDING, true);
+                }, 200);
+            }
+        }
     }
 
     public void cancelRecordingAudioVideo() {
