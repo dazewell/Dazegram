@@ -1335,6 +1335,10 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         private Drawable micDrawable;
         private Drawable vidDrawable;
+        // NagramX (#video-hold-send): the paused round video preview's sound, one more chip in this stack, since a
+        // tap on the video now holds to send
+        private final com.radolyn.ayugram.videonote.VideoPreviewSoundChip soundChip = new com.radolyn.ayugram.videonote.VideoPreviewSoundChip(this,
+                () -> videoToSendMessageObject != null && parentFragment != null && parentFragment.instantCameraView != null ? parentFragment.instantCameraView.getHoldToSend() : null);
 
         @Override
         public void setAlpha(float alpha) {
@@ -1831,6 +1835,8 @@ public class ChatActivityEnterView extends FrameLayout implements
                 periodDrawable.draw(canvas);
                 canvas.restore();
             }
+            // NagramX (#video-hold-send): above the "(1)", or in its slot, with the same gap and scale
+            soundChip.draw(canvas, rectF, lockSize + dpf2(24), controlsScale * (1f - exitTransition) * slideToCancelLockProgress * snapAnimationProgress, lockBackgroundPaint, lockShadowDrawable);
         }
 
         @Override
@@ -1857,6 +1863,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             periodBackgroundDrawable = factory.create(this, colorProvider);
             periodBackgroundDrawable.setRadius(dp(22));
             periodBackgroundDrawable.setPadding(dp(3));
+            soundChip.setGlassBackground(factory.create(this, colorProvider)); // NagramX (#video-hold-send)
 
             updateColors();
         }
@@ -1888,6 +1895,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
             micDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(useGlassDesign ? Theme.key_glass_defaultIcon : Theme.key_chat_messagePanelVoiceLock), PorterDuff.Mode.SRC_IN));
             vidDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(useGlassDesign ? Theme.key_glass_defaultIcon : Theme.key_chat_messagePanelVoiceLock), PorterDuff.Mode.SRC_IN));
+            soundChip.updateColors(getThemedColor(useGlassDesign ? Theme.key_glass_defaultIcon : Theme.key_chat_messagePanelVoiceLock)); // NagramX (#video-hold-send)
         }
 
         private void scale(RectF rect, float s) {
@@ -1903,6 +1911,9 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         @Override
         public boolean onTouchEvent(MotionEvent event) {
+            if (soundChip.onTouchEvent(event)) {
+                return true; // NagramX (#video-hold-send)
+            }
             final int x = (int) event.getX();
             final int y = (int) event.getY();
 
@@ -2010,6 +2021,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                 if (onceVisible && (recordCircle != null && snapAnimationProgress > .1f) && onceRect.contains(x, y)) {
                     return 4;
                 }
+                if (soundChip.contains(x, y)) {
+                    return 6; // NagramX (#video-hold-send)
+                }
                 return HOST_ID;
             }
 
@@ -2020,6 +2034,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
                 if (onceVisible && (recordCircle != null && snapAnimationProgress > .1f)) {
                     list.add(4);
+                }
+                if (soundChip.isVisible()) {
+                    list.add(6); // NagramX (#video-hold-send)
                 }
             }
 
@@ -2033,11 +2050,16 @@ public class ChatActivityEnterView extends FrameLayout implements
                     rect.set((int) onceRect.left, (int) onceRect.top, (int) onceRect.right, (int) onceRect.bottom);
                     info.setBoundsInParent(rect);
                     info.setText(getString(voiceOnce ? R.string.AccActionOnceDeactivate : R.string.AccActionOnceActivate));
+                } else if (id == 6) {
+                    soundChip.populate(info, rect); // NagramX (#video-hold-send)
                 }
             }
 
             @Override
             protected boolean onPerformActionForVirtualView(int id, int action, @Nullable Bundle args) {
+                if (id == 6 && action == AccessibilityNodeInfoCompat.ACTION_CLICK) {
+                    soundChip.toggle(); // NagramX (#video-hold-send)
+                }
                 return true;
             }
         }

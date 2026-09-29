@@ -477,7 +477,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         });
         updateInfiniteButton();
 
-        muteImageView = holdToSend.createSoundButton(context); // NagramX (#video-hold-send): doubles as the preview's sound button
+        muteImageView = new ImageView(context);
         muteImageView.setScaleType(ImageView.ScaleType.CENTER);
         muteImageView.setImageResource(R.drawable.video_mute);
         muteImageView.setAlpha(0.0f);
@@ -1319,7 +1319,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             zoomControlCenterY = Math.min(Math.max((cameraBottom + bottomControlsTop) / 2f, lo), hi);
         }
         zoomControlView.setTranslationY(zoomControlCenterY);
-        holdToSend.layoutSoundButton(muteImageView, cameraContainer); // NagramX (#video-hold-send): rides the circle's rim
         // NagramX: the lens strip fills the band above the slider, so the ratio readout docks in the circle
         if (compact || zoomControlView.hasPresets()) {
             // no vertical room above the row: dock the label inside the camera circle, bottom-center
@@ -1611,6 +1610,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
     public View getMuteImageView() {
         return muteImageView;
+    }
+
+    // NagramX (#video-hold-send): the composer's sound chip reads and flips the preview's sound through it
+    public com.radolyn.ayugram.videonote.VideoHoldToSend getHoldToSend() {
+        return holdToSend;
     }
 
     public Paint getPaint() {
@@ -3873,7 +3877,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             videoPlayer.preparePlayer(Uri.fromFile(file), "other");
             videoPlayer.play();
             videoPlayer.setMute(true);
-            holdToSend.showSoundButton(muteImageView, cameraContainer); // NagramX (#video-hold-send): per preview, the flag can change in between
             startProgressTimer();
 
             cancelZoomInteractions();
@@ -3882,7 +3885,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     ObjectAnimator.ofFloat(buttonsLayout, View.ALPHA, 0.0f),
                     ObjectAnimator.ofFloat(zoomControlView, View.ALPHA, 0.0f),
                     ObjectAnimator.ofInt(paint, AnimationProperties.PAINT_ALPHA, 0),
-                    ObjectAnimator.ofFloat(muteImageView, View.ALPHA, 1.0f));
+                    ObjectAnimator.ofFloat(muteImageView, View.ALPHA, holdToSend.ownsPreviewTaps() ? 0.0f : 1.0f)); // NagramX (#video-hold-send): the composer's sound chip shows it instead
             animatorSet.setDuration(180);
             animatorSet.setInterpolator(new DecelerateInterpolator());
             animatorSet.start();
@@ -5271,7 +5274,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
 
         // NagramX (#video-hold-send): the same for the paused preview. hasVideoPreviewSend says the host sends from
-        // it at all, which hands the preview's taps to the hold and its sound to a button; story replies don't
+        // it at all, which hands the preview's taps to the hold and its sound to the composer; story replies don't
         default boolean hasVideoPreviewSend() {
             return false;
         }
