@@ -67,7 +67,6 @@ public final class VideoHoldToSend {
     private final RectF labelRect = new RectF();
     private float labelAlpha;
     private long labelLastDraw;
-    private boolean labelShown;
 
     private final Runnable armRunnable = this::arm;
 
@@ -81,7 +80,6 @@ public final class VideoHoldToSend {
         switch (ev.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 reset();
-                android.util.Log.i("VideoHoldToSend", "NAX_SMOKE_video-hold-send DOWN enabled=" + NaConfig.INSTANCE.getVideoMessagesHoldToSend().Bool() + " inside=" + contains(circle, ev) + " canSend=" + canSend.run());
                 if (!NaConfig.INSTANCE.getVideoMessagesHoldToSend().Bool() || !contains(circle, ev) || !canSend.run()) {
                     return;
                 }
@@ -100,7 +98,6 @@ public final class VideoHoldToSend {
                 }
                 break;
             case MotionEvent.ACTION_UP:
-                android.util.Log.i("VideoHoldToSend", "NAX_SMOKE_video-hold-send END up tracking=" + tracking + " armed=" + armed);
                 if (tracking && armed && canSend.run()) {
                     // cleared before sending: a paid-message confirmation pauses into the preview instead of
                     // closing the camera, and the disc must not stay painted over it
@@ -169,12 +166,6 @@ public final class VideoHoldToSend {
     public void drawLabel(Canvas canvas, View host, View circle) {
         this.host = host;
         final boolean visible = NaConfig.INSTANCE.getVideoMessagesHoldToSend().Bool() && canSend.run();
-        if (visible != labelShown) {
-            labelShown = visible;
-            if (visible) {
-                android.util.Log.i("VideoHoldToSend", "NAX_SMOKE_video-hold-send BEGIN label build=" + org.telegram.messenger.BuildConfig.BUILD_VERSION_STRING + " app=" + org.telegram.messenger.BuildConfig.APPLICATION_ID);
-            }
-        }
         final long now = SystemClock.elapsedRealtime();
         final long dt = labelLastDraw == 0 ? 16 : Math.min(64, now - labelLastDraw);
         labelLastDraw = now;
@@ -216,7 +207,6 @@ public final class VideoHoldToSend {
             return;
         }
         armed = true;
-        android.util.Log.i("VideoHoldToSend", "NAX_SMOKE_video-hold-send armed buzzing=" + buzzing);
         if (circle != null) {
             // the waveform ends in its own tap; only a dead vibrator route needs this
             if (!buzzing && !NekoConfig.disableVibration.Bool()) {
