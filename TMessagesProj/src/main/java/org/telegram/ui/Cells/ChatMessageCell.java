@@ -9269,7 +9269,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                 totalHeight = dp(82) + namesOffset;
                 boolean canDrawTime = currentMessagesGroup == null || currentPosition == null || currentPosition.last;
                 boolean noCaption = TextUtils.isEmpty(messageObject.caption);
-                if (canDrawTime && noCaption && dp(76) + durationWidth >= backgroundWidth - timeWidth - dp(12)) {
+                // NagramX: outgoing time sits dp(20.5) further left for the ticks (see onLayout timeX), so reserve it here too.
+                int musicTimeMore = timeWidth + (messageObject.isOutOwner() ? dp(20.5f) : 0) + getExtraTimeX();
+                if (canDrawTime && noCaption && dp(76) + durationWidth >= backgroundWidth - musicTimeMore - dp(12)) {
                     totalHeight += dp(14);
                 }
 
@@ -13027,7 +13029,8 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                 }
             }
             String durationString = AndroidUtilities.formatShortDuration((int) duration, (int) duration);
-            durationString = String.format("%s, %s", durationString, AndroidUtilities.formatFileSize(documentAttach.size));
+            // NagramX: same separator updatePlayingMessageProgress draws, or the time-fits check underestimates it.
+            durationString = String.format("%s・%s", durationString, AndroidUtilities.formatFileSize(documentAttach.size));
             int durationWidth = (int) Math.ceil(Theme.chat_audioTimePaint.measureText(durationString));
             widthBeforeNewTimeLine = backgroundWidth - dp(10 + 76) - durationWidth;
             availableTimeWidth = backgroundWidth - dp(28);
