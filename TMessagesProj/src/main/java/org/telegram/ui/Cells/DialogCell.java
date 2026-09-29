@@ -3441,6 +3441,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 final boolean tagsWereEmpty = tags.isEmpty();
                 if (tags.update(currentAccount, dialogsType, currentDialogId)) {
                     if (tagsWereEmpty != tags.isEmpty()) {
+                        android.util.Log.w("NAX", "NAX_SMOKE_dialog-tags-fix tagsFlip type=" + dialogsType + " empty=" + tagsWereEmpty + "->" + tags.isEmpty() + " top=" + getTop() + " h=" + getMeasuredHeight() + " attached=" + attachedToWindow);
                         rebuildLayout = true;
                         requestLayout = true;
                     }

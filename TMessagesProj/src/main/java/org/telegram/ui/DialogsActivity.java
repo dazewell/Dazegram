@@ -2176,6 +2176,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             } else if (pos == RecyclerView.NO_POSITION && firstLayout) {
                 parentPage.layoutManager.scrollToPositionWithOffset(parentPage.dialogsType == DIALOGS_TYPE_DEFAULT && hasHiddenArchive() ? 1 : 0, (int) scrollYOffset);
             }
+            naxSmoke("measure pos=" + pos + " first=" + firstLayout, this, parentPage);
 
             ignoreLayout = true;
             t = ActionBar.getCurrentActionBarHeight() + (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0);
@@ -2239,6 +2240,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         @Override
         protected void onLayout(boolean changed, int l, int t, int r, int b) {
             super.onLayout(changed, l, t, r, b);
+            naxSmoke("layout", this, parentPage);
             lastListPadding = getPaddingTop();
             lastTop = t;
             scrollAdditionalOffset = 0;
@@ -4378,6 +4380,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 public void scrollToPositionWithOffset(int position, int offset) {
                     if (fixOffset) {
                         offset -= viewPage.listView.getPaddingTop();
+                    }
+                    if (!onlySelect && naxSmokeStacks < 40) {
+                        naxSmokeStacks++;
+                        android.util.Log.w("NAX", "NAX_SMOKE_dialog-tags-fix scrollTo type=" + viewPage.dialogsType + " pos=" + position + " off=" + offset + " pad=" + viewPage.listView.getPaddingTop() + " syo=" + (int) scrollYOffset, new Throwable());
                     }
                     super.scrollToPositionWithOffset(position, offset);
                 }
@@ -7103,6 +7109,37 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         return !onlySelect;
     }
 
+    // NAX_SMOKE_dialog-tags-fix: temporary geometry probes, removed before landing.
+    private int naxSmokeCount;
+    private int naxSmokeStacks;
+
+    private void naxSmoke(String where, RecyclerListView list, ViewPage page) {
+        if (onlySelect || naxSmokeCount > 500) {
+            return;
+        }
+        if (naxSmokeCount++ == 0) {
+            android.util.Log.w("NAX", "NAX_SMOKE_dialog-tags-fix BEGIN " + BuildConfig.BUILD_VERSION_STRING + " " + BuildConfig.APPLICATION_ID + " acc=" + currentAccount);
+        }
+        StringBuilder sb = new StringBuilder();
+        if (list != null) {
+            for (int i = 0; i < Math.min(4, list.getChildCount()); i++) {
+                View c = list.getChildAt(i);
+                sb.append(' ').append(list.getChildAdapterPosition(c)).append(':').append(c.getTop()).append('+').append(c.getMeasuredHeight());
+                if (c instanceof DialogCell) {
+                    sb.append(((DialogCell) c).hasTags() ? 'T' : 'n');
+                }
+            }
+        }
+        android.util.Log.w("NAX", "NAX_SMOKE_dialog-tags-fix " + where
+                + (page != null ? " type=" + page.dialogsType + " fv=" + page.layoutManager.findFirstVisibleItemPosition() + " pend=" + page.layoutManager.hasPendingScrollPosition() + " state=" + page.listView.getScrollState() : "")
+                + (list != null ? " pad=" + list.getPaddingTop() + " kids=" + list.getChildCount() : "")
+                + " syo=" + (int) scrollYOffset + " stories=" + hasStories + " search=" + getIdleSearchFieldHeight() + " hidArch=" + hasHiddenArchive()
+                + sb);
+        if (naxSmokeCount == 500) {
+            android.util.Log.w("NAX", "NAX_SMOKE_dialog-tags-fix END cap");
+        }
+    }
+
     public void scrollToFolder(int fid) {
         if (filterTabsView == null) {
             updateFilterTabs(true, true);
@@ -9295,6 +9332,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void setScrollY(float value) {
+        if (value != scrollYOffset) {
+            naxSmoke("setScrollY " + (int) scrollYOffset + "->" + (int) value, null, null);
+        }
         if (viewPages != null) {
             int glowOffset = viewPages[0].listView.getPaddingTop() + (int) value;
             for (int a = 0; a < viewPages.length; a++) {
