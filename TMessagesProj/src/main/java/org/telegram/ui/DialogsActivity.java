@@ -2153,6 +2153,15 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         protected void onMeasure(int widthSpec, int heightSpec) {
             int t = 0;
             int pos = parentPage.layoutManager.findFirstVisibleItemPosition();
+            // NagramX: under a collapsed stories/search header the top row sits above the padding yet is on screen,
+            // and findFirstVisibleItemPosition() skips it. Anchoring on the row below makes a top row that gets
+            // taller after layout (folder tags arriving) grow upward under the tabs.
+            final int naxMinPos = parentPage.dialogsType == DIALOGS_TYPE_DEFAULT && hasHiddenArchive() && parentPage.archivePullViewState == ARCHIVE_ITEM_STATE_HIDDEN ? 1 : 0;
+            while (pos > naxMinPos) {
+                View prev = parentPage.layoutManager.findViewByPosition(pos - 1);
+                if (prev == null || prev.getBottom() <= getPaddingTop() + scrollYOffset) break;
+                pos--;
+            }
             if (pos != RecyclerView.NO_POSITION && parentPage.itemTouchhelper.isIdle() && !parentPage.layoutManager.hasPendingScrollPosition() && parentPage.listView.getScrollState() != RecyclerView.SCROLL_STATE_DRAGGING) {
                 RecyclerView.ViewHolder holder = parentPage.listView.findViewHolderForAdapterPosition(pos);
                 if (holder != null) {
