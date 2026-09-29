@@ -2510,7 +2510,7 @@ obvious choice but keeps bots.
 
 Search is looser. `DialogsSearchAdapter.filter` only sorts users from bots,
 groups and channels by the `allow*` flags (`DialogsSearchAdapter.java:287-300`),
-so deleted accounts pass, and local search adds Saved Messages for any type but 4
+so deleted accounts pass, and local search offers Saved Messages in this picker
 (`MessagesStorage.java:18384-18390`). The recent-contacts strip above the list
 shows whenever `allowUsers` is set (`DialogsSearchAdapter.java:1709-1711`) and
 skips `filter()` entirely. Service accounts (777000 and friends) pass even the
