@@ -98,7 +98,8 @@ public final class VideoHoldToSend {
                 }
                 break;
             case MotionEvent.ACTION_UP:
-                if (tracking && armed && canSend.run()) {
+                // a fast slide-off can report its last position only in the UP, with no MOVE outside first
+                if (tracking && armed && contains(circle, ev) && canSend.run()) {
                     // cleared before sending: a paid-message confirmation pauses into the preview instead of
                     // closing the camera, and the disc must not stay painted over it
                     reset();
