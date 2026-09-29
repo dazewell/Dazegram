@@ -31,16 +31,20 @@ import org.telegram.messenger.R;
 import org.telegram.messenger.Utilities;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.CubicBezierInterpolator;
+import org.telegram.ui.Components.VideoPlayer;
 
 import tw.nekomimi.nekogram.NekoConfig;
 import xyz.nextalone.nagram.NaConfig;
 
 /**
- * Press and hold the round video circle to send a hands-free (locked) recording, so the send doesn't need the
- * small button in the corner. A disc fills the circle from its centre while held, with a buzz that grows with it;
- * once full, letting go sends. Letting go early, sliding off the circle or a second finger (pinch zoom) cancels and
- * the recording carries on. The rim is left alone on purpose: it already carries the recording-time arc.
+ * Press and hold the round video circle to send a hands-free (locked) recording, or the paused preview it
+ * stopped into, so the send doesn't need the small button in the corner. A disc fills the circle from its centre
+ * while held, with a buzz that grows with it; once full, letting go sends. Letting go early, sliding off the
+ * circle or a second finger (pinch zoom) cancels and nothing changes. The rim is left alone on purpose: it
+ * already carries the recording-time arc.
  * A small label above the circle says how it works whenever it's available.
+ * The preview used to toggle its sound on any tap, which the hold now owns, so its sound moves to a chip in the
+ * composer's record controls (VideoPreviewSoundChip) for as long as the preview is up.
  * UI thread only.
  */
 public final class VideoHoldToSend {
@@ -51,6 +55,8 @@ public final class VideoHoldToSend {
 
     private final Utilities.Callback0Return<Boolean> canSend;
     private final Runnable send;
+    private final Utilities.Callback0Return<VideoPlayer> previewPlayer;
+    private final Utilities.Callback0Return<Boolean> previewSends;
 
     private View circle;
     private View host;
@@ -70,9 +76,39 @@ public final class VideoHoldToSend {
 
     private final Runnable armRunnable = this::arm;
 
-    public VideoHoldToSend(Utilities.Callback0Return<Boolean> canSend, Runnable send) {
+    // previewPlayer is the paused preview's player, null while there's no preview. previewSends says whether the
+    // host can send from its preview at all; story replies can't, and keep tap-to-toggle-sound.
+    public VideoHoldToSend(Utilities.Callback0Return<Boolean> canSend, Runnable send,
+                           Utilities.Callback0Return<VideoPlayer> previewPlayer, Utilities.Callback0Return<Boolean> previewSends) {
         this.canSend = canSend;
         this.send = send;
+        this.previewPlayer = previewPlayer;
+        this.previewSends = previewSends;
+    }
+
+    // True when a tap on the preview belongs to the hold rather than toggling its sound.
+    public boolean ownsPreviewTaps() {
+        return NaConfig.INSTANCE.getVideoMessagesHoldToSend().Bool() && previewSends.run();
+    }
+
+    // The paused preview's sound, for the composer's sound chip (VideoPreviewSoundChip), only while a tap on the
+    // preview belongs to the hold.
+    public boolean hasPreviewSound() {
+        return previewPlayer.run() != null && ownsPreviewTaps();
+    }
+
+    public boolean isPreviewMuted() {
+        final VideoPlayer player = previewPlayer.run();
+        return player == null || player.isMuted();
+    }
+
+    public boolean togglePreviewSound() {
+        final VideoPlayer player = previewPlayer.run();
+        if (player == null || !ownsPreviewTaps()) {
+            return false;
+        }
+        player.setMute(!player.isMuted());
+        return true;
     }
 
     // Observes the host's touch stream and never consumes it, so the host's own pinch-to-zoom keeps working.
