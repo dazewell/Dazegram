@@ -3795,12 +3795,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         sendButton.setScaleY(0.1f);
         sendButton.setAlpha(0.0f);
         sendButtonContainer.addView(sendButton, LayoutHelper.createFrame(100, DEFAULT_HEIGHT, Gravity.RIGHT | Gravity.BOTTOM));
-        sendButton.setOnClickListener(view -> {
-            if ((messageSendPreview != null && messageSendPreview.isShowing()) || (runningAnimationAudio != null && runningAnimationAudio.isRunning()) || moveToSendStateRunnable != null) {
-                return;
-            }
-            sendMessage();
-        });
+        sendButton.setOnClickListener(view -> performSendButtonClick()); // NagramX (#video-hold-send): body moved out so a hold on the round video preview can share it
         sendButton.setOnLongClickListener(this::onSendLongClick);
         if (AndroidUtilities.isAccessibilityScreenReaderEnabled()) {
             sendButtonContainer.setOnLongClickListener(this::onSendLongClick);
@@ -8074,6 +8069,14 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     public boolean isRecordLocked() {
         return recordingAudioVideo && recordCircle.isSendButtonVisible();
+    }
+
+    // NagramX (#video-hold-send): the send button's click, verbatim, shared with a hold on the paused round video preview
+    public void performSendButtonClick() {
+        if ((messageSendPreview != null && messageSendPreview.isShowing()) || (runningAnimationAudio != null && runningAnimationAudio.isRunning()) || moveToSendStateRunnable != null) {
+            return;
+        }
+        sendMessage();
     }
 
     // NagramX (#video-hold-send): the locked-state send button's action, verbatim, shared with a hold on the round video

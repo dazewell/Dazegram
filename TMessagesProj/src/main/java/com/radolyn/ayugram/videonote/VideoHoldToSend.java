@@ -3,6 +3,7 @@ package com.radolyn.ayugram.videonote;
 import static org.telegram.messenger.AndroidUtilities.dp;
 
 import android.animation.ValueAnimator;
+import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -10,6 +11,7 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.InsetDrawable;
 import android.media.AudioAttributes;
 import android.os.Build;
 import android.os.SystemClock;
@@ -20,7 +22,9 @@ import android.text.TextPaint;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.animation.LinearInterpolator;
+import android.widget.ImageView;
 
 import androidx.core.graphics.ColorUtils;
 
@@ -31,16 +35,20 @@ import org.telegram.messenger.R;
 import org.telegram.messenger.Utilities;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.CubicBezierInterpolator;
+import org.telegram.ui.Components.VideoPlayer;
 
 import tw.nekomimi.nekogram.NekoConfig;
 import xyz.nextalone.nagram.NaConfig;
 
 /**
- * Press and hold the round video circle to send a hands-free (locked) recording, so the send doesn't need the
- * small button in the corner. A disc fills the circle from its centre while held, with a buzz that grows with it;
- * once full, letting go sends. Letting go early, sliding off the circle or a second finger (pinch zoom) cancels and
- * the recording carries on. The rim is left alone on purpose: it already carries the recording-time arc.
+ * Press and hold the round video circle to send a hands-free (locked) recording, or the paused preview it
+ * stopped into, so the send doesn't need the small button in the corner. A disc fills the circle from its centre
+ * while held, with a buzz that grows with it; once full, letting go sends. Letting go early, sliding off the
+ * circle or a second finger (pinch zoom) cancels and nothing changes. The rim is left alone on purpose: it
+ * already carries the recording-time arc.
  * A small label above the circle says how it works whenever it's available.
+ * The preview used to toggle its sound on any tap, which the hold now owns, so the host's mute glyph becomes a
+ * sound button on the circle's edge for as long as the preview is up.
  * UI thread only.
  */
 public final class VideoHoldToSend {
@@ -51,6 +59,9 @@ public final class VideoHoldToSend {
 
     private final Utilities.Callback0Return<Boolean> canSend;
     private final Runnable send;
+    private final Utilities.Callback0Return<VideoPlayer> previewPlayer;
+    private final Utilities.Callback0Return<Boolean> previewSends;
+    private Drawable soundBackground;
 
     private View circle;
     private View host;
@@ -70,9 +81,93 @@ public final class VideoHoldToSend {
 
     private final Runnable armRunnable = this::arm;
 
-    public VideoHoldToSend(Utilities.Callback0Return<Boolean> canSend, Runnable send) {
+    // previewPlayer is the paused preview's player, null while there's no preview. previewSends says whether the
+    // host can send from its preview at all; story replies can't, and keep tap-to-toggle-sound.
+    public VideoHoldToSend(Utilities.Callback0Return<Boolean> canSend, Runnable send,
+                           Utilities.Callback0Return<VideoPlayer> previewPlayer, Utilities.Callback0Return<Boolean> previewSends) {
         this.canSend = canSend;
         this.send = send;
+        this.previewPlayer = previewPlayer;
+        this.previewSends = previewSends;
+    }
+
+    // True when a tap on the preview belongs to the hold rather than toggling its sound.
+    public boolean ownsPreviewTaps() {
+        return NaConfig.INSTANCE.getVideoMessagesHoldToSend().Bool() && previewSends.run();
+    }
+
+    // The host's mute glyph, which the host still styles as before. It only takes touches (and shows up for
+    // accessibility) while there's a preview it owns, read live so it can't outlive the preview and sit
+    // invisibly on the circle during the next recording.
+    public ImageView createSoundButton(Context context) {
+        final ImageView button = new ImageView(context) {
+            @Override
+            public boolean onTouchEvent(MotionEvent event) {
+                return soundButtonActive() && super.onTouchEvent(event);
+            }
+
+            @Override
+            public boolean performClick() {
+                return soundButtonActive() && super.performClick();
+            }
+
+            @Override
+            public boolean isImportantForAccessibility() {
+                return soundButtonActive() && super.isImportantForAccessibility();
+            }
+        };
+        button.setOnClickListener(v -> {
+            final VideoPlayer player = previewPlayer.run();
+            if (player != null) {
+                player.setMute(!player.isMuted());
+                setSoundIcon((ImageView) v, player.isMuted());
+            }
+        });
+        return button;
+    }
+
+    // On entering the preview: a sound button on the circle's edge, or with the feature off, the host's own
+    // centred glyph exactly as it was.
+    public void showSoundButton(ImageView button, View circle) {
+        if (ownsPreviewTaps()) {
+            if (soundBackground == null) {
+                soundBackground = new InsetDrawable(Theme.createSimpleSelectorCircleDrawable(dp(40), 0x4d000000, 0x33ffffff), dp(4));
+            }
+            button.setBackground(soundBackground);
+            button.setScaleX(1f);
+            button.setScaleY(1f);
+            final VideoPlayer player = previewPlayer.run();
+            setSoundIcon(button, player == null || player.isMuted());
+        } else {
+            button.setBackground(null);
+            button.setImageResource(R.drawable.video_mute);
+            button.setContentDescription(null);
+        }
+        layoutSoundButton(button, circle);
+    }
+
+    // Keeps the sound button on the circle's bottom-end edge, mostly outside it, in the corner of the circle's
+    // bounds that isn't video. The button is laid out centred with a top margin, the circle centred and translated.
+    public void layoutSoundButton(View button, View circle) {
+        if (!ownsPreviewTaps()) {
+            button.setTranslationX(0);
+            button.setTranslationY(0);
+            return;
+        }
+        final float offset = (circle.getLayoutParams().width / 2f + dp(12)) * 0.7071f;
+        final int topMargin = ((ViewGroup.MarginLayoutParams) button.getLayoutParams()).topMargin;
+        button.setTranslationX(circle.getTranslationX() + (LocaleController.isRTL ? -offset : offset));
+        button.setTranslationY(circle.getTranslationY() + offset - topMargin);
+    }
+
+    private boolean soundButtonActive() {
+        return previewPlayer.run() != null && ownsPreviewTaps();
+    }
+
+    // Same icon for the same state as the story editor's mute button.
+    private static void setSoundIcon(ImageView button, boolean muted) {
+        button.setImageResource(muted ? R.drawable.media_unmute : R.drawable.media_mute);
+        button.setContentDescription(LocaleController.getString(muted ? R.string.Unmute : R.string.Mute));
     }
 
     // Observes the host's touch stream and never consumes it, so the host's own pinch-to-zoom keeps working.

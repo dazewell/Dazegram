@@ -39183,6 +39183,24 @@ public class ChatActivity extends BaseFragment implements
         }
     }
 
+    // NagramX (#video-hold-send): and on its paused preview, through the composer's send button
+    @Override
+    public boolean hasVideoPreviewSend() {
+        return chatActivityEnterView != null;
+    }
+
+    @Override
+    public boolean canSendVideoPreview() {
+        return chatActivityEnterView != null && chatActivityEnterView.hasVideoToSend() && chatActivityEnterView.isSendButtonVisible();
+    }
+
+    @Override
+    public void sendVideoPreview() {
+        if (canSendVideoPreview()) {
+            chatActivityEnterView.performSendButtonClick();
+        }
+    }
+
     // NagramX: draft-guard generation the recorder snapshots into a finalize request; see videoDraftToken.
     @Override
     public int getVideoDraftToken() {

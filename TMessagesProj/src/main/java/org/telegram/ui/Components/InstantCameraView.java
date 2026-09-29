@@ -208,11 +208,20 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     // recorder is reused by the next open, and its pending UI posts read videoFile, file, size and recordedTime
     // live, so no new recording may start until it is done. UI thread only.
     private boolean encoderTeardownPending;
-    // NagramX (#video-hold-send): hold the circle to send a locked recording. The same busy flags send() checks,
-    // because the composer wind-down the send runs doesn't guard against a stopped or handed-off camera
+    // NagramX (#video-hold-send): hold the circle to send a locked recording, or its paused preview through the
+    // composer's send button. Never a handed-off file: the preview's send wind-down dismisses it even when send()
+    // refuses. A recording also needs the teardown flag, since that wind-down doesn't guard against a stopped camera
     private final com.radolyn.ayugram.videonote.VideoHoldToSend holdToSend = new com.radolyn.ayugram.videonote.VideoHoldToSend(
-            () -> recording && !cameraFileHandedOff && !encoderTeardownPending && delegate != null && delegate.isRecordLocked(),
-            () -> delegate.sendLockedRecording());
+            () -> !cameraFileHandedOff && delegate != null && (recording ? !encoderTeardownPending && delegate.isRecordLocked() : videoPlayer != null && delegate.canSendVideoPreview()),
+            () -> {
+                if (recording) {
+                    delegate.sendLockedRecording();
+                } else {
+                    delegate.sendVideoPreview();
+                }
+            },
+            () -> videoPlayer,
+            () -> delegate != null && delegate.hasVideoPreviewSend());
     private long recordedTime;
     private boolean cancelled;
 
@@ -468,7 +477,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         });
         updateInfiniteButton();
 
-        muteImageView = new ImageView(context);
+        muteImageView = holdToSend.createSoundButton(context); // NagramX (#video-hold-send): doubles as the preview's sound button
         muteImageView.setScaleType(ImageView.ScaleType.CENTER);
         muteImageView.setImageResource(R.drawable.video_mute);
         muteImageView.setAlpha(0.0f);
@@ -1310,6 +1319,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             zoomControlCenterY = Math.min(Math.max((cameraBottom + bottomControlsTop) / 2f, lo), hi);
         }
         zoomControlView.setTranslationY(zoomControlCenterY);
+        holdToSend.layoutSoundButton(muteImageView, cameraContainer); // NagramX (#video-hold-send): rides the circle's rim
         // NagramX: the lens strip fills the band above the slider, so the ratio readout docks in the circle
         if (compact || zoomControlView.hasPresets()) {
             // no vertical room above the row: dock the label inside the camera circle, bottom-center
@@ -3863,6 +3873,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             videoPlayer.preparePlayer(Uri.fromFile(file), "other");
             videoPlayer.play();
             videoPlayer.setMute(true);
+            holdToSend.showSoundButton(muteImageView, cameraContainer); // NagramX (#video-hold-send): per preview, the flag can change in between
             startProgressTimer();
 
             cancelZoomInteractions();
@@ -4841,7 +4852,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         holdToSend.onTouchEvent(ev, cameraContainer); // NagramX (#video-hold-send): observes only; pinch-to-zoom below still needs the DOWN
 
         if (ev.getAction() == MotionEvent.ACTION_DOWN && delegate != null) {
-            if (videoPlayer != null) {
+            if (videoPlayer != null && !holdToSend.ownsPreviewTaps()) { // NagramX (#video-hold-send): else the preview's taps are the hold's
                 boolean mute = !videoPlayer.isMuted();
                 videoPlayer.setMute(mute);
                 if (muteAnimation != null) {
@@ -5257,6 +5268,19 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
 
         default void sendLockedRecording() {
+        }
+
+        // NagramX (#video-hold-send): the same for the paused preview. hasVideoPreviewSend says the host sends from
+        // it at all, which hands the preview's taps to the hold and its sound to a button; story replies don't
+        default boolean hasVideoPreviewSend() {
+            return false;
+        }
+
+        default boolean canSendVideoPreview() {
+            return false;
+        }
+
+        default void sendVideoPreview() {
         }
 
         // NagramX: infinite video message: send a finished segment while the recorder keeps going. The normal
