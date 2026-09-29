@@ -8098,18 +8098,23 @@ public class ChatActivityEnterView extends FrameLayout implements
         return recordingAudioVideo && recordCircle.isSendButtonVisible();
     }
 
-    // NagramX (#video-hold-send): the send button's click, verbatim, shared with a hold on the paused round video preview
+    // NagramX (#video-hold-send): the send button's click, shared with a hold on the paused round video preview
     public void performSendButtonClick() {
-        if ((messageSendPreview != null && messageSendPreview.isShowing()) || (runningAnimationAudio != null && runningAnimationAudio.isRunning()) || moveToSendStateRunnable != null) {
+        if (isSendClickIgnored()) {
             return;
         }
         sendMessage();
     }
 
-    // NagramX (#video-hold-send): whether a tap there would reach that click at all. Its container drops touches
-    // while sending is disabled, and a bot's streaming reply covers it with a stop button
+    private boolean isSendClickIgnored() {
+        return (messageSendPreview != null && messageSendPreview.isShowing()) || (runningAnimationAudio != null && runningAnimationAudio.isRunning()) || moveToSendStateRunnable != null;
+    }
+
+    // NagramX (#video-hold-send): whether a tap there would send right now. Its container drops touches while
+    // sending is disabled, a bot's streaming reply covers it with a stop button, and the click itself ignores
+    // taps mid-transition
     public boolean isSendButtonTappable() {
-        return isSendButtonVisible() && isSendButtonEnabled() && !animatorIsBlockedByStreaming.getValue();
+        return sendButton.isShown() && isSendButtonEnabled() && !animatorIsBlockedByStreaming.getValue() && !isSendClickIgnored();
     }
 
     // NagramX (#video-hold-send): the locked-state send button's action, verbatim, shared with a hold on the round video
