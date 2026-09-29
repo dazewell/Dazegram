@@ -3028,12 +3028,12 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                         }
                     }
                 } else if (intent.getAction().equals(com.radolyn.ayugram.videonote.VideoNoteShortcut.ACTION)) {
-                    // NagramX: "Video memo" launcher shortcut opens Saved Messages through the normal chat push below,
-                    // and that chat starts the round video once it has opened
-                    long selfId = com.radolyn.ayugram.videonote.VideoNoteShortcut.accept(intent, intentAccount[0]);
-                    if (selfId != 0) {
+                    // NagramX: "Video memo" launcher shortcut opens Saved Messages or the chosen person through the
+                    // normal chat push below, and that chat starts the round video once it has opened
+                    long userId = com.radolyn.ayugram.videonote.VideoNoteShortcut.accept(intent, intentAccount[0]);
+                    if (userId != 0) {
                         NotificationCenter.getInstance(intentAccount[0]).postNotificationName(NotificationCenter.closeChats);
-                        push_user_id = selfId;
+                        push_user_id = userId;
                     }
                 } else if (intent.getAction().startsWith("com.tmessages.openchat")) {
 //                    Integer chatIdInt = intent.getIntExtra("chatId", 0);
