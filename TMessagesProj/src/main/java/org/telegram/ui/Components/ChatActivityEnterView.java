@@ -8106,6 +8106,12 @@ public class ChatActivityEnterView extends FrameLayout implements
         sendMessage();
     }
 
+    // NagramX (#video-hold-send): whether a tap there would reach that click at all. Its container drops touches
+    // while sending is disabled, and a bot's streaming reply covers it with a stop button
+    public boolean isSendButtonTappable() {
+        return isSendButtonVisible() && isSendButtonEnabled() && !animatorIsBlockedByStreaming.getValue();
+    }
+
     // NagramX (#video-hold-send): the locked-state send button's action, verbatim, shared with a hold on the round video
     public void sendLockedRecording() {
         if (!hasRecordVideo || calledRecordRunnable) {

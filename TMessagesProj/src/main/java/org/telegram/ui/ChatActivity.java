@@ -39191,7 +39191,7 @@ public class ChatActivity extends BaseFragment implements
 
     @Override
     public boolean canSendVideoPreview() {
-        return chatActivityEnterView != null && chatActivityEnterView.hasVideoToSend() && chatActivityEnterView.isSendButtonVisible();
+        return chatActivityEnterView != null && chatActivityEnterView.hasVideoToSend() && chatActivityEnterView.isSendButtonTappable();
     }
 
     @Override
