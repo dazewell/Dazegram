@@ -7114,7 +7114,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private int naxSmokeStacks;
 
     private void naxSmoke(String where, RecyclerListView list, ViewPage page) {
-        if (onlySelect || naxSmokeCount > 500) {
+        if (onlySelect || naxSmokeCount > 1500) {
             return;
         }
         if (naxSmokeCount++ == 0) {
@@ -7122,6 +7122,21 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
         StringBuilder sb = new StringBuilder();
         if (list != null) {
+            int[] loc = new int[2];
+            list.getLocationOnScreen(loc);
+            sb.append(" listScrY=").append(loc[1]).append(" listTy=").append((int) list.getTranslationY());
+            if (page != null) {
+                sb.append(" pageTy=").append((int) page.getTranslationY()).append(" pageTx=").append((int) page.getTranslationX());
+            }
+            if (filterTabsView != null) {
+                filterTabsView.getLocationOnScreen(loc);
+                sb.append(" tabsScr=").append(loc[1]).append('+').append(filterTabsView.getHeight()).append(" tabsTy=").append((int) filterTabsView.getTranslationY()).append(" tabsVis=").append(filterTabsView.getVisibility());
+            }
+            if (fragmentView instanceof ContentView) {
+                fragmentView.getLocationOnScreen(loc);
+                sb.append(" surf=").append((int) ((ContentView) fragmentView).naxTopSurfaceBottom).append(" surfAdd=").append((int) ((ContentView) fragmentView).naxTopSurfaceAdditionalHeight).append(" contentScrY=").append(loc[1]);
+            }
+            sb.append(" topPanel=").append(topPanelLayout != null ? (int) topPanelLayout.getAnimatedHeightWithPadding(0) : -1);
             for (int i = 0; i < Math.min(4, list.getChildCount()); i++) {
                 View c = list.getChildAt(i);
                 sb.append(' ').append(list.getChildAdapterPosition(c)).append(':').append(c.getTop()).append('+').append(c.getMeasuredHeight());
@@ -7135,7 +7150,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 + (list != null ? " pad=" + list.getPaddingTop() + " kids=" + list.getChildCount() : "")
                 + " syo=" + (int) scrollYOffset + " stories=" + hasStories + " search=" + getIdleSearchFieldHeight() + " hidArch=" + hasHiddenArchive()
                 + sb);
-        if (naxSmokeCount == 500) {
+        if (naxSmokeCount == 1500) {
             android.util.Log.w("NAX", "NAX_SMOKE_dialog-tags-fix END cap");
         }
     }
