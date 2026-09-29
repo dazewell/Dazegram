@@ -35,7 +35,8 @@ import java.util.List;
 import xyz.nextalone.nagram.NaConfig;
 
 /**
- * Launcher shortcut that opens Saved Messages and starts a hands-free round video right away.
+ * Launcher shortcut that opens Saved Messages, or the person picked in VideoNoteTarget, and starts a hands-free round
+ * video right away.
  * All state here is touched on the UI thread only.
  */
 public final class VideoNoteShortcut {
@@ -45,7 +46,7 @@ public final class VideoNoteShortcut {
     private static final String EXTRA_HASH = "hash";
     private static final long PENDING_TTL_MS = 10_000;
 
-    // Armed when the intent is accepted, consumed by the Saved Messages chat it opens. Static on purpose: it dies with
+    // Armed when the intent is accepted, consumed by the chat it opens. Static on purpose: it dies with
     // the process, so a restored activity or fragment can never replay the camera start.
     private static int pendingAccount = -1;
     private static long pendingDialogId;
@@ -116,7 +117,8 @@ public final class VideoNoteShortcut {
 
     /**
      * LaunchActivity.handleIntent's action chain. Consumes the action so a recreate can't replay it, and returns the
-     * Saved Messages user id to open, or 0 to fall through to a plain launch (forged intent, or the setting is off).
+     * user id to open (the chosen person or Saved Messages), or 0 to fall through to a plain launch (forged intent, or
+     * the setting is off).
      */
     public static long accept(Intent intent, int account) {
         boolean genuine = isGenuine(intent);
@@ -128,11 +130,14 @@ public final class VideoNoteShortcut {
             }
             return 0;
         }
-        long selfId = UserConfig.getInstance(account).getClientUserId();
+        long userId = VideoNoteTarget.resolve(account);
         pendingAccount = account;
-        pendingDialogId = selfId;
+        pendingDialogId = userId;
         pendingSince = SystemClock.elapsedRealtime();
-        return selfId;
+        if (phase == STARTING) {
+            phaseSince = pendingSince; // the database read above mustn't eat into the start timeout
+        }
+        return userId;
     }
 
     private static boolean isPendingChat(ChatActivity chat) {
@@ -187,7 +192,7 @@ public final class VideoNoteShortcut {
     // calls it, ends the session too (onPasscodeShown). Everything else below only decides when to lock early.
 
     private static final int IDLE = 0;
-    private static final int STARTING = 1;   // gate passed, the Saved Messages chat is opening
+    private static final int STARTING = 1;   // gate passed, the memo's chat is opening
     private static final int RECORDING = 2;  // camera open, or its clip sitting in the preview
     private static final int FINALIZING = 3; // stopped by us, waiting for the clip to land in the preview (and the draft store)
     private static final int SENDING = 4;    // send requested, waiting for the clip to reach SendMessagesHelper
