@@ -236,8 +236,8 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
         builder.show();
     }
 
-    // Upstream's attach-bot chat chooser, narrowed to people: it already drops bots, deleted accounts and yourself,
-    // from search results too. The recent-contacts strip above the list isn't filtered, hence the check on the pick.
+    // Upstream's attach-bot chat chooser, narrowed to people. Its list drops bots, deleted accounts and yourself, but
+    // search and the recent-contacts strip let some of those through, hence the check on every pick.
     private void openTargetPicker() {
         Bundle args = new Bundle();
         args.putBoolean("onlySelect", true);

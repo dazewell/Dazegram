@@ -2500,19 +2500,21 @@ storage-queue read and `putUser`s the result, so ChatActivity never latches.
 
 *(Established 2026-09-28, `#video-note-shortcut`.)*
 
-## A people-only chat picker: the attach-bot chooser, whose recent strip isn't filtered
+## A people-only chat picker: the attach-bot chooser, whose search and recent strip leak
 
 `DialogsActivity` with `dialogsType = DIALOGS_TYPE_START_ATTACH_BOT`, `onlySelect`,
 and `allowUsers` as the only `allow*` flag set lists existing chats with people:
 non-deleted, not bots, not yourself (`DialogsActivity.java:11448-11458`), under
-the title *Choose User* (`:3664-3665`). `DialogsSearchAdapter.filter` applies the same
-flags to search results (`DialogsSearchAdapter.java:287-300`).
-`DIALOGS_TYPE_USERS_ONLY` looks like the obvious choice but keeps bots, and its
-search results aren't filtered.
+the title *Choose User* (`:3664-3665`). `DIALOGS_TYPE_USERS_ONLY` looks like the
+obvious choice but keeps bots.
 
-The recent-contacts strip above the list shows whenever `allowUsers` is set
-(`DialogsSearchAdapter.java:1709-1711`) and skips `filter()`. The delegate must
-check the pick itself, and return `false` to keep the picker open. Service
-accounts (777000 and friends) also pass the list filter.
+Search is looser. `DialogsSearchAdapter.filter` only sorts users from bots,
+groups and channels by the `allow*` flags (`DialogsSearchAdapter.java:287-300`),
+so deleted accounts pass, and local search adds Saved Messages for any type but 4
+(`MessagesStorage.java:18384-18390`). The recent-contacts strip above the list
+shows whenever `allowUsers` is set (`DialogsSearchAdapter.java:1709-1711`) and
+skips `filter()` entirely. Service accounts (777000 and friends) pass even the
+list filter. So the delegate must validate every pick, and return `false` to
+keep the picker open.
 
 *(Established 2026-09-28, `#video-note-shortcut`.)*
