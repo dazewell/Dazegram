@@ -46,9 +46,9 @@ public final class VideoPreviewSoundChip {
         this.host = host;
         this.hold = hold;
         shown = new AnimatedFloat(host, 0, 320, CubicBezierInterpolator.EASE_OUT_QUINT);
-        // the stories' own sound toggle icons, showing the current state
-        mutedIcon = host.getResources().getDrawable(R.drawable.msg_voice_muted).mutate();
-        unmutedIcon = host.getResources().getDrawable(R.drawable.msg_voice_unmuted).mutate();
+        // the story editor's sound toggle icons, showing the current state: media_unmute is the crossed-out speaker
+        mutedIcon = host.getResources().getDrawable(R.drawable.media_unmute).mutate();
+        unmutedIcon = host.getResources().getDrawable(R.drawable.media_mute).mutate();
     }
 
     // The Liquid Glass background, made the same way as the host's other chips.
