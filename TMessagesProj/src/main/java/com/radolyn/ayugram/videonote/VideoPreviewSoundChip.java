@@ -33,6 +33,7 @@ public final class VideoPreviewSoundChip {
 
     private final View host;
     private final Utilities.Callback0Return<VideoHoldToSend> hold;
+    private final Runnable accessibilityChanged;
     private final AnimatedFloat shown;
     private final Drawable mutedIcon;
     private final Drawable unmutedIcon;
@@ -41,10 +42,12 @@ public final class VideoPreviewSoundChip {
     private boolean visible;
     private boolean pressed;
 
-    // hold is the camera's hold-to-send while the composer has a round video preview, otherwise null
-    public VideoPreviewSoundChip(View host, Utilities.Callback0Return<VideoHoldToSend> hold) {
+    // hold is the camera's hold-to-send while the composer has a round video preview, otherwise null.
+    // accessibilityChanged refreshes the host's virtual views when the chip comes, goes or flips.
+    public VideoPreviewSoundChip(View host, Utilities.Callback0Return<VideoHoldToSend> hold, Runnable accessibilityChanged) {
         this.host = host;
         this.hold = hold;
+        this.accessibilityChanged = accessibilityChanged;
         shown = new AnimatedFloat(host, 0, 320, CubicBezierInterpolator.EASE_OUT_QUINT);
         // the story editor's sound toggle icons, showing the current state: media_unmute is the crossed-out speaker
         mutedIcon = host.getResources().getDrawable(R.drawable.media_unmute).mutate();
@@ -70,7 +73,11 @@ public final class VideoPreviewSoundChip {
     // fill and shadow are what the host draws its chips with when there is no glass.
     public void draw(Canvas canvas, RectF top, float step, float scale, Paint fill, Drawable shadow) {
         final VideoHoldToSend h = hold.run();
+        final boolean wasVisible = visible;
         visible = h != null && h.hasPreviewSound();
+        if (visible != wasVisible) {
+            accessibilityChanged.run();
+        }
         final float s = scale * shown.set(visible);
         rect.set(top.left, top.top - step, top.right, top.bottom - step);
         if (s <= 0f) {
@@ -124,16 +131,22 @@ public final class VideoPreviewSoundChip {
         return visible && rect.contains(x, y);
     }
 
-    public void toggle() {
+    public boolean toggle() {
         final VideoHoldToSend h = hold.run();
-        if (h != null && h.togglePreviewSound()) {
+        if (visible && h != null && h.togglePreviewSound()) {
             host.invalidate();
+            accessibilityChanged.run();
+            return true;
         }
+        return false;
     }
 
     public void populate(AccessibilityNodeInfoCompat info, Rect tmp) {
         tmp.set((int) rect.left, (int) rect.top, (int) rect.right, (int) rect.bottom);
         info.setBoundsInParent(tmp);
+        info.setClassName("android.widget.Button");
+        info.setEnabled(true);
+        info.addAction(AccessibilityNodeInfoCompat.ACTION_CLICK);
         final VideoHoldToSend h = hold.run();
         info.setText(LocaleController.getString(h == null || h.isPreviewMuted() ? R.string.Unmute : R.string.Mute));
     }

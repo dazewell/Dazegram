@@ -1338,7 +1338,12 @@ public class ChatActivityEnterView extends FrameLayout implements
         // NagramX (#video-hold-send): the paused round video preview's sound, one more chip in this stack, since a
         // tap on the video now holds to send
         private final com.radolyn.ayugram.videonote.VideoPreviewSoundChip soundChip = new com.radolyn.ayugram.videonote.VideoPreviewSoundChip(this,
-                () -> videoToSendMessageObject != null && parentFragment != null && parentFragment.instantCameraView != null ? parentFragment.instantCameraView.getHoldToSend() : null);
+                () -> videoToSendMessageObject != null && parentFragment != null && parentFragment.instantCameraView != null ? parentFragment.instantCameraView.getHoldToSend() : null,
+                () -> {
+                    if (this.virtualViewHelper != null) {
+                        this.virtualViewHelper.invalidateRoot();
+                    }
+                });
 
         @Override
         public void setAlpha(float alpha) {
@@ -2057,8 +2062,8 @@ public class ChatActivityEnterView extends FrameLayout implements
 
             @Override
             protected boolean onPerformActionForVirtualView(int id, int action, @Nullable Bundle args) {
-                if (id == 6 && action == AccessibilityNodeInfoCompat.ACTION_CLICK) {
-                    soundChip.toggle(); // NagramX (#video-hold-send)
+                if (id == 6) {
+                    return action == AccessibilityNodeInfoCompat.ACTION_CLICK && soundChip.toggle(); // NagramX (#video-hold-send)
                 }
                 return true;
             }
