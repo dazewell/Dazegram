@@ -2483,3 +2483,38 @@ by exactly the header, and the header stays tappable above it.
 `(0, 0, parentWidth, b)` rather than touching that list.
 
 *(Established 2026-09-28, `#video-note-shortcut`.)*
+
+## Opening a chat for an arbitrary user id: the gate passes it, ChatActivity blocks on it
+
+`MessagesController.checkCanOpenChat` only checks a restriction reason when the
+user is already in memory. An uncached id returns `true` untouched
+(`MessagesController.java:23151-23152`). `ChatActivity.onFragmentCreate` then
+reads the user from the database on the storage queue while the UI thread waits
+on a `CountDownLatch` with no timeout, and returns `false` if the row is missing
+(`ChatActivity.java:3162-3178`). The push then fails with nothing on screen and
+no fallback.
+
+A launcher or intent path that pushes a stored user id has to resolve the user
+itself first. `#video-note-shortcut`'s `VideoNoteTarget.resolve` does a bounded
+storage-queue read and `putUser`s the result, so ChatActivity never latches.
+
+*(Established 2026-09-28, `#video-note-shortcut`.)*
+
+## A people-only chat picker: the attach-bot chooser, whose search and recent strip leak
+
+`DialogsActivity` with `dialogsType = DIALOGS_TYPE_START_ATTACH_BOT`, `onlySelect`,
+and `allowUsers` as the only `allow*` flag set lists existing chats with people:
+non-deleted, not bots, not yourself (`DialogsActivity.java:11448-11458`), under
+the title *Choose User* (`:3664-3665`). `DIALOGS_TYPE_USERS_ONLY` looks like the
+obvious choice but keeps bots.
+
+Search is looser. `DialogsSearchAdapter.filter` only sorts users from bots,
+groups and channels by the `allow*` flags (`DialogsSearchAdapter.java:287-300`),
+so deleted accounts pass, and local search offers Saved Messages in this picker
+(`MessagesStorage.java:18384-18390`). The recent-contacts strip above the list
+shows whenever `allowUsers` is set (`DialogsSearchAdapter.java:1709-1711`) and
+skips `filter()` entirely. Service accounts (777000 and friends) pass even the
+list filter. So the delegate must validate every pick, and return `false` to
+keep the picker open.
+
+*(Established 2026-09-28, `#video-note-shortcut`.)*

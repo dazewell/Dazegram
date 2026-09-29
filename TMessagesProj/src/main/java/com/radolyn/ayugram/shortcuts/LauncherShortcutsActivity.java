@@ -7,6 +7,7 @@ import android.animation.LayoutTransition;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Bundle;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -20,24 +21,37 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.radolyn.ayugram.videonote.VideoNoteShortcut;
+import com.radolyn.ayugram.videonote.VideoNoteTarget;
 
+import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.MediaDataController;
+import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.R;
+import org.telegram.messenger.UserObject;
+import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ActionBar.ThemeDescription;
+import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RecyclerListView;
+import org.telegram.ui.DialogsActivity;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
+import kotlin.Unit;
 import tw.nekomimi.nekogram.config.CellGroup;
 import tw.nekomimi.nekogram.config.cell.AbstractConfigCell;
 import tw.nekomimi.nekogram.config.cell.ConfigCellCustom;
 import tw.nekomimi.nekogram.config.cell.ConfigCellDivider;
 import tw.nekomimi.nekogram.config.cell.ConfigCellHeader;
 import tw.nekomimi.nekogram.config.cell.ConfigCellSelectBox;
+import tw.nekomimi.nekogram.config.cell.ConfigCellText;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextCheck;
 import tw.nekomimi.nekogram.settings.BaseNekoXSettingsActivity;
+import tw.nekomimi.nekogram.ui.PopupBuilder;
 import xyz.nextalone.nagram.NaConfig;
 
 /**
@@ -64,13 +78,18 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
             getString(R.string.CameraInVideoMessagesFront),
             getString(R.string.CameraInVideoMessagesRear)
     }, null));
+    private final ConfigCellText videoNoteTargetRow = (ConfigCellText) cellGroup.appendCell(new ConfigCellText("VideoNoteShortcutTarget", null));
     private final AbstractConfigCell dividerVideoNote = cellGroup.appendCell(new ConfigCellDivider());
+    // Shown only while the shortcut is on, in this order right under its switch
+    private final List<AbstractConfigCell> videoNoteOptionRows = Arrays.asList(videoNoteCameraRow, videoNoteTargetRow);
 
     private ListAdapter listAdapter;
     private PreviewCell previewCell;
+    private int targetLoadRequest;
 
     public LauncherShortcutsActivity() {
-        updateCameraRow(false);
+        updateVideoNoteRows(false);
+        updateTargetValue();
         addRowsToMap(cellGroup);
     }
 
@@ -129,36 +148,122 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
         }
         MediaDataController.getInstance(currentAccount).buildShortcuts();
         if (videoNote) {
-            updateCameraRow(true);
+            updateVideoNoteRows(true);
         }
         if (previewCell != null) {
             previewCell.update();
         }
     }
 
-    // The camera only means something while the shortcut is on. ConfigCellSelectBox can't be dimmed, so the row is
-    // taken out instead, and the row map is rebuilt so search results and settings links still land on the right row.
-    private void updateCameraRow(boolean animated) {
+    // The camera and the recipient only mean something while the shortcut is on. ConfigCellSelectBox can't be dimmed,
+    // so the rows are taken out instead, and the row map is rebuilt so search results and settings links still land on
+    // the right row.
+    private void updateVideoNoteRows(boolean animated) {
         boolean show = VideoNoteShortcut.isEnabled();
-        int index = cellGroup.rows.indexOf(videoNoteCameraRow);
-        if (show && index < 0) {
-            index = cellGroup.rows.indexOf(videoNoteRow) + 1;
-            cellGroup.rows.add(index, videoNoteCameraRow);
-            if (animated && listAdapter != null) {
-                listAdapter.notifyItemInserted(index);
-            }
-        } else if (!show && index >= 0) {
-            cellGroup.rows.remove(index);
-            if (animated && listAdapter != null) {
-                listAdapter.notifyItemRemoved(index);
-            }
-        } else {
+        if (show == cellGroup.rows.contains(videoNoteCameraRow)) {
             return;
         }
+        int index = cellGroup.rows.indexOf(videoNoteRow) + 1;
+        if (show) {
+            cellGroup.rows.addAll(index, videoNoteOptionRows);
+        } else {
+            cellGroup.rows.removeAll(videoNoteOptionRows);
+        }
         if (animated && listAdapter != null) {
-            listAdapter.notifyItemChanged(cellGroup.rows.indexOf(videoNoteRow)); // its divider follows the next row
+            if (show) {
+                listAdapter.notifyItemRangeInserted(index, videoNoteOptionRows.size());
+            } else {
+                listAdapter.notifyItemRangeRemoved(index, videoNoteOptionRows.size());
+            }
+            listAdapter.notifyItemChanged(index - 1); // the switch: its divider follows the next row
         }
         addRowsToMap(cellGroup);
+    }
+
+    private void updateTargetValue() {
+        int request = ++targetLoadRequest;
+        long id = VideoNoteTarget.get(currentAccount);
+        TLRPC.User user = id != 0 ? getMessagesController().getUser(id) : null;
+        if (id == 0 || user != null) {
+            videoNoteTargetRow.setValue(user != null ? UserObject.getUserName(user) : getString(R.string.SavedMessages));
+            return;
+        }
+        videoNoteTargetRow.setValue("");
+        MessagesStorage storage = getMessagesStorage();
+        storage.getStorageQueue().postRunnable(() -> {
+            TLRPC.User stored = storage.getUser(id);
+            AndroidUtilities.runOnUIThread(() -> {
+                if (request != targetLoadRequest) {
+                    return;
+                }
+                if (stored != null) {
+                    getMessagesController().putUser(stored, true);
+                }
+                // Unknown here means the shortcut falls back to Saved Messages, so say so
+                videoNoteTargetRow.setValue(stored != null ? UserObject.getUserName(stored) : getString(R.string.SavedMessages));
+            });
+        });
+    }
+
+    private void setTarget(long userId) {
+        VideoNoteTarget.set(currentAccount, userId);
+        updateTargetValue();
+    }
+
+    @Override
+    protected void handleCellClick(View view, int position, float x, float y) {
+        if (position >= 0 && position < cellGroup.rows.size() && cellGroup.rows.get(position) == videoNoteTargetRow) {
+            onTargetClick(view);
+            return;
+        }
+        super.handleCellClick(view, position, x, y);
+    }
+
+    private void onTargetClick(View view) {
+        if (VideoNoteTarget.get(currentAccount) == 0) {
+            openTargetPicker();
+            return;
+        }
+        PopupBuilder builder = new PopupBuilder(view);
+        builder.setItems(new CharSequence[]{getString(R.string.ChooseUser), getString(R.string.SavedMessages)}, (i, text) -> {
+            if (i == 0) {
+                openTargetPicker();
+            } else {
+                setTarget(0);
+            }
+            return Unit.INSTANCE;
+        });
+        builder.show();
+    }
+
+    // Upstream's attach-bot chat chooser, narrowed to people. Its list drops bots, deleted accounts and yourself, but
+    // search and the recent-contacts strip let some of those through, hence the check on every pick.
+    private void openTargetPicker() {
+        Bundle args = new Bundle();
+        args.putBoolean("onlySelect", true);
+        args.putInt("dialogsType", DialogsActivity.DIALOGS_TYPE_START_ATTACH_BOT);
+        args.putBoolean("allowGlobalSearch", false);
+        args.putBoolean("allowUsers", true);
+        args.putBoolean("allowBots", false);
+        args.putBoolean("allowGroups", false);
+        args.putBoolean("allowMegagroups", false);
+        args.putBoolean("allowLegacyGroups", false);
+        args.putBoolean("allowChannels", false);
+        DialogsActivity picker = new DialogsActivity(args);
+        picker.setDelegate((fragment, dids, message, param, notify, scheduleDate, scheduleRepeatPeriod, topicsFragment) -> {
+            long id = dids == null || dids.isEmpty() ? 0 : dids.get(0).dialogId;
+            TLRPC.User user = DialogObject.isUserDialog(id) ? getMessagesController().getUser(id) : null;
+            if (!VideoNoteTarget.isEligible(currentAccount, user)) {
+                BulletinFactory.of(fragment).createErrorBulletin(getString(R.string.VideoNoteShortcutTargetUnsupported)).show();
+                return false;
+            }
+            setTarget(id);
+            // Stores their privacy settings locally, which is all the shortcut will look at when it fires
+            getMessagesController().loadFullUser(user, classGuid, true);
+            fragment.finishFragment();
+            return true;
+        });
+        presentFragment(picker);
     }
 
     @Override

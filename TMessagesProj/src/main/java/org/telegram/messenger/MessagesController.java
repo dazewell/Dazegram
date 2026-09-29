@@ -16436,6 +16436,8 @@ public class MessagesController extends BaseController implements NotificationCe
         // NagramX: the remembered send action is keyed by this slot too, so it must die with the
         // account or the next login into this slot inherits a stranger's armed silent/schedule tap.
         xyz.nextalone.nagram.RememberedSendAction.clearAccountState(currentAccount);
+        // NagramX: the video memo's chosen person is a user id in this slot; a new login here could know them too
+        com.radolyn.ayugram.videonote.VideoNoteTarget.clearAccountState(currentAccount);
 
         boolean shouldHandle = true;
         ArrayList<NotificationCenter.NotificationCenterDelegate> observers = getNotificationCenter().getObservers(NotificationCenter.appDidLogout);

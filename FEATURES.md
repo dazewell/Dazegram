@@ -267,7 +267,7 @@ A round video message you've recorded but haven't sent survives backing out of t
 
 ### Video memo shortcut <!-- #video-note-shortcut -->
 
-Turn on *Video memo shortcut* under N-Settings → General → Launcher shortcuts (off by default) and long-pressing the app icon offers *Video memo*: it opens your Saved Messages and starts a hands-free round video right away, on the camera picked in *Video memo camera* (front by default). It works while the app is locked: you record first, and the passcode comes up once you send or discard.
+Turn on *Video memo shortcut* under N-Settings → General → Launcher shortcuts (off by default) and long-pressing the app icon offers *Video memo*: it starts a hands-free round video for Saved Messages, or for the *Recipient* you pick, on the chosen *Camera* (front by default). It works while the app is locked: the passcode comes up once you send or discard.
 
 ### Custom file names for saved media <!-- #custom-file-names -->
 
