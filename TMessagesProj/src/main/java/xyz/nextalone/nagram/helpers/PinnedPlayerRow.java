@@ -55,7 +55,6 @@ public class PinnedPlayerRow extends FrameLayout {
     private boolean hidPinned;
     private boolean applying;
     private int cancelledDraws;
-    private int lastSmokeSig = -1;
 
     private final Runnable panelListener = this::apply;
     private final ViewTreeObserver.OnPreDrawListener preDrawListener = () -> {
@@ -89,7 +88,6 @@ public class PinnedPlayerRow extends FrameLayout {
             r.addView(r.compact, LayoutHelper.createFrame(MIN_COMPACT_DP, LayoutHelper.MATCH_PARENT, Gravity.LEFT | Gravity.TOP));
         }
         r.setPanelListener(true);
-        android.util.Log.i("nax", "NAX_SMOKE_combined-pinned-player BEGIN build=" + org.telegram.messenger.BuildConfig.BUILD_VERSION_STRING + " app=" + org.telegram.messenger.BuildConfig.APPLICATION_ID);
         r.apply();
     }
 
@@ -193,13 +191,6 @@ public class PinnedPlayerRow extends FrameLayout {
             // The list button is the only way to the pinned list where long-press is blocked.
             && !(pinnedListButton != null && pinnedListButton.getTag() != null && longPressBlocked())
             && width > 0;
-        final int smokeSig = (merge ? 1 : 0) | (NaConfig.INSTANCE.getCombinePinnedWithPlayer().Bool() ? 2 : 0) | (pinnedWanted ? 4 : 0)
-            | (panel.isViewVisible(this) ? 8 : 0) | (compact.buttonVariant ? 16 : 0) | (width > 0 ? 32 : 0) | (player.getCurrentStyle() << 8);
-        if (smokeSig != lastSmokeSig) {
-            lastSmokeSig = smokeSig;
-            android.util.Log.i("nax", "NAX_SMOKE_combined-pinned-player merge=" + merge + " cfg=" + ((smokeSig & 2) != 0) + " pinnedWanted=" + pinnedWanted
-                + " playerShown=" + ((smokeSig & 8) != 0) + " style=" + player.getCurrentStyle() + " button=" + compact.buttonVariant + " widthOk=" + (width > 0));
-        }
 
         boolean changed = false;
         applying = true;
