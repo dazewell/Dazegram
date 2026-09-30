@@ -1586,7 +1586,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             voipLaunchedInBackground = true;
         }
         if (!fromPassword && (AndroidUtilities.needShowPasscode(true) || SharedConfig.isWaitingForPasscodeEnter)
-                && !com.radolyn.ayugram.videonote.VideoNoteShortcut.bypassLock(this, intent)) { // NagramX: the video memo shortcut records first and locks after
+                && !com.radolyn.ayugram.videonote.VideoNoteShortcut.bypassLock(this, intent, restore)) { // NagramX: the video memo shortcut records first and locks after
             showPasscodeActivity(true, false, -1, -1, null, null);
             UserConfig.getInstance(currentAccount).saveConfig(false);
             if (!isVoipIntent && !isVoipAnswerIntent) {

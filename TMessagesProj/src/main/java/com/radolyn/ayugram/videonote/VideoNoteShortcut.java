@@ -224,8 +224,11 @@ public final class VideoNoteShortcut {
     }
 
     /** LaunchActivity.handleIntent's passcode gate. True lets this one intent through while the app stays locked. */
-    public static boolean bypassLock(LaunchActivity activity, Intent intent) {
-        if (phase != IDLE || !isGenuine(intent)) {
+    public static boolean bypassLock(LaunchActivity activity, Intent intent, boolean restore) {
+        // A task this shortcut started keeps its intent, action and hash intact, and a recreated activity or a relaunch
+        // from recents hands it back here. The action chain skips both, so nothing would open to end the session, and
+        // the real tap that follows would find it taken and get the passcode first.
+        if (phase != IDLE || !isGenuine(intent) || restore || (intent.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) {
             return false;
         }
         SharedConfig.appLocked = true;
