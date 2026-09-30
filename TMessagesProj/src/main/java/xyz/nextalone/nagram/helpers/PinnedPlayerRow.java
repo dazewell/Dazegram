@@ -263,6 +263,8 @@ public class PinnedPlayerRow extends FrameLayout {
             super(context);
             setWillNotDraw(false);
             setBackground(Theme.getSelectorDrawable(false));
+            // The strip's own performLongClick already gives the long-press haptic.
+            setHapticFeedbackEnabled(false);
             final int left = InterfaceStyleController.applyChatHeader() ? 6 : 13;
 
             labelView = new SimpleTextView(context);
