@@ -22,6 +22,7 @@ import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.Components.AnimatedEmojiSpan;
+import org.telegram.ui.Components.AudioPlayerAlert;
 import org.telegram.ui.Components.ChatActivityTopPanelLayout;
 import org.telegram.ui.Components.FragmentContextView;
 import org.telegram.ui.Components.LayoutHelper;
@@ -42,8 +43,6 @@ public class PinnedPlayerRow extends FrameLayout {
     private static final int MIN_COMPACT_DP = 96;
     private static final int MAX_COMPACT_DP = 136;
     private static final float COMPACT_FRACTION = 0.3f;
-    // Leading play button and title margin in FragmentContextView.
-    private static final int PLAYER_LEADING_DP = 35;
     private static final int MIN_TITLE_DP = 80;
 
     private ChatActivity chat;
@@ -151,20 +150,22 @@ public class PinnedPlayerRow extends FrameLayout {
         if (rowWidth <= 0) {
             return 0;
         }
-        int trailing = 0;
+        // The title's margins and right padding already reserve room for the play button and
+        // whichever trailing buttons the current media shows (FragmentContextView.checkPlayer).
+        int reserved = -1;
         for (int i = 0, n = player.getChildCount(); i < n; i++) {
             final View child = player.getChildAt(i);
-            if (child.getVisibility() != VISIBLE || !(child.getLayoutParams() instanceof FrameLayout.LayoutParams)) {
+            if (!(child instanceof AudioPlayerAlert.ClippingTextViewSwitcher) || child.getVisibility() != VISIBLE
+                    || !(child.getLayoutParams() instanceof FrameLayout.LayoutParams)) {
                 continue;
             }
             final FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) child.getLayoutParams();
-            if (lp.gravity == -1 || (lp.gravity & Gravity.HORIZONTAL_GRAVITY_MASK) != Gravity.RIGHT) {
-                continue;
-            }
-            final int width = lp.width > 0 ? lp.width : child.getMeasuredWidth();
-            trailing = Math.max(trailing, lp.rightMargin + width);
+            reserved = Math.max(reserved, lp.leftMargin + lp.rightMargin + child.getPaddingLeft() + child.getPaddingRight());
         }
-        final int fits = rowWidth - dp(PLAYER_LEADING_DP) - trailing - dp(MIN_TITLE_DP);
+        if (reserved < 0) {
+            return 0;
+        }
+        final int fits = rowWidth - reserved - dp(MIN_TITLE_DP);
         final int width = Math.min(Math.max((int) (rowWidth * COMPACT_FRACTION), dp(MIN_COMPACT_DP)), dp(MAX_COMPACT_DP));
         final int result = Math.min(width, fits);
         return result >= dp(MIN_COMPACT_DP) ? result : 0;
