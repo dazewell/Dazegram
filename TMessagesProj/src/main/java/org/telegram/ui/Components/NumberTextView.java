@@ -68,6 +68,11 @@ public class NumberTextView extends View {
         return progress;
     }
 
+    // NagramX: the compact pinned copy on the player row shows the same "#n".
+    public int getNumber() {
+        return currentNumber;
+    }
+
     public void setAddNumber() {
         addNumber = true;
     }
