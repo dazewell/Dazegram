@@ -2518,3 +2518,21 @@ list filter. So the delegate must validate every pick, and return `false` to
 keep the picker open.
 
 *(Established 2026-09-28, `#video-note-shortcut`.)*
+
+## LaunchActivity's passcode gate sees intents its action chain then ignores
+
+`handleIntent` runs the passcode gate (`LaunchActivity.java:1588-1589`) before
+the check that skips any intent relaunched from recents or handed back to a
+recreated activity (`:1671-1672`; `restore` is `savedInstanceState != null`
+from `onCreate`, `:686`). A task started by a launcher shortcut keeps that
+shortcut's intent as its root, and a recreated activity gets it back from the
+system with action and extras intact, so clearing the action in-process (as
+`VideoNoteShortcut.accept` does) does not stop the replay. Anything the gate
+decides from the intent has to refuse `restore` and
+`FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY` itself.
+
+Missed once: the video memo shortcut's lock bypass fired on the replayed
+intent, nothing opened to use it, and the real tap that followed was refused
+and got the passcode before recording.
+
+*(Established 2026-09-29, `#video-memo-passcode-fix`.)*
