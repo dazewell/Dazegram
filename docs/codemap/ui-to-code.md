@@ -59,7 +59,7 @@ tab lift, since rows start there in both states at rest (during animations the s
 (`DialogsActivity.java:592-601`, `:949-990`, `:6849-6918`). That trim leaves a
 gap above a visible player or location panel: its flat background starts at the
 panel's `dp(21)` top padding less its `-14` layout margin, 5 dp past the trimmed
-surface. While a panel shows, the surface extends to the panel top instead
+surface with folder tabs and 7 dp without them. While a panel shows, the surface extends to the panel top instead
 (`DialogsActivity.java:5077`, `:5885`, `:6909-6918`). The
 search/folder rows do not install their own MD3 backgrounds; search-type tabs
 keep only a full-bounds child clip, the search field keeps its rounded control
