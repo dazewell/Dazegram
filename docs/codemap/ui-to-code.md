@@ -56,7 +56,7 @@ available; unsupported or blur-disabled paths retain the opaque fallback.
 `updateContextViewPosition()` supplies its animated tab extent, trimmed by the
 same `dp(5)` the list's top padding subtracts, and not by the search field's
 tab lift, since rows start there in both states at rest (during animations the surface is the shorter of the two) (`DialogsActivity.java:2181-2194`)
-(`DialogsActivity.java:592-601`, `:948-990`, `:6849-6918`). That trim leaves a
+(`DialogsActivity.java:592-601`, `:949-990`, `:6849-6918`). That trim leaves a
 gap above a visible player or location panel: its flat background starts at the
 panel's `dp(21)` top padding less its `-14` layout margin, 5 dp past the trimmed
 surface. While a panel shows, the surface extends to the panel top instead
@@ -64,7 +64,7 @@ surface. While a panel shows, the surface extends to the panel top instead
 search/folder rows do not install their own MD3 backgrounds; search-type tabs
 keep only a full-bounds child clip, the search field keeps its rounded control
 background, and the independently animated temporary panel reuses the same
-dialogs provider (`DialogsActivity.java:4970-4991`, `:5071-5078`,
+dialogs provider (`DialogsActivity.java:4970-4991`, `:5072-5078`,
 `:5422-5434`; `SearchTabsAndFiltersLayout.java:15-59`;
 `BlurredBackgroundProviderImpl.java:75-95`).
 Chat-side strips use the same chat-header flag through `ChatActivity` and the
