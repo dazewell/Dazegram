@@ -56,7 +56,11 @@ available; unsupported or blur-disabled paths retain the opaque fallback.
 `updateContextViewPosition()` supplies its animated tab extent, trimmed by the
 same `dp(5)` the list's top padding subtracts, and not by the search field's
 tab lift, since rows start there in both states at rest (during animations the surface is the shorter of the two) (`DialogsActivity.java:2175-2185`)
-(`DialogsActivity.java:593-600`, `:936-990`, `:6834-6883`). The
+(`DialogsActivity.java:593-600`, `:936-990`, `:6834-6883`). That trim leaves a
+gap above a visible player or location panel: its flat background starts at the
+panel's `dp(21)` top padding less its `-14` layout margin, 5 dp past the trimmed
+surface. While a panel shows, the surface extends to the panel top instead
+(`DialogsActivity.java:5077`, `:5885`, `:6909-6918`). The
 search/folder rows do not install their own MD3 backgrounds; search-type tabs
 keep only a full-bounds child clip, the search field keeps its rounded control
 background, and the independently animated temporary panel reuses the same
