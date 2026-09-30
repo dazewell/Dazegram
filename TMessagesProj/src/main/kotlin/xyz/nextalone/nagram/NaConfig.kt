@@ -1063,7 +1063,7 @@ object NaConfig {
         addConfig(
             "VideoNoteShortcutCamera",
             ConfigItem.configTypeInt,
-            0 // 0: front; 1: rear
+            0 // 0: front; 1: rear; 2: both, as two shortcuts
         )
     val ghostModeShortcut =
         addConfig(

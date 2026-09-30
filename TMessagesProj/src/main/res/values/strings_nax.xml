@@ -442,6 +442,11 @@
     <string name="VideoNoteShortcutNotice">Adds a launcher shortcut that records a video message to Saved Messages or a person you pick, even while the app is locked. The passcode is asked right after.</string>
     <string name="VideoNoteShortcutLabel">Video memo</string>
     <string name="VideoNoteShortcutCamera">Camera</string>
+    <string name="VideoNoteShortcutCameraBoth">Both, as two shortcuts</string>
+    <string name="VideoNoteShortcutLabelFront">Front memo</string>
+    <string name="VideoNoteShortcutLabelRear">Rear memo</string>
+    <string name="VideoNoteShortcutLabelFrontLong">Video memo · front</string>
+    <string name="VideoNoteShortcutLabelRearLong">Video memo · rear</string>
     <string name="VideoNoteShortcutTarget">Recipient</string>
     <string name="VideoNoteShortcutTargetUnsupported">Video memos can only go to a person.</string>
     <string name="LauncherShortcuts">Launcher shortcuts</string>
