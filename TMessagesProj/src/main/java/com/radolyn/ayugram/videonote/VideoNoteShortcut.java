@@ -88,6 +88,11 @@ public final class VideoNoteShortcut {
         return isEnabled() && getCameraMode() != (rear ? CAMERA_FRONT : CAMERA_REAR);
     }
 
+    /** MediaDataController.buildShortcuts: ranks taken past the one it hands to publish, which recent chats skip. */
+    public static int getExtraRanks() {
+        return publishes(false) && publishes(true) ? 1 : 0;
+    }
+
     /** MediaDataController.buildShortcuts: the ids it keeps when pruning stale shortcuts. */
     public static void addShortcutId(List<String> wantedIds) {
         if (publishes(false)) {
