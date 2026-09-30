@@ -60,6 +60,18 @@ public class ChatActivityTopPanelLayout extends AnimatedLinearLayout {
         invalidate();
     }
 
+    // NagramX: every strip's visibility funnels through here, so the combined pinned/player row
+    // can re-merge in the same message-loop turn, before the ListAnimator sees the change.
+    public Runnable naxOnViewVisibilityChanged;
+
+    @Override
+    public void setViewVisible(View child, boolean visible, boolean animated) {
+        super.setViewVisible(child, visible, animated);
+        if (naxOnViewVisibilityChanged != null) {
+            naxOnViewVisibilityChanged.run();
+        }
+    }
+
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
         return super.dispatchTouchEvent(ev)

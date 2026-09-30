@@ -8402,7 +8402,8 @@ public class ChatActivity extends BaseFragment implements
                     topPanelLayout.setViewVisible(fragmentLocationContextViewWrapper, visibility == VISIBLE);
                 }
             };
-            fragmentContextViewWrapper = new FrameLayout(context);
+            // NagramX: the player row can also carry a compact pinned message (CombinePinnedWithPlayer).
+            fragmentContextViewWrapper = new xyz.nextalone.nagram.helpers.PinnedPlayerRow(context);
             topPanelLayout.addView(fragmentContextViewWrapper);
             topPanelLayout.setPriority(fragmentContextViewWrapper, 5);
             topPanelLayout.setDebugName(fragmentContextViewWrapper, "fragment context");
@@ -13096,6 +13097,8 @@ public class ChatActivity extends BaseFragment implements
             return true;
         });
 
+        // NagramX: lets the player row stand in for this strip while both are shown.
+        xyz.nextalone.nagram.helpers.PinnedPlayerRow.attachPinned(fragmentContextViewWrapper, this, pinnedMessageView, pinnedListButton);
         updatePinnedListButton(false);
     }
 
@@ -31248,6 +31251,9 @@ public class ChatActivity extends BaseFragment implements
                     }
                     messageTextView.setText(AnimatedEmojiSpan.cloneSpans(pinnedText));
                 }
+                // NagramX: mirror the new pin into the compact copy on the player row.
+                xyz.nextalone.nagram.helpers.PinnedPlayerRow.setPinnedContent(fragmentContextViewWrapper, nameTextView.getText(),
+                    showCounter && currentPinnedMessageIndex[0] != 0 ? pinnedCounterTextView.getNumber() : 0, messageTextView.getText(), pinnedMessageButtonShown);
                 if (animateToNext != 0) {
                     pinnedNextAnimation[0] = new AnimatorSet();
                     pinnedNextAnimation[1] = new AnimatorSet();

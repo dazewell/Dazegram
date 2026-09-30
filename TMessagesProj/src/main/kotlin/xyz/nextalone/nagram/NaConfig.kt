@@ -1518,6 +1518,13 @@ object NaConfig {
             ConfigItem.configTypeBool,
             false
         )
+    // NagramX (#combined-pinned-player): pinned message and audio player share one top row.
+    val combinePinnedWithPlayer =
+        addConfig(
+            "CombinePinnedWithPlayer",
+            ConfigItem.configTypeBool,
+            false
+        )
     // NagramX (#remember-send-action): master switch for the whole feature. Off both disarms
     // whatever is currently remembered (read in getEligibleArmedSendAction) and disables the four
     // toggles below on their settings page -- disabled, not hidden, so turning it back on doesn't
