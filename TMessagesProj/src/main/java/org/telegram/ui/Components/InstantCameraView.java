@@ -1091,7 +1091,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         camera2Sessions[a] = Camera2Session.create(a == (isFrontface ? 0 : 1), MessagesController.getInstance(UserConfig.selectedAccount).roundVideoSize, MessagesController.getInstance(UserConfig.selectedAccount).roundVideoSize);
                         if (camera2Sessions[a] != null) {
                             camera2Sessions[a].setRecordingVideo(true);
-                            camera2Sessions[a].setUseZoomRatio(); // NagramX: per session, so the idle one of a dual pair matches
+                            camera2Sessions[a].setRoundVideo(); // NagramX: per session, so the idle one of a dual pair matches
                             camera2Sessions[a].whenFailed(this::onRoundDualCameraLost); // NagramX (#round-dual-camera-fix)
                             previewSize[a] = new Size(camera2Sessions[a].getPreviewWidth(), camera2Sessions[a].getPreviewHeight());
                         }
@@ -1107,7 +1107,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 camera2SessionCurrent = camera2Sessions[isFrontface ? 0 : 1] = Camera2Session.create(isFrontface, MessagesController.getInstance(UserConfig.selectedAccount).roundVideoSize, MessagesController.getInstance(UserConfig.selectedAccount).roundVideoSize);
                 if (camera2SessionCurrent == null) return;
                 camera2SessionCurrent.setRecordingVideo(true);
-                camera2SessionCurrent.setUseZoomRatio(); // NagramX
+                camera2SessionCurrent.setRoundVideo(); // NagramX
                 previewSize[0] = new Size(camera2SessionCurrent.getPreviewWidth(), camera2SessionCurrent.getPreviewHeight());
             }
             adaptZoomToSession(0f); // NagramX: 1x home depends on this camera's own range
@@ -1674,7 +1674,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 camera2SessionCurrent = camera2Sessions[isFrontface ? 0 : 1] = Camera2Session.create(isFrontface, MessagesController.getInstance(UserConfig.selectedAccount).roundVideoSize, MessagesController.getInstance(UserConfig.selectedAccount).roundVideoSize);
                 if (camera2SessionCurrent == null) return;
                 camera2SessionCurrent.setRecordingVideo(true);
-                camera2SessionCurrent.setUseZoomRatio(); // NagramX
+                camera2SessionCurrent.setRoundVideo(); // NagramX
                 previewSize[0] = new Size(camera2SessionCurrent.getPreviewWidth(), camera2SessionCurrent.getPreviewHeight());
                 cameraThread.setCurrentSession(camera2SessionCurrent);
                 adaptZoomToSession(carriedZoom); // NagramX
@@ -1724,7 +1724,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 return;
             }
             session.setRecordingVideo(true);
-            session.setUseZoomRatio(); // NagramX (#video-zoom)
+            session.setRoundVideo(); // NagramX (#video-zoom)
             camera2SessionCurrent = session;
             previewSize[0] = new Size(session.getPreviewWidth(), session.getPreviewHeight());
         }

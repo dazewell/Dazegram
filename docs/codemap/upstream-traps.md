@@ -2439,18 +2439,27 @@ about Camera2 support.
 
 Upstream Camera2 round zoom is a `SCALER_CROP_REGION` with `getMinZoom()`
 fixed at 1 (`Camera2Session.java:399`). The fork's ratio mode
-(`setUseZoomRatio`, `:410`; `CONTROL_ZOOM_RATIO` at `:539`) is opt-in per
+(`setRoundVideo`, `:413`; `CONTROL_ZOOM_RATIO` at `:543`) is opt-in per
 session so the Stories camera, which maps zoom over `[getMinZoom, getMaxZoom]`
 (`CameraSessionWrapper.java:148`), keeps the crop path. On an OPPO Find X9 Pro
 (MediaTek, logical rear camera 0 over physical 2/3/4, ratio range 0.6–20), the
 crop region already switches to the telephoto at about 3.1x. Ratios below 1x
 reach the ultrawide, but the round stream then smears a band of edge columns,
 so the ratio floor stays at 1x on MediaTek chipsets
-(`RoundLensPresets.ultrawideAllowed`, read in `setUseZoomRatio`). Other
+(`RoundLensPresets.ultrawideAllowed`, read in `setRoundVideo`). Other
 chipsets are untested.
 
+Upstream Camera2 also records round video on `TEMPLATE_RECORD` with a
+`VIDEO_RECORD` intent and a 30–60 fps range. On the same phone's front camera
+(id 1, 4096×3072, ratio range 1–4) that makes the HAL read the sensor out as
+16:9 (`rawCropRegion` 4096×2304), while Camera1's shim, sending a `PREVIEW`
+intent, gets 4:3 (2048×1536). Both streams are square at zoom 1 with the full
+crop region and stabilization off, so Camera2 framed about 1.33× tighter.
+Round sessions keep the preview template, intent and fps (`:520`, `:537`).
+
 *(Established 2026-09-27, `#video-zoom`, PR #439; device facts from
-`dumpsys media.camera` and ADB traces.)*
+`dumpsys media.camera` and ADB traces. Front readout 2026-09-30,
+`#round-camera2-fov-fix`.)*
 
 ## Navigation hooks see a fragment before it has read its arguments
 

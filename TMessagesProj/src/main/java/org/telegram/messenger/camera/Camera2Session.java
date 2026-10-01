@@ -406,8 +406,12 @@ public class Camera2Session {
     // ultrawide. Set on the UI thread before open(); read on the camera thread.
     private volatile boolean zoomRatioMode;
     private volatile float zoomRatioMin = 1f;
+    // NagramX: round video keeps the preview template, intent and fps, as Camera1 does. On a MediaTek front
+    // camera the record ones switch the sensor to a 16:9 readout, so the square stream frames a third tighter.
+    private volatile boolean roundVideo;
 
-    public void setUseZoomRatio() {
+    public void setRoundVideo() {
+        roundVideo = true;
         if (Build.VERSION.SDK_INT < 30 || cameraCharacteristics == null) return;
         final Range<Float> range = cameraCharacteristics.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE);
         if (range == null || range.getUpper() <= 1f) return;
@@ -513,7 +517,7 @@ public class Camera2Session {
         if (cameraDevice == null || surface == null || captureSession == null) return;
         try {
             int template;
-            if (recordingVideo) {
+            if (recordingVideo && !roundVideo) { // NagramX
                 template = CameraDevice.TEMPLATE_RECORD;
             } else if (scanningBarcode) {
                 template = CameraDevice.TEMPLATE_STILL_CAPTURE;
@@ -530,7 +534,7 @@ public class Camera2Session {
 
             captureRequestBuilder.set(CaptureRequest.FLASH_MODE, flashing ? (recordingVideo ? CaptureRequest.FLASH_MODE_TORCH : CaptureRequest.FLASH_MODE_SINGLE) : CaptureRequest.FLASH_MODE_OFF);
 
-            if (recordingVideo) {
+            if (recordingVideo && !roundVideo) { // NagramX
                 captureRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, new Range<Integer>(30, 60));
                 captureRequestBuilder.set(CaptureRequest.CONTROL_CAPTURE_INTENT, CaptureRequest.CONTROL_CAPTURE_INTENT_VIDEO_RECORD);
             }
