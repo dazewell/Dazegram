@@ -155,6 +155,7 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
         }
         if (previewCell != null) {
             previewCell.update();
+            previewCell.probe(listView, videoNote ? "video" : camera ? "camera" : "ghost");
         }
     }
 
@@ -383,6 +384,42 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
 
             popup.addView(item, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, ITEM_HEIGHT));
             return item;
+        }
+
+        // Temporary geometry trace for the preview jump; comes back out before landing
+        void probe(RecyclerView list, String reason) {
+            int previews = 0;
+            for (int i = 0; i < list.getChildCount(); i++) {
+                if (list.getChildAt(i) instanceof PreviewCell) {
+                    previews++;
+                }
+            }
+            android.util.Log.i("NaxSmoke", "NAX_SMOKE_video-note-shortcut BEGIN " + org.telegram.messenger.BuildConfig.BUILD_VERSION_STRING
+                    + " reason=" + reason + " attached=" + isAttachedToWindow() + " inList=" + (getParent() == list) + " previews=" + previews);
+            int[] frame = {0};
+            android.view.ViewTreeObserver observer = list.getViewTreeObserver();
+            observer.addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
+                @Override
+                public boolean onPreDraw() {
+                    StringBuilder sb = new StringBuilder("NAX_SMOKE_video-note-shortcut f=").append(frame[0])
+                            .append(" cell=").append(getTop()).append('/').append((int) getTranslationY()).append('/').append(getHeight())
+                            .append(" popup=").append(popup.getTop()).append('-').append(popup.getBottom()).append('/').append((int) popup.getTranslationY())
+                            .append(" rv=").append(list.getItemAnimator() != null && list.getItemAnimator().isRunning())
+                            .append(" card=").append(getLayoutTransition() != null && getLayoutTransition().isRunning())
+                            .append(" items=").append(popup.getLayoutTransition() != null && popup.getLayoutTransition().isRunning());
+                    for (int i = 0; i < popup.getChildCount(); i++) {
+                        View v = popup.getChildAt(i);
+                        sb.append(" i").append(i).append('=').append(v.getVisibility() == VISIBLE ? 'v' : 'g')
+                                .append(v.getTop()).append('/').append((int) v.getTranslationY()).append('/').append((int) (v.getAlpha() * 100));
+                    }
+                    android.util.Log.i("NaxSmoke", sb.toString());
+                    if (++frame[0] >= 40) {
+                        list.getViewTreeObserver().removeOnPreDrawListener(this);
+                        android.util.Log.i("NaxSmoke", "NAX_SMOKE_video-note-shortcut END reason=" + reason);
+                    }
+                    return true;
+                }
+            });
         }
 
         void update() {
