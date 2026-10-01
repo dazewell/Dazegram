@@ -2545,3 +2545,22 @@ intent, nothing opened to use it, and the real tap that followed was refused
 and got the passcode before recording.
 
 *(Established 2026-09-29, `#video-memo-passcode-fix`.)*
+## A LayoutTransition on a RecyclerView item stops the list placing it
+
+`ViewGroup.layout()` returns without laying out while the view's own
+`LayoutTransition` is running a change animation (`isChangingLayout()`). Put
+one with `CHANGING` enabled on a RecyclerView item and any adapter change
+during that animation (`notifyItemChanged`, `notifyItemRangeInserted`) can't
+move the item. The list records a stale post-layout top and runs a move
+animation to it. The item flies across the screen, then snaps back when the
+transition ends. Put the transition on an inner frame instead
+(`LauncherShortcutsActivity.java:331-357`). Settings pages trigger this through
+`ConfigCellSelectBox.onClick`, which calls `notifyItemChanged`
+(`ConfigCellSelectBox.java:118`).
+
+Missed once: the launcher-shortcuts preview flew in from below when the
+video memo camera or switch changed. A logcat trace showed the item at
+`top=1734` animating its `translationY` from `-1063` to `0` while its real top
+was `671`.
+
+*(Established 2026-09-30, `#video-note-shortcut`.)*
