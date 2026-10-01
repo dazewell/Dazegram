@@ -328,7 +328,12 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
             popup.setPadding(0, dp(POPUP_PADDING), 0, dp(POPUP_PADDING));
             popupBackground.setCornerRadius(dp(20));
             popup.setBackground(popupBackground);
-            addView(popup, LayoutHelper.createFrame(240, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 0, POPUP_TOP, 0, 0));
+            // The card animates inside its own frame. A LayoutTransition skips layout() on the view it sits on while it
+            // runs, and on this cell that kept the list from placing it during a row insert, so the cell flew in from
+            // below.
+            FrameLayout card = new FrameLayout(context);
+            card.addView(popup, LayoutHelper.createFrame(240, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 0, POPUP_TOP, 0, 0));
+            addView(card, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
             addItem(context, 0, R.drawable.shortcut_compose, null, R.string.NewConversationShortcut);
             // Built once, not per bind: both are fresh bitmaps, and the base page rebinds everything on resume.
@@ -349,7 +354,7 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
             cardTransition.enableTransitionType(LayoutTransition.CHANGING);
             cardTransition.setAnimateParentHierarchy(false);
             cardTransition.setDuration(220);
-            setLayoutTransition(cardTransition);
+            card.setLayoutTransition(cardTransition);
         }
 
         // Always as tall as the card with every item showing, so a switch only changes the card, never the rows below
