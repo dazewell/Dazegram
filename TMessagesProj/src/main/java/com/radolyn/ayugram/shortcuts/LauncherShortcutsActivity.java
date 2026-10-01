@@ -76,7 +76,8 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
     private final AbstractConfigCell videoNoteRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getVideoNoteShortcut(), getString(R.string.VideoNoteShortcutNotice)));
     private final AbstractConfigCell videoNoteCameraRow = cellGroup.appendCell(new ConfigCellSelectBox("VideoNoteShortcutCamera", NaConfig.INSTANCE.getVideoNoteShortcutCamera(), new String[]{
             getString(R.string.CameraInVideoMessagesFront),
-            getString(R.string.CameraInVideoMessagesRear)
+            getString(R.string.CameraInVideoMessagesRear),
+            getString(R.string.VideoNoteShortcutCameraBoth)
     }, null));
     private final ConfigCellText videoNoteTargetRow = (ConfigCellText) cellGroup.appendCell(new ConfigCellText("VideoNoteShortcutTarget", null));
     private final AbstractConfigCell dividerVideoNote = cellGroup.appendCell(new ConfigCellDivider());
@@ -143,7 +144,9 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
 
     private void onShortcutSettingChanged(String key) {
         boolean videoNote = key.equals(NaConfig.INSTANCE.getVideoNoteShortcut().getKey());
-        if (!videoNote && !key.equals(NaConfig.INSTANCE.getGhostModeShortcut().getKey())) {
+        // The camera decides how many video memo shortcuts there are and what they are called
+        boolean camera = key.equals(NaConfig.INSTANCE.getVideoNoteShortcutCamera().getKey());
+        if (!videoNote && !camera && !key.equals(NaConfig.INSTANCE.getGhostModeShortcut().getKey())) {
             return;
         }
         MediaDataController.getInstance(currentAccount).buildShortcuts();
@@ -309,13 +312,14 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
         private static final int POPUP_PADDING = 6;
         private static final int POPUP_TOP = 8;
         private static final int POPUP_BOTTOM = 16;
-        private static final int ITEM_COUNT = 3;
+        private static final int ITEM_COUNT = 4;
 
         private final LinearLayout popup;
         private final GradientDrawable popupBackground = new GradientDrawable();
         private final TextView[] labels = new TextView[ITEM_COUNT];
         private final View ghostModeItem;
         private final View videoNoteItem;
+        private final View videoNoteRearItem;
 
         PreviewCell(Context context) {
             super(context);
@@ -324,12 +328,18 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
             popup.setPadding(0, dp(POPUP_PADDING), 0, dp(POPUP_PADDING));
             popupBackground.setCornerRadius(dp(20));
             popup.setBackground(popupBackground);
-            addView(popup, LayoutHelper.createFrame(240, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 0, POPUP_TOP, 0, 0));
+            // The card animates inside its own frame. A LayoutTransition skips layout() on the view it sits on while it
+            // runs, and on this cell that kept the list from placing it during a row insert, so the cell flew in from
+            // below.
+            FrameLayout card = new FrameLayout(context);
+            card.addView(popup, LayoutHelper.createFrame(240, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 0, POPUP_TOP, 0, 0));
+            addView(card, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
             addItem(context, 0, R.drawable.shortcut_compose, null, R.string.NewConversationShortcut);
             // Built once, not per bind: both are fresh bitmaps, and the base page rebinds everything on resume.
             ghostModeItem = addItem(context, 1, 0, GhostModeShortcut.createIcon(), R.string.AyuModeShortcut);
             videoNoteItem = addItem(context, 2, 0, VideoNoteShortcut.createIcon(), R.string.VideoNoteShortcutLabel);
+            videoNoteRearItem = addItem(context, 3, 0, VideoNoteShortcut.createIcon(), R.string.VideoNoteShortcutLabel);
 
             setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
             update();
@@ -344,7 +354,7 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
             cardTransition.enableTransitionType(LayoutTransition.CHANGING);
             cardTransition.setAnimateParentHierarchy(false);
             cardTransition.setDuration(220);
-            setLayoutTransition(cardTransition);
+            card.setLayoutTransition(cardTransition);
         }
 
         // Always as tall as the card with every item showing, so a switch only changes the card, never the rows below
@@ -387,7 +397,12 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
                 label.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
             }
             ghostModeItem.setVisibility(GhostModeShortcut.isEnabled() ? VISIBLE : GONE);
+            // With one shortcut the first item stands for whichever camera it opens, labelled plainly
+            boolean both = VideoNoteShortcut.getCameraMode() == VideoNoteShortcut.CAMERA_BOTH;
+            labels[2].setText(VideoNoteShortcut.getLabel(false, true));
+            labels[3].setText(VideoNoteShortcut.getLabel(true, true));
             videoNoteItem.setVisibility(VideoNoteShortcut.isEnabled() ? VISIBLE : GONE);
+            videoNoteRearItem.setVisibility(VideoNoteShortcut.isEnabled() && both ? VISIBLE : GONE);
         }
     }
 }

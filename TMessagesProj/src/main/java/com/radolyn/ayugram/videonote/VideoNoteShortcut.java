@@ -42,15 +42,25 @@ import xyz.nextalone.nagram.NaConfig;
 public final class VideoNoteShortcut {
 
     public static final String ACTION = "nax_video_note";
-    private static final String SHORTCUT_ID = "video_note";
+    // One id per camera, so a copy pinned to the home screen keeps its camera when the setting changes. Neither reuses
+    // the old "video_note": publishing under it would rewrite copies pinned before shortcuts carried their camera, which
+    // have no extra and follow the setting instead.
+    private static final String SHORTCUT_ID = "video_note_front";
+    private static final String SHORTCUT_ID_REAR = "video_note_rear";
     private static final String EXTRA_HASH = "hash";
+    private static final String EXTRA_REAR = "rear";
     private static final long PENDING_TTL_MS = 10_000;
+
+    public static final int CAMERA_FRONT = 0;
+    public static final int CAMERA_REAR = 1;
+    public static final int CAMERA_BOTH = 2;
 
     // Armed when the intent is accepted, consumed by the chat it opens. Static on purpose: it dies with
     // the process, so a restored activity or fragment can never replay the camera start.
     private static int pendingAccount = -1;
     private static long pendingDialogId;
     private static long pendingSince;
+    private static boolean pendingRear;
 
     private VideoNoteShortcut() {
     }
@@ -59,32 +69,73 @@ public final class VideoNoteShortcut {
         return NaConfig.INSTANCE.getVideoNoteShortcut().Bool();
     }
 
+    /** VideoNoteShortcutCamera, with anything unknown read as front. */
+    public static int getCameraMode() {
+        int mode = NaConfig.INSTANCE.getVideoNoteShortcutCamera().Int();
+        return mode == CAMERA_REAR || mode == CAMERA_BOTH ? mode : CAMERA_FRONT;
+    }
+
+    /** The launcher label: plain while there is one shortcut, naming the camera once there are two. */
+    public static String getLabel(boolean rear, boolean longLabel) {
+        if (getCameraMode() != CAMERA_BOTH) {
+            return LocaleController.getString(R.string.VideoNoteShortcutLabel);
+        }
+        if (longLabel) {
+            return LocaleController.getString(rear ? R.string.VideoNoteShortcutLabelRearLong : R.string.VideoNoteShortcutLabelFrontLong);
+        }
+        return LocaleController.getString(rear ? R.string.VideoNoteShortcutLabelRear : R.string.VideoNoteShortcutLabelFront);
+    }
+
+    private static boolean publishes(boolean rear) {
+        return isEnabled() && getCameraMode() != (rear ? CAMERA_FRONT : CAMERA_REAR);
+    }
+
+    /** MediaDataController.buildShortcuts: ranks taken past the one it hands to publish, which recent chats skip. */
+    public static int getExtraRanks() {
+        return publishes(false) && publishes(true) ? 1 : 0;
+    }
+
     /** MediaDataController.buildShortcuts: the ids it keeps when pruning stale shortcuts. */
     public static void addShortcutId(List<String> wantedIds) {
-        if (isEnabled()) {
+        if (publishes(false)) {
             wantedIds.add(SHORTCUT_ID);
+        }
+        if (publishes(true)) {
+            wantedIds.add(SHORTCUT_ID_REAR);
         }
     }
 
-    /** MediaDataController.buildShortcuts, on its queue after directShareHash is set. Own try so a launcher rejecting it can't abort the rest. */
+    /** MediaDataController.buildShortcuts, on its queue after directShareHash is set. */
     public static void publish(boolean recreate, List<String> existingIds, int rank) {
-        if (!isEnabled() || SharedConfig.directShareHash == null) {
+        if (SharedConfig.directShareHash == null) {
             return;
         }
+        if (publishes(false)) {
+            publish(false, recreate, existingIds, rank++);
+        }
+        if (publishes(true)) {
+            publish(true, recreate, existingIds, rank);
+        }
+    }
+
+    // Own try so a launcher rejecting one can't abort the rest
+    private static void publish(boolean rear, boolean recreate, List<String> existingIds, int rank) {
+        String id = rear ? SHORTCUT_ID_REAR : SHORTCUT_ID;
         try {
             Intent intent = new Intent(ApplicationLoader.applicationContext, LaunchActivity.class);
             intent.setAction(ACTION);
             intent.putExtra(EXTRA_HASH, SharedConfig.directShareHash);
-            ShortcutInfoCompat shortcut = new ShortcutInfoCompat.Builder(ApplicationLoader.applicationContext, SHORTCUT_ID)
-                    .setShortLabel(LocaleController.getString(R.string.VideoNoteShortcutLabel))
-                    .setLongLabel(LocaleController.getString(R.string.VideoNoteShortcutLabel))
+            intent.putExtra(EXTRA_REAR, rear);
+            ShortcutInfoCompat shortcut = new ShortcutInfoCompat.Builder(ApplicationLoader.applicationContext, id)
+                    .setShortLabel(getLabel(rear, false))
+                    .setLongLabel(getLabel(rear, true))
                     .setIcon(IconCompat.createWithBitmap(createIcon()))
                     .setRank(rank)
                     .setIntent(intent)
                     .build();
             if (recreate) {
                 ShortcutManagerCompat.pushDynamicShortcut(ApplicationLoader.applicationContext, shortcut);
-            } else if (existingIds.contains(SHORTCUT_ID)) {
+            } else if (existingIds.contains(id)) {
                 ShortcutManagerCompat.updateShortcuts(ApplicationLoader.applicationContext, Collections.singletonList(shortcut));
             } else {
                 ShortcutManagerCompat.addDynamicShortcuts(ApplicationLoader.applicationContext, Collections.singletonList(shortcut));
@@ -122,8 +173,11 @@ public final class VideoNoteShortcut {
      */
     public static long accept(Intent intent, int account) {
         boolean genuine = isGenuine(intent);
+        // A copy pinned before shortcuts carried their camera has no extra, and still follows the setting
+        boolean rear = intent.hasExtra(EXTRA_REAR) ? intent.getBooleanExtra(EXTRA_REAR, false) : getCameraMode() == CAMERA_REAR;
         intent.setAction(null);
         intent.removeExtra(EXTRA_HASH);
+        intent.removeExtra(EXTRA_REAR);
         if (!genuine || !UserConfig.getInstance(account).isClientActivated()) {
             if (phase != IDLE) {
                 lockNow();
@@ -134,6 +188,7 @@ public final class VideoNoteShortcut {
         pendingAccount = account;
         pendingDialogId = userId;
         pendingSince = SystemClock.elapsedRealtime();
+        pendingRear = rear;
         if (phase == STARTING) {
             phaseSince = pendingSince; // the database read above mustn't eat into the start timeout
         }
@@ -159,6 +214,7 @@ public final class VideoNoteShortcut {
             return;
         }
         boolean fresh = SystemClock.elapsedRealtime() - pendingSince < PENDING_TTL_MS;
+        boolean front = !pendingRear;
         pendingAccount = -1;
         pendingDialogId = 0;
         if (!fresh) {
@@ -175,7 +231,6 @@ public final class VideoNoteShortcut {
                 return; // the lock already came down in between
             }
             ChatActivityEnterView enterView = chat.getChatActivityEnterView();
-            boolean front = NaConfig.INSTANCE.getVideoNoteShortcutCamera().Int() != 1;
             boolean started = enterView != null && !chat.isFinished && chat.getParentActivity() != null
                     && enterView.startRoundVideoFromShortcut(front, !locked);
             if (locked && !started) {
