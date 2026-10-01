@@ -42,8 +42,10 @@ import xyz.nextalone.nagram.NaConfig;
 public final class VideoNoteShortcut {
 
     public static final String ACTION = "nax_video_note";
-    // One id per camera, so a copy pinned to the home screen keeps its camera when the setting changes
-    private static final String SHORTCUT_ID = "video_note";
+    // One id per camera, so a copy pinned to the home screen keeps its camera when the setting changes. Neither reuses
+    // the old "video_note": publishing under it would rewrite copies pinned before shortcuts carried their camera, which
+    // have no extra and follow the setting instead.
+    private static final String SHORTCUT_ID = "video_note_front";
     private static final String SHORTCUT_ID_REAR = "video_note_rear";
     private static final String EXTRA_HASH = "hash";
     private static final String EXTRA_REAR = "rear";
