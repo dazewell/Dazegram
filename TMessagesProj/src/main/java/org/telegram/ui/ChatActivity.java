@@ -10079,7 +10079,9 @@ public class ChatActivity extends BaseFragment implements
                 + " panelVis=" + (topPanelLayout != null ? topPanelLayout.getMetadata().getTotalVisibility() : -1)
                 + " pinnedHidden=" + (pinnedMessageView == null || pinnedMessageView.getTag() != null)
                 + " contentH=" + contentView.getMeasuredHeight() + " padTop=" + contentView.getPaddingTop()
-                + " bottomInset=" + maxBottomInset);
+                + " bottomInset=" + maxBottomInset
+                + " inLayout=" + (contentView.isInLayout()) + " layoutRequested=" + chatActivityEnterView.isLayoutRequested(),
+                chatActivityEnterView.isMessageEditExpanded() ? new Throwable("NAX_SMOKE_fullscreen-pinned caller") : null);
         }
         chatActivityEnterView.updateExpandedInputBudget(budget, inputMethodVisible);
     }

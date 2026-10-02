@@ -702,6 +702,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     private final boolean composerToolbarEnabled;
     private boolean messageEditExpanded;
     private int expandedInputBudget;
+    private int naxSmokeLastFieldHeight = Integer.MIN_VALUE;
     private boolean expandedInputAnchorVisible;
     private ImageView richButton;
     private ImageView expandInputButton;
@@ -17967,6 +17968,12 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (messageEditText != null) {
             messageEditText.getLayoutParams().height = messageEditExpanded && expandedInputBudget > 0
                 ? getExpandedInputHeight() : LayoutHelper.WRAP_CONTENT;
+            if (messageEditText.getLayoutParams().height != naxSmokeLastFieldHeight) {
+                naxSmokeLastFieldHeight = messageEditText.getLayoutParams().height;
+                android.util.Log.e("NAX_SMOKE_fullscreen-pinned", "NAX_SMOKE_fullscreen-pinned MEASURE fieldH=" + naxSmokeLastFieldHeight
+                    + " budget=" + expandedInputBudget + " expanded=" + messageEditExpanded
+                    + " specH=" + MeasureSpec.getSize(heightMeasureSpec) + " specMode=" + (MeasureSpec.getMode(heightMeasureSpec) >> 30));
+            }
         }
         updateBotCommandsMenuContainerTopPadding();
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
