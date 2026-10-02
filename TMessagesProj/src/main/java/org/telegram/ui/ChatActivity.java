@@ -30941,12 +30941,11 @@ public class ChatActivity extends BaseFragment implements
         String callLink = callLink(pinnedMessageObject);
         pinnedMessageButtonShown = botButton != null || !TextUtils.isEmpty(callLink);
         SharedPreferences preferences = MessagesController.getNotificationsSettings(currentAccount);
-        // NagramX (#fullscreen-input): the expanded input takes the pinned bar's rows. Hidden without touching
-        // the overflow "show pinned" item, which would otherwise offer to restore a bar that isn't dismissed.
-        // A non-topic reply thread reuses this view for its root message, which stays as context.
-        if (chatActivityEnterView != null && chatActivityEnterView.isMessageEditExpanded() && pinned_msg_id != 0 && (!isThreadChat() || isTopic)) {
-            changed = hidePinnedMessageView(animated);
-        } else if ((threadMessageObject == null || isTopic) && (chatInfo == null && userInfo == null || pinned_msg_id == 0 || !pinnedMessageIds.isEmpty() && pinnedMessageIds.get(0) == preferences.getInt("pin_" + dialog_id, 0)) || isReport() || actionBar != null && (actionBar.isActionModeShowed() || actionBar.isSearchFieldVisible())) {
+        // NagramX (#fullscreen-input): the expanded input takes the pinned bar's rows. Only the reveal is held back,
+        // so dismissal and the overflow "show pinned" item still follow the real pin state. A non-topic reply
+        // thread reuses this view for its root message, which stays as context.
+        final boolean naxExpandedHide = chatActivityEnterView != null && chatActivityEnterView.isMessageEditExpanded() && (!isThreadChat() || isTopic);
+        if ((threadMessageObject == null || isTopic) && (chatInfo == null && userInfo == null || pinned_msg_id == 0 || !pinnedMessageIds.isEmpty() && pinnedMessageIds.get(0) == preferences.getInt("pin_" + dialog_id, 0)) || isReport() || actionBar != null && (actionBar.isActionModeShowed() || actionBar.isSearchFieldVisible())) {
             changed = hidePinnedMessageView(animated);
             if (headerItem != null) {
                 if (pinnedMessageIds.size() > 0) {
@@ -30969,7 +30968,7 @@ public class ChatActivity extends BaseFragment implements
                 return;
             }
             if (pinnedMessageObject != null) {
-                if (pinnedMessageView != null && pinnedMessageView.getTag() != null) {
+                if (pinnedMessageView != null && pinnedMessageView.getTag() != null && !naxExpandedHide) {
                     pinnedMessageView.setTag(null);
                     changed = true;
 
@@ -31609,6 +31608,9 @@ public class ChatActivity extends BaseFragment implements
                     getMediaDataController().loadPinnedMessages(dialog_id, ChatObject.isChannel(currentChat) ? currentChat.id : 0, ids, true);
                 }
             }
+        }
+        if (naxExpandedHide) {
+            changed |= hidePinnedMessageView(animated); // NagramX: a bar already up when the input expanded
         }
         if (changed) {
             checkListViewPaddings();
