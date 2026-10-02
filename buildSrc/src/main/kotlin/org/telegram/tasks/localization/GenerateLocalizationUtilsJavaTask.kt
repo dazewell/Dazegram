@@ -97,6 +97,14 @@ abstract class GenerateLocalizationUtilsJavaTask : DefaultTask() {
                     }
                 }
 
+                for ((language, tag) in LanguageTagAliases.languageFallbacks(languageTags)) {
+                    java.append("            case \"")
+                    java.append(escapeJavaString(language))
+                    java.append("\": return \"")
+                    java.append(getLocalizationAssetName(tag))
+                    java.appendLine("\";")
+                }
+
                 java.appendLine("            default: return null;")
                 java.appendLine("        }")
                 java.appendLine("    }")

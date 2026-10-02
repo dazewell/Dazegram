@@ -51,5 +51,21 @@ internal object LanguageTagAliases {
         return result
     }
 
+    /**
+     * A bare language that has only region variants (zh-CN and zh-TW) still has to resolve, because a language
+     * pack builds Locale("zh") and the lookup would otherwise find nothing. Prefer the listed region, else the first.
+     */
+    fun languageFallbacks(tags: Set<String>): Map<String, String> {
+        val result = LinkedHashMap<String, String>()
+        for ((language, variants) in tags.filter { it.contains('-') }.sorted().groupBy { it.substringBefore('-') }) {
+            if (tags.contains(language)) continue
+            val preferred = PREFERRED_REGION[language]?.let { "$language-$it" }
+            result[language] = if (preferred != null && variants.contains(preferred)) preferred else variants.first()
+        }
+        return result
+    }
+
+    private val PREFERRED_REGION = mapOf("zh" to "CN")
+
     private fun legacy(language: String): String = LEGACY_LANGUAGES[language] ?: language
 }
