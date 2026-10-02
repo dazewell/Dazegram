@@ -4564,7 +4564,19 @@ public class LocaleController {
             return value;
         }
 
-        return localizationInternal.getByResName(fallback);
+        value = localizationInternal.getByResName(fallback);
+        if (value != null) {
+            return value;
+        }
+
+        // NagramX: strings that exist only as Android resources never reach the generated assets, such as
+        // R.string.NagramX, a per-package resValue. Without this every alert title that uses it shows LOC_ERR.
+        if (stringRes != 0) {
+            try {
+                return context.getString(stringRes);
+            } catch (Exception ignore) {}
+        }
+        return null;
     }
 
 
