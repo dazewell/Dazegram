@@ -195,7 +195,13 @@ jobs:
       - name: Set up Ccache
         uses: hendrikmuhs/ccache-action@v1.2.23
         with:
-          append-timestamp: false
+          # GitHub cache entries cannot be overwritten, so a fixed key freezes at its first save: every later run
+          # restores that stale entry, misses once native sources change, and fails to save ("Unable to reserve
+          # cache"). A timestamped key saves a fresh entry per run and restores the newest one by prefix.
+          append-timestamp: true
+          # The two package legs run in parallel and would each save a competing ccache-<timestamp> entry, with the
+          # newest prefix match coming from either one. The package in the key gives each leg its own line of entries.
+          key: ${{ matrix.package }}
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
       - name: Set up Android SDK Tools
