@@ -4854,7 +4854,7 @@ public class ChatActivity extends BaseFragment implements
             invalidateMessagesVisiblePart();
             checkUi_messagesSearchListPadding();
             checkUi_topFade();
-            // NagramX: the MD3 expanded input stops below this panel, so its budget follows the panel's animation.
+            // NagramX: the MD3 expanded input stops below this panel; the first tick after a panel change carries its new settled height.
             if (chatInputViewsContainer != null && chatInputViewsContainer.md3Surface != null && chatActivityEnterView != null && chatActivityEnterView.isMessageEditExpanded()) {
                 checkUi_expandedInputBudget();
             }
@@ -10051,8 +10051,10 @@ public class ChatActivity extends BaseFragment implements
             budget -= actionBar.getMeasuredHeight();
         }
         // NagramX: the MD3 island floats higher and reaches past its pill, and must stop below the pinned panel.
+        // The panel's settled height, not its animated one: expanding hides the pinned bar, and the field should
+        // grow into that space alongside the bar's exit rather than after it.
         if (chatInputViewsContainer != null && chatInputViewsContainer.md3Surface != null) {
-            budget -= chatInputViewsContainer.md3Surface.expandedInputTrim(topPanelLayout != null && topPanelLayout.getMetadata().getTotalVisibility() > 0 ? Math.round(topPanelLayout.getMetadata().getTotalHeight()) : 0);
+            budget -= chatInputViewsContainer.md3Surface.expandedInputTrim(topPanelLayout != null ? topPanelLayout.getSumHeightOfAllVisibleChild() : 0);
         }
         final boolean inputMethodVisible = windowInsetsStateHolder.getInsets(WindowInsetsCompat.Type.ime()).bottom > 0
             || windowInsetsStateHolder.inAppViewIsVisible();
