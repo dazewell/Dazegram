@@ -17,6 +17,7 @@ import android.os.VibrationAttributes;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.text.TextPaint;
+import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.animation.LinearInterpolator;
@@ -120,7 +121,7 @@ public final class VideoHoldToSend {
                 }
                 this.circle = circle;
                 tracking = true;
-                buzz(10, 40);
+                buzz(10, 40, HapticFeedbackConstants.CLOCK_TICK);
                 animateTo(1f, ARM_MS);
                 AndroidUtilities.runOnUIThread(armRunnable, ARM_MS);
                 break;
@@ -242,7 +243,7 @@ public final class VideoHoldToSend {
             return;
         }
         armed = true;
-        buzz(45, 255);
+        buzz(45, 255, HapticFeedbackConstants.LONG_PRESS);
         if (host != null) {
             host.invalidate(); // the label switches to its armed text
         }
@@ -254,7 +255,7 @@ public final class VideoHoldToSend {
             return;
         }
         if (armed) {
-            buzz(20, 120);
+            buzz(20, 120, HapticFeedbackConstants.KEYBOARD_TAP);
         }
         tracking = false;
         armed = false;
@@ -264,14 +265,25 @@ public final class VideoHoldToSend {
         }
     }
 
-    // Amplitude is ignored where the vibrator can't vary it.
-    private void buzz(long ms, int amplitude) {
+    // Amplitude is ignored where the vibrator can't vary it. A dead vibrator route falls back to the view's
+    // haptic, as RecordingLimitVibration does.
+    private void buzz(long ms, int amplitude, int hapticFallback) {
         if (NekoConfig.disableVibration.Bool()) {
             return;
         }
+        if (vibrate(ms, amplitude) || circle == null) {
+            return;
+        }
+        try {
+            circle.performHapticFeedback(hapticFallback, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static boolean vibrate(long ms, int amplitude) {
         final Vibrator vibrator = AndroidUtilities.getVibrator();
         if (vibrator == null || !vibrator.hasVibrator()) {
-            return;
+            return false;
         }
         try {
             final VibrationEffect effect = VibrationEffect.createOneShot(ms,
@@ -285,8 +297,10 @@ public final class VideoHoldToSend {
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                         .build());
             }
+            return true;
         } catch (Exception e) {
             FileLog.e(e);
+            return false;
         }
     }
 
