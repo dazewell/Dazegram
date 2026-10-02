@@ -199,9 +199,15 @@ jobs:
           # restores that stale entry, misses once native sources change, and fails to save ("Unable to reserve
           # cache"). A timestamped key saves a fresh entry per run and restores the newest one by prefix.
           append-timestamp: true
-          # The two package legs run in parallel and would each save a competing ccache-<timestamp> entry, with the
-          # newest prefix match coming from either one. The package in the key gives each leg its own line of entries.
-          key: ${{ matrix.package }}
+          # Both package legs compile identical native objects (one shared entry gave both 100% hits), so they share
+          # one line of entries and only one leg saves it: two savers would store the same ~170MB twice per run in a
+          # repo already at its cache quota. A PR can only restore entries saved on dev or on that PR, so after a key
+          # change nothing hits until a staging run on dev has saved one.
+          key: staging
+          # Bridge from the per-package key this replaced, so the entry dev last saved still seeds the first runs
+          # under the new key. Drop once a dev run has saved a ccache-staging- entry.
+          restore-keys: nekox.messenger
+          save: ${{ matrix.package == 'nekox.messenger' }}
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
       - name: Set up Android SDK Tools
