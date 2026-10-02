@@ -1,3 +1,4 @@
+import groovy.xml.XmlSlurper
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -23,7 +24,8 @@ subprojects {
                     sourceCompatibility = JavaVersion.VERSION_21
                     targetCompatibility = JavaVersion.VERSION_21
 
-                    coreLibraryDesugaringEnabled = true
+                    // NagramX: the media submodule declares no desugaring dependency
+                    coreLibraryDesugaringEnabled = !project.projectDir.absolutePath.replace('\\', '/').contains('/TMessagesProj_Modules/media/')
                 }
 
                 kotlin {
@@ -39,6 +41,25 @@ subprojects {
 
                 buildFeatures.buildConfig = true
                 buildFeatures.resValues = true
+            }
+        }
+    }
+
+    if (project.projectDir.absolutePath.replace('\\', '/').contains('/TMessagesProj_Modules/media/')) {
+        project.plugins.withId('com.android.library') {
+            project.android {
+                if (namespace == null) {
+                    def manifestFile = file("${project.projectDir}/src/main/AndroidManifest.xml")
+
+                    if (manifestFile.exists()) {
+                        def manifest = new XmlSlurper().parse(manifestFile)
+                        def manifestPackage = manifest.@package.text()
+
+                        if (manifestPackage) {
+                            namespace manifestPackage
+                        }
+                    }
+                }
             }
         }
     }

@@ -25,3 +25,12 @@ dependencyResolutionManagement {
 
 rootProject.name = "NagramX"
 include ':TMessagesProj'
+
+// NagramX: the media submodule hard-codes the :TMessagesProj_Modules:media3: project path, so the
+// prefix must stay nested. Gradle 9 rejects the implicit parent projects that creates unless their directory exists.
+gradle.ext.androidxMediaModulePrefix = 'TMessagesProj_Modules:media3:media-'
+apply from: file("TMessagesProj_Modules/media/core_settings.gradle")
+project(':TMessagesProj_Modules:media3').projectDir = file('TMessagesProj_Modules/media/libraries')
+
+// common-ktx applies kotlin-android, which AGP 9's built-in Kotlin rejects, and nothing we build depends on it.
+project(':TMessagesProj_Modules:media3:media-lib-common-ktx').buildFileName = 'unused.gradle'
