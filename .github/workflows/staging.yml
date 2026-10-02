@@ -210,10 +210,26 @@ jobs:
           save: ${{ matrix.package == 'nekox.messenger' }}
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
+      - name: Restore NDK
+        # The runner image does not ship the NDK build.gradle pins, so sdkmanager downloads it on every leg
+        # (~35s, and a corrupt download has failed a leg). A restored directory makes it skip the install.
+        id: ndk
+        uses: actions/cache/restore@v6
+        with:
+          path: /usr/local/lib/android/sdk/ndk/27.2.12479018
+          key: ndk-27.2.12479018-${{ runner.os }}
       - name: Set up Android SDK Tools
         uses: android-actions/setup-android@v4
         with:
           packages: "build-tools;36.0.0 ndk;27.2.12479018 platforms;android-37.0"
+      - name: Save NDK
+        # One saver, after a successful install, on dev only: the entry is immutable and a copy saved in any other
+        # ref's scope (a PR, a dispatched feature branch) would serve only that ref. ci.yml restores the same entry.
+        if: steps.ndk.outputs.cache-hit != 'true' && matrix.package == 'nekox.messenger' && github.ref == 'refs/heads/dev'
+        uses: actions/cache/save@v6
+        with:
+          path: /usr/local/lib/android/sdk/ndk/27.2.12479018
+          key: ndk-27.2.12479018-${{ runner.os }}
       - name: Install Native Build Dependencies
         run: |
           sudo apt-get update

@@ -52,8 +52,8 @@ jobs:
     env:
       # SKIP disables every cmake/jni task, so no native code is compiled here.
       # AGP still provisions the configured NDK at configuration time — the hosted
-      # runner ships it pre-cached, so that costs seconds, not the ~9 min a native
-      # build would. javac does not depend on the native build, so this compiles
+      # runner does not ship that version, so it comes from the Actions cache (see
+      # Restore NDK) or a ~20s download, not the ~9 min a native build would. javac does not depend on the native build, so this compiles
       # the whole Java/Kotlin surface (generated R.jar and BuildConfig included).
       NATIVE_TARGET: "SKIP"
     steps:
@@ -71,13 +71,20 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
+      - name: Restore NDK
+        # AGP needs the pinned NDK installed at configuration time; the runner image lacks it, so without this it
+        # downloads it every run. staging.yml saves this entry.
+        uses: actions/cache/restore@v6
+        with:
+          path: /usr/local/lib/android/sdk/ndk/27.2.12479018
+          key: ndk-27.2.12479018-${{ runner.os }}
       - name: Set up Android SDK Tools
         uses: android-actions/setup-android@v4
         with:
           # Platform + build-tools only — we don't request the NDK. AGP still
-          # auto-installs the configured ndkVersion at config time from the
-          # runner's pre-cached SDK (~seconds), but with SKIP no cmake/jni task
-          # runs, so native code is never actually compiled.
+          # installs the configured ndkVersion at config time when Restore NDK
+          # missed, but with SKIP no cmake/jni task runs, so native code is
+          # never actually compiled.
           packages: "build-tools;36.0.0 platforms;android-37.0"
       - name: Configure Android SDK Path
         run: |
@@ -166,6 +173,13 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
+      - name: Restore NDK
+        # AGP needs the pinned NDK installed at configuration time; the runner image lacks it, so without this it
+        # downloads it every run. staging.yml saves this entry.
+        uses: actions/cache/restore@v6
+        with:
+          path: /usr/local/lib/android/sdk/ndk/27.2.12479018
+          key: ndk-27.2.12479018-${{ runner.os }}
       - name: Set up Android SDK Tools
         uses: android-actions/setup-android@v4
         with:
