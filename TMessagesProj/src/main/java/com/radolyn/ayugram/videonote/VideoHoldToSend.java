@@ -39,7 +39,8 @@ import xyz.nextalone.nagram.NaConfig;
 /**
  * Press and hold the round video circle to send a hands-free (locked) recording, or the paused preview it
  * stopped into, so the send doesn't need the small button in the corner. A disc fills the circle from its centre
- * while held, with a buzz that grows with it; once full, letting go sends. Letting go early, sliding off the
+ * while held; once full, letting go sends. A light tick marks the touch, a firm one the moment it arms, and a
+ * short one when sliding off disarms it. Letting go early, sliding off the
  * circle or a second finger (pinch zoom) cancels and nothing changes. The rim is left alone on purpose: it
  * already carries the recording-time arc.
  * A small label above the circle says how it works whenever it's available.
@@ -49,7 +50,7 @@ import xyz.nextalone.nagram.NaConfig;
  */
 public final class VideoHoldToSend {
 
-    private static final long ARM_MS = 450;
+    private static final long ARM_MS = 250;
     private static final long CANCEL_MS = 150;
     private static final float LABEL_FADE_PER_MS = 1f / 150f;
 
@@ -62,7 +63,6 @@ public final class VideoHoldToSend {
     private View host;
     private boolean tracking;
     private boolean armed;
-    private boolean buzzing;
     private float progress;
     private ValueAnimator animator;
     private Paint discPaint;
@@ -121,7 +121,7 @@ public final class VideoHoldToSend {
                 }
                 this.circle = circle;
                 tracking = true;
-                startFillBuzz();
+                buzz(10, 40, HapticFeedbackConstants.CLOCK_TICK);
                 animateTo(1f, ARM_MS);
                 AndroidUtilities.runOnUIThread(armRunnable, ARM_MS);
                 break;
@@ -156,7 +156,6 @@ public final class VideoHoldToSend {
         AndroidUtilities.cancelRunOnUIThread(armRunnable);
         tracking = false;
         armed = false;
-        stopFillBuzz();
         if (animator != null) {
             animator.cancel();
             animator = null;
@@ -244,27 +243,19 @@ public final class VideoHoldToSend {
             return;
         }
         armed = true;
-        if (circle != null) {
-            // the waveform ends in its own tap; only a dead vibrator route needs this
-            if (!buzzing && !NekoConfig.disableVibration.Bool()) {
-                try {
-                    circle.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
-                } catch (Exception ignored) {
-                }
-            }
-            if (host != null) {
-                host.invalidate(); // the label switches to its armed text
-            }
+        buzz(45, 255, HapticFeedbackConstants.LONG_PRESS);
+        if (host != null) {
+            host.invalidate(); // the label switches to its armed text
         }
-        // what's left of the waveform is that tap, which a quick release or slide-off shouldn't cut short
-        buzzing = false;
     }
 
     private void cancel() {
         AndroidUtilities.cancelRunOnUIThread(armRunnable);
-        stopFillBuzz();
         if (!tracking && !armed) {
             return;
+        }
+        if (armed) {
+            buzz(20, 120, HapticFeedbackConstants.KEYBOARD_TAP);
         }
         tracking = false;
         armed = false;
@@ -274,28 +265,29 @@ public final class VideoHoldToSend {
         }
     }
 
-    // One waveform for the whole hold, so it tracks the fill without timers: rising strength over ARM_MS, then a
-    // firm tap as the circle fills. Without amplitude control the same span is ticks that come closer together.
-    private void startFillBuzz() {
-        buzzing = false;
+    // Amplitude is ignored where the vibrator can't vary it. A dead vibrator route falls back to the view's
+    // haptic, as RecordingLimitVibration does.
+    private void buzz(long ms, int amplitude, int hapticFallback) {
         if (NekoConfig.disableVibration.Bool()) {
             return;
         }
-        final Vibrator vibrator = AndroidUtilities.getVibrator();
-        if (vibrator == null || !vibrator.hasVibrator()) {
+        if (vibrate(ms, amplitude) || circle == null) {
             return;
         }
-        final long[] timings;
-        final int[] amplitudes;
-        if (vibrator.hasAmplitudeControl()) {
-            timings = new long[]{50, 50, 50, 50, 50, 50, 50, 50, 50, 40};
-            amplitudes = new int[]{8, 16, 26, 38, 52, 68, 86, 106, 128, 255};
-        } else {
-            timings = new long[]{90, 8, 70, 8, 55, 8, 42, 8, 32, 8, 24, 8, 18, 8, 12, 8, 40};
-            amplitudes = new int[]{0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 255};
+        try {
+            circle.performHapticFeedback(hapticFallback, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static boolean vibrate(long ms, int amplitude) {
+        final Vibrator vibrator = AndroidUtilities.getVibrator();
+        if (vibrator == null || !vibrator.hasVibrator()) {
+            return false;
         }
         try {
-            final VibrationEffect effect = VibrationEffect.createWaveform(timings, amplitudes, -1);
+            final VibrationEffect effect = VibrationEffect.createOneShot(ms,
+                    vibrator.hasAmplitudeControl() ? amplitude : VibrationEffect.DEFAULT_AMPLITUDE);
             // same attributes as RecordingLimitVibration, for the same Do Not Disturb reason
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 vibrator.vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_TOUCH));
@@ -305,24 +297,10 @@ public final class VideoHoldToSend {
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                         .build());
             }
-            buzzing = true;
+            return true;
         } catch (Exception e) {
             FileLog.e(e);
-        }
-    }
-
-    private void stopFillBuzz() {
-        if (!buzzing) {
-            return;
-        }
-        buzzing = false;
-        final Vibrator vibrator = AndroidUtilities.getVibrator();
-        if (vibrator != null) {
-            try {
-                vibrator.cancel();
-            } catch (Exception e) {
-                FileLog.e(e);
-            }
+            return false;
         }
     }
 
