@@ -5,17 +5,25 @@ plugins {
     id 'com.android.application'
     id 'com.google.gms.google-services'
     id 'com.google.firebase.crashlytics'
-    id 'org.telegram.lottie-meta'
+    id 'org.telegram.build-plugin'
+    id 'org.telegram.build-app-plugin'
     id 'idea'
 }
 
 idea {
     module {
         excludeDirs += [
-            file('jni/third_party'),
-            file('jni/ffmpeg'),
+            file('jni/td'),
+            file('jni/third_party/absl'),
+            file('jni/third_party/boringssl'),
+            file('jni/third_party/dav1d'),
+            file('jni/third_party/ffmpeg'),
+            file('jni/third_party/libvpx'),
+            file('jni/third_party/libyuv'),
+            file('jni/third_party/openh264'),
+            file('jni/third_party/xiph'),
             file('jni/tlottie'),
-            file('jni/boringssl'),
+            file('jni/voip/webrtc'),
             file('jni/sqlite')
         ]
     }
@@ -273,6 +281,7 @@ dependencies {
     implementation 'androidx.sharetarget:sharetarget:1.2.0'
     implementation 'androidx.interpolator:interpolator:1.0.0'
     implementation 'androidx.biometric:biometric:1.1.0'
+    implementation 'androidx.webkit:webkit:1.14.0'
     implementation 'androidx.car.app:app:1.7.0'
     implementation 'androidx.car.app:app-projected:1.7.0'
     implementation 'org.nanohttpd:nanohttpd:2.3.1'
@@ -307,6 +316,12 @@ dependencies {
     implementation "io.noties.markwon:html:4.6.2"
     implementation "io.noties.markwon:inline-parser:4.6.2"
     implementation "io.noties.markwon:ext-latex:4.6.2"
+
+    api project(":TMessagesProj_Modules:media3:media-lib-exoplayer")
+    api project(":TMessagesProj_Modules:media3:media-lib-exoplayer-dash")
+    api project(":TMessagesProj_Modules:media3:media-lib-exoplayer-hls")
+    api project(":TMessagesProj_Modules:media3:media-lib-decoder-ffmpeg")
+    api project(":TMessagesProj_Modules:media3:media-lib-session")
     // payment
     implementation('com.stripe:stripe-android:2.0.2') {
         exclude group: 'com.android.support', module: 'support-annotations'
