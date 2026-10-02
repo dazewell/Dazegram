@@ -200,8 +200,8 @@ jobs:
           # cache"). A timestamped key saves a fresh entry per run and restores the newest one by prefix.
           append-timestamp: true
           # The two package legs run in parallel and would each save a competing ccache-<timestamp> entry, with the
-          # newest prefix match coming from either one. A variant per leg gives each its own line of entries.
-          variant: ${{ matrix.package }}
+          # newest prefix match coming from either one. The package in the key gives each leg its own line of entries.
+          key: ${{ matrix.package }}
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
       - name: Set up Android SDK Tools
