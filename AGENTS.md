@@ -61,6 +61,10 @@ don't kill a cold run early. One local build at a time on that machine — check
 `.\gradlew.bat --status` and fall back to CI rather than queueing behind a
 `BUSY` daemon.
 
+A missing `TMessagesProj_Modules/media/core_settings.gradle` is not the
+environment: `.githooks/post-checkout` fills it in every new worktree, and
+`sh .github/scripts/ensure-media-submodule.sh` does it by hand.
+
 If the toolchain is missing, or the first run fails on the environment rather
 than on your code, **stop and let CI be the gate** — don't install an SDK.
 `ci.yml` compiles every push and PR into `dev`; that run *is* the gate. Say so
