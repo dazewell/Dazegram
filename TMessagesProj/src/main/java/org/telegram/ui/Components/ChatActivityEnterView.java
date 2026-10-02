@@ -7664,8 +7664,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         messageEditText.requestLayout();
         postReconcileScheduleButton();
         updateExpandInputButton();
+        // NagramX: the pinned bar hides while expanded, giving its rows to the field, so re-evaluate it on every toggle
         if (parentFragment != null) {
-            parentFragment.updatePinnedMessageView(true); // the pinned bar hides while expanded, giving its rows to the field
+            parentFragment.updatePinnedMessageView(true);
         }
         // keep the line being edited on screen once the new height is applied
         AndroidUtilities.runOnUIThread(() -> {

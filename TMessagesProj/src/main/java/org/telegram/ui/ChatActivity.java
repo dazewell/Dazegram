@@ -30943,7 +30943,8 @@ public class ChatActivity extends BaseFragment implements
         SharedPreferences preferences = MessagesController.getNotificationsSettings(currentAccount);
         // NagramX (#fullscreen-input): the expanded input takes the pinned bar's rows. Hidden without touching
         // the overflow "show pinned" item, which would otherwise offer to restore a bar that isn't dismissed.
-        if (chatActivityEnterView != null && chatActivityEnterView.isMessageEditExpanded() && pinned_msg_id != 0) {
+        // A non-topic reply thread reuses this view for its root message, which stays as context.
+        if (chatActivityEnterView != null && chatActivityEnterView.isMessageEditExpanded() && pinned_msg_id != 0 && (!isThreadChat() || isTopic)) {
             changed = hidePinnedMessageView(animated);
         } else if ((threadMessageObject == null || isTopic) && (chatInfo == null && userInfo == null || pinned_msg_id == 0 || !pinnedMessageIds.isEmpty() && pinnedMessageIds.get(0) == preferences.getInt("pin_" + dialog_id, 0)) || isReport() || actionBar != null && (actionBar.isActionModeShowed() || actionBar.isSearchFieldVisible())) {
             changed = hidePinnedMessageView(animated);
