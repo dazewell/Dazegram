@@ -71,6 +71,13 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
+      - name: Restore NDK
+        # AGP needs the pinned NDK installed at configuration time; the runner image lacks it, so without this it
+        # downloads it every run. staging.yml saves this entry.
+        uses: actions/cache/restore@v6
+        with:
+          path: /usr/local/lib/android/sdk/ndk/27.2.12479018
+          key: ndk-27.2.12479018-${{ runner.os }}
       - name: Set up Android SDK Tools
         uses: android-actions/setup-android@v4
         with:
@@ -166,6 +173,13 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
+      - name: Restore NDK
+        # AGP needs the pinned NDK installed at configuration time; the runner image lacks it, so without this it
+        # downloads it every run. staging.yml saves this entry.
+        uses: actions/cache/restore@v6
+        with:
+          path: /usr/local/lib/android/sdk/ndk/27.2.12479018
+          key: ndk-27.2.12479018-${{ runner.os }}
       - name: Set up Android SDK Tools
         uses: android-actions/setup-android@v4
         with:
