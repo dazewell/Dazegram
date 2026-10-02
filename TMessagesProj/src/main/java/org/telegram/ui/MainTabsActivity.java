@@ -1177,12 +1177,11 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
     }
 
     private NotificationCenter.ObserversGroup observersGroup;
-    private NotificationCenter.ObserversGroup globalObserversGroup;
-
 
     @Override
     public boolean onFragmentCreate() {
-        observersGroup = NotificationCenter.getInstance(currentAccount).createObserversGroup(this)
+        observersGroup = NotificationCenter.getInstance(currentAccount)
+            .createObserversGroup(this)
             .add(NotificationCenter.fileLoaded)
             .add(NotificationCenter.fileLoadProgressChanged)
             .add(NotificationCenter.fileLoadFailed)
@@ -1190,13 +1189,11 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             .add(NotificationCenter.updateInterfaces)
             .add(NotificationCenter.callTabsVisibleToggled)
             .add(NotificationCenter.mainUserInfoChanged)
-            .add(NotificationCenter.contactsPermissionBadgeCheck);
-
-        globalObserversGroup = NotificationCenter.getGlobalInstance().createObserversGroup(this)
-            .add(NotificationCenter.appUpdateAvailable)
-            .add(NotificationCenter.appUpdateLoading)
-            .add(NotificationCenter.needSetDayNightTheme)
-            .add(NotificationCenter.privacyProfileActiveStateChanged);
+            .add(NotificationCenter.contactsPermissionBadgeCheck)
+            .addGlobal(NotificationCenter.appUpdateAvailable)
+            .addGlobal(NotificationCenter.appUpdateLoading)
+            .addGlobal(NotificationCenter.needSetDayNightTheme)
+            .addGlobal(NotificationCenter.privacyProfileActiveStateChanged);
 
         return super.onFragmentCreate();
     }
@@ -1210,10 +1207,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             observersGroup.removeAllObservers();
             observersGroup = null;
         }
-        if (globalObserversGroup != null) {
-            globalObserversGroup.removeAllObservers();
-            globalObserversGroup = null;
-        }
+
         super.onFragmentDestroy();
     }
 
