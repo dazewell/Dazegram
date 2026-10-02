@@ -804,8 +804,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         if (SharedSettings.experimentalSettingsAllowed.get()) {
             items.add(UItem.asShadow(null));
             items.add(UItem.asHeader("Experimental"));
-            // NagramX (#upstream-sync): the round video settings page only configures upstream's Camera2 view, which
-            // InstantCameraViewBase.create never returns, so its row is not offered.
+            // NagramX: the round video settings page only configures upstream's Camera2 view, which ChatActivity
+            // never creates (it builds InstantCameraView directly), so its row is not offered.
         }
 
         if (BuildVars.LOGS_ENABLED || BuildVars.DEBUG_PRIVATE_VERSION) {

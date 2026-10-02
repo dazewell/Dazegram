@@ -26,7 +26,7 @@ dependencyResolutionManagement {
 rootProject.name = "NagramX"
 include ':TMessagesProj'
 
-// NagramX (#upstream-sync): the media submodule hard-codes the :TMessagesProj_Modules:media3: project path, so the
+// NagramX: the media submodule hard-codes the :TMessagesProj_Modules:media3: project path, so the
 // prefix must stay nested. Gradle 9 rejects the implicit parent projects that creates unless their directory exists.
 gradle.ext.androidxMediaModulePrefix = 'TMessagesProj_Modules:media3:media-'
 apply from: file("TMessagesProj_Modules/media/core_settings.gradle")

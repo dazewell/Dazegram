@@ -24,7 +24,7 @@ subprojects {
                     sourceCompatibility = JavaVersion.VERSION_21
                     targetCompatibility = JavaVersion.VERSION_21
 
-                    // NagramX (#upstream-sync): the media submodule declares no desugaring dependency
+                    // NagramX: the media submodule declares no desugaring dependency
                     coreLibraryDesugaringEnabled = !project.projectDir.absolutePath.replace('\\', '/').contains('/TMessagesProj_Modules/media/')
                 }
 

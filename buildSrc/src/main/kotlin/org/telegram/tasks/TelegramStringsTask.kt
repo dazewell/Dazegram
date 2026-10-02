@@ -1,5 +1,6 @@
 package org.telegram.tasks
 
+import org.telegram.tasks.localization.LanguageTagAliases
 import groovy.util.Node
 import groovy.util.NodeList
 import groovy.xml.XmlParser
@@ -26,6 +27,18 @@ abstract class TelegramStringsTask : DefaultTask() {
 
     companion object {
         private val GENERATED_EXCLUSIONS = setOf(
+            // NagramX: referenced from the manifest or res/xml, so the shrinker must keep them as ordinary resources
+            "AccountSettingsNax",
+            "SettingsNax",
+            "NagramX",
+            "EditWidgetChatsInfo",
+            "EditWidgetContactsInfo",
+            "VoipAnswerCall",
+            "VoipDeclineCall",
+            "account_type",
+            "contacts_mime_call",
+            "contacts_mime_call_video",
+            "contacts_mime_profile",
             "AppName",
             "AppNameBeta"
         )
@@ -320,9 +333,13 @@ abstract class TelegramStringsTask : DefaultTask() {
 
         val localizedFilesByTag = linkedMapOf<String, MutableList<File>>()
 
+        val canonicalTags = LanguageTagAliases.canonicalize(
+            localizationInputFiles.map { getLanguageTag(it) }.toSet()
+        )
+
         for (file in localizationInputFiles) {
             localizedFilesByTag
-                .getOrPut(getLanguageTag(file)) { ArrayList() }
+                .getOrPut(canonicalTags.getValue(getLanguageTag(file))) { ArrayList() }
                 .add(file)
         }
 

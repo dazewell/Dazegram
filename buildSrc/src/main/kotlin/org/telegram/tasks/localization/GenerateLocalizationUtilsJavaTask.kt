@@ -30,10 +30,10 @@ abstract class GenerateLocalizationUtilsJavaTask : DefaultTask() {
         // Default localization always exists.
         localizations.add("en")
 
-        for (file in localizationFiles.files) {
-            localizations.add(getLanguageTag(file))
-        }
-
+        val canonicalTags = LanguageTagAliases.canonicalize(
+            localizationFiles.files.map { getLanguageTag(it) }.toSet()
+        )
+        localizations.addAll(canonicalTags.values)
         generateJava(
             javaDir = javaOutputDir.get().asFile,
             languageTags = localizations

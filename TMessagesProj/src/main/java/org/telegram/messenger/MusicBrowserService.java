@@ -21,7 +21,6 @@ import androidx.annotation.NonNull;
 
 import java.util.List;
 
-import java.util.List;
 
 @TargetApi(Build.VERSION_CODES.LOLLIPOP)
 public class MusicBrowserService extends MediaBrowserService {

@@ -48,9 +48,9 @@ public abstract class InstantCameraViewBase extends FrameLayout {
             Theme.ResourcesProvider resourcesProvider,
             boolean isNewDesign
     ) {
-        // NagramX (#upstream-sync): the video memo, hold-to-send and dual-camera work live in InstantCameraView,
-        // so it stays the only implementation created. InstantCameraView2 is carried unused until it is adopted.
-        return new InstantCameraView(context, delegate, resourcesProvider, isNewDesign);
+        return SharedSettings.roundVideoCamera2Enabled.get()
+                ? new InstantCameraView2(context, delegate, resourcesProvider, isNewDesign)
+                : new InstantCameraView(context, delegate, resourcesProvider, isNewDesign);
     }
 
     /** Receives visibility changes of the camera view. */
