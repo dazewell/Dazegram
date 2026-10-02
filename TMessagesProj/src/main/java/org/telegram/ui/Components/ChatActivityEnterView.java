@@ -7664,6 +7664,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         messageEditText.requestLayout();
         postReconcileScheduleButton();
         updateExpandInputButton();
+        if (parentFragment != null) {
+            parentFragment.updatePinnedMessageView(true); // the pinned bar hides while expanded, giving its rows to the field
+        }
         // keep the line being edited on screen once the new height is applied
         AndroidUtilities.runOnUIThread(() -> {
             if (messageEditText != null && messageEditText.getSelectionStart() >= 0) {
