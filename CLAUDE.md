@@ -4,6 +4,8 @@
 repository's facts and rules, and it is shared by every tool. Nothing in it is
 repeated here.
 
+@AGENTS.md
+
 This file covers only what is specific to Claude Code.
 
 ## Skills
