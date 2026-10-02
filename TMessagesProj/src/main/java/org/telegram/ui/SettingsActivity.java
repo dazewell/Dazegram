@@ -801,12 +801,9 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             items.add(SettingCell.Factory.of(19, IconBackgroundColors.GREEN.top, IconBackgroundColors.GREEN.bottom, R.drawable.settings_policy, getString(R.string.PrivacyPolicy)));
         }
 
-        if (SharedSettings.experimentalSettingsAllowed.get()) {
-            items.add(UItem.asShadow(null));
-            items.add(UItem.asHeader("Experimental"));
-            // NagramX: the round video settings page only configures upstream's Camera2 view, which ChatActivity
-            // never creates (it builds InstantCameraView directly), so its row is not offered.
-        }
+        // NagramX: upstream's "Experimental" section held only the round video settings row. That page configures
+        // the Camera2 view, which ChatActivity never creates (it builds InstantCameraView directly), so the whole
+        // section is not offered rather than shown empty.
 
         if (BuildVars.LOGS_ENABLED || BuildVars.DEBUG_PRIVATE_VERSION) {
             items.add(UItem.asShadow(null));
