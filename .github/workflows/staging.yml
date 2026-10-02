@@ -201,11 +201,11 @@ jobs:
           append-timestamp: true
           # Both package legs compile identical native objects (one shared entry gave both 100% hits), so they share
           # one line of entries and only one leg saves it: two savers would store the same ~170MB twice per run in a
-          # repo already at its cache quota. A PR can only restore entries saved on dev or on that PR, so after a key
-          # change nothing hits until a staging run on dev has saved one.
+          # repo already at its cache quota. A PR can only restore entries saved on dev or on that PR, so a new key is
+          # cold for every PR until a staging run on dev has saved an entry under it.
           key: staging
-          # Bridge from the per-package key this replaced, so the entry dev last saved still seeds the first runs
-          # under the new key. Drop once a dev run has saved a ccache-staging- entry.
+          # The new key is searched first; this bridge restores the per-package entry dev last saved while no
+          # ccache-staging- entry exists yet. Drop it once a dev run has saved one, not before.
           restore-keys: nekox.messenger
           save: ${{ matrix.package == 'nekox.messenger' }}
       - name: Set up Gradle
