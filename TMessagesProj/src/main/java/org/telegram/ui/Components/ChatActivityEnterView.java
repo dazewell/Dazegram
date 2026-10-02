@@ -7652,6 +7652,9 @@ public class ChatActivityEnterView extends FrameLayout implements
             return;
         }
         messageEditExpanded = expanded;
+        android.util.Log.e("NAX_SMOKE_fullscreen-pinned", "NAX_SMOKE_fullscreen-pinned BEGIN expanded=" + expanded
+            + " budget=" + expandedInputBudget + " build=" + org.telegram.messenger.BuildConfig.BUILD_VERSION_STRING
+            + " app=" + org.telegram.messenger.BuildConfig.APPLICATION_ID);
         messageEditText.setMaxLines(expanded ? Integer.MAX_VALUE : 6);
         // top gravity while expanded: a fullscreen draft reads as a document, not a chat bubble
         messageEditText.setGravity(expanded ? Gravity.TOP : Gravity.BOTTOM);

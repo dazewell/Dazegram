@@ -10032,6 +10032,17 @@ public class ChatActivity extends BaseFragment implements
     }
 
     private boolean lastInAppInputVisible;
+    private int naxSmokeLastBudget = Integer.MIN_VALUE;
+    private float naxSmokeLastSettled = -1;
+    private static int naxSmokeTopIn(View view, View ancestor) {
+        float y = 0;
+        View v = view;
+        while (v != null && v != ancestor) {
+            y += v.getY();
+            v = v.getParent() instanceof View ? (View) v.getParent() : null;
+        }
+        return v == ancestor ? Math.round(y) : -1;
+    }
     // NagramX: height budget for the fullscreen input mode, everything between the action bar
     // and whatever input method is up (keyboard or emoji panel), minus the island's bottom gap
     private void checkUi_expandedInputBudget() {
@@ -10058,6 +10069,18 @@ public class ChatActivity extends BaseFragment implements
         }
         final boolean inputMethodVisible = windowInsetsStateHolder.getInsets(WindowInsetsCompat.Type.ime()).bottom > 0
             || windowInsetsStateHolder.inAppViewIsVisible();
+        if (budget != naxSmokeLastBudget) {
+            naxSmokeLastBudget = budget;
+            android.util.Log.e("NAX_SMOKE_fullscreen-pinned", "NAX_SMOKE_fullscreen-pinned BUDGET budget=" + budget
+                + " expanded=" + chatActivityEnterView.isMessageEditExpanded()
+                + " md3=" + (chatInputViewsContainer != null && chatInputViewsContainer.md3Surface != null)
+                + " panelSum=" + (topPanelLayout != null ? topPanelLayout.getSumHeightOfAllVisibleChild() : -1)
+                + " panelAnimH=" + (topPanelLayout != null ? topPanelLayout.getMetadata().getTotalHeight() : -1)
+                + " panelVis=" + (topPanelLayout != null ? topPanelLayout.getMetadata().getTotalVisibility() : -1)
+                + " pinnedHidden=" + (pinnedMessageView == null || pinnedMessageView.getTag() != null)
+                + " contentH=" + contentView.getMeasuredHeight() + " padTop=" + contentView.getPaddingTop()
+                + " bottomInset=" + maxBottomInset);
+        }
         chatActivityEnterView.updateExpandedInputBudget(budget, inputMethodVisible);
     }
 
@@ -52229,6 +52252,18 @@ public class ChatActivity extends BaseFragment implements
         if (expanded != expandedInputGlassWasExpanded) {
             expandedInputGlassWasExpanded = expanded;
             expandedInputGlassReprimePending = true;
+        }
+        if (inputIslandHeightCurrent == inputIslandHeightTarget && inputIslandHeightTarget != naxSmokeLastSettled) {
+            naxSmokeLastSettled = inputIslandHeightTarget;
+            android.util.Log.e("NAX_SMOKE_fullscreen-pinned", "NAX_SMOKE_fullscreen-pinned SETTLED expanded=" + expanded
+                + " islandH=" + inputIslandHeightTarget
+                + " enterViewH=" + (chatActivityEnterView != null ? chatActivityEnterView.getMeasuredHeight() : -1)
+                + " enterViewTopInContent=" + (chatActivityEnterView != null && contentView != null ? naxSmokeTopIn(chatActivityEnterView, contentView) : -1)
+                + " actionBarBottom=" + (actionBar != null ? actionBar.getBottom() : -1)
+                + " panelY=" + (topPanelLayout != null ? topPanelLayout.getY() : -1)
+                + " panelSum=" + (topPanelLayout != null ? topPanelLayout.getSumHeightOfAllVisibleChild() : -1)
+                + " panelAnimH=" + (topPanelLayout != null ? topPanelLayout.getMetadata().getTotalHeight() : -1)
+                + " contentH=" + (contentView != null ? contentView.getMeasuredHeight() : -1));
         }
         if (expandedInputGlassReprimePending && inputIslandHeightCurrent == inputIslandHeightTarget) {
             expandedInputGlassReprimePending = false;
