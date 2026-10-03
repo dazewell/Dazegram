@@ -105,12 +105,18 @@ too (`ChatActivity.java:8646,9918,11180-11181`). Foregrounds go through
 `ChatAvatarContainer.getThemedColor` for avatar containers whose `parentFragment`
 is set, which only ChatActivity does (`ChatAvatarContainer.java:2040-2043`).
 They are also pushed onto the ActionBar after `setupGlass` and again from
-`selectedBackgroundDelegate` (`ChatActivity.java:5401-5402,46316-46321`). The mute and
-lock icons are shared static drawables, so the header gets tinted copies
-(`ChatActivity.java:21689-21695`). The auto-delete timer draws its ring and label
+`selectedBackgroundDelegate` (`ChatActivity.java:5410,46488-46493`). The mute and
+lock icons are shared static drawables, so the header gets private copies that pick
+their colour as they draw (`ChatActivity.java:21779,21783`) and ignore outside tints:
+a key-only description recolours the title's side drawables with the subtitle key
+(`ChatActivity.java:46607`, `ThemeDescription.java:411`). The auto-delete timer draws its ring and label
 from `key_actionBarDefaultTitle` through its own provider (`TimerDrawable.java:160,168`),
-so it gets a scoped `wrapChatHeader` one (`ChatAvatarContainer.java:456-457`). A provider-level hook on `themeDelegate` is
+so it gets a scoped one (`ChatAvatarContainer.java:456-457`). A provider-level hook on `themeDelegate` is
 the wrong chokepoint: `MessagePreviewView` reads the same title keys through it.
+All of these route through `HeaderBgForeground` (`#header-avatar-bg`), which resolves
+Classic first and then swaps in a neutral light or dark set when the header photo
+leaves the title under 3:1 contrast. Lookups read the set last pushed, never the live
+probe, so reads between pushes match the screen.
 
 Anything painted *behind* the MD3 chat header but under its title and icons goes
 in ActionBar's flat branch, right after `glassDrawable.draw` and before
