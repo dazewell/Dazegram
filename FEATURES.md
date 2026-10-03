@@ -110,7 +110,7 @@ The toolbar row can be scaled from 75% to 125% in 5% steps. A second slider sets
 
 ### Interface style <!-- #interface-style --> <!-- #composer-transparency --> <!-- #rounded-navigation -->
 
-NagramX Settings → General → Interface Style picks Liquid Glass or Material Design 3, which restyles chat headers, the chat-list top bar, buttons, the bottom navigation and the floating composer, each with an Apply to toggle. Panel dividers, on by default, line panel edges. Off by default, Rounded navigation fully rounds the bar and highlights whole tabs, and Match Classic and Day header color makes those themes' headers solid.
+NagramX Settings → General → Interface Style picks Liquid Glass or Material Design 3, which restyles chat headers, the chat-list top bar, buttons, the bottom navigation and the composer, each with an Apply to toggle. Below sit blur, switch and slider styles, typeface, icons, title centering, decorations, bottom bar and folder tabs. Rounded navigation and Match Classic and Day header color are off by default.
 
 ### Quick schedule button <!-- #quick-schedule -->
 
@@ -318,7 +318,7 @@ On DazegramX (Unofficial), the app's fixed system-level icon — the one Android
 
 ### Centered chat title <!-- #title-pill-fix -->
 
-The chat title and its status line sit centered in the action bar, in a pill that hugs the text rather than spanning the bar. Forum topics get the same rounded ends as any other chat. N-Settings → General → *Use Centered Title*, off by default, with options for everywhere, chats only, or settings screens only.
+The chat title and its status line sit centered in the action bar, in a pill that hugs the text rather than spanning the bar. Forum topics get the same rounded ends as any other chat. N-Settings → General → Interface Style → *Use Centered Title*, off by default, with options for everywhere, chats only, or settings screens only.
 
 ### Pinned message and player in one row <!-- #combined-pinned-player -->
 
