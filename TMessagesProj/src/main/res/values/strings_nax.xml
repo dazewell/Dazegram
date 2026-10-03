@@ -51,6 +51,15 @@
     <string name="ChatPrivacy">Chat privacy</string>
     <string name="ChatPrivacyTitle">Chat privacy</string>
     <string name="ChatPrivacyPlaceholderText">Placeholder text</string>
+    <string name="HideLastMessageModeText">Custom text</string>
+    <string name="HideLastMessageModeStatus">Chat status</string>
+    <string name="HideLastMessageModeUnread">Unread count</string>
+    <string name="HideLastMessageModeType">Message type</string>
+    <string name="HideLastMessageNoUnread">No new messages</string>
+    <string name="HideLastMessageModeTextInfo">Text you choose, always the same</string>
+    <string name="HideLastMessageModeStatusInfo">What the chat header shows: last seen, or member count</string>
+    <string name="HideLastMessageModeUnreadInfo">How many messages are unread</string>
+    <string name="HideLastMessageModeTypeInfo">Photo, Voice message, Message… without the content</string>
     <string name="ChatPrivacyRequirePassword">Require password</string>
     <string name="ChatPrivacyPasscodeRequired">Set an app passcode to use this.</string>
     <string name="ChatPrivacyPasscodeMissingLocked">Won\'t be enforced until you set an app passcode again.</string>
