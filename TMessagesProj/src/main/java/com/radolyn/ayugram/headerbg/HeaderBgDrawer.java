@@ -67,8 +67,9 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
     }
 
     /**
-     * Chats whose header shows the peer's own photo. Saved Messages, Replies and Verify draw a glyph,
-     * and saved or monoforum sub-chats would key one setting to a header showing someone else.
+     * Chats keyed to one peer's photo. Saved Messages, Replies and Verify draw a glyph, and saved or
+     * monoforum sub-chats would key one setting to a header showing someone else. Forum topics and
+     * comment threads share their chat's dialog id, so they show the chat's photo and setting.
      */
     public static boolean eligible(ChatActivity fragment) {
         if (fragment.getChatMode() != ChatActivity.MODE_DEFAULT || fragment.isInPreviewMode()
