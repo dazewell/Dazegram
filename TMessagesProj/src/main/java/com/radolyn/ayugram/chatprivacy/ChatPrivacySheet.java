@@ -10,6 +10,7 @@ import android.widget.TextView;
 import com.radolyn.ayugram.chatlock.ChatLockController;
 import com.radolyn.ayugram.hidelastmessage.HideLastMessageController;
 import com.radolyn.ayugram.hidelastmessage.HideLastMessageDialog;
+import com.radolyn.ayugram.hidelastmessage.HideLastMessagePreview;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
@@ -117,7 +118,7 @@ public final class ChatPrivacySheet {
             if (hidden) {
                 placeholderCell.setTextAndValue(
                         LocaleController.getString(R.string.ChatPrivacyPlaceholderText),
-                        HideLastMessageController.getPlaceholder(account, dialogId),
+                        HideLastMessagePreview.describe(account, dialogId),
                         true
                 );
             }
@@ -181,7 +182,7 @@ public final class ChatPrivacySheet {
             if (!HideLastMessageController.isHidden(account, dialogId)) {
                 return;
             }
-            HideLastMessageDialog.showPlaceholderEditor(fragment, dialogId, refreshRef[0]);
+            showModePicker(fragment, account, dialogId, refreshRef[0]);
         });
 
         lockCell.setOnClickListener(v -> {
@@ -266,6 +267,33 @@ public final class ChatPrivacySheet {
         sheetRef[0].setBackgroundColor(gray);
         sheetRef[0].fixNavigationBar(gray);
         fragment.showDialog(sheetRef[0]);
+    }
+
+    private static void showModePicker(BaseFragment fragment, int account, long dialogId, Runnable refresh) {
+        if (fragment.getParentActivity() == null) {
+            return;
+        }
+        ArrayList<String> titles = new ArrayList<>(HideLastMessagePreview.MODE_LABELS.length);
+        ArrayList<String> descriptions = new ArrayList<>(HideLastMessagePreview.MODE_LABELS.length);
+        for (int i = 0; i < HideLastMessagePreview.MODE_LABELS.length; i++) {
+            titles.add(LocaleController.getString(HideLastMessagePreview.MODE_LABELS[i]));
+            descriptions.add(LocaleController.getString(HideLastMessagePreview.MODE_DESCRIPTIONS[i]));
+        }
+        PopupHelper.show(
+                LocaleController.getString(R.string.ChatPrivacyPlaceholderText),
+                titles,
+                descriptions,
+                HideLastMessageController.getMode(account, dialogId),
+                fragment.getParentActivity(),
+                which -> {
+                    HideLastMessageController.setMode(account, dialogId, which);
+                    refresh.run();
+                    if (which == HideLastMessageController.MODE_TEXT) {
+                        HideLastMessageDialog.showPlaceholderEditor(fragment, dialogId, refresh);
+                    }
+                },
+                fragment.getResourceProvider()
+        );
     }
 
     private static void showCoverPicker(BaseFragment fragment, int account, long dialogId, Runnable refresh) {

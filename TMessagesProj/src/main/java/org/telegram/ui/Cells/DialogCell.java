@@ -2764,7 +2764,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             CharSequence messageStringFinal;
             // NagramX: disguise chat-list previews only, not message results sharing this cell.
             if (isDialogCell && com.radolyn.ayugram.hidelastmessage.HideLastMessageController.isHidden(currentAccount, getDialogId())) {
-                messageString = com.radolyn.ayugram.hidelastmessage.HideLastMessageController.getPlaceholder(currentAccount, getDialogId());
+                messageString = com.radolyn.ayugram.hidelastmessage.HideLastMessagePreview.resolve(currentAccount, getDialogId(), message, unreadCount);
                 thumbsCount = 0;
                 // force the normal message color so the placeholder doesn't inherit the accent paint used for media/action previews
                 currentMessagePaint = Theme.dialogs_messagePaint[paintIndex];
@@ -3454,6 +3454,10 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                     user = MessagesController.getInstance(currentAccount).getUser(user.id);
                     if (wasDrawnOnline != isOnline()) {
                         invalidate = true;
+                    }
+                    // NagramX: a hidden preview showing the peer's status is text, so it needs the full rebuild, not just the online dot.
+                    if (com.radolyn.ayugram.hidelastmessage.HideLastMessageController.showsStatus(currentAccount, getDialogId())) {
+                        continueUpdate = true;
                     }
                 }
                 if ((mask & MessagesController.UPDATE_MASK_EMOJI_STATUS) != 0) {
@@ -6411,6 +6415,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                     readHash |= (1 << 22);
                 }
             }
+            // NagramX: a hidden preview can change with no message or read change (its mode, the peer's status), so its text joins this redraw key.
+            readHash ^= (long) com.radolyn.ayugram.hidelastmessage.HideLastMessagePreview.drawnHash(currentAccount, getDialogId(), message, unreadCount) << 32;
 
             if (!isForumCell() && (isDialogCell || isTopic)) {
                 if (!TextUtils.isEmpty(MessagesController.getInstance(currentAccount).getPrintingString(currentDialogId, getTopicId(), true))) {

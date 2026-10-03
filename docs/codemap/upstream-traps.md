@@ -2597,3 +2597,35 @@ from an `OnLayoutChangeListener` on the bar; it only invalidates, so it can't lo
 programmatic change (a Reset) never triggers.
 
 *(Established 2026-10-03, `#header-avatar-bg`.)*
+
+## Round video Camera2 sessions have no fixed slot per camera
+
+`InstantCameraView.camera2Sessions` is laid out three ways. A dual pair puts
+the starting camera in slot 0 (`InstantCameraView.java:1101`, read back through
+`isFrontface == initialCameraFront` at `:1111`, `:1678`). A pair whose second
+camera failed to open drops `bothCameras` but leaves the survivor in slot 0
+(`:1111-1113`). A single session, and the `#round-dual-camera-fix` fallback,
+slot by facing, front 0 and rear 1 (`:1117`, `:1690`, `:1748`). Any fixed index
+for "the rear camera" is wrong in one of them; the torch picks its session by
+`Camera2Session.isFront()` instead (`:537`).
+
+*(Established 2026-10-03, `#round-camera2-flash-fix`.)*
+
+## A chat-list row only rebuilds its text when its redraw key changes
+
+Two gates stand between a state change and a `DialogCell`'s text.
+
+`DialogCell.buildLayout()` returns early unless `DialogUpdateHelper.update()`
+reports a change (`DialogCell.java:1258-1262`). That key covers only the message,
+read/unread counts, draft, typing, size, pin and call state (`:6393-6466`).
+Anything else the row's text depends on stays stale until an app restart — even
+across `notifyDataSetChanged()`. The hidden preview folds a hash of its
+rendered text into the key (`:6418-6419`).
+
+`DialogCell.update(mask)` handles `UPDATE_MASK_STATUS` by re-fetching the user
+and invalidating only when the online dot flips (`:3453-3457`). Setting
+`rebuildLayout` there does nothing: unless `continueUpdate` is set, the method
+invalidates and returns at `:3606-3610`, before the `buildLayout()` at `:3841`.
+Status-dependent text must set `continueUpdate = true` (`:3459-3461`).
+
+*(Established 2026-10-03, `#hide-last-message`.)*

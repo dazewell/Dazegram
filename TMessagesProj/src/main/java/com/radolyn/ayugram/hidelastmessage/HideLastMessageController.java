@@ -28,11 +28,26 @@ import java.util.Map;
  * {@code dialogId -> placeholder}. Presence of a key means "hidden"; the stored
  * value is the placeholder to render (never empty -- the default is persisted
  * when the user leaves the field blank).
+ *
+ * <p>A dialog may also carry a dynamic mode under the key {@code m<dialogId>}
+ * ({@code status}, {@code unread} or {@code type}); {@link HideLastMessagePreview}
+ * renders it. The custom text key is kept alongside, so switching back to
+ * custom text restores what the user typed. A missing or unknown mode reads as
+ * custom text.
  */
 public final class HideLastMessageController {
 
     private static final Map<Integer, HashMap<Long, String>> CACHE = new HashMap<>();
+    private static final Map<Integer, HashMap<Long, Integer>> MODES = new HashMap<>();
     private static final Map<Integer, Boolean> LOADED = new HashMap<>();
+
+    public static final int MODE_TEXT = 0;
+    public static final int MODE_STATUS = 1;
+    public static final int MODE_UNREAD = 2;
+    public static final int MODE_TYPE = 3;
+
+    private static final String MODE_KEY_PREFIX = "m";
+    private static final String[] MODE_NAMES = {"text", "status", "unread", "type"};
 
     private HideLastMessageController() {}
 
@@ -52,17 +67,29 @@ public final class HideLastMessageController {
             m = new HashMap<>();
             CACHE.put(account, m);
         }
+        HashMap<Long, Integer> modes = MODES.get(account);
+        if (modes == null) {
+            modes = new HashMap<>();
+            MODES.put(account, modes);
+        }
         if (!Boolean.TRUE.equals(LOADED.get(account))) {
             try {
                 SharedPreferences sp = ApplicationLoader.applicationContext
                         .getSharedPreferences(prefsName(account), 0);
                 for (Map.Entry<String, ?> e : sp.getAll().entrySet()) {
                     Object v = e.getValue();
-                    if (v instanceof String) {
-                        try {
-                            m.put(Long.parseLong(e.getKey()), (String) v);
-                        } catch (NumberFormatException ignore) {
+                    if (!(v instanceof String)) continue;
+                    String key = e.getKey();
+                    try {
+                        if (key.startsWith(MODE_KEY_PREFIX)) {
+                            int mode = parseMode((String) v);
+                            if (mode != MODE_TEXT) {
+                                modes.put(Long.parseLong(key.substring(MODE_KEY_PREFIX.length())), mode);
+                            }
+                        } else {
+                            m.put(Long.parseLong(key), (String) v);
                         }
+                    } catch (NumberFormatException ignore) {
                     }
                 }
             } catch (Throwable ignore) {
@@ -86,6 +113,45 @@ public final class HideLastMessageController {
         return v;
     }
 
+    private static int parseMode(String name) {
+        for (int i = 1; i < MODE_NAMES.length; i++) {
+            if (MODE_NAMES[i].equals(name)) return i;
+        }
+        return MODE_TEXT;
+    }
+
+    /** The placeholder mode for a hidden dialog; {@link #MODE_TEXT} when not hidden or unset. */
+    public static synchronized int getMode(int account, long dialogId) {
+        if (!isHidden(account, dialogId)) return MODE_TEXT;
+        Integer mode = MODES.get(account).get(dialogId);
+        return mode != null ? mode : MODE_TEXT;
+    }
+
+    /** True when the chat-list row renders the peer's status and must rebuild on status updates. */
+    public static synchronized boolean showsStatus(int account, long dialogId) {
+        return getMode(account, dialogId) == MODE_STATUS;
+    }
+
+    /** Switches a hidden dialog's placeholder mode; the custom text is kept for {@link #MODE_TEXT}. */
+    public static synchronized void setMode(int account, long dialogId, int mode) {
+        if (!isHidden(account, dialogId)) return;
+        HashMap<Long, Integer> modes = MODES.get(account);
+        String key = MODE_KEY_PREFIX + dialogId;
+        try {
+            SharedPreferences.Editor ed = ApplicationLoader.applicationContext.getSharedPreferences(prefsName(account), 0).edit();
+            if (mode > MODE_TEXT && mode < MODE_NAMES.length) {
+                modes.put(dialogId, mode);
+                ed.putString(key, MODE_NAMES[mode]);
+            } else {
+                modes.remove(dialogId);
+                ed.remove(key);
+            }
+            ed.apply();
+        } catch (Throwable ignore) {
+        }
+        NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.dialogsNeedReload);
+    }
+
     /**
      * Enables hiding for a dialog with the given placeholder (blank -> default),
      * or disables it when {@code enabled} is false. Persists the change and asks
@@ -107,7 +173,11 @@ public final class HideLastMessageController {
             if (ed != null) ed.putString(Long.toString(dialogId), value);
         } else {
             m.remove(dialogId);
-            if (ed != null) ed.remove(Long.toString(dialogId));
+            MODES.get(account).remove(dialogId);
+            if (ed != null) {
+                ed.remove(Long.toString(dialogId));
+                ed.remove(MODE_KEY_PREFIX + dialogId);
+            }
         }
         if (ed != null) ed.apply();
         NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.dialogsNeedReload);
