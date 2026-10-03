@@ -90,3 +90,4 @@ public final class DisclosureHeaderCell extends TextSettingsCell {
         info.setClickable(true);
         info.setText(composeAccessibilityText());
     }
+}
