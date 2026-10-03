@@ -160,21 +160,20 @@ final class RangeSeekBar extends View {
         float right = trackRight();
         float x0 = xOf(start);
         float x1 = xOf(end);
-        if (NaConfig.INSTANCE.getSliderStyle().Int() == SeekBarView.SLIDER_STYLE_MD3) {
-            // SeekBarView's MD3 shape: a thick track broken by a gap around each bar-shaped handle.
-            float half = dp(13) / 2f;
+        int style = NaConfig.INSTANCE.getSliderStyle().Int();
+        if (style != SeekBarView.SLIDER_STYLE_DEFAULT) {
+            // SeekBarView's MD3 shape: a thick track broken by a gap around each bar-shaped handle. The
+            // modern track is as thick and has no thumb of its own, so it borrows the shape to show the handles.
+            float half = dp(style == SeekBarView.SLIDER_STYLE_MD3 ? 13 : 17) / 2f;
             float gap = dp(7);
             float thumb = dp(4);
             segment(canvas, left, x0 - thumb / 2f - gap, cy, half, dp(8), dp(3), trackPaint);
             segment(canvas, x0 + thumb / 2f + gap, x1 - thumb / 2f - gap, cy, half, dp(3), dp(3), activePaint);
             segment(canvas, x1 + thumb / 2f + gap, right, cy, half, dp(3), dp(8), trackPaint);
-            for (float x : new float[]{x0, x1}) {
-                rect.set(x - thumb / 2f, cy - half - dp(5), x + thumb / 2f, cy + half + dp(5));
-                canvas.drawRoundRect(rect, dp(10), dp(10), activePaint);
-            }
+            handle(canvas, x0, cy, half, thumb);
+            handle(canvas, x1, cy, half, thumb);
         } else {
-            // SeekBarView's line width for its other two styles.
-            float half = dp(NaConfig.INSTANCE.getSliderStyle().Int() == SeekBarView.SLIDER_STYLE_MODERN ? 17 : 3) / 2f;
+            float half = dp(3) / 2f;
             rect.set(left, cy - half, right, cy + half);
             canvas.drawRoundRect(rect, half, half, trackPaint);
             rect.set(x0, cy - half, x1, cy + half);
@@ -182,6 +181,11 @@ final class RangeSeekBar extends View {
             canvas.drawCircle(x0, cy, dp(dragging == 0 ? 8 : 6), activePaint);
             canvas.drawCircle(x1, cy, dp(dragging == 1 ? 8 : 6), activePaint);
         }
+    }
+
+    private void handle(Canvas canvas, float x, float cy, float half, float thumb) {
+        rect.set(x - thumb / 2f, cy - half - dp(5), x + thumb / 2f, cy + half + dp(5));
+        canvas.drawRoundRect(rect, dp(10), dp(10), activePaint);
     }
 
     private void segment(Canvas canvas, float from, float to, float cy, float half, float leftRadius, float rightRadius, Paint paint) {
