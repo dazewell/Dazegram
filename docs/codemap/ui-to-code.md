@@ -640,7 +640,7 @@ whose `Custom text` choice then opens `HideLastMessageDialog.showPlaceholderEdit
 The mode lives beside the custom text in `hidelastmessage_<account>` under
 `m<dialogId>`, and `HideLastMessagePreview.resolve(...)` renders it for the row
 (`com/radolyn/ayugram/hidelastmessage/HideLastMessageController.java:124-153`;
-`HideLastMessagePreview.java:56`).
+`HideLastMessagePreview.java:59`).
 
 `Require password` state is read from the persisted lock flag via
 `ChatLockController.isFlagged(...)` (not `isLocked(...)`), so a stored flag is
