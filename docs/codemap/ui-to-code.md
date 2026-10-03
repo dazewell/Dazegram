@@ -98,10 +98,10 @@ day-theme choice and stays "Blue" under auto-night (`InterfaceStyleSolidHeader.j
 hue shift, `Theme.changeColorAccent(ThemeInfo, ...)` (`InterfaceStyleSolidHeader.java:122-129`).
 
 Chat header: the surface comes from `chatHeaderSurface(...)`, used only by the
-header and its status-bar composite (`ChatActivity.java:5398,19100`;
+header and its status-bar composite (`ChatActivity.java:5406,19166`;
 `BlurredBackgroundProviderImpl.java:211-213,229-230`). `chatHeaderPanel(...)` is
 **not** header-private: the pinned/join strip and the hashtag and topic tabs use it
-too (`ChatActivity.java:8646,9918,11180-11181`). Foregrounds go through
+too (`ChatActivity.java:8658,9932,11213-11214`). Foregrounds go through
 `ChatAvatarContainer.getThemedColor` for avatar containers whose `parentFragment`
 is set, which only ChatActivity does (`ChatAvatarContainer.java:2040-2043`).
 They are also pushed onto the ActionBar after `setupGlass` and again from
@@ -136,7 +136,7 @@ equivalent spot is after `backgroundDrawable.draw` (`ChatActivityTopPanelLayout.
 in panel coordinates, so map to the header with the two views' `getX/getY` difference.
 Its status bar icons are decided in `ChatActivity.isLightStatusBar()` (`ChatActivity.java:48406`),
 which falls back to `shouldHaveLightStatusBarIcons`, set from the wallpaper and header composite
-(`:19172`); `LaunchActivity.checkSystemBarColors` (`LaunchActivity.java:1152`) re-asks the top fragment,
+(`:19174`); `LaunchActivity.checkSystemBarColors` (`LaunchActivity.java:1152`) re-asks the top fragment,
 so anything that changes the pixels behind the status bar calls that.
 
 Chat list: DialogsActivity has no provider, so its `getThemedColor` override
