@@ -303,7 +303,8 @@ public final class HeaderBgSheet {
             syncs.add(() -> {
                 valueView.setText(format(get.getAsInt(), signed));
                 if (!bar.isDragging()) {
-                    AndroidUtilities.doOnLayout(bar, () -> bar.setProgress((get.getAsInt() - min) / (float) (max - min)));
+                    // Holds the value itself until the bar is measured, then applies it.
+                    bar.setProgress((get.getAsInt() - min) / (float) (max - min));
                 }
             });
             parent.addView(row, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
