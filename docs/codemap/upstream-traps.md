@@ -2581,3 +2581,19 @@ update arrived from `checkInsets()` mid-pass. The NAX_SMOKE trace showed the
 field measured at budget 1063 and never re-measured after the budget became 1189.
 
 *(Established 2026-10-02, `#fullscreen-input`.)*
+
+## A SeekBarView value set before a sheet opens draws at the wrong spot
+
+`SeekBarView` keeps its thumb in pixels. A value set while it has no width is
+held and applied once, in the first `onMeasure` that sees a non-zero width
+(`SeekBarView.java:388-390,430`), and never re-scaled after that.
+`BottomSheet.show()` measures the sheet in advance with AT_MOST specs
+(`BottomSheet.java:1591-1594`). A slider row that is a vertical `LinearLayout`
+under AT_MOST shrinks to its widest child and re-measures the bar at that
+narrow width, so the held value is spent there. On the real pass the thumb stays
+at the narrow-width pixel, and only a drag corrects it. Re-call `setProgress`
+from an `OnLayoutChangeListener` on the bar; it only invalidates, so it can't loop.
+`doOnLayout` is not a substitute: it waits for the next layout, which a later
+programmatic change (a Reset) never triggers.
+
+*(Established 2026-10-03, `#header-avatar-bg`.)*
