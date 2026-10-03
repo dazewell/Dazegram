@@ -28,6 +28,12 @@ public final class HeaderBgSettings {
     public static final int TINT_AUTO = -1;
     public static final int TINT_THEME = -2;
 
+    /** Which foregrounds swap to the opposite of the theme's, light for dark and dark for light. */
+    public static final int ALT_OFF = 0;
+    public static final int ALT_HEADER = 1;
+    public static final int ALT_BOTH = 2;
+    public static final int ALT_PIN = 3;
+
     private static final int DEF_ZOOM = 100;
     private static final int DEF_OPACITY = 55;
     private static final int DEF_TINT_STRENGTH = 40;
@@ -52,6 +58,15 @@ public final class HeaderBgSettings {
     /** Softens and drains the photo so text over it reads more easily; both 0 to 100. */
     public int blur;
     public int desaturate;
+    public int alternate = ALT_OFF;
+
+    public boolean alternateHeader() {
+        return alternate == ALT_HEADER || alternate == ALT_BOTH;
+    }
+
+    public boolean alternatePin() {
+        return alternate == ALT_PIN || alternate == ALT_BOTH;
+    }
 
     /** Everything back to its default except {@link #enabled}. */
     public void resetLook() {
@@ -70,6 +85,7 @@ public final class HeaderBgSettings {
         gradientEnd = 100;
         blur = 0;
         desaturate = 0;
+        alternate = ALT_OFF;
     }
 
     public void copyFrom(HeaderBgSettings o) {
@@ -89,6 +105,7 @@ public final class HeaderBgSettings {
         gradientEnd = o.gradientEnd;
         blur = o.blur;
         desaturate = o.desaturate;
+        alternate = o.alternate;
     }
 
     /** Every field the drawer paints from, so a cache checked against it notices any change; keep in step with the fields. */
@@ -97,7 +114,7 @@ public final class HeaderBgSettings {
                 && tintHue == o.tintHue && tintStrength == o.tintStrength && gradient == o.gradient
                 && gradientStrength == o.gradientStrength && gradientFrom == o.gradientFrom && extendPanel == o.extendPanel
                 && gradientCurve == o.gradientCurve && gradientStart == o.gradientStart && gradientEnd == o.gradientEnd
-                && blur == o.blur && desaturate == o.desaturate;
+                && blur == o.blur && desaturate == o.desaturate && alternate == o.alternate;
     }
 
     private boolean isDefaultLook() {
@@ -105,7 +122,7 @@ public final class HeaderBgSettings {
                 && tintHue == TINT_AUTO && tintStrength == DEF_TINT_STRENGTH && gradient
                 && gradientStrength == DEF_GRADIENT_STRENGTH && gradientFrom == FROM_TITLE && extendPanel
                 && gradientCurve == CURVE_LINEAR && gradientStart == 0 && gradientEnd == 100
-                && blur == 0 && desaturate == 0;
+                && blur == 0 && desaturate == 0 && alternate == ALT_OFF;
     }
 
     private static SharedPreferences prefs(int account) {
@@ -141,6 +158,7 @@ public final class HeaderBgSettings {
         s.gradientEnd = Math.max(s.gradientEnd, s.gradientStart + MIN_FADE_SPAN);
         s.blur = parse(f, 14, 0, 100, 0);
         s.desaturate = parse(f, 15, 0, 100, 0);
+        s.alternate = parse(f, 16, ALT_OFF, ALT_PIN, ALT_OFF);
         return s;
     }
 
@@ -153,7 +171,7 @@ public final class HeaderBgSettings {
             editor.putString(key, (enabled ? "1" : "0") + "|" + offsetX + "|" + offsetY + "|" + zoom + "|" + opacity + "|"
                     + tintHue + "|" + tintStrength + "|" + (gradient ? "1" : "0") + "|" + gradientStrength + "|" + gradientFrom
                     + "|" + (extendPanel ? "1" : "0") + "|" + gradientCurve + "|" + gradientStart + "|" + gradientEnd
-                    + "|" + blur + "|" + desaturate);
+                    + "|" + blur + "|" + desaturate + "|" + alternate);
         }
         editor.apply();
     }

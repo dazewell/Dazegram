@@ -9,6 +9,7 @@ import android.graphics.drawable.Drawable;
 import android.graphics.drawable.DrawableWrapper;
 import android.util.SparseIntArray;
 import android.view.View;
+import android.widget.ImageView;
 
 import androidx.core.graphics.ColorUtils;
 
@@ -18,14 +19,19 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.Components.AnimatedTextView;
 import org.telegram.ui.Components.ChatAvatarContainer;
+import org.telegram.ui.Components.NumberTextView;
 
 import xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader;
+import xyz.nextalone.nagram.helpers.PinnedPlayerRow;
+
+import java.lang.ref.WeakReference;
+import java.util.WeakHashMap;
 
 /**
- * The chat header's foreground colours over a header photo. The Classic solid header is resolved first;
- * the photo only replaces the result when it fails to contrast with what the drawer sees behind the header.
- * Readers go through the colour the drawer last pushed ({@link HeaderBgDrawer#applied}), never its live
- * probe, so everything read between two pushes matches what is already on screen.
+ * The chat header's and pinned bar's foreground colours over a header photo. The Classic solid header is
+ * resolved first; the chat's Alternate colour setting then swaps the result for the opposite neutral set.
+ * Readers go through the set the drawer last pushed ({@link HeaderBgDrawer#applied}), never its live wish,
+ * so everything read between two pushes matches what is already on screen.
  */
 public final class HeaderBgForeground {
 
@@ -33,10 +39,7 @@ public final class HeaderBgForeground {
     static final int LIGHT = 1;
     static final int DARK = 2;
 
-    // Text this far apart from the band is left alone: WCAG's large-text floor.
-    private static final double MIN_CONTRAST = 3.0;
-
-    // The CHAT_HEADER key set. Online/typing stays at full strength so it still differs from "last seen".
+    // The CHAT_HEADER key set plus the pinned bar's. Online/typing stays at full strength so it still differs from "last seen".
     private static final SparseIntArray ON_DARK = new SparseIntArray();
     private static final SparseIntArray ON_LIGHT = new SparseIntArray();
 
@@ -50,6 +53,9 @@ public final class HeaderBgForeground {
         ON_DARK.put(Theme.key_chat_status, 0xffffffff);
         ON_DARK.put(Theme.key_chat_lockIcon, 0xffffffff);
         ON_DARK.put(Theme.key_chat_muteIcon, 0xb3ffffff);
+        ON_DARK.put(Theme.key_chat_topPanelTitle, 0xffffffff);
+        ON_DARK.put(Theme.key_chat_topPanelMessage, 0xccffffff);
+        ON_DARK.put(Theme.key_chat_topPanelClose, 0xffffffff);
 
         ON_LIGHT.put(Theme.key_actionBarDefaultIcon, 0xde000000);
         ON_LIGHT.put(Theme.key_actionBarDefaultTitle, 0xde000000);
@@ -60,36 +66,27 @@ public final class HeaderBgForeground {
         ON_LIGHT.put(Theme.key_chat_status, 0xde000000);
         ON_LIGHT.put(Theme.key_chat_lockIcon, 0xde000000);
         ON_LIGHT.put(Theme.key_chat_muteIcon, 0x61000000);
+        ON_LIGHT.put(Theme.key_chat_topPanelTitle, 0xde000000);
+        ON_LIGHT.put(Theme.key_chat_topPanelMessage, 0x8a000000);
+        ON_LIGHT.put(Theme.key_chat_topPanelClose, 0xde000000);
     }
+
+    // The pinned strip's text and buttons, which the chat colours once when it builds the strip. Weak both ways:
+    // the list button's click listener holds the chat, so a strong value would keep the chat as its own key alive.
+    private static final WeakHashMap<ChatActivity, PinnedViews> pinned = new WeakHashMap<>();
 
     private HeaderBgForeground() {
     }
 
-    /** The header's colour without the photo: the theme's, or the Classic header's when that is on. */
-    static int base(int key, Theme.ResourcesProvider resourcesProvider) {
-        return InterfaceStyleSolidHeader.chatHeaderColor(key, Theme.getColor(key, resourcesProvider));
+    /** The set opposite the key's own colour (Classic-resolved): light when the theme's is dark, dark when it is light. */
+    static int opposite(int key, Theme.ResourcesProvider resourcesProvider) {
+        int color = ColorUtils.setAlphaComponent(InterfaceStyleSolidHeader.chatHeaderColor(key, Theme.getColor(key, resourcesProvider)), 255);
+        return ColorUtils.calculateLuminance(color) < 0.5 ? LIGHT : DARK;
     }
 
-    /** Which foreground set reads best over the opaque band colour; THEME while the header's own one does. */
-    static int choose(int band, Theme.ResourcesProvider resourcesProvider) {
-        if (ColorUtils.calculateContrast(base(Theme.key_actionBarDefaultTitle, resourcesProvider), band) >= MIN_CONTRAST) {
-            return THEME;
-        }
-        return ColorUtils.calculateContrast(ON_DARK.get(Theme.key_actionBarDefaultTitle), band)
-                >= ColorUtils.calculateContrast(ON_LIGHT.get(Theme.key_actionBarDefaultTitle), band) ? LIGHT : DARK;
-    }
-
-    /** Whether the title ends up dark under that choice, which is when the status bar icons go dark too. */
-    static boolean darkTitle(int mode, Theme.ResourcesProvider resourcesProvider) {
-        if (mode != THEME) {
-            return mode == DARK;
-        }
-        return ColorUtils.calculateLuminance(ColorUtils.setAlphaComponent(base(Theme.key_actionBarDefaultTitle, resourcesProvider), 255)) < 0.5;
-    }
-
-    private static int applied(ChatActivity fragment) {
+    private static HeaderBgDrawer drawer(ChatActivity fragment) {
         ActionBar actionBar = fragment != null ? fragment.getActionBar() : null;
-        return actionBar != null && actionBar.naxHeaderBg != null ? actionBar.naxHeaderBg.applied : THEME;
+        return actionBar != null ? actionBar.naxHeaderBg : null;
     }
 
     private static int map(int mode, int key, int color) {
@@ -98,9 +95,16 @@ public final class HeaderBgForeground {
         return index >= 0 ? table.valueAt(index) : color;
     }
 
-    /** A chat header colour: the Classic header's or the theme's, unless the header photo needs another. */
+    /** A chat header colour: the Classic header's or the theme's, unless the chat alternates its header. */
     public static int color(ChatActivity fragment, int key, int themedColor) {
-        return map(applied(fragment), key, InterfaceStyleSolidHeader.chatHeaderColor(key, themedColor));
+        HeaderBgDrawer drawer = drawer(fragment);
+        return map(drawer != null ? drawer.applied : THEME, key, InterfaceStyleSolidHeader.chatHeaderColor(key, themedColor));
+    }
+
+    /** A pinned bar colour: the theme's, unless the chat alternates its pinned bar. */
+    public static int pinColor(ChatActivity fragment, int key, int themedColor) {
+        HeaderBgDrawer drawer = drawer(fragment);
+        return map(drawer != null ? drawer.appliedPin : THEME, key, themedColor);
     }
 
     /** For the auto-delete timer, which reads the title key through its own provider at draw time. */
@@ -116,9 +120,25 @@ public final class HeaderBgForeground {
         return new TitleIcon(icon.getConstantState().newDrawable().mutate(), fragment, colorKey);
     }
 
+    /** From the end of the chat's pinned strip build, which every new strip goes through. */
+    public static void attachPinned(ChatActivity fragment, NumberTextView counter, SimpleTextView[] names, SimpleTextView[] messages,
+                                    ImageView listButton, ImageView closeButton, View playerRow) {
+        PinnedViews views = new PinnedViews();
+        views.counter = new WeakReference<>(counter);
+        views.names = new WeakReference<>(names);
+        views.messages = new WeakReference<>(messages);
+        views.listButton = new WeakReference<>(listButton);
+        views.closeButton = new WeakReference<>(closeButton);
+        views.playerRow = new WeakReference<>(playerRow);
+        pinned.put(fragment, views);
+        if (drawer(fragment) != null) {
+            applyPinned(fragment);
+        }
+    }
+
     /**
-     * Pushes the header's colours. Runs after createView's Classic push, from the theme delegate once the
-     * key-only descriptions have reset them, and from the drawer when its choice no longer matches the last push.
+     * Pushes the header's and the pinned bar's colours. Runs from the theme delegate once the key-only
+     * descriptions have reset them, and from the drawer when what it wants no longer matches the last push.
      */
     public static void applyChatHeader(ChatActivity fragment) {
         ActionBar actionBar = fragment.getActionBar();
@@ -129,6 +149,8 @@ public final class HeaderBgForeground {
             return;
         }
         drawer.applied = drawer.wanted();
+        drawer.appliedPin = drawer.wantedPin();
+        applyPinned(fragment);
         Theme.ResourcesProvider rp = fragment.getResourceProvider();
         actionBar.setItemsColor(color(fragment, Theme.key_actionBarDefaultIcon, Theme.getColor(Theme.key_actionBarDefaultIcon, rp)), false);
         actionBar.setItemsBackgroundColor(color(fragment, Theme.key_actionBarDefaultSelector, Theme.getColor(Theme.key_actionBarDefaultSelector, rp)), false);
@@ -161,6 +183,54 @@ public final class HeaderBgForeground {
         if (avatarContainer.getTimeItem() != null) {
             avatarContainer.getTimeItem().invalidate();
         }
+    }
+
+    private static void applyPinned(ChatActivity fragment) {
+        PinnedViews views = pinned.get(fragment);
+        if (views == null) {
+            return;
+        }
+        Theme.ResourcesProvider rp = fragment.getResourceProvider();
+        int title = pinColor(fragment, Theme.key_chat_topPanelTitle, Theme.getColor(Theme.key_chat_topPanelTitle, rp));
+        int message = pinColor(fragment, Theme.key_chat_topPanelMessage, Theme.getColor(Theme.key_chat_topPanelMessage, rp));
+        int close = pinColor(fragment, Theme.key_chat_topPanelClose, Theme.getColor(Theme.key_chat_topPanelClose, rp));
+        NumberTextView counter = views.counter.get();
+        if (counter != null) {
+            counter.setTextColor(title);
+        }
+        // The chat swaps each pair by reference as the pinned message changes, so both are coloured.
+        setTextColor(views.names.get(), title);
+        setTextColor(views.messages.get(), message);
+        setIconColor(views.listButton.get(), close);
+        setIconColor(views.closeButton.get(), close);
+        // The combined row's compact copy picks its colour up only when it draws.
+        PinnedPlayerRow.invalidateCompact(views.playerRow.get());
+    }
+
+    private static void setTextColor(SimpleTextView[] views, int color) {
+        if (views == null) {
+            return;
+        }
+        for (SimpleTextView view : views) {
+            if (view != null) {
+                view.setTextColor(color);
+            }
+        }
+    }
+
+    private static void setIconColor(ImageView view, int color) {
+        if (view != null) {
+            view.setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.MULTIPLY));
+        }
+    }
+
+    private static final class PinnedViews {
+        WeakReference<NumberTextView> counter;
+        WeakReference<SimpleTextView[]> names;
+        WeakReference<SimpleTextView[]> messages;
+        WeakReference<ImageView> listButton;
+        WeakReference<ImageView> closeButton;
+        WeakReference<View> playerRow;
     }
 
     // Tint calls from outside (theme descriptions recolour the title's side drawables) are ignored.

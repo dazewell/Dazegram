@@ -78,29 +78,30 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
     // Where the photo lands in header coordinates; filled by frame() just before each use.
     private final RectF frameRect = new RectF();
 
-    // The average opaque colour of the whole header band, status bar included, as the photo paints it,
-    // or null while no photo is fully shown. Written by the draw pass and cleared on detach; held while selection
-    // mode covers the header, since selection has its own colours and fades the photo out and back.
-    private Integer band;
-    // Whether the status bar icons should be dark, from the same choice as the header's foregrounds, or null
-    // to leave them to the chat. lightStatusBar() re-checks the live conditions, so it never outlives the photo.
+    // Whether the status bar icons should be dark over what this header draws behind them, or null to
+    // leave them to the chat. Filled by draw(); lightStatusBar() re-checks the live conditions, so a value
+    // cached here never outlives the photo being drawn.
     private Boolean statusLight;
-    // The foreground set the header's colours were last pushed with (HeaderBgForeground's THEME, LIGHT or
-    // DARK). Written only by HeaderBgForeground.applyChatHeader and read by every colour lookup, so whatever
-    // is read between two pushes matches what is on screen. Not cleared on detach: the views keep the colours.
-    int applied = HeaderBgForeground.THEME;
-    private boolean repushPosted;
-    private WeakReference<Bitmap> bandSource;
-    private final HeaderBgSettings bandLook = new HeaderBgSettings();
-    private int bandSurface, bandWidth, bandHeight, bandStatusBarHeight;
-    private boolean bandRtl;
-    private ColorFilter bandFilter;
+    private WeakReference<Bitmap> statusSource;
+    private final HeaderBgSettings statusLook = new HeaderBgSettings();
+    private int statusSurface, statusWidth, statusHeight, statusBarHeight;
+    private boolean statusRtl;
+    private ColorFilter statusFilter;
     // What the chat composites behind the status bar (its header surface over the wallpaper), handed over
     // by the chat as it recomputes it. Under a frosted header this is not the plain surface colour.
     private int statusBase;
     private boolean hasStatusBase;
     // draw() only runs for the flat MD3 header; stamped there and cleared on detach.
     private boolean drawn;
+    // Whether the photo is fully shown behind the header. Written by the draw pass and cleared on detach;
+    // held while selection mode covers the header, which has its own colours and fades the photo out and back.
+    private boolean shown;
+    // The foreground sets (HeaderBgForeground's THEME, LIGHT or DARK) the header and the pinned bar were last
+    // pushed with. Written only by HeaderBgForeground's pushes and read by every colour lookup, so whatever is
+    // read between two pushes matches what is on screen. Kept on detach: the views keep the colours.
+    int applied = HeaderBgForeground.THEME;
+    int appliedPin = HeaderBgForeground.THEME;
+    private boolean repushPosted;
     /** Run after the icon choice changes, for the open sheet, whose own window draws the status bar meanwhile. */
     public Runnable onStatusIconsChanged;
 
@@ -233,9 +234,9 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         blurred = null;
         blurSource = null;
         drawn = false;
-        band = null;
+        shown = false;
         statusLight = null;
-        bandSource = null;
+        statusSource = null;
     }
 
     @Override
@@ -257,7 +258,11 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
             invalidatePanel();
         }
         drawn = true;
-        updateBand(width, height);
+        View actionMode = actionBar.getActionMode();
+        if (actionMode == null || actionMode.getVisibility() != View.VISIBLE) {
+            shown = alpha() >= 1f;
+        }
+        updateStatusIcons(width, height);
         float alpha = alpha();
         if (alpha <= 0f || width <= 0 || height <= 0) {
             return;
@@ -360,52 +365,43 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         return drawer.statusLight;
     }
 
-    /** The foreground set the header should have now, from the band; HeaderBgForeground pushes it. */
-    int wanted() {
-        return band != null && settings.enabled && hasPhoto ? HeaderBgForeground.choose(band, resourcesProvider) : HeaderBgForeground.THEME;
-    }
-
-    // The probe is redone only when what lands behind the header can have changed: the bitmap drawn, any
-    // look setting, the filter, the surface, the size or the layout direction.
-    private void updateBand(int width, int height) {
-        View actionMode = actionBar.getActionMode();
-        if (actionMode == null || actionMode.getVisibility() != View.VISIBLE) {
-            Bitmap source = null;
-            if (alpha() >= 1f && width > 0 && height > 0) {
-                updateFilter();
-                source = settings.blur > 0 ? blurredPhoto() : null;
-                if (source == null) {
-                    source = imageReceiver.getBitmap();
-                }
-            }
-            if (source == null || source.isRecycled()) {
-                bandSource = null;
-                band = null;
-            } else {
-                // The chat's composite when it has handed one over, otherwise the opaque surface alone.
-                int surface = hasStatusBase ? ColorUtils.setAlphaComponent(statusBase, 255) : surfaceColor(true);
-                if (bandSource == null || bandSource.get() != source || !bandLook.sameAs(settings) || bandSurface != surface
-                        || bandWidth != width || bandHeight != height || bandStatusBarHeight != AndroidUtilities.statusBarHeight
-                        || bandRtl != LocaleController.isRTL || bandFilter != photoFilter) {
-                    bandSource = new WeakReference<>(source);
-                    bandLook.copyFrom(settings);
-                    bandSurface = surface;
-                    bandWidth = width;
-                    bandHeight = height;
-                    bandStatusBarHeight = AndroidUtilities.statusBarHeight;
-                    bandRtl = LocaleController.isRTL;
-                    bandFilter = photoFilter;
-                    band = probeBand(source, width, height, surface);
-                }
+    // Rebuilt only when what lands behind the status bar can have changed: the bitmap drawn, any look
+    // setting, the filter, the surface, the size or the layout direction.
+    private void updateStatusIcons(int width, int height) {
+        Boolean light = null;
+        Bitmap source = null;
+        if (alpha() >= 1f && actionBar.getOccupyStatusBar() && width > 0 && height > 0 && AndroidUtilities.statusBarHeight > 0) {
+            updateFilter();
+            source = settings.blur > 0 ? blurredPhoto() : null;
+            if (source == null) {
+                source = imageReceiver.getBitmap();
             }
         }
-        int wanted = wanted();
-        Boolean light = band != null ? HeaderBgForeground.darkTitle(wanted, resourcesProvider) : null;
+        if (source == null || source.isRecycled()) {
+            statusSource = null;
+        } else {
+            // The chat's composite when it has handed one over, otherwise the opaque surface alone.
+            int surface = hasStatusBase ? ColorUtils.setAlphaComponent(statusBase, 255) : surfaceColor(true);
+            if (statusSource != null && statusSource.get() == source && statusLook.sameAs(settings) && statusSurface == surface
+                    && statusWidth == width && statusHeight == height && statusBarHeight == AndroidUtilities.statusBarHeight
+                    && statusRtl == LocaleController.isRTL && statusFilter == photoFilter) {
+                light = statusLight;
+            } else {
+                statusSource = new WeakReference<>(source);
+                statusLook.copyFrom(settings);
+                statusSurface = surface;
+                statusWidth = width;
+                statusHeight = height;
+                statusBarHeight = AndroidUtilities.statusBarHeight;
+                statusRtl = LocaleController.isRTL;
+                statusFilter = photoFilter;
+                light = probeStatusBar(source, width, height, surface);
+            }
+        }
         boolean statusChanged = light == null ? statusLight != null : !light.equals(statusLight);
         statusLight = light;
-        // Compared with what was pushed rather than with the last probe, so a push missed while detached or
-        // undone by a theme change is still made up.
-        boolean repush = wanted != applied && !repushPosted;
+        // Compared with what was pushed, so a push missed while detached or undone by a theme change is made up.
+        boolean repush = (wanted() != applied || wantedPin() != appliedPin) && !repushPosted;
         if (!statusChanged && !repush) {
             return;
         }
@@ -431,14 +427,26 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         });
     }
 
-    // Paints the whole header small, as it draws, and returns its average colour. Null on any failure,
-    // which leaves the header and the status bar icons to the chat.
-    private Integer probeBand(Bitmap source, int width, int height, int surface) {
+    /** The header's foreground set for now; selection mode holds the last one, since it covers the header. */
+    int wanted() {
+        return shown && settings.enabled && hasPhoto && settings.alternateHeader()
+                ? HeaderBgForeground.opposite(Theme.key_actionBarDefaultTitle, resourcesProvider) : HeaderBgForeground.THEME;
+    }
+
+    /** The pinned bar's, from the live fade: selection mode fades the photo under the panel too, not only the header's. */
+    int wantedPin() {
+        return alpha() >= 1f && settings.extendPanel && settings.alternatePin()
+                ? HeaderBgForeground.opposite(Theme.key_chat_topPanelMessage, resourcesProvider) : HeaderBgForeground.THEME;
+    }
+
+    // Paints the status bar rows small, as the header does, and judges their average the way the chat
+    // judges its own header. Null on any failure, which leaves the icons to the chat.
+    private Boolean probeStatusBar(Bitmap source, int width, int height, int surface) {
         Bitmap readable = null;
         try {
             int probeWidth = 32;
             float k = probeWidth / (float) width;
-            int probeHeight = Math.max(1, Math.round(height * k));
+            int probeHeight = Math.max(1, Math.round(AndroidUtilities.statusBarHeight * k));
             Bitmap probe = Bitmap.createBitmap(probeWidth, probeHeight, Bitmap.Config.ARGB_8888);
             Canvas c = new Canvas(probe);
             c.scale(k, k);
@@ -463,7 +471,8 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
                 b += android.graphics.Color.blue(p);
             }
             int n = pixels.length;
-            return android.graphics.Color.rgb((int) (r / n), (int) (g / n), (int) (b / n));
+            int average = android.graphics.Color.rgb((int) (r / n), (int) (g / n), (int) (b / n));
+            return AndroidUtilities.computePerceivedBrightness(average) > 0.721f;
         } catch (Throwable e) {
             FileLog.e(e);
             return null;
