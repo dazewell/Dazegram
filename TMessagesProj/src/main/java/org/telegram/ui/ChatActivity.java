@@ -4854,7 +4854,7 @@ public class ChatActivity extends BaseFragment implements
             invalidateMessagesVisiblePart();
             checkUi_messagesSearchListPadding();
             checkUi_topFade();
-            // NagramX: the MD3 expanded input stops below this panel, so its budget follows the panel's animation.
+            // NagramX: the MD3 expanded input stops below this panel; the first tick after a panel change carries its new settled height.
             if (chatInputViewsContainer != null && chatInputViewsContainer.md3Surface != null && chatActivityEnterView != null && chatActivityEnterView.isMessageEditExpanded()) {
                 checkUi_expandedInputBudget();
             }
@@ -10051,8 +10051,10 @@ public class ChatActivity extends BaseFragment implements
             budget -= actionBar.getMeasuredHeight();
         }
         // NagramX: the MD3 island floats higher and reaches past its pill, and must stop below the pinned panel.
+        // The panel's settled height, not its animated one: expanding hides the pinned bar, and the field should
+        // grow into that space alongside the bar's exit rather than after it.
         if (chatInputViewsContainer != null && chatInputViewsContainer.md3Surface != null) {
-            budget -= chatInputViewsContainer.md3Surface.expandedInputTrim(topPanelLayout != null && topPanelLayout.getMetadata().getTotalVisibility() > 0 ? Math.round(topPanelLayout.getMetadata().getTotalHeight()) : 0);
+            budget -= chatInputViewsContainer.md3Surface.expandedInputTrim(topPanelLayout != null ? topPanelLayout.getSumHeightOfAllVisibleChild() : 0);
         }
         final boolean inputMethodVisible = windowInsetsStateHolder.getInsets(WindowInsetsCompat.Type.ime()).bottom > 0
             || windowInsetsStateHolder.inAppViewIsVisible();
@@ -19661,7 +19663,13 @@ public class ChatActivity extends BaseFragment implements
             if (actionBar != null && actionBar.getVisibility() == VISIBLE && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() && xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividers()) {
                 float naxHeaderBottom = actionBar.getY() + actionBar.getMeasuredHeight() + (actionBarSearchTags != null ? actionBarSearchTags.getCurrentHeight() : 0) + (hashtagSearchTabs != null ? hashtagSearchTabs.getCurrentHeight() : 0);
                 if (topPanelLayout != null && topPanelLayout.getMetadata().getTotalVisibility() > 0) {
-                    naxHeaderBottom = Math.max(naxHeaderBottom, topPanelLayout.getY() + topPanelLayout.getMetadata().getTotalHeight());
+                    // An expanded input hides the pinned bar and grows into its rows, so a shrinking panel's line keeps to
+                    // where the panel ends up instead of riding the bar's exit out of step with the island. A panel
+                    // appearing meanwhile still carries the line down its growing edge.
+                    final float animatedHeight = topPanelLayout.getMetadata().getTotalHeight();
+                    final float panelHeight = chatActivityEnterView != null && chatActivityEnterView.isMessageEditExpanded()
+                        ? Math.min(animatedHeight, topPanelLayout.getSumHeightOfAllVisibleChild()) : animatedHeight;
+                    naxHeaderBottom = Math.max(naxHeaderBottom, topPanelLayout.getY() + panelHeight);
                 }
                 canvas.drawRect(0, naxHeaderBottom, getMeasuredWidth(), naxHeaderBottom + Math.max(1, AndroidUtilities.dp(0.66f)), xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividerPaint(xyz.nextalone.nagram.helpers.InterfaceStyleController.chatHeaderSurfaceColor(themeDelegate), themeDelegate));
             }
@@ -30941,6 +30949,10 @@ public class ChatActivity extends BaseFragment implements
         String callLink = callLink(pinnedMessageObject);
         pinnedMessageButtonShown = botButton != null || !TextUtils.isEmpty(callLink);
         SharedPreferences preferences = MessagesController.getNotificationsSettings(currentAccount);
+        // NagramX (#fullscreen-input): the expanded input takes the pinned bar's rows. Only the reveal is held back,
+        // so dismissal and the overflow "show pinned" item still follow the real pin state. A non-topic reply
+        // thread reuses this view for its root message, which stays as context.
+        final boolean naxExpandedHide = chatActivityEnterView != null && chatActivityEnterView.isMessageEditExpanded() && (!isThreadChat() || isTopic);
         if ((threadMessageObject == null || isTopic) && (chatInfo == null && userInfo == null || pinned_msg_id == 0 || !pinnedMessageIds.isEmpty() && pinnedMessageIds.get(0) == preferences.getInt("pin_" + dialog_id, 0)) || isReport() || actionBar != null && (actionBar.isActionModeShowed() || actionBar.isSearchFieldVisible())) {
             changed = hidePinnedMessageView(animated);
             if (headerItem != null) {
@@ -30964,7 +30976,7 @@ public class ChatActivity extends BaseFragment implements
                 return;
             }
             if (pinnedMessageObject != null) {
-                if (pinnedMessageView != null && pinnedMessageView.getTag() != null) {
+                if (pinnedMessageView != null && pinnedMessageView.getTag() != null && !naxExpandedHide) {
                     pinnedMessageView.setTag(null);
                     changed = true;
 
@@ -31604,6 +31616,9 @@ public class ChatActivity extends BaseFragment implements
                     getMediaDataController().loadPinnedMessages(dialog_id, ChatObject.isChannel(currentChat) ? currentChat.id : 0, ids, true);
                 }
             }
+        }
+        if (naxExpandedHide) {
+            changed |= hidePinnedMessageView(animated); // NagramX: a bar already up when the input expanded
         }
         if (changed) {
             checkListViewPaddings();

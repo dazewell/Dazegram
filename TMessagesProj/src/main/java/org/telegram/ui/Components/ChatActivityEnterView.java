@@ -7664,6 +7664,10 @@ public class ChatActivityEnterView extends FrameLayout implements
         messageEditText.requestLayout();
         postReconcileScheduleButton();
         updateExpandInputButton();
+        // NagramX: the pinned bar hides while expanded, giving its rows to the field, so re-evaluate it on every toggle
+        if (parentFragment != null) {
+            parentFragment.updatePinnedMessageView(true);
+        }
         // keep the line being edited on screen once the new height is applied
         AndroidUtilities.runOnUIThread(() -> {
             if (messageEditText != null && messageEditText.getSelectionStart() >= 0) {
@@ -7736,7 +7740,13 @@ public class ChatActivityEnterView extends FrameLayout implements
             AndroidUtilities.cancelRunOnUIThread(collapseIfAnchorLost);
             AndroidUtilities.runOnUIThread(collapseIfAnchorLost, 100);
         } else if (changed && messageEditText != null) {
-            messageEditText.requestLayout();
+            // A budget published from inside ChatActivity's measure pass, after this view was already measured in
+            // it, would be lost: the request stops at ancestors still flagged by that pass and schedules nothing.
+            if (isLayoutRequested()) {
+                AndroidUtilities.runOnUIThread(messageEditText::requestLayout);
+            } else {
+                messageEditText.requestLayout();
+            }
         }
     }
 
