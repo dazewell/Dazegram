@@ -205,6 +205,8 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     private boolean glassOnlyBack;
     private boolean glassModeIsForum;
     private boolean naxFlatGlassHeader;
+    // NagramX: per-chat photo behind the MD3 flat header; set only by ChatActivity, null everywhere else.
+    public com.radolyn.ayugram.headerbg.HeaderBgDrawer naxHeaderBg;
 
     // NagramX: what updateGlassForumRadius last wrote. -1 means unknown; false is known, because
     // setupGlass leaves the drawable in exactly the non-centered state.
@@ -2393,6 +2395,8 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         if (naxFlatHeader) {
             glassDrawable.setBounds(0, 0, getWidth(), getHeight());
             glassDrawable.draw(canvas);
+            // NagramX: after the flat surface, before the children, so the title and icons stay on top.
+            if (naxHeaderBg != null) naxHeaderBg.draw(canvas, getWidth(), getHeight());
         } else if (glassDrawable != null && !glassOnlyBack) {
             // NagramX: the pill's corners depend on the centering, which can change under a live
             // chat, so they are recomputed here alongside its bounds.

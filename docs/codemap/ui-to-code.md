@@ -112,6 +112,16 @@ from `key_actionBarDefaultTitle` through its own provider (`TimerDrawable.java:1
 so it gets a scoped `wrapChatHeader` one (`ChatAvatarContainer.java:456-457`). A provider-level hook on `themeDelegate` is
 the wrong chokepoint: `MessagePreviewView` reads the same title keys through it.
 
+Anything painted *behind* the MD3 chat header but under its title and icons goes
+in ActionBar's flat branch, right after `glassDrawable.draw` and before
+`super.dispatchDraw` (`ActionBar.java:2395-2399`); the per-chat photo background
+(`#header-avatar-bg`) hangs off that as the `naxHeaderBg` field. Glass never
+takes the branch. Two traps there: `rebuildAllFragmentViews` swaps in a new
+ActionBar while the ChatActivity lives on (`ActionBarLayout.java:3366-3381`), so
+per-header state belongs to the ActionBar's attach/detach, not the fragment; and
+the action-mode bar is created INVISIBLE at alpha 1 (`ActionBar.java:883`), so
+`getActionModeFactor()` (`:811`) reads 1 until selection mode has been shown once.
+
 Chat list: DialogsActivity has no provider, so its `getThemedColor` override
 maps the top-bar keys (`DialogsActivity.java:593-607`). The title keys are left
 out because the item-options popup reads `key_actionBarDefaultTitle` through the

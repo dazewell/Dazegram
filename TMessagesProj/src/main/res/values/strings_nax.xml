@@ -799,4 +799,27 @@
     <string name="GhostSendExposedWarningNotHeld">Hold Messages didn\'t catch this one — your online status was just shown</string>
     <string name="GhostTypingReminder">Ghost Mode doesn\'t cover sending — this will go out and show you\'re online.</string>
     <string name="GhostTypingReminderHoldHint">Turn on Hold Messages to keep it on this device.</string>
+    <string name="HeaderBackground">Header background</string>
+    <string name="HeaderBackgroundUse">Use chat photo as header background</string>
+    <string name="HeaderBackgroundPosition">Position</string>
+    <string name="HeaderBackgroundOffsetX">Horizontal offset</string>
+    <string name="HeaderBackgroundOffsetY">Vertical offset</string>
+    <string name="HeaderBackgroundZoom">Zoom</string>
+    <string name="HeaderBackgroundLook">Look</string>
+    <string name="HeaderBackgroundOpacity">Opacity</string>
+    <string name="HeaderBackgroundTint">Tint</string>
+    <string name="HeaderBackgroundTintAuto">Auto</string>
+    <string name="HeaderBackgroundTintStrength">Tint strength</string>
+    <string name="HeaderBackgroundGradient">Gradient overlay</string>
+    <string name="HeaderBackgroundGradientInfo">Fades the photo into the header color so the title and icons stay readable</string>
+    <string name="HeaderBackgroundGradientOff">Off</string>
+    <string name="HeaderBackgroundGradientStrength">Gradient strength</string>
+    <string name="HeaderBackgroundGradientFrom">Fade from</string>
+    <string name="HeaderBackgroundFromTitle">Title side</string>
+    <string name="HeaderBackgroundFromTop">Top</string>
+    <string name="HeaderBackgroundFromBottom">Bottom</string>
+    <string name="HeaderBackgroundNoPhoto">This chat has no photo, so there\'s nothing to show behind the header.</string>
+    <string name="HeaderBackgroundGlassInfo">Header backgrounds are part of Material Design 3. The Glass interface draws its own header, so switch the interface style to Material Design 3 to use this.</string>
+    <string name="HeaderBackgroundApplyOffInfo">Material Design 3 isn\'t applied to the chat header yet. Turn on Apply to → Chat header to use this.</string>
+    <string name="HeaderBackgroundOpenSettings">Open Interface Style</string>
 </resources>
