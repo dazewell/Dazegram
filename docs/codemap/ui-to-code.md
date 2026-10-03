@@ -121,6 +121,10 @@ ActionBar while the ChatActivity lives on (`ActionBarLayout.java:3366-3381`), so
 per-header state belongs to the ActionBar's attach/detach, not the fragment; and
 the action-mode bar is created INVISIBLE at alpha 1 (`ActionBar.java:883`), so
 `getActionModeFactor()` (`:811`) reads 1 until selection mode has been shown once.
+The pinned/call/translate strips under the header are one `ChatActivityTopPanelLayout`,
+a sibling of the ActionBar in `contentView` (`ChatActivity.java:8663-8665`); its
+equivalent spot is after `backgroundDrawable.draw` (`ChatActivityTopPanelLayout.java:141`),
+in panel coordinates, so map to the header with the two views' `getX/getY` difference.
 
 Chat list: DialogsActivity has no provider, so its `getThemedColor` override
 maps the top-bar keys (`DialogsActivity.java:593-607`). The title keys are left

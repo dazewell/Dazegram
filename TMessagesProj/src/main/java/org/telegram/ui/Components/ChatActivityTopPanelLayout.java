@@ -29,6 +29,8 @@ public class ChatActivityTopPanelLayout extends AnimatedLinearLayout {
 
     BlurredBackgroundDrawable backgroundDrawable;
     private boolean flatBackground;
+    // NagramX: set by the chat's header photo background while its ActionBar is attached.
+    public com.radolyn.ayugram.headerbg.HeaderBgDrawer naxHeaderBg;
 
     public void setBlurredBackground(BlurredBackgroundDrawable background) {
         backgroundDrawable = background;
@@ -135,6 +137,8 @@ public class ChatActivityTopPanelLayout extends AnimatedLinearLayout {
         if (backgroundDrawable != null) {
             backgroundDrawable.draw(canvas);
         }
+        // NagramX: the header photo carries on under the flat MD3 strips, above their surface and below their content.
+        if (flatBackground && naxHeaderBg != null) naxHeaderBg.drawPanel(canvas, this, getPaddingLeft(), getMeasuredWidth() - getPaddingRight(), getMetadata().getTotalHeight(), getMetadata().getTotalVisibility());
 
         boolean callDrawn = false;
         if (callFragmentContextView != null) {

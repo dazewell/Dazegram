@@ -182,6 +182,14 @@ public final class HeaderBgSheet {
             slider(position, R.string.HeaderBackgroundOffsetX, -100, 100, () -> s.offsetX, v -> s.offsetX = v, true);
             slider(position, R.string.HeaderBackgroundOffsetY, -100, 100, () -> s.offsetY, v -> s.offsetY = v, true);
             slider(position, R.string.HeaderBackgroundZoom, 100, 300, () -> s.zoom, v -> s.zoom = v, false);
+            TextCheckCell extendCell = new TextCheckCell(context, 21, false, rp);
+            extendCell.setBackground(Theme.getSelectorDrawable(false, rp));
+            extendCell.setOnClickListener(v -> {
+                s.extendPanel = !s.extendPanel;
+                changed(true);
+            });
+            syncs.add(() -> extendCell.setTextAndValueAndCheck(getString(R.string.HeaderBackgroundExtend), getString(R.string.HeaderBackgroundExtendInfo), s.extendPanel, true, false));
+            position.addView(extendCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
             addSpacer(content, 8);
 
             GateLayout look = section(content, R.string.HeaderBackgroundLook, false,
