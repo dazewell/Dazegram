@@ -41,7 +41,7 @@ import xyz.nextalone.nagram.helpers.InterfaceStyleController;
 public class InterfaceStyleActivity extends BaseFragment {
 
     public static final String SETTINGS_KEY = "interface_style";
-    private static final String ROW_KEY_STYLE = "Style";
+    public static final String ROW_KEY_STYLE = "Style";
 
     private static final int TYPE_HEADER = 0;
     private static final int TYPE_RADIO = 1;

@@ -87,7 +87,7 @@ public final class HeaderBgSheet {
         open.setBackground(Theme.getSelectorDrawable(false, rp));
         open.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText4, rp));
         open.setText(getString(R.string.HeaderBackgroundOpenSettings), false);
-        String row = md3 ? NaConfig.INSTANCE.getInterfaceStyleApplyChatHeader().getKey() : "Style";
+        String row = md3 ? NaConfig.INSTANCE.getInterfaceStyleApplyChatHeader().getKey() : xyz.nextalone.nagram.ui.InterfaceStyleActivity.ROW_KEY_STYLE;
         open.setOnClickListener(v -> {
             if (sheet[0] != null) {
                 sheet[0].dismiss();
