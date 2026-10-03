@@ -131,6 +131,8 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
 
     @Override
     public void onViewAttachedToWindow(View v) {
+        // The observer was off while another screen covered the chat; pick up a photo changed meanwhile.
+        loadPhoto();
         imageReceiver.onAttachedToWindow();
         NotificationCenter.getInstance(account).addObserver(this, NotificationCenter.updateInterfaces);
     }
