@@ -2612,7 +2612,7 @@ rendered text into the key (`:6418-6419`).
 `DialogCell.update(mask)` handles `UPDATE_MASK_STATUS` by re-fetching the user
 and invalidating only when the online dot flips (`:3453-3457`). Setting
 `rebuildLayout` there does nothing: unless `continueUpdate` is set, the method
-invalidates and returns at `:3606-3610`, before the `buildLayout()` at `:3839`.
+invalidates and returns at `:3606-3610`, before the `buildLayout()` at `:3841`.
 Status-dependent text must set `continueUpdate = true` (`:3459-3461`).
 
 *(Established 2026-10-03, `#hide-last-message`.)*

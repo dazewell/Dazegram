@@ -99,7 +99,13 @@ public final class HideLastMessagePreview {
             TLRPC.ChatFull info = controller.getChatFull(chat.id);
             if (info == null && chat.participants_count > 0 && ChatObject.isChannel(chat)) {
                 // the header says "loading" until ChatFull arrives; the chat itself already knows its size
-                return LocaleController.formatPluralString(chat.megagroup ? "Members" : "Subscribers", chat.participants_count);
+                if (chat.megagroup) {
+                    return LocaleController.formatPluralString("Members", chat.participants_count);
+                }
+                // short form ("12.3K subscribers"), as getChatSubtitle prints it once ChatFull is loaded
+                int[] rounded = new int[1];
+                String shortNumber = LocaleController.formatShortNumber(chat.participants_count, rounded);
+                return LocaleController.formatPluralString("Subscribers", rounded[0]).replace(String.format("%d", rounded[0]), shortNumber);
             }
             return ChatAvatarContainer.getChatSubtitle(chat, info, 0);
         }
