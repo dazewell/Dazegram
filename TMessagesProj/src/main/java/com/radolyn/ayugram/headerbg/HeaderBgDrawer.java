@@ -264,7 +264,7 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         imageReceiver.setAlpha(settings.opacity / 100f * alpha);
         imageReceiver.draw(canvas);
         if (settings.gradient && settings.gradientStrength > 0) {
-            Paint paint = fade.update(width, height, settings.gradientFrom, surface, settings.gradientStrength);
+            Paint paint = fade.update(width, height, settings, surface);
             paint.setAlpha((int) (255 * alpha));
             canvas.drawPaint(paint);
         }
@@ -303,20 +303,29 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
 
     /** One cached fade shader in the header's coordinates; the header and the panel each keep one. */
     private static final class Fade {
+        // Enough stops that no curve shows banding between them across a header's width.
+        private static final int STOPS = 16;
+
         final Paint paint = new Paint();
-        private int w, h, from = -1, color, strength;
+        private final int[] colors = new int[STOPS];
+        private final float[] positions = new float[STOPS];
+        private int w, h, from = -1, color, strength, curve, start, end;
         private boolean rtl;
 
-        Paint update(int width, int height, int gradientFrom, int surface, int gradientStrength) {
+        Paint update(int width, int height, HeaderBgSettings s, int surface) {
             boolean isRtl = LocaleController.isRTL;
-            if (width == w && height == h && gradientFrom == from && surface == color && gradientStrength == strength && isRtl == rtl) {
+            if (width == w && height == h && s.gradientFrom == from && surface == color && s.gradientStrength == strength
+                    && s.gradientCurve == curve && s.gradientStart == start && s.gradientEnd == end && isRtl == rtl) {
                 return paint;
             }
             w = width;
             h = height;
-            from = gradientFrom;
+            from = s.gradientFrom;
             color = surface;
-            strength = gradientStrength;
+            strength = s.gradientStrength;
+            curve = s.gradientCurve;
+            start = s.gradientStart;
+            end = s.gradientEnd;
             rtl = isRtl;
             float x0 = 0, y0 = 0, x1 = 0, y1 = 0;
             if (from == HeaderBgSettings.FROM_TOP) {
@@ -328,9 +337,31 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
             } else {
                 x1 = width;
             }
-            int start = ColorUtils.setAlphaComponent(color, 255 * strength / 100);
-            paint.setShader(new LinearGradient(x0, y0, x1, y1, start, ColorUtils.setAlphaComponent(color, 0), Shader.TileMode.CLAMP));
+            // The sheet lets the two ends cross; the end gives way, which the start's clamp keeps within 100.
+            float a = start / 100f;
+            float b = Math.max(end, start + HeaderBgSettings.MIN_FADE_SPAN) / 100f;
+            for (int i = 0; i < STOPS; i++) {
+                float t = i / (STOPS - 1f);
+                positions[i] = a + (b - a) * t;
+                colors[i] = ColorUtils.setAlphaComponent(color, Math.round(255 * strength / 100f * (1f - ease(curve, t))));
+            }
+            // CLAMP holds the solid first stop before the start and the clear last one after the end.
+            paint.setShader(new LinearGradient(x0, y0, x1, y1, colors, positions, Shader.TileMode.CLAMP));
             return paint;
+        }
+
+        // How far the fade has cleared at t of its run, from 0 to 1.
+        private static float ease(int curve, float t) {
+            switch (curve) {
+                case HeaderBgSettings.CURVE_EASE_IN:
+                    return t * t;
+                case HeaderBgSettings.CURVE_EASE_OUT:
+                    return 1f - (1f - t) * (1f - t);
+                case HeaderBgSettings.CURVE_SMOOTH:
+                    return t * t * (3f - 2f * t);
+                default:
+                    return t;
+            }
         }
     }
 }

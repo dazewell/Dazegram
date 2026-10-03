@@ -201,7 +201,8 @@ public final class HeaderBgSheet {
             addSpacer(content, 8);
 
             GateLayout gradient = section(content, R.string.HeaderBackgroundGradient, false,
-                    () -> s.gradient ? s.gradientStrength + "% · " + fromName(s.gradientFrom) : getString(R.string.HeaderBackgroundGradientOff));
+                    () -> s.gradient ? s.gradientStrength + "% · " + fromName(s.gradientFrom) + " · " + curveName(s.gradientCurve)
+                            : getString(R.string.HeaderBackgroundGradientOff));
             TextCheckCell gradientCell = new TextCheckCell(context, 21, false, rp);
             gradientCell.setBackground(Theme.getSelectorDrawable(false, rp));
             gradientCell.setOnClickListener(v -> {
@@ -226,6 +227,31 @@ public final class HeaderBgSheet {
                 setRowEnabled(fromCell, s.gradient);
             });
             gradient.addView(fromCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            // Each end pushes the other along rather than crossing it; the other's thumb catches up on release.
+            View fadeStart = slider(gradient, R.string.HeaderBackgroundGradientStart, 0, 100 - HeaderBgSettings.MIN_FADE_SPAN, () -> s.gradientStart, v -> {
+                s.gradientStart = v;
+                s.gradientEnd = Math.max(s.gradientEnd, v + HeaderBgSettings.MIN_FADE_SPAN);
+            }, false);
+            View fadeEnd = slider(gradient, R.string.HeaderBackgroundGradientEnd, HeaderBgSettings.MIN_FADE_SPAN, 100, () -> s.gradientEnd, v -> {
+                s.gradientEnd = v;
+                s.gradientStart = Math.min(s.gradientStart, v - HeaderBgSettings.MIN_FADE_SPAN);
+            }, false);
+            TextSettingsCell curveCell = new TextSettingsCell(context, 21, rp);
+            curveCell.setBackground(Theme.getSelectorDrawable(false, rp));
+            curveCell.setOnClickListener(v -> {
+                if (!s.gradient) {
+                    return;
+                }
+                s.gradientCurve = (s.gradientCurve + 1) % 4;
+                changed(true);
+            });
+            syncs.add(() -> {
+                curveCell.setTextAndValue(getString(R.string.HeaderBackgroundGradientCurve), curveName(s.gradientCurve), false);
+                setRowEnabled(fadeStart, s.gradient);
+                setRowEnabled(fadeEnd, s.gradient);
+                setRowEnabled(curveCell, s.gradient);
+            });
+            gradient.addView(curveCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
             LinearLayout buttons = newButtons(content, rp);
             addButton(buttons, getString(R.string.Reset), rp, true, v -> {
@@ -466,6 +492,19 @@ public final class HeaderBgSheet {
             return getString(R.string.HeaderBackgroundFromBottom);
         }
         return getString(R.string.HeaderBackgroundFromTitle);
+    }
+
+    private static String curveName(int curve) {
+        switch (curve) {
+            case HeaderBgSettings.CURVE_EASE_IN:
+                return getString(R.string.HeaderBackgroundCurveEaseIn);
+            case HeaderBgSettings.CURVE_EASE_OUT:
+                return getString(R.string.HeaderBackgroundCurveEaseOut);
+            case HeaderBgSettings.CURVE_SMOOTH:
+                return getString(R.string.HeaderBackgroundCurveSmooth);
+            default:
+                return getString(R.string.HeaderBackgroundCurveLinear);
+        }
     }
 
     private static LinearLayout newContent(Context context) {
