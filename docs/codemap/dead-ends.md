@@ -1053,3 +1053,17 @@ spatial-alignment step (`multiCamMtkSat` in the camera dump), not the stream
 shape.
 
 *(Established 2026-09-27, `#video-zoom`, PR #439.)*
+
+## One light-or-dark verdict for the whole chat header over its photo
+
+An automatic flip of the header's text and icons, judged once from the average
+of the whole header band behind the photo (`#header-avatar-bg`, PR #470,
+commit `9e416cf530`), left everything dark on a light theme with a dark photo,
+status bar icons included. The default fade runs horizontally from the title
+side (`HeaderBgSettings.java:51`, `HeaderBgDrawer.java:603-612`) at 70%
+(`HeaderBgSettings.java:40`), so the title sits on nearly plain surface while the
+menu icons sit on the photo. No single colour reads on both, and the band
+average landed on the light side. The status bar keeps its own probe of its
+rows, and the text colour became a manual per-chat setting instead.
+
+*(Established 2026-10-03, `#header-avatar-bg`, PR #470.)*

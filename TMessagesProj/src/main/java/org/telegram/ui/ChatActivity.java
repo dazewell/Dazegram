@@ -13119,6 +13119,8 @@ public class ChatActivity extends BaseFragment implements
 
         // NagramX: lets the player row stand in for this strip while both are shown.
         xyz.nextalone.nagram.helpers.PinnedPlayerRow.attachPinned(fragmentContextViewWrapper, this, pinnedMessageView, pinnedListButton);
+        // NagramX: the strip is coloured once here, so a header photo's Alternate colour needs its views to recolour later.
+        com.radolyn.ayugram.headerbg.HeaderBgForeground.attachPinned(this, pinnedCounterTextView, pinnedNameTextView, pinnedMessageTextView, pinnedListButton, closePinned, fragmentContextViewWrapper);
         updatePinnedListButton(false);
     }
 
@@ -21775,12 +21777,12 @@ public class ChatActivity extends BaseFragment implements
             rightIcon = getContext().getResources().getDrawable(R.drawable.mini_ephemeral_hidden_14).mutate();
             rightIcon.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_windowBackgroundWhiteHintText), PorterDuff.Mode.SRC_IN));
         } else if (!UserObject.isReplyUser(currentUser) && (!isThreadChat() || isTopic) && isMuted) {
-            // NagramX: a tinted copy, since the shared drawable is also tinted by the global palette.
-            rightIcon = xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeaderIcon(getThemedDrawable(Theme.key_drawable_muteIconDrawable), Theme.key_chat_muteIcon);
+            // NagramX: a private copy that colours itself as it draws, since the shared drawable is tinted by the global palette.
+            rightIcon = com.radolyn.ayugram.headerbg.HeaderBgForeground.titleIcon(this, getThemedDrawable(Theme.key_drawable_muteIconDrawable), Theme.key_chat_muteIcon);
         }
         Drawable leftIcon = null;
         if (currentEncryptedChat != null) {
-            leftIcon = xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeaderIcon(getThemedDrawable(Theme.key_drawable_lockIconDrawable), Theme.key_chat_lockIcon);
+            leftIcon = com.radolyn.ayugram.headerbg.HeaderBgForeground.titleIcon(this, getThemedDrawable(Theme.key_drawable_lockIconDrawable), Theme.key_chat_lockIcon);
         } else if (currentChat != null) {
             leftIcon = avatarContainer.getBotVerificationDrawable(DialogObject.getBotVerificationIcon(currentChat), false);
         } else if (currentUser != null && !UserObject.isUserSelf(currentUser)) {
@@ -46487,9 +46489,8 @@ public class ChatActivity extends BaseFragment implements
         }
         ThemeDescription.ThemeDescriptionDelegate selectedBackgroundDelegate = () -> {
             // NagramX: the key-only header descriptions below have just pushed the shared palette back in.
-            if (xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeaderOptedIn() && !isReport()) {
-                xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.applyChatHeader(actionBar, avatarContainer);
-                updateTitleIcons();
+            if ((xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeaderOptedIn() || actionBar != null && actionBar.naxHeaderBg != null) && !isReport()) {
+                com.radolyn.ayugram.headerbg.HeaderBgForeground.applyChatHeader(this);
             }
             if (blurredBackgroundColorProvider != null) {
                 blurredBackgroundColorProvider.updateColors();

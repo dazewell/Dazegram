@@ -1,10 +1,7 @@
 package xyz.nextalone.nagram.helpers;
 
-import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.Paint;
-import android.graphics.PorterDuff;
-import android.graphics.PorterDuffColorFilter;
 import android.graphics.drawable.Drawable;
 import android.util.SparseIntArray;
 import android.view.View;
@@ -22,9 +19,12 @@ import org.telegram.ui.Components.FragmentSearchField;
 
 import xyz.nextalone.nagram.NaConfig;
 
+import java.util.function.IntBinaryOperator;
+
 // MD3 "Match Classic and Day header color": the chat header and the chat-list top surface go solid,
 // and on Classic they get back the pre-12.4.0 blue header. The colours are only ever handed to those
-// two consumers; the shared palette keeps its 12.4.0 values so nothing else on screen changes.
+// two consumers; the shared palette keeps its 12.4.0 values so nothing else on screen changes. A chat
+// header photo can override the chat header's result in com.radolyn.ayugram.headerbg.HeaderBgForeground.
 public final class InterfaceStyleSolidHeader {
 
     private static final int CLASSIC_SURFACE = 0xff527da3;
@@ -163,15 +163,6 @@ public final class InterfaceStyleSolidHeader {
         return ColorUtils.blendARGB(surfaceColor, ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_windowBackgroundWhite), 255), Math.min(1f, searchProgress));
     }
 
-    public static Drawable chatHeaderIcon(Drawable icon, int colorKey) {
-        if (icon == null || icon.getConstantState() == null || !chatHeaderClassic()) {
-            return icon;
-        }
-        final Drawable copy = icon.getConstantState().newDrawable().mutate();
-        copy.setColorFilter(new PorterDuffColorFilter(lookup(CHAT_HEADER, colorKey, Color.WHITE), PorterDuff.Mode.MULTIPLY));
-        return copy;
-    }
-
     // ActionBar colours are pushed once by the fragment and again by key-only ThemeDescriptions on every theme
     // change, so both fragments call this after createView and from their description delegate.
     public static void applyChatHeader(ActionBar actionBar, ChatAvatarContainer avatarContainer) {
@@ -228,33 +219,25 @@ public final class InterfaceStyleSolidHeader {
 
     // Filter tabs read their keys at draw time through their own provider, so they get a scoped one.
     public static Theme.ResourcesProvider wrapChatListTopBar(Theme.ResourcesProvider base) {
-        return wrap(base, false);
+        return wrap(base, InterfaceStyleSolidHeader::chatListColor);
     }
 
-    // The auto-delete timer in the chat header reads the title key through its own provider at draw time.
-    public static Theme.ResourcesProvider wrapChatHeader(Theme.ResourcesProvider base) {
-        return wrap(base, true);
-    }
-
-    private static Theme.ResourcesProvider wrap(Theme.ResourcesProvider base, boolean chatHeader) {
+    // Also the chat header's timer provider, which HeaderBgForeground maps through the header photo.
+    public static Theme.ResourcesProvider wrap(Theme.ResourcesProvider base, IntBinaryOperator map) {
         return new Theme.ResourcesProvider() {
-            private int map(int key, int color) {
-                return chatHeader ? chatHeaderColor(key, color) : chatListColor(key, color);
-            }
-
             @Override
             public int getColor(int key) {
-                return map(key, Theme.getColor(key, base));
+                return map.applyAsInt(key, Theme.getColor(key, base));
             }
 
             @Override
             public int getColorOrDefault(int key) {
-                return map(key, base != null ? base.getColorOrDefault(key) : Theme.getColor(key));
+                return map.applyAsInt(key, base != null ? base.getColorOrDefault(key) : Theme.getColor(key));
             }
 
             @Override
             public int getCurrentColor(int key) {
-                return map(key, base != null ? base.getCurrentColor(key) : Theme.getColor(key));
+                return map.applyAsInt(key, base != null ? base.getCurrentColor(key) : Theme.getColor(key));
             }
 
             @Override

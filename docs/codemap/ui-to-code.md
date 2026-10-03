@@ -98,19 +98,28 @@ day-theme choice and stays "Blue" under auto-night (`InterfaceStyleSolidHeader.j
 hue shift, `Theme.changeColorAccent(ThemeInfo, ...)` (`InterfaceStyleSolidHeader.java:122-129`).
 
 Chat header: the surface comes from `chatHeaderSurface(...)`, used only by the
-header and its status-bar composite (`ChatActivity.java:5398,19100`;
+header and its status-bar composite (`ChatActivity.java:5406,19166`;
 `BlurredBackgroundProviderImpl.java:211-213,229-230`). `chatHeaderPanel(...)` is
 **not** header-private: the pinned/join strip and the hashtag and topic tabs use it
-too (`ChatActivity.java:8646,9918,11180-11181`). Foregrounds go through
+too (`ChatActivity.java:8658,9932,11213-11214`). Foregrounds go through
 `ChatAvatarContainer.getThemedColor` for avatar containers whose `parentFragment`
 is set, which only ChatActivity does (`ChatAvatarContainer.java:2040-2043`).
 They are also pushed onto the ActionBar after `setupGlass` and again from
-`selectedBackgroundDelegate` (`ChatActivity.java:5401-5402,46316-46321`). The mute and
-lock icons are shared static drawables, so the header gets tinted copies
-(`ChatActivity.java:21689-21695`). The auto-delete timer draws its ring and label
+`selectedBackgroundDelegate` (`ChatActivity.java:5410,46490-46494`). The mute and
+lock icons are shared static drawables, so the header gets private copies that pick
+their colour as they draw (`ChatActivity.java:21781,21785`) and ignore outside tints:
+a key-only description recolours the title's side drawables with the subtitle key
+(`ChatActivity.java:46608`, `ThemeDescription.java:411`). The auto-delete timer draws its ring and label
 from `key_actionBarDefaultTitle` through its own provider (`TimerDrawable.java:160,168`),
-so it gets a scoped `wrapChatHeader` one (`ChatAvatarContainer.java:456-457`). A provider-level hook on `themeDelegate` is
+so it gets a scoped one (`ChatAvatarContainer.java:456-457`). A provider-level hook on `themeDelegate` is
 the wrong chokepoint: `MessagePreviewView` reads the same title keys through it.
+All of these route through `HeaderBgForeground` (`#header-avatar-bg`), which resolves
+Classic first and then, when the chat's header photo has *Alternate color* on, swaps
+in the opposite neutral set. Lookups read the set last pushed, never the drawer's
+live wish, so reads between pushes match the screen. The pinned strip's text and
+buttons are coloured once when the strip is built and then only by ThemeDescriptions,
+never as the pinned message changes, so the strip hands its views over at the end of
+that build (`ChatActivity.java:13123`).
 
 Anything painted *behind* the MD3 chat header but under its title and icons goes
 in ActionBar's flat branch, right after `glassDrawable.draw` and before
@@ -125,9 +134,9 @@ The pinned/call/translate strips under the header are one `ChatActivityTopPanelL
 a sibling of the ActionBar in `contentView` (`ChatActivity.java:8663-8665`); its
 equivalent spot is after `backgroundDrawable.draw` (`ChatActivityTopPanelLayout.java:141`),
 in panel coordinates, so map to the header with the two views' `getX/getY` difference.
-Its status bar icons are decided in `ChatActivity.isLightStatusBar()` (`ChatActivity.java:48405`),
+Its status bar icons are decided in `ChatActivity.isLightStatusBar()` (`ChatActivity.java:48406`),
 which falls back to `shouldHaveLightStatusBarIcons`, set from the wallpaper and header composite
-(`:19172`); `LaunchActivity.checkSystemBarColors` (`LaunchActivity.java:1152`) re-asks the top fragment,
+(`:19174`); `LaunchActivity.checkSystemBarColors` (`LaunchActivity.java:1152`) re-asks the top fragment,
 so anything that changes the pixels behind the status bar calls that.
 
 Chat list: DialogsActivity has no provider, so its `getThemedColor` override

@@ -453,8 +453,8 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             timeItem = new ImageView(context);
             timeItem.setScaleType(ImageView.ScaleType.CENTER);
             timeItem.setVisibility(GONE);
-            // NagramX: the timer draws from its own provider, not getThemedColor, so the Classic header needs a scoped one.
-            timeItem.setImageDrawable(timerDrawable = new TimerDrawable(context, parentFragment.isReport() ? resourcesProvider : xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.wrapChatHeader(resourcesProvider)));
+            // NagramX: the timer draws from its own provider, not getThemedColor, so the Classic header and the header photo need a scoped one.
+            timeItem.setImageDrawable(timerDrawable = new TimerDrawable(context, parentFragment.isReport() ? resourcesProvider : com.radolyn.ayugram.headerbg.HeaderBgForeground.wrapChatHeader(resourcesProvider, parentFragment)));
             timerDrawable.setBackgroundColor(0);
             addView(timeItem);
             secretChatTimer = needTime;
@@ -2038,8 +2038,8 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
     }
 
     private int getThemedColor(int key) {
-        // NagramX: only a chat's own header (parentFragment is set only for ChatActivity) takes the Classic header colours.
-        return parentFragment != null && !parentFragment.isReport() ? xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeaderColor(key, Theme.getColor(key, resourcesProvider)) : Theme.getColor(key, resourcesProvider);
+        // NagramX: only a chat's own header (parentFragment is set only for ChatActivity) takes the Classic header and header photo colours.
+        return parentFragment != null && !parentFragment.isReport() ? com.radolyn.ayugram.headerbg.HeaderBgForeground.color(parentFragment, key, Theme.getColor(key, resourcesProvider)) : Theme.getColor(key, resourcesProvider);
     }
 
     public void updateColors() {

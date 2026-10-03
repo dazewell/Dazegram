@@ -52,6 +52,7 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
 
     private final int account;
     private final long peerId;
+    private final ChatActivity fragment;
     private final ActionBar actionBar;
     private final Theme.ResourcesProvider resourcesProvider;
     private final ImageReceiver imageReceiver;
@@ -92,11 +93,21 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
     private boolean hasStatusBase;
     // draw() only runs for the flat MD3 header; stamped there and cleared on detach.
     private boolean drawn;
+    // Whether the photo is fully shown behind the header. Written by the draw pass and cleared on detach;
+    // held while selection mode covers the header, which has its own colours and fades the photo out and back.
+    private boolean shown;
+    // The foreground sets (HeaderBgForeground's THEME, LIGHT or DARK) the header and the pinned bar were last
+    // pushed with. Written only by HeaderBgForeground's pushes and read by every colour lookup, so whatever is
+    // read between two pushes matches what is on screen. Kept on detach: the views keep the colours.
+    int applied = HeaderBgForeground.THEME;
+    int appliedPin = HeaderBgForeground.THEME;
+    private boolean repushPosted;
     /** Run after the icon choice changes, for the open sheet, whose own window draws the status bar meanwhile. */
     public Runnable onStatusIconsChanged;
 
     private HeaderBgDrawer(ChatActivity fragment, ActionBar actionBar) {
         this.account = fragment.getCurrentAccount();
+        this.fragment = fragment;
         this.actionBar = actionBar;
         this.resourcesProvider = fragment.getResourceProvider();
         TLRPC.User user = fragment.getCurrentUser();
@@ -223,6 +234,7 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         blurred = null;
         blurSource = null;
         drawn = false;
+        shown = false;
         statusLight = null;
         statusSource = null;
     }
@@ -246,6 +258,10 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
             invalidatePanel();
         }
         drawn = true;
+        View actionMode = actionBar.getActionMode();
+        if (actionMode == null || actionMode.getVisibility() != View.VISIBLE) {
+            shown = alpha() >= 1f;
+        }
         updateStatusIcons(width, height);
         float alpha = alpha();
         if (alpha <= 0f || width <= 0 || height <= 0) {
@@ -369,22 +385,37 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
             if (statusSource != null && statusSource.get() == source && statusLook.sameAs(settings) && statusSurface == surface
                     && statusWidth == width && statusHeight == height && statusBarHeight == AndroidUtilities.statusBarHeight
                     && statusRtl == LocaleController.isRTL && statusFilter == photoFilter) {
-                return;
+                light = statusLight;
+            } else {
+                statusSource = new WeakReference<>(source);
+                statusLook.copyFrom(settings);
+                statusSurface = surface;
+                statusWidth = width;
+                statusHeight = height;
+                statusBarHeight = AndroidUtilities.statusBarHeight;
+                statusRtl = LocaleController.isRTL;
+                statusFilter = photoFilter;
+                light = probeStatusBar(source, width, height, surface);
             }
-            statusSource = new WeakReference<>(source);
-            statusLook.copyFrom(settings);
-            statusSurface = surface;
-            statusWidth = width;
-            statusHeight = height;
-            statusBarHeight = AndroidUtilities.statusBarHeight;
-            statusRtl = LocaleController.isRTL;
-            statusFilter = photoFilter;
-            light = probeStatusBar(source, width, height, surface);
         }
-        if (light == null ? statusLight != null : !light.equals(statusLight)) {
-            statusLight = light;
-            // Posted out of the draw pass. It re-asks whichever fragment is on top, so it is harmless when this chat is not.
-            AndroidUtilities.runOnUIThread(() -> {
+        boolean statusChanged = light == null ? statusLight != null : !light.equals(statusLight);
+        statusLight = light;
+        // Compared with what was pushed, so a push missed while detached or undone by a theme change is made up.
+        boolean repush = (wanted() != applied || wantedPin() != appliedPin) && !repushPosted;
+        if (!statusChanged && !repush) {
+            return;
+        }
+        repushPosted |= repush;
+        // Posted out of the draw pass. It re-asks whichever fragment is on top, so it is harmless when this chat is not.
+        AndroidUtilities.runOnUIThread(() -> {
+            if (repush) {
+                repushPosted = false;
+                // A theme rebuild may have given the chat a new bar meanwhile; that bar's own drawer pushes.
+                if (actionBar.naxHeaderBg == this && fragment.getActionBar() == actionBar) {
+                    HeaderBgForeground.push(fragment, this, wanted() != applied, wantedPin() != appliedPin);
+                }
+            }
+            if (statusChanged) {
                 LaunchActivity activity = LaunchActivity.instance;
                 if (activity != null) {
                     activity.checkSystemBarColors(true, true, false);
@@ -392,8 +423,20 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
                 if (onStatusIconsChanged != null) {
                     onStatusIconsChanged.run();
                 }
-            });
-        }
+            }
+        });
+    }
+
+    /** The header's foreground set for now; selection mode holds the last one, since it covers the header. */
+    int wanted() {
+        return shown && settings.enabled && hasPhoto && settings.alternateHeader()
+                ? HeaderBgForeground.opposite(Theme.key_actionBarDefaultTitle, resourcesProvider) : HeaderBgForeground.THEME;
+    }
+
+    /** The pinned bar's, from the live fade: selection mode fades the photo under the panel too, not only the header's. */
+    int wantedPin() {
+        return alpha() >= 1f && settings.extendPanel && settings.alternatePin()
+                ? HeaderBgForeground.opposite(Theme.key_chat_topPanelMessage, resourcesProvider) : HeaderBgForeground.THEME;
     }
 
     // Paints the status bar rows small, as the header does, and judges their average the way the chat
