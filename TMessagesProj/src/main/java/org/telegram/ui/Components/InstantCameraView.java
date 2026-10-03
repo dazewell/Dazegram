@@ -531,8 +531,10 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         }
 
         if (useCamera2) {
-            if (camera2Sessions[!initialCameraFront ? 0 : 1] != null) {
-                camera2Sessions[!initialCameraFront ? 0 : 1].setFlash(flashing && !isFrontface && recording);
+            // NagramX: only a dual pair slots sessions by the starting camera; a single one puts the rear in slot 1,
+            // so starting on the rear camera (camera setting or video memo shortcut) sent the torch to an empty slot
+            if (camera2Sessions[bothCameras && !initialCameraFront ? 0 : 1] != null) {
+                camera2Sessions[bothCameras && !initialCameraFront ? 0 : 1].setFlash(flashing && !isFrontface && recording);
             }
         } else {
             if (cameraSession != null) {
