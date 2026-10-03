@@ -264,7 +264,8 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         imageReceiver.setAlpha(settings.opacity / 100f * alpha);
         imageReceiver.draw(canvas);
         if (settings.gradient && settings.gradientStrength > 0) {
-            Paint paint = fade.update(width, height, settings, surface);
+            // A vertical fade runs over the whole framed picture, so with the reserve it reaches the pinned bar too.
+            Paint paint = fade.update(width, cover, settings, surface);
             paint.setAlpha((int) (255 * alpha));
             canvas.drawPaint(paint);
         }
@@ -337,7 +338,7 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
             } else {
                 x1 = width;
             }
-            // The sheet lets the two ends cross; the end gives way, which the start's clamp keeps within 100.
+            // Settings keep the ends apart already; this only keeps the stops strictly increasing.
             float a = start / 100f;
             float b = Math.max(end, start + HeaderBgSettings.MIN_FADE_SPAN) / 100f;
             for (int i = 0; i < STOPS; i++) {
