@@ -10,7 +10,6 @@ import android.os.SystemClock;
 import android.text.TextUtils;
 import android.view.View;
 
-
 import com.radolyn.ayugram.hotkeys.HotkeysActivity;
 
 import org.telegram.messenger.ContactsController;

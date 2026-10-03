@@ -49,7 +49,7 @@ import xyz.nextalone.nagram.NaConfig;
 import xyz.nextalone.nagram.helpers.InterfaceStyleController;
 
 /**
- * N-Settings -> General -> Interface style. Every look-and-feel option of the fork lives here; General keeps a pointer.
+ * N-Settings -> General -> Interface style. The look-and-feel options moved here from General, which keeps a pointer.
  * The rows are rebuilt in one place, {@link #rebuildRows()}, because the MD3 block, the composer row, the rounded
  * navigation row, the classic-day row and the main tabs rows all come and go with other settings.
  */
@@ -355,8 +355,12 @@ public class InterfaceStyleActivity extends BaseNekoXSettingsActivity {
                 || key.equals(NaConfig.INSTANCE.getAlwaysShowDownloadIcon().getKey())) {
             showRestartTooltip();
         } else if (key.equals(NaConfig.INSTANCE.getSwitchStyle().getKey()) || key.equals(NaConfig.INSTANCE.getSliderStyle().getKey())) {
-            if (parentLayout != null) {
+            // The rebuild makes a fresh list, so the saved position goes onto the new layout manager, read after the rebuild
+            RecyclerView.LayoutManager layoutManager = listView.getLayoutManager();
+            if (parentLayout != null && layoutManager != null) {
+                recyclerViewState = layoutManager.onSaveInstanceState();
                 parentLayout.rebuildFragments(INavigationLayout.REBUILD_FLAG_REBUILD_LAST);
+                listView.getLayoutManager().onRestoreInstanceState(recyclerViewState);
             }
         } else if (key.equals(NaConfig.INSTANCE.getCenterActionBarTitleType().getKey())) {
             NaConfig.INSTANCE.getCenterActionBarTitle().setConfigBool(NaConfig.INSTANCE.getCenterActionBarTitleType().Int() != 0);

@@ -70,10 +70,10 @@ public class SettingsHelper {
                 case "g":
                     var general = new NekoGeneralSettingsActivity();
                     // NagramX: the look-and-feel rows moved to Interface Style, and a link made before that still says general
-                    var interfaceStyle = new xyz.nextalone.nagram.ui.InterfaceStyleActivity();
-                    boolean moved = !TextUtils.isEmpty(row) && !general.getRowMapReverse().containsValue(row)
-                            && interfaceStyle.getRowMapReverse().containsValue(row);
-                    fragment = nekox_fragment = moved ? interfaceStyle : general;
+                    var interfaceStyle = TextUtils.isEmpty(row) || general.getRowMapReverse().containsValue(row)
+                            ? null : new xyz.nextalone.nagram.ui.InterfaceStyleActivity();
+                    fragment = nekox_fragment = interfaceStyle != null && interfaceStyle.getRowMapReverse().containsValue(row)
+                            ? interfaceStyle : general;
                     break;
                 case xyz.nextalone.nagram.ui.InterfaceStyleActivity.SETTINGS_KEY:
                     fragment = nekox_fragment = new xyz.nextalone.nagram.ui.InterfaceStyleActivity();

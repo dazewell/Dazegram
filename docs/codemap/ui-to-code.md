@@ -82,7 +82,7 @@ geometry (`ChatActivity.java:12723-12730`, `:12832-12955`,
 Chat header and tag-search providers use the same shared blur-strength alpha
 for translucent MD3 surfaces and fall back to opaque theme roles below the
 RenderEffect/API/blur gate (`BlurredBackgroundProviderImpl.java:211-250`;
-`NaConfig.kt:1485-1489`). The filter-tab tonal pill remains a separate
+`NaConfig.kt:1589-1592`). The filter-tab tonal pill remains a separate
 follow-up slice.
 
 *(Established 2026-09-22, during `#interface-style`.)*
