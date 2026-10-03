@@ -235,7 +235,7 @@ public final class HeaderBgSheet {
         }
 
         private GateLayout section(LinearLayout content, int title, boolean expanded, java.util.function.Supplier<CharSequence> summary) {
-            DisclosureHeaderCell header = new DisclosureHeaderCell(context);
+            DisclosureHeaderCell header = new DisclosureHeaderCell(context, rp);
             content.addView(header, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
             GateLayout body = new GateLayout(context);
             body.setOrientation(LinearLayout.VERTICAL);

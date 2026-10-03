@@ -25,9 +25,13 @@ public final class DisclosureHeaderCell extends TextSettingsCell {
     private ValueAnimator arrowAnimator;
 
     public DisclosureHeaderCell(Context context) {
-        super(context, 21);
-        setBackground(Theme.getSelectorDrawable(false));
-        setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+        this(context, null);
+    }
+
+    public DisclosureHeaderCell(Context context, Theme.ResourcesProvider resourcesProvider) {
+        super(context, 21, resourcesProvider);
+        setBackground(Theme.getSelectorDrawable(false, resourcesProvider));
+        setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
     }
 
     public void bind(CharSequence title, CharSequence summary, boolean expanded) {
