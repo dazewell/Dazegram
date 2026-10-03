@@ -387,6 +387,10 @@ public class Camera2Session {
     public boolean getFlash() {
         return flashing;
     }
+    // NagramX: the round recorder's slot layout varies with dual mode, so the torch picks its session by facing
+    public boolean isFront() {
+        return isFront;
+    }
 
     public float getZoom() {
         return currentZoom;

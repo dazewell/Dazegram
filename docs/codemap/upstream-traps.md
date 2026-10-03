@@ -2598,6 +2598,19 @@ programmatic change (a Reset) never triggers.
 
 *(Established 2026-10-03, `#header-avatar-bg`.)*
 
+## Round video Camera2 sessions have no fixed slot per camera
+
+`InstantCameraView.camera2Sessions` is laid out three ways. A dual pair puts
+the starting camera in slot 0 (`InstantCameraView.java:1101`, read back through
+`isFrontface == initialCameraFront` at `:1111`, `:1678`). A pair whose second
+camera failed to open drops `bothCameras` but leaves the survivor in slot 0
+(`:1111-1113`). A single session, and the `#round-dual-camera-fix` fallback,
+slot by facing, front 0 and rear 1 (`:1117`, `:1690`, `:1748`). Any fixed index
+for "the rear camera" is wrong in one of them; the torch picks its session by
+`Camera2Session.isFront()` instead (`:537`).
+
+*(Established 2026-10-03, `#round-camera2-flash-fix`.)*
+
 ## A chat-list row only rebuilds its text when its redraw key changes
 
 Two gates stand between a state change and a `DialogCell`'s text.
