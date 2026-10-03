@@ -2564,3 +2564,20 @@ video memo camera or switch changed. A logcat trace showed the item at
 was `671`.
 
 *(Established 2026-09-30, `#video-note-shortcut`.)*
+## A requestLayout from inside ChatActivity's measure pass is lost
+
+`ChatActivityFragmentView.onMeasure` measures `chatActivityEnterView` early
+(`ChatActivity.java:20333`), then later in the same pass calls `checkInsets()`
+(`ChatActivity.java:20469`). A child that calls `requestLayout()` from that later
+point, after it was already measured, gets nothing. Its ancestors still carry the
+pass's layout flag, so the request stops there and no new traversal is
+scheduled. The child keeps its stale measurement until something unrelated
+lays the screen out again. Post the request instead when `isLayoutRequested()`
+is already true (`ChatActivityEnterView.java:7745`).
+
+Missed once: the fullscreen input settled 136px short of the header in a chat
+with a pinned message. Its height budget grew when the pinned bar hid, but the
+update arrived from `checkInsets()` mid-pass. The NAX_SMOKE trace showed the
+field measured at budget 1063 and never re-measured after the budget became 1189.
+
+*(Established 2026-10-02, `#fullscreen-input`.)*
