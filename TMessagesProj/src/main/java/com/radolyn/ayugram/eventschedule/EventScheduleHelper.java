@@ -3,7 +3,6 @@ package com.radolyn.ayugram.eventschedule;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.LocaleController.getString;
 
-import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
@@ -16,7 +15,6 @@ import android.text.TextWatcher;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
-import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -35,12 +33,14 @@ import org.telegram.ui.Cells.TextDetailSettingsCell;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.Cells.TextSettingsCell;
 import org.telegram.ui.Components.ColoredImageSpan;
-import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.EditTextBoldCursor;
 import org.telegram.ui.Components.ItemOptions;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.SeekBarView;
+
+import com.radolyn.ayugram.ui.CollapsibleFrame;
+import com.radolyn.ayugram.ui.DisclosureHeaderCell;
 
 import java.util.ArrayList;
 
@@ -330,154 +330,6 @@ public final class EventScheduleHelper {
             ExtractedConfig(int types, ArrayList<String> patterns) {
                 this.types = types;
                 this.patterns = patterns;
-            }
-        }
-
-        private static final class DisclosureHeaderCell extends TextSettingsCell {
-            private CharSequence titleText = "";
-            private CharSequence summaryText = "";
-            private boolean expanded;
-            private boolean initialized;
-            private float arrowRotation;
-            private ValueAnimator arrowAnimator;
-
-            DisclosureHeaderCell(Context context) {
-                super(context, 21);
-                setBackground(Theme.getSelectorDrawable(false));
-                setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
-            }
-
-            void bind(CharSequence title, CharSequence summary, boolean expanded) {
-                boolean stateChanged = initialized && this.expanded != expanded;
-                this.titleText = title;
-                this.summaryText = summary;
-                this.expanded = expanded;
-                float targetRotation = expanded ? 180f : 0f;
-                if (arrowAnimator != null) {
-                    arrowAnimator.cancel();
-                    arrowAnimator = null;
-                }
-                if (!initialized) {
-                    initialized = true;
-                    arrowRotation = targetRotation;
-                    applyText();
-                    return;
-                }
-                if (!stateChanged) {
-                    arrowRotation = targetRotation;
-                    applyText();
-                    return;
-                }
-                arrowAnimator = ValueAnimator.ofFloat(arrowRotation, targetRotation);
-                arrowAnimator.setDuration(340);
-                arrowAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
-                arrowAnimator.addUpdateListener(animator -> {
-                    arrowRotation = (float) animator.getAnimatedValue();
-                    applyText();
-                });
-                applyText();
-                arrowAnimator.start();
-            }
-
-            private CharSequence composeAccessibilityText() {
-                String state = getString(expanded ? R.string.AccDescrExpanded : R.string.AccDescrCollapsed);
-                if (TextUtils.isEmpty(summaryText)) {
-                    return titleText + ", " + state;
-                }
-                return titleText + ", " + summaryText + ", " + state;
-            }
-
-            private void applyText() {
-                SpannableStringBuilder titleWithArrow = new SpannableStringBuilder();
-                titleWithArrow.append(titleText).append(' ');
-                int spanStart = titleWithArrow.length();
-                titleWithArrow.append('\uFFFC');
-                ColoredImageSpan arrowSpan = new ColoredImageSpan(R.drawable.arrow_more);
-                arrowSpan.setScale(0.6f, 0.6f);
-                arrowSpan.rotate(arrowRotation);
-                titleWithArrow.setSpan(arrowSpan, spanStart, spanStart + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                setTextAndValue(titleWithArrow, summaryText, false, expanded);
-                setContentDescription(composeAccessibilityText());
-            }
-
-            @Override
-            public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
-                super.onInitializeAccessibilityNodeInfo(info);
-                info.setClassName(android.widget.Button.class.getName());
-                info.setClickable(true);
-                info.setText(composeAccessibilityText());
-            }
-        }
-
-        /**
-         * Reveals its single body child by animating its own measured height, so the sheet grows and
-         * shrinks instead of snapping. A FrameLayout on purpose: SectionsScrollView.gatherChildren recurses
-         * into full-width vertical LinearLayouts and would paint the card from the body's full height, past
-         * the part that is actually revealed; a FrameLayout is gathered as one child at its animated size.
-         */
-        private static final class CollapsibleFrame extends FrameLayout {
-            private final View body;
-            private float progress;
-            private boolean expanded;
-            private ValueAnimator animator;
-
-            CollapsibleFrame(Context context, View body) {
-                super(context);
-                this.body = body;
-                addView(body, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.LEFT));
-                setVisibility(GONE);
-            }
-
-            void setExpanded(boolean expanded, boolean animated) {
-                if (this.expanded == expanded && animator == null) return;
-                this.expanded = expanded;
-                if (animator != null) {
-                    // Null the field first: cancel() runs onAnimationEnd synchronously, which would
-                    // otherwise snap to the old target before reversing.
-                    ValueAnimator running = animator;
-                    animator = null;
-                    running.cancel();
-                }
-                float target = expanded ? 1f : 0f;
-                // Attachment, not isLaidOut(): a frame that starts GONE is never laid out before its first
-                // expand, but it is attached once the sheet shows; the pre-show initial sync is not.
-                if (!animated || !isAttachedToWindow()) {
-                    setProgress(target);
-                    return;
-                }
-                setVisibility(VISIBLE);
-                animator = ValueAnimator.ofFloat(progress, target);
-                animator.setDuration(340);
-                animator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
-                animator.addUpdateListener(a -> setProgress((float) a.getAnimatedValue()));
-                animator.addListener(new android.animation.AnimatorListenerAdapter() {
-                    @Override
-                    public void onAnimationEnd(android.animation.Animator animation) {
-                        if (animator == animation) {
-                            animator = null;
-                            setProgress(target);
-                        }
-                    }
-                });
-                animator.start();
-            }
-
-            private void setProgress(float value) {
-                progress = value;
-                setVisibility(value <= 0f ? GONE : VISIBLE);
-                requestLayout();
-                // The section clip paths are recorded into the content layout's own display list, so it
-                // has to re-record on every frame, even once the sheet stops resizing at its max height.
-                if (getParent() instanceof View) {
-                    ((View) getParent()).invalidate();
-                }
-            }
-
-            @Override
-            protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-                super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
-                int full = body.getMeasuredHeight();
-                setMeasuredDimension(getMeasuredWidth(), progress >= 1f ? full : Math.round(full * progress));
             }
         }
 

@@ -495,6 +495,7 @@ public class ChatActivity extends BaseFragment implements
     private final static int nkbtn_clearDeleted = 2100;
     private final static int nkbtn_viewDeleted = 2101;
     private final static int nkheaderbtn_chat_privacy = 2102;
+    private final static int nkheaderbtn_header_bg = 2103;
     private final static int nkbtn_personal_replies = 2104;
 
     public int shareAlertDebugMode = DEBUG_SHARE_ALERT_MODE_NORMAL;
@@ -5260,6 +5261,8 @@ public class ChatActivity extends BaseFragment implements
             }
             // NagramX: one per-chat privacy entry that owns both hide-last-message and require-password.
             headerItem.lazilyAddSubItem(nkheaderbtn_chat_privacy, R.drawable.outline_header_lock_24, getString(R.string.ChatPrivacy));
+            // NagramX: shown in Glass too; the sheet then explains it needs MD3 and links to the switch.
+            if (com.radolyn.ayugram.headerbg.HeaderBgDrawer.eligible(this)) headerItem.lazilyAddSubItem(nkheaderbtn_header_bg, R.drawable.menu_feature_cover_24, getString(R.string.HeaderBackground));
             boolean addedSettings = false;
             if (NaConfig.INSTANCE.getChatMenuItemToBeginning().Bool()) headerItem.lazilyAddSubItem(to_the_beginning, R.drawable.ic_upward, getString(R.string.ToTheBeginning));
             if (NaConfig.INSTANCE.getChatMenuItemGoToMessage().Bool()) headerItem.lazilyAddSubItem(to_the_message, R.drawable.msg_go_up, getString(R.string.ToTheMessage));
@@ -5405,6 +5408,8 @@ public class ChatActivity extends BaseFragment implements
         avatarContainer.setActionBar(actionBar);
         // NagramX: the Classic solid header needs light foregrounds the 12.4.0 palette no longer has.
         if (!isReport()) xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.applyChatHeader(actionBar, avatarContainer);
+        // NagramX: attaches to this ActionBar, so a theme rebuild gets a fresh one with the new bar.
+        if (!isReport()) com.radolyn.ayugram.headerbg.HeaderBgDrawer.install(this);
 
         if (chatMode == MODE_PINNED) {
             actionBar.setForcedMenuMinWidth(dp(46));
@@ -48518,6 +48523,8 @@ public class ChatActivity extends BaseFragment implements
             presentFragment(new AyuViewDeleted(dialog_id));
         } else if (id == nkheaderbtn_chat_privacy) {
             com.radolyn.ayugram.chatprivacy.ChatPrivacySheet.show(ChatActivity.this, dialog_id);
+        } else if (id == nkheaderbtn_header_bg) {
+            com.radolyn.ayugram.headerbg.HeaderBgSheet.show(ChatActivity.this);
         } else if (id == nkbtn_bookmarks_manager) {
             presentFragment(new BookmarksActivity(dialog_id));
         } else if (id == nkheaderbtn_upgrade) {

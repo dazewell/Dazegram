@@ -324,6 +324,10 @@ The chat title and its status line sit centered in the action bar, in a pill tha
 
 When music, a voice message or a round video plays in a chat with a pinned message, the two bars share one row: a shortened pinned message on the left, the player on the right, its progress line across both. Chat Settings → Combine pinned message with player, off by default.
 
+### Chat photo header background <!-- #header-avatar-bg -->
+
+A chat can show its photo behind the Material Design 3 chat header. Open the chat's ⋮ menu → *Header background*: a sheet under the header pans and zooms the photo and sets its opacity, tint and a gradient that keeps the title readable, updating the header as you go. Off for every chat by default; in Glass the sheet links to Interface Style.
+
 <!-- Retired entries, plus sync-reconciliation and superseded feature slugs that have no catalog entry of their own.
      The behaviour still ships; it is documented in README instead of here.
      Slugs kept so old commits stay greppable and the catalog check keeps passing. -->
