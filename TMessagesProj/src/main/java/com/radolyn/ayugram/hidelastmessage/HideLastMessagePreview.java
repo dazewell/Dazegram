@@ -7,6 +7,7 @@ import androidx.annotation.Nullable;
 
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.DialogObject;
+import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
@@ -15,6 +16,8 @@ import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.Components.ChatAvatarContainer;
+
+import java.util.ArrayList;
 
 /**
  * Renders the chat-list text for a dialog hidden by {@link HideLastMessageController},
@@ -61,15 +64,17 @@ public final class HideLastMessagePreview {
                     text = status(account, dialogId);
                     break;
                 case HideLastMessageController.MODE_UNREAD:
-                    text = unreadCount > 0
-                            ? LocaleController.formatPluralString("NewMessages", unreadCount)
+                    int unread = unreadMessages(account, dialogId, unreadCount);
+                    text = unread > 0
+                            ? LocaleController.formatPluralString("NewMessages", unread)
                             : LocaleController.getString(R.string.HideLastMessageNoUnread);
                     break;
                 case HideLastMessageController.MODE_TYPE:
                     text = type(message);
                     break;
             }
-        } catch (Throwable ignore) {
+        } catch (Throwable e) {
+            FileLog.e(e);
         }
         return TextUtils.isEmpty(text) ? HideLastMessageController.getPlaceholder(account, dialogId) : text;
     }
@@ -81,6 +86,27 @@ public final class HideLastMessagePreview {
     public static int drawnHash(int account, long dialogId, @Nullable MessageObject message, int unreadCount) {
         if (!HideLastMessageController.isHidden(account, dialogId)) return 0;
         return resolve(account, dialogId, message, unreadCount).toString().hashCode();
+    }
+
+    /**
+     * Unread messages for the preview. A forum (or managed monoforum) row's own count is
+     * unread topics (DialogCell's badge, via TopicsController.getForumUnreadCount), so
+     * total the topics' messages instead.
+     */
+    private static int unreadMessages(int account, long dialogId, int cellUnreadCount) {
+        if (dialogId >= 0 || DialogObject.isEncryptedDialog(dialogId)) return cellUnreadCount;
+        MessagesController controller = MessagesController.getInstance(account);
+        TLRPC.Chat chat = controller.getChat(-dialogId);
+        if (chat == null || !(chat.forum || chat.monoforum && ChatObject.canManageMonoForum(account, chat))) {
+            return cellUnreadCount;
+        }
+        ArrayList<TLRPC.TL_forumTopic> topics = controller.getTopicsController().getTopics(chat.id);
+        if (topics == null) return cellUnreadCount;
+        int total = 0;
+        for (int i = 0; i < topics.size(); i++) {
+            total += Math.max(0, topics.get(i).unread_count);
+        }
+        return total;
     }
 
     /** The chat header subtitle, as ChatAvatarContainer.updateSubtitle builds it. */
@@ -97,6 +123,9 @@ public final class HideLastMessagePreview {
             TLRPC.Chat chat = controller.getChat(-dialogId);
             if (chat == null) return null;
             TLRPC.ChatFull info = controller.getChatFull(chat.id);
+            if (info == null && chat.megagroup && chat.participants_count <= 0) {
+                return null; // the header's lowercase "loading"; the placeholder reads better
+            }
             if (info == null && chat.participants_count > 0 && ChatObject.isChannel(chat)) {
                 // the header says "loading" until ChatFull arrives; the chat itself already knows its size
                 if (chat.megagroup) {
