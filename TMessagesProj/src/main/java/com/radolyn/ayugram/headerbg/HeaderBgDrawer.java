@@ -412,7 +412,7 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
                 repushPosted = false;
                 // A theme rebuild may have given the chat a new bar meanwhile; that bar's own drawer pushes.
                 if (actionBar.naxHeaderBg == this && fragment.getActionBar() == actionBar) {
-                    HeaderBgForeground.applyChatHeader(fragment);
+                    HeaderBgForeground.push(fragment, this, wanted() != applied, wantedPin() != appliedPin);
                 }
             }
             if (statusChanged) {

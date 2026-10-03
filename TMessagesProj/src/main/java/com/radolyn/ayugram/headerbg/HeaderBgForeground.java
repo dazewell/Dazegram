@@ -136,21 +136,32 @@ public final class HeaderBgForeground {
         }
     }
 
-    /**
-     * Pushes the header's and the pinned bar's colours. Runs from the theme delegate once the key-only
-     * descriptions have reset them, and from the drawer when what it wants no longer matches the last push.
-     */
+    /** Pushes the header's and the pinned bar's colours, from the theme delegate once the key-only descriptions have reset them. */
     public static void applyChatHeader(ChatActivity fragment) {
         ActionBar actionBar = fragment.getActionBar();
-        ChatAvatarContainer avatarContainer = fragment.getAvatarContainer();
         HeaderBgDrawer drawer = actionBar != null ? actionBar.naxHeaderBg : null;
         if (drawer == null) {
-            InterfaceStyleSolidHeader.applyChatHeader(actionBar, avatarContainer);
+            InterfaceStyleSolidHeader.applyChatHeader(actionBar, fragment.getAvatarContainer());
+            return;
+        }
+        push(fragment, drawer, true, true);
+    }
+
+    /**
+     * From the drawer when what it wants no longer matches the last push. Only the part that changed is pushed:
+     * the pinned bar follows the selection fade, and a header push would replace selection's back button ripple.
+     */
+    static void push(ChatActivity fragment, HeaderBgDrawer drawer, boolean header, boolean pin) {
+        if (pin) {
+            drawer.appliedPin = drawer.wantedPin();
+            applyPinned(fragment);
+        }
+        if (!header) {
             return;
         }
         drawer.applied = drawer.wanted();
-        drawer.appliedPin = drawer.wantedPin();
-        applyPinned(fragment);
+        ActionBar actionBar = fragment.getActionBar();
+        ChatAvatarContainer avatarContainer = fragment.getAvatarContainer();
         Theme.ResourcesProvider rp = fragment.getResourceProvider();
         actionBar.setItemsColor(color(fragment, Theme.key_actionBarDefaultIcon, Theme.getColor(Theme.key_actionBarDefaultIcon, rp)), false);
         actionBar.setItemsBackgroundColor(color(fragment, Theme.key_actionBarDefaultSelector, Theme.getColor(Theme.key_actionBarDefaultSelector, rp)), false);
