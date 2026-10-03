@@ -129,8 +129,23 @@ public final class HeaderBgSheet {
             HeaderBgDrawer drawer = HeaderBgDrawer.obtain(fragment);
             if (drawer != null) {
                 drawer.settings.copyFrom(s);
+                drawer.onStatusIconsChanged = statusSync;
                 drawer.invalidate();
             }
+        }
+
+        private final Runnable statusSync = this::syncStatusBar;
+
+        // While open, the sheet's own window draws the status bar, with icons set from the theme when it was
+        // built; it takes the chat's current choice instead, so the icons follow the photo under it.
+        private void syncStatusBar() {
+            if (sheet == null || !sheet.isShowing()) {
+                return;
+            }
+            // The window ORs every view's flag, and the sheet sets it on its container as well as the decor.
+            boolean light = fragment.isLightStatusBar();
+            AndroidUtilities.setLightStatusBar(sheet.getContainer(), light);
+            AndroidUtilities.setLightStatusBar(sheet.getWindow(), light);
         }
 
         private void save() {
@@ -195,13 +210,17 @@ public final class HeaderBgSheet {
             GateLayout look = section(content, R.string.HeaderBackgroundLook, false,
                     () -> s.opacity + "% · " + tintName(s.tintHue));
             slider(look, R.string.HeaderBackgroundOpacity, 10, 100, () -> s.opacity, v -> s.opacity = v, false);
+            slider(look, R.string.HeaderBackgroundBlur, 0, 100, () -> s.blur, v -> s.blur = v, false);
+            slider(look, R.string.HeaderBackgroundDesaturate, 0, 100, () -> s.desaturate, v -> s.desaturate = v, false);
             tintRow(look);
             View tintStrength = slider(look, R.string.HeaderBackgroundTintStrength, 0, 100, () -> s.tintStrength, v -> s.tintStrength = v, false);
             syncs.add(() -> setRowEnabled(tintStrength, s.tintHue != HeaderBgSettings.TINT_AUTO));
             addSpacer(content, 8);
 
+            // The choices sit together under the switch, where a tap target reads as one; the sliders follow.
             GateLayout gradient = section(content, R.string.HeaderBackgroundGradient, false,
-                    () -> s.gradient ? s.gradientStrength + "% · " + fromName(s.gradientFrom) : getString(R.string.HeaderBackgroundGradientOff));
+                    () -> s.gradient ? s.gradientStrength + "% · " + fromName(s.gradientFrom) + " · " + curveName(s.gradientCurve)
+                            : getString(R.string.HeaderBackgroundGradientOff));
             TextCheckCell gradientCell = new TextCheckCell(context, 21, false, rp);
             gradientCell.setBackground(Theme.getSelectorDrawable(false, rp));
             gradientCell.setOnClickListener(v -> {
@@ -210,22 +229,18 @@ public final class HeaderBgSheet {
             });
             syncs.add(() -> gradientCell.setTextAndValueAndCheck(getString(R.string.HeaderBackgroundGradient), getString(R.string.HeaderBackgroundGradientInfo), s.gradient, true, false));
             gradient.addView(gradientCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            TextSettingsCell fromCell = choice(gradient, () -> s.gradientFrom = (s.gradientFrom + 1) % 3);
+            TextSettingsCell curveCell = choice(gradient, () -> s.gradientCurve = (s.gradientCurve + 1) % (HeaderBgSettings.CURVE_SMOOTH + 1));
             View gradientStrength = slider(gradient, R.string.HeaderBackgroundGradientStrength, 0, 100, () -> s.gradientStrength, v -> s.gradientStrength = v, false);
-            TextSettingsCell fromCell = new TextSettingsCell(context, 21, rp);
-            fromCell.setBackground(Theme.getSelectorDrawable(false, rp));
-            fromCell.setOnClickListener(v -> {
-                if (!s.gradient) {
-                    return;
-                }
-                s.gradientFrom = (s.gradientFrom + 1) % 3;
-                changed(true);
-            });
+            View fadeRange = rangeSlider(gradient);
             syncs.add(() -> {
-                fromCell.setTextAndValue(getString(R.string.HeaderBackgroundGradientFrom), fromName(s.gradientFrom), false);
-                setRowEnabled(gradientStrength, s.gradient);
+                fromCell.setTextAndValue(getString(R.string.HeaderBackgroundGradientFrom), fromName(s.gradientFrom), true);
+                curveCell.setTextAndValue(getString(R.string.HeaderBackgroundGradientCurve), curveName(s.gradientCurve), false);
                 setRowEnabled(fromCell, s.gradient);
+                setRowEnabled(curveCell, s.gradient);
+                setRowEnabled(gradientStrength, s.gradient);
+                setRowEnabled(fadeRange, s.gradient);
             });
-            gradient.addView(fromCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
             LinearLayout buttons = newButtons(content, rp);
             addButton(buttons, getString(R.string.Reset), rp, true, v -> {
@@ -238,8 +253,16 @@ public final class HeaderBgSheet {
                 r.run();
             }
             sheet = present(fragment, content, true);
+            push();
+            syncStatusBar();
             // A drag the sheet closed under never reported its stop.
-            sheet.setOnHideListener(d -> save());
+            sheet.setOnHideListener(d -> {
+                save();
+                HeaderBgDrawer drawer = HeaderBgDrawer.obtain(fragment);
+                if (drawer != null && drawer.onStatusIconsChanged == statusSync) {
+                    drawer.onStatusIconsChanged = null;
+                }
+            });
         }
 
         private GateLayout section(LinearLayout content, int title, boolean expanded, java.util.function.Supplier<CharSequence> summary) {
@@ -261,11 +284,57 @@ public final class HeaderBgSheet {
             return body;
         }
 
-        private View slider(LinearLayout parent, int title, int min, int max, IntSupplier get, IntConsumer set, boolean signed) {
-            // A gate, not setEnabled: SeekBarView takes drags whether or not it is enabled.
+        // A row that cycles its value on tap; ignored while the gradient is off.
+        private TextSettingsCell choice(LinearLayout parent, Runnable next) {
+            TextSettingsCell cell = new TextSettingsCell(context, 21, rp);
+            cell.setBackground(Theme.getSelectorDrawable(false, rp));
+            cell.setOnClickListener(v -> {
+                if (!s.gradient) {
+                    return;
+                }
+                next.run();
+                changed(true);
+            });
+            parent.addView(cell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            return cell;
+        }
+
+        private View rangeSlider(LinearLayout parent) {
             GateLayout row = new GateLayout(context);
             row.setOrientation(LinearLayout.VERTICAL);
+            TextView valueView = sliderHeader(row, R.string.HeaderBackgroundGradientRange);
+            RangeSeekBar bar = new RangeSeekBar(context, 100, HeaderBgSettings.MIN_FADE_SPAN, rp);
+            Runnable label = () -> valueView.setText(s.gradientStart + "% – " + s.gradientEnd + "%");
+            bar.setDelegate(new RangeSeekBar.Delegate() {
+                @Override
+                public void onRangeChanged(int start, int end, boolean stop) {
+                    s.gradientStart = start;
+                    s.gradientEnd = end;
+                    label.run();
+                    push();
+                    if (stop) {
+                        changed(true);
+                    }
+                }
 
+                @Override
+                public CharSequence describe(boolean endHandle, int value) {
+                    return getString(endHandle ? R.string.HeaderBackgroundGradientEnd : R.string.HeaderBackgroundGradientStart) + ", " + value + "%";
+                }
+            });
+            row.addView(bar, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, 13, 0, 13, 0));
+            syncs.add(() -> {
+                label.run();
+                if (!bar.isDragging()) {
+                    bar.setRange(s.gradientStart, s.gradientEnd);
+                }
+            });
+            parent.addView(row, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            return row;
+        }
+
+        // The title on the left and the live value on the right, above a slider; returns the value view.
+        private TextView sliderHeader(LinearLayout row, int title) {
             LinearLayout header = new LinearLayout(context);
             header.setOrientation(LinearLayout.HORIZONTAL);
             header.setGravity(Gravity.CENTER_VERTICAL);
@@ -283,6 +352,14 @@ public final class HeaderBgSheet {
             valueView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText, rp));
             valueView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
             header.addView(valueView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT));
+            return valueView;
+        }
+
+        private View slider(LinearLayout parent, int title, int min, int max, IntSupplier get, IntConsumer set, boolean signed) {
+            // A gate, not setEnabled: SeekBarView takes drags whether or not it is enabled.
+            GateLayout row = new GateLayout(context);
+            row.setOrientation(LinearLayout.VERTICAL);
+            TextView valueView = sliderHeader(row, title);
 
             SeekBarView bar = new SeekBarView(context, rp);
             bar.setReportChanges(true);
@@ -299,7 +376,7 @@ public final class HeaderBgSheet {
 
                 @Override
                 public CharSequence getContentDescription() {
-                    return titleView.getText() + ", " + valueView.getText();
+                    return getString(title) + ", " + valueView.getText();
                 }
 
                 @Override
@@ -466,6 +543,19 @@ public final class HeaderBgSheet {
             return getString(R.string.HeaderBackgroundFromBottom);
         }
         return getString(R.string.HeaderBackgroundFromTitle);
+    }
+
+    private static String curveName(int curve) {
+        switch (curve) {
+            case HeaderBgSettings.CURVE_EASE_IN:
+                return getString(R.string.HeaderBackgroundCurveEaseIn);
+            case HeaderBgSettings.CURVE_EASE_OUT:
+                return getString(R.string.HeaderBackgroundCurveEaseOut);
+            case HeaderBgSettings.CURVE_SMOOTH:
+                return getString(R.string.HeaderBackgroundCurveSmooth);
+            default:
+                return getString(R.string.HeaderBackgroundCurveLinear);
+        }
     }
 
     private static LinearLayout newContent(Context context) {

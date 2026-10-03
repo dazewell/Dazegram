@@ -1,10 +1,15 @@
 package com.radolyn.ayugram.headerbg;
 
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.ColorFilter;
+import android.graphics.ColorMatrix;
+import android.graphics.ColorMatrixColorFilter;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
+import android.graphics.RectF;
 import android.graphics.Shader;
 import android.view.View;
 import android.view.ViewGroup;
@@ -12,22 +17,27 @@ import android.view.ViewGroup;
 import androidx.core.graphics.ColorUtils;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.FileLog;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.UserObject;
+import org.telegram.messenger.Utilities;
 import org.telegram.messenger.ChatObject;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ChatActivity;
+import org.telegram.ui.LaunchActivity;
 import org.telegram.ui.Components.ChatActivityTopPanelLayout;
 
 import xyz.nextalone.nagram.helpers.InterfaceStyleController;
 import xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader;
+
+import java.lang.ref.WeakReference;
 
 /**
  * Paints a chat's photo behind the MD3 flat chat header. ActionBar calls {@link #draw} right after
@@ -54,7 +64,36 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
     private ChatActivityTopPanelLayout panel;
     private final Fade headerFade = new Fade();
     private final Fade panelFade = new Fade();
-    private int filterHue = Integer.MIN_VALUE, filterColor, filterStrength;
+    private int filterHue = Integer.MIN_VALUE, filterColor, filterStrength, filterDesaturate;
+    // Shared by the receiver and the blurred copy so the two paths never tint differently.
+    private ColorFilter photoFilter;
+
+    // A small blurred copy of the receiver's bitmap, rebuilt on the main thread when the photo or the
+    // level changes. Replaced copies are dropped, never recycled: a frame still in flight may draw one.
+    private Bitmap blurred;
+    private WeakReference<Bitmap> blurSource;
+    private int blurSourceW, blurSourceH, blurLevel;
+    private final Paint blurPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+    // Where the photo lands in header coordinates; filled by frame() just before each use.
+    private final RectF frameRect = new RectF();
+
+    // Whether the status bar icons should be dark over what this header draws behind them, or null to
+    // leave them to the chat. Filled by draw(); lightStatusBar() re-checks the live conditions, so a value
+    // cached here never outlives the photo being drawn.
+    private Boolean statusLight;
+    private WeakReference<Bitmap> statusSource;
+    private final HeaderBgSettings statusLook = new HeaderBgSettings();
+    private int statusSurface, statusWidth, statusHeight, statusBarHeight;
+    private boolean statusRtl;
+    private ColorFilter statusFilter;
+    // What the chat composites behind the status bar (its header surface over the wallpaper), handed over
+    // by the chat as it recomputes it. Under a frosted header this is not the plain surface colour.
+    private int statusBase;
+    private boolean hasStatusBase;
+    // draw() only runs for the flat MD3 header; stamped there and cleared on detach.
+    private boolean drawn;
+    /** Run after the icon choice changes, for the open sheet, whose own window draws the status bar meanwhile. */
+    public Runnable onStatusIconsChanged;
 
     private HeaderBgDrawer(ChatActivity fragment, ActionBar actionBar) {
         this.account = fragment.getCurrentAccount();
@@ -181,6 +220,11 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
             panel.naxHeaderBg = null;
         }
         panel = null;
+        blurred = null;
+        blurSource = null;
+        drawn = false;
+        statusLight = null;
+        statusSource = null;
     }
 
     @Override
@@ -201,6 +245,8 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         if (settings.enabled && settings.extendPanel) {
             invalidatePanel();
         }
+        drawn = true;
+        updateStatusIcons(width, height);
         float alpha = alpha();
         if (alpha <= 0f || width <= 0 || height <= 0) {
             return;
@@ -244,7 +290,9 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         return actionMode != null && actionMode.getVisibility() == View.VISIBLE ? 1f - actionBar.getActionModeFactor() : 1f;
     }
 
-    private void paint(Canvas canvas, int width, int height, float alpha, Fade fade, int surface) {
+    // Fills out with the photo's rect in header coordinates and returns the height it covers. Sized from
+    // the receiver's bitmap, not the smaller blurred copy, so every path frames the photo the same.
+    private int frame(int width, int height, RectF out) {
         int bw = imageReceiver.getBitmapWidth();
         int bh = imageReceiver.getBitmapHeight();
         // The reserve is fixed rather than the panel's live height, so the header's framing never
@@ -258,29 +306,211 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         float slackY = (dh - cover) / 2f;
         float x = -slackX - slackX * settings.offsetX / 100f;
         float y = -slackY - slackY * settings.offsetY / 100f;
+        out.set(x, y, x + dw, y + dh);
+        return cover;
+    }
 
-        updateTint();
-        imageReceiver.setImageCoords(x, y, dw, dh);
-        imageReceiver.setAlpha(settings.opacity / 100f * alpha);
-        imageReceiver.draw(canvas);
+    private void paint(Canvas canvas, int width, int height, float alpha, Fade fade, int surface) {
+        int cover = frame(width, height, frameRect);
+        updateFilter();
+        Bitmap blurredPhoto = settings.blur > 0 ? blurredPhoto() : null;
+        if (blurredPhoto != null) {
+            blurPaint.setAlpha((int) (255 * settings.opacity / 100f * alpha));
+            blurPaint.setColorFilter(photoFilter);
+            canvas.drawBitmap(blurredPhoto, null, frameRect, blurPaint);
+        } else {
+            imageReceiver.setImageCoords(frameRect.left, frameRect.top, frameRect.width(), frameRect.height());
+            imageReceiver.setAlpha(settings.opacity / 100f * alpha);
+            imageReceiver.draw(canvas);
+        }
         if (settings.gradient && settings.gradientStrength > 0) {
-            Paint paint = fade.update(width, height, settings.gradientFrom, surface, settings.gradientStrength);
+            // A vertical fade runs over the whole framed picture, so with the reserve it reaches the pinned bar too.
+            Paint paint = fade.update(width, cover, settings, surface);
             paint.setAlpha((int) (255 * alpha));
             canvas.drawPaint(paint);
         }
     }
 
-    private void updateTint() {
+    /** From the chat each time it recomputes the colour behind its status bar. */
+    public void setStatusBarBase(int color) {
+        if (!hasStatusBase || color != statusBase) {
+            statusBase = color;
+            hasStatusBase = true;
+            invalidate();
+        }
+    }
+
+    /** The chat's status bar icon choice while this header's photo is what sits behind them; null otherwise. */
+    public static Boolean lightStatusBar(ActionBar actionBar) {
+        HeaderBgDrawer drawer = actionBar != null ? actionBar.naxHeaderBg : null;
+        if (drawer == null || !drawer.drawn || drawer.statusLight == null || drawer.alpha() < 1f || !actionBar.getOccupyStatusBar()) {
+            return null;
+        }
+        return drawer.statusLight;
+    }
+
+    // Rebuilt only when what lands behind the status bar can have changed: the bitmap drawn, any look
+    // setting, the filter, the surface, the size or the layout direction.
+    private void updateStatusIcons(int width, int height) {
+        Boolean light = null;
+        Bitmap source = null;
+        if (alpha() >= 1f && actionBar.getOccupyStatusBar() && width > 0 && height > 0 && AndroidUtilities.statusBarHeight > 0) {
+            updateFilter();
+            source = settings.blur > 0 ? blurredPhoto() : null;
+            if (source == null) {
+                source = imageReceiver.getBitmap();
+            }
+        }
+        if (source == null || source.isRecycled()) {
+            statusSource = null;
+        } else {
+            // The chat's composite when it has handed one over, otherwise the opaque surface alone.
+            int surface = hasStatusBase ? ColorUtils.setAlphaComponent(statusBase, 255) : surfaceColor(true);
+            if (statusSource != null && statusSource.get() == source && statusLook.sameAs(settings) && statusSurface == surface
+                    && statusWidth == width && statusHeight == height && statusBarHeight == AndroidUtilities.statusBarHeight
+                    && statusRtl == LocaleController.isRTL && statusFilter == photoFilter) {
+                return;
+            }
+            statusSource = new WeakReference<>(source);
+            statusLook.copyFrom(settings);
+            statusSurface = surface;
+            statusWidth = width;
+            statusHeight = height;
+            statusBarHeight = AndroidUtilities.statusBarHeight;
+            statusRtl = LocaleController.isRTL;
+            statusFilter = photoFilter;
+            light = probeStatusBar(source, width, height, surface);
+        }
+        if (light == null ? statusLight != null : !light.equals(statusLight)) {
+            statusLight = light;
+            // Posted out of the draw pass. It re-asks whichever fragment is on top, so it is harmless when this chat is not.
+            AndroidUtilities.runOnUIThread(() -> {
+                LaunchActivity activity = LaunchActivity.instance;
+                if (activity != null) {
+                    activity.checkSystemBarColors(true, true, false);
+                }
+                if (onStatusIconsChanged != null) {
+                    onStatusIconsChanged.run();
+                }
+            });
+        }
+    }
+
+    // Paints the status bar rows small, as the header does, and judges their average the way the chat
+    // judges its own header. Null on any failure, which leaves the icons to the chat.
+    private Boolean probeStatusBar(Bitmap source, int width, int height, int surface) {
+        Bitmap readable = null;
+        try {
+            int probeWidth = 32;
+            float k = probeWidth / (float) width;
+            int probeHeight = Math.max(1, Math.round(AndroidUtilities.statusBarHeight * k));
+            Bitmap probe = Bitmap.createBitmap(probeWidth, probeHeight, Bitmap.Config.ARGB_8888);
+            Canvas c = new Canvas(probe);
+            c.scale(k, k);
+            c.drawColor(surface);
+            int cover = frame(width, height, frameRect);
+            readable = source.getConfig() == Bitmap.Config.HARDWARE ? source.copy(Bitmap.Config.ARGB_8888, false) : source;
+            Paint photo = new Paint(Paint.FILTER_BITMAP_FLAG);
+            photo.setAlpha(255 * settings.opacity / 100);
+            photo.setColorFilter(photoFilter);
+            c.drawBitmap(readable, null, frameRect, photo);
+            if (settings.gradient && settings.gradientStrength > 0) {
+                Paint fade = headerFade.update(width, cover, settings, surface);
+                fade.setAlpha(255);
+                c.drawPaint(fade);
+            }
+            int[] pixels = new int[probeWidth * probeHeight];
+            probe.getPixels(pixels, 0, probeWidth, 0, 0, probeWidth, probeHeight);
+            long r = 0, g = 0, b = 0;
+            for (int p : pixels) {
+                r += android.graphics.Color.red(p);
+                g += android.graphics.Color.green(p);
+                b += android.graphics.Color.blue(p);
+            }
+            int n = pixels.length;
+            int average = android.graphics.Color.rgb((int) (r / n), (int) (g / n), (int) (b / n));
+            return AndroidUtilities.computePerceivedBrightness(average) > 0.721f;
+        } catch (Throwable e) {
+            FileLog.e(e);
+            return null;
+        } finally {
+            if (readable != null && readable != source) {
+                readable.recycle();
+            }
+        }
+    }
+
+    private void updateFilter() {
         int hue = settings.tintHue;
         int color = tintColor(hue, resourcesProvider);
-        if (hue == filterHue && color == filterColor && settings.tintStrength == filterStrength) {
+        if (hue == filterHue && color == filterColor && settings.tintStrength == filterStrength && settings.desaturate == filterDesaturate) {
             return;
         }
         filterHue = hue;
         filterColor = color;
         filterStrength = settings.tintStrength;
-        imageReceiver.setColorFilter(hue == HeaderBgSettings.TINT_AUTO || filterStrength == 0 ? null
-                : new PorterDuffColorFilter(ColorUtils.setAlphaComponent(color, 255 * filterStrength / 100), PorterDuff.Mode.SRC_ATOP));
+        filterDesaturate = settings.desaturate;
+        boolean tint = hue != HeaderBgSettings.TINT_AUTO && filterStrength > 0;
+        int tintColor = ColorUtils.setAlphaComponent(color, 255 * filterStrength / 100);
+        if (filterDesaturate == 0) {
+            photoFilter = tint ? new PorterDuffColorFilter(tintColor, PorterDuff.Mode.SRC_ATOP) : null;
+        } else {
+            ColorMatrix matrix = new ColorMatrix();
+            matrix.setSaturation(1f - filterDesaturate / 100f);
+            if (tint) {
+                // SRC_ATOP with the tint, written as a matrix so it can follow the desaturation.
+                float a = android.graphics.Color.alpha(tintColor) / 255f;
+                float k = 1f - a;
+                matrix.postConcat(new ColorMatrix(new float[]{
+                        k, 0, 0, 0, android.graphics.Color.red(tintColor) * a,
+                        0, k, 0, 0, android.graphics.Color.green(tintColor) * a,
+                        0, 0, k, 0, android.graphics.Color.blue(tintColor) * a,
+                        0, 0, 0, 1, 0}));
+            }
+            photoFilter = new ColorMatrixColorFilter(matrix);
+        }
+        imageReceiver.setColorFilter(photoFilter);
+    }
+
+    // While blurred, the receiver's thumb-to-big crossfade isn't drawn; the blur moves to the big photo once it lands.
+    private Bitmap blurredPhoto() {
+        Bitmap source = imageReceiver.getBitmap();
+        if (source == null || source.isRecycled()) {
+            blurred = null;
+            blurSource = null;
+            return null;
+        }
+        if (blurSource != null && blurSource.get() == source && blurSourceW == source.getWidth()
+                && blurSourceH == source.getHeight() && blurLevel == settings.blur) {
+            // Null here means this exact source failed once; it draws unblurred rather than retrying every frame.
+            return blurred;
+        }
+        blurred = null;
+        blurSource = new WeakReference<>(source);
+        blurSourceW = source.getWidth();
+        blurSourceH = source.getHeight();
+        blurLevel = settings.blur;
+        try {
+            // The source is the image cache's shared bitmap: it is only ever read, into a fresh bitmap
+            // that alone is blurred in place. Never upscaled, so a small thumb stays small.
+            Bitmap readable = source.getConfig() == Bitmap.Config.HARDWARE ? source.copy(Bitmap.Config.ARGB_8888, false) : source;
+            int longest = Math.max(blurSourceW, blurSourceH);
+            int target = Math.max(1, Math.min(longest, Math.round(256 / (1 + blurLevel / 50f))));
+            int w = Math.max(1, Math.round(blurSourceW * target / (float) longest));
+            int h = Math.max(1, Math.round(blurSourceH * target / (float) longest));
+            Bitmap work = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            Canvas c = new Canvas(work);
+            c.scale(w / (float) blurSourceW, h / (float) blurSourceH);
+            c.drawBitmap(readable, 0, 0, new Paint(Paint.FILTER_BITMAP_FLAG));
+            if (readable != source) {
+                readable.recycle();
+            }
+            Utilities.stackBlurBitmap(work, 1 + blurLevel / 8);
+            blurred = work;
+        } catch (Throwable e) {
+            FileLog.e(e);
+        }
+        return blurred;
     }
 
     /** Resolved on every use, so the Theme and hue tints follow a theme switch. */
@@ -303,20 +533,29 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
 
     /** One cached fade shader in the header's coordinates; the header and the panel each keep one. */
     private static final class Fade {
+        // Enough stops that no curve shows banding between them across a header's width.
+        private static final int STOPS = 16;
+
         final Paint paint = new Paint();
-        private int w, h, from = -1, color, strength;
+        private final int[] colors = new int[STOPS];
+        private final float[] positions = new float[STOPS];
+        private int w, h, from = -1, color, strength, curve, start, end;
         private boolean rtl;
 
-        Paint update(int width, int height, int gradientFrom, int surface, int gradientStrength) {
+        Paint update(int width, int height, HeaderBgSettings s, int surface) {
             boolean isRtl = LocaleController.isRTL;
-            if (width == w && height == h && gradientFrom == from && surface == color && gradientStrength == strength && isRtl == rtl) {
+            if (width == w && height == h && s.gradientFrom == from && surface == color && s.gradientStrength == strength
+                    && s.gradientCurve == curve && s.gradientStart == start && s.gradientEnd == end && isRtl == rtl) {
                 return paint;
             }
             w = width;
             h = height;
-            from = gradientFrom;
+            from = s.gradientFrom;
             color = surface;
-            strength = gradientStrength;
+            strength = s.gradientStrength;
+            curve = s.gradientCurve;
+            start = s.gradientStart;
+            end = s.gradientEnd;
             rtl = isRtl;
             float x0 = 0, y0 = 0, x1 = 0, y1 = 0;
             if (from == HeaderBgSettings.FROM_TOP) {
@@ -328,9 +567,31 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
             } else {
                 x1 = width;
             }
-            int start = ColorUtils.setAlphaComponent(color, 255 * strength / 100);
-            paint.setShader(new LinearGradient(x0, y0, x1, y1, start, ColorUtils.setAlphaComponent(color, 0), Shader.TileMode.CLAMP));
+            // Settings keep the ends apart already; this only keeps the stops strictly increasing.
+            float a = start / 100f;
+            float b = Math.max(end, start + HeaderBgSettings.MIN_FADE_SPAN) / 100f;
+            for (int i = 0; i < STOPS; i++) {
+                float t = i / (STOPS - 1f);
+                positions[i] = a + (b - a) * t;
+                colors[i] = ColorUtils.setAlphaComponent(color, Math.round(255 * strength / 100f * (1f - ease(curve, t))));
+            }
+            // CLAMP holds the solid first stop before the start and the clear last one after the end.
+            paint.setShader(new LinearGradient(x0, y0, x1, y1, colors, positions, Shader.TileMode.CLAMP));
             return paint;
+        }
+
+        // How far the fade has cleared at t of its run, from 0 to 1.
+        private static float ease(int curve, float t) {
+            switch (curve) {
+                case HeaderBgSettings.CURVE_EASE_IN:
+                    return t * t;
+                case HeaderBgSettings.CURVE_EASE_OUT:
+                    return 1f - (1f - t) * (1f - t);
+                case HeaderBgSettings.CURVE_SMOOTH:
+                    return t * t * (3f - 2f * t);
+                default:
+                    return t;
+            }
         }
     }
 }
