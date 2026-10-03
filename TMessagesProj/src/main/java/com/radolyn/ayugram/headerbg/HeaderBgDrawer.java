@@ -1,10 +1,15 @@
 package com.radolyn.ayugram.headerbg;
 
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.ColorFilter;
+import android.graphics.ColorMatrix;
+import android.graphics.ColorMatrixColorFilter;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
+import android.graphics.RectF;
 import android.graphics.Shader;
 import android.view.View;
 import android.view.ViewGroup;
@@ -12,12 +17,14 @@ import android.view.ViewGroup;
 import androidx.core.graphics.ColorUtils;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.FileLog;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.UserObject;
+import org.telegram.messenger.Utilities;
 import org.telegram.messenger.ChatObject;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
@@ -28,6 +35,8 @@ import org.telegram.ui.Components.ChatActivityTopPanelLayout;
 
 import xyz.nextalone.nagram.helpers.InterfaceStyleController;
 import xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader;
+
+import java.lang.ref.WeakReference;
 
 /**
  * Paints a chat's photo behind the MD3 flat chat header. ActionBar calls {@link #draw} right after
@@ -54,7 +63,17 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
     private ChatActivityTopPanelLayout panel;
     private final Fade headerFade = new Fade();
     private final Fade panelFade = new Fade();
-    private int filterHue = Integer.MIN_VALUE, filterColor, filterStrength;
+    private int filterHue = Integer.MIN_VALUE, filterColor, filterStrength, filterDesaturate;
+    // Shared by the receiver and the blurred copy so the two paths never tint differently.
+    private ColorFilter photoFilter;
+
+    // A small blurred copy of the receiver's bitmap, rebuilt on the main thread when the photo or the
+    // level changes. Replaced copies are dropped, never recycled: a frame still in flight may draw one.
+    private Bitmap blurred;
+    private WeakReference<Bitmap> blurSource;
+    private int blurSourceW, blurSourceH, blurLevel;
+    private final Paint blurPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+    private final RectF blurRect = new RectF();
 
     private HeaderBgDrawer(ChatActivity fragment, ActionBar actionBar) {
         this.account = fragment.getCurrentAccount();
@@ -181,6 +200,8 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
             panel.naxHeaderBg = null;
         }
         panel = null;
+        blurred = null;
+        blurSource = null;
     }
 
     @Override
@@ -259,10 +280,19 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         float x = -slackX - slackX * settings.offsetX / 100f;
         float y = -slackY - slackY * settings.offsetY / 100f;
 
-        updateTint();
-        imageReceiver.setImageCoords(x, y, dw, dh);
-        imageReceiver.setAlpha(settings.opacity / 100f * alpha);
-        imageReceiver.draw(canvas);
+        updateFilter();
+        Bitmap blurredPhoto = settings.blur > 0 ? blurredPhoto() : null;
+        if (blurredPhoto != null) {
+            // Sized from the receiver's bitmap, not the smaller copy, so framing matches the unblurred photo.
+            blurRect.set(x, y, x + dw, y + dh);
+            blurPaint.setAlpha((int) (255 * settings.opacity / 100f * alpha));
+            blurPaint.setColorFilter(photoFilter);
+            canvas.drawBitmap(blurredPhoto, null, blurRect, blurPaint);
+        } else {
+            imageReceiver.setImageCoords(x, y, dw, dh);
+            imageReceiver.setAlpha(settings.opacity / 100f * alpha);
+            imageReceiver.draw(canvas);
+        }
         if (settings.gradient && settings.gradientStrength > 0) {
             // A vertical fade runs over the whole framed picture, so with the reserve it reaches the pinned bar too.
             Paint paint = fade.update(width, cover, settings, surface);
@@ -271,17 +301,77 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         }
     }
 
-    private void updateTint() {
+    private void updateFilter() {
         int hue = settings.tintHue;
         int color = tintColor(hue, resourcesProvider);
-        if (hue == filterHue && color == filterColor && settings.tintStrength == filterStrength) {
+        if (hue == filterHue && color == filterColor && settings.tintStrength == filterStrength && settings.desaturate == filterDesaturate) {
             return;
         }
         filterHue = hue;
         filterColor = color;
         filterStrength = settings.tintStrength;
-        imageReceiver.setColorFilter(hue == HeaderBgSettings.TINT_AUTO || filterStrength == 0 ? null
-                : new PorterDuffColorFilter(ColorUtils.setAlphaComponent(color, 255 * filterStrength / 100), PorterDuff.Mode.SRC_ATOP));
+        filterDesaturate = settings.desaturate;
+        boolean tint = hue != HeaderBgSettings.TINT_AUTO && filterStrength > 0;
+        int tintColor = ColorUtils.setAlphaComponent(color, 255 * filterStrength / 100);
+        if (filterDesaturate == 0) {
+            photoFilter = tint ? new PorterDuffColorFilter(tintColor, PorterDuff.Mode.SRC_ATOP) : null;
+        } else {
+            ColorMatrix matrix = new ColorMatrix();
+            matrix.setSaturation(1f - filterDesaturate / 100f);
+            if (tint) {
+                // SRC_ATOP with the tint, written as a matrix so it can follow the desaturation.
+                float a = android.graphics.Color.alpha(tintColor) / 255f;
+                float k = 1f - a;
+                matrix.postConcat(new ColorMatrix(new float[]{
+                        k, 0, 0, 0, android.graphics.Color.red(tintColor) * a,
+                        0, k, 0, 0, android.graphics.Color.green(tintColor) * a,
+                        0, 0, k, 0, android.graphics.Color.blue(tintColor) * a,
+                        0, 0, 0, 1, 0}));
+            }
+            photoFilter = new ColorMatrixColorFilter(matrix);
+        }
+        imageReceiver.setColorFilter(photoFilter);
+    }
+
+    // While blurred, the receiver's thumb-to-big crossfade isn't drawn; the blur moves to the big photo once it lands.
+    private Bitmap blurredPhoto() {
+        Bitmap source = imageReceiver.getBitmap();
+        if (source == null || source.isRecycled()) {
+            blurred = null;
+            blurSource = null;
+            return null;
+        }
+        if (blurSource != null && blurSource.get() == source && blurSourceW == source.getWidth()
+                && blurSourceH == source.getHeight() && blurLevel == settings.blur) {
+            // Null here means this exact source failed once; it draws unblurred rather than retrying every frame.
+            return blurred;
+        }
+        blurred = null;
+        blurSource = new WeakReference<>(source);
+        blurSourceW = source.getWidth();
+        blurSourceH = source.getHeight();
+        blurLevel = settings.blur;
+        try {
+            // The source is the image cache's shared bitmap: it is only ever read, into a fresh bitmap
+            // that alone is blurred in place. Never upscaled, so a small thumb stays small.
+            Bitmap readable = source.getConfig() == Bitmap.Config.HARDWARE ? source.copy(Bitmap.Config.ARGB_8888, false) : source;
+            int longest = Math.max(blurSourceW, blurSourceH);
+            int target = Math.max(1, Math.min(longest, Math.round(256 / (1 + blurLevel / 50f))));
+            int w = Math.max(1, Math.round(blurSourceW * target / (float) longest));
+            int h = Math.max(1, Math.round(blurSourceH * target / (float) longest));
+            Bitmap work = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            Canvas c = new Canvas(work);
+            c.scale(w / (float) blurSourceW, h / (float) blurSourceH);
+            c.drawBitmap(readable, 0, 0, new Paint(Paint.FILTER_BITMAP_FLAG));
+            if (readable != source) {
+                readable.recycle();
+            }
+            Utilities.stackBlurBitmap(work, 1 + blurLevel / 8);
+            blurred = work;
+        } catch (Throwable e) {
+            FileLog.e(e);
+        }
+        return blurred;
     }
 
     /** Resolved on every use, so the Theme and hue tints follow a theme switch. */

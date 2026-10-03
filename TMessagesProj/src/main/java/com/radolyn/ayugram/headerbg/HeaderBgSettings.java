@@ -49,6 +49,9 @@ public final class HeaderBgSettings {
     /** Where the fade starts and ends, in percent of its run; solid before the start, clear after the end. */
     public int gradientStart = 0;
     public int gradientEnd = 100;
+    /** Softens and drains the photo so text over it reads more easily; both 0 to 100. */
+    public int blur;
+    public int desaturate;
 
     /** Everything back to its default except {@link #enabled}. */
     public void resetLook() {
@@ -65,6 +68,8 @@ public final class HeaderBgSettings {
         gradientCurve = CURVE_LINEAR;
         gradientStart = 0;
         gradientEnd = 100;
+        blur = 0;
+        desaturate = 0;
     }
 
     public void copyFrom(HeaderBgSettings o) {
@@ -82,13 +87,16 @@ public final class HeaderBgSettings {
         gradientCurve = o.gradientCurve;
         gradientStart = o.gradientStart;
         gradientEnd = o.gradientEnd;
+        blur = o.blur;
+        desaturate = o.desaturate;
     }
 
     private boolean isDefaultLook() {
         return offsetX == 0 && offsetY == 0 && zoom == DEF_ZOOM && opacity == DEF_OPACITY
                 && tintHue == TINT_AUTO && tintStrength == DEF_TINT_STRENGTH && gradient
                 && gradientStrength == DEF_GRADIENT_STRENGTH && gradientFrom == FROM_TITLE && extendPanel
-                && gradientCurve == CURVE_LINEAR && gradientStart == 0 && gradientEnd == 100;
+                && gradientCurve == CURVE_LINEAR && gradientStart == 0 && gradientEnd == 100
+                && blur == 0 && desaturate == 0;
     }
 
     private static SharedPreferences prefs(int account) {
@@ -122,6 +130,8 @@ public final class HeaderBgSettings {
         s.gradientStart = parse(f, 12, 0, 100 - MIN_FADE_SPAN, 0);
         s.gradientEnd = parse(f, 13, MIN_FADE_SPAN, 100, 100);
         s.gradientEnd = Math.max(s.gradientEnd, s.gradientStart + MIN_FADE_SPAN);
+        s.blur = parse(f, 14, 0, 100, 0);
+        s.desaturate = parse(f, 15, 0, 100, 0);
         return s;
     }
 
@@ -133,7 +143,8 @@ public final class HeaderBgSettings {
         } else {
             editor.putString(key, (enabled ? "1" : "0") + "|" + offsetX + "|" + offsetY + "|" + zoom + "|" + opacity + "|"
                     + tintHue + "|" + tintStrength + "|" + (gradient ? "1" : "0") + "|" + gradientStrength + "|" + gradientFrom
-                    + "|" + (extendPanel ? "1" : "0") + "|" + gradientCurve + "|" + gradientStart + "|" + gradientEnd);
+                    + "|" + (extendPanel ? "1" : "0") + "|" + gradientCurve + "|" + gradientStart + "|" + gradientEnd
+                    + "|" + blur + "|" + desaturate);
         }
         editor.apply();
     }

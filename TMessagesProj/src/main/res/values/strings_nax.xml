@@ -824,6 +824,9 @@
     <string name="HeaderBackgroundGradientStart">Fade starts at</string>
     <string name="HeaderBackgroundGradientEnd">Fade ends at</string>
     <string name="HeaderBackgroundGradientCurve">Curve</string>
+    <string name="HeaderBackgroundGradientRange">Fade range</string>
+    <string name="HeaderBackgroundBlur">Blur</string>
+    <string name="HeaderBackgroundDesaturate">Desaturate</string>
     <string name="HeaderBackgroundCurveLinear">Linear</string>
     <string name="HeaderBackgroundCurveEaseIn">Ease in</string>
     <string name="HeaderBackgroundCurveEaseOut">Ease out</string>
