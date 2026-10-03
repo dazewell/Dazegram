@@ -194,7 +194,7 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
 
     private void updateTint() {
         int hue = settings.tintHue;
-        int color = hue == HeaderBgSettings.TINT_AUTO ? 0 : Theme.getColor(Theme.keys_avatar_background[hue], resourcesProvider);
+        int color = tintColor(hue, resourcesProvider);
         if (hue == filterHue && color == filterColor && settings.tintStrength == filterStrength) {
             return;
         }
@@ -203,6 +203,14 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         filterStrength = settings.tintStrength;
         imageReceiver.setColorFilter(hue == HeaderBgSettings.TINT_AUTO || filterStrength == 0 ? null
                 : new PorterDuffColorFilter(ColorUtils.setAlphaComponent(color, 255 * filterStrength / 100), PorterDuff.Mode.SRC_ATOP));
+    }
+
+    /** Resolved on every use, so the Theme and hue tints follow a theme switch. */
+    public static int tintColor(int hue, Theme.ResourcesProvider resourcesProvider) {
+        if (hue == HeaderBgSettings.TINT_THEME) {
+            return Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider);
+        }
+        return hue >= 0 ? Theme.getColor(Theme.keys_avatar_background[hue], resourcesProvider) : 0;
     }
 
     private void updateGradient(int width, int height) {

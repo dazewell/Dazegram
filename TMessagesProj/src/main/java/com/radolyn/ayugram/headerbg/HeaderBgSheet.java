@@ -185,7 +185,7 @@ public final class HeaderBgSheet {
             addSpacer(content, 8);
 
             GateLayout look = section(content, R.string.HeaderBackgroundLook, false,
-                    () -> s.opacity + "% · " + (s.tintHue == HeaderBgSettings.TINT_AUTO ? getString(R.string.HeaderBackgroundTintAuto) : AvatarDrawable.colorName(s.tintHue)));
+                    () -> s.opacity + "% · " + tintName(s.tintHue));
             slider(look, R.string.HeaderBackgroundOpacity, 10, 100, () -> s.opacity, v -> s.opacity = v, false);
             tintRow(look);
             View tintStrength = slider(look, R.string.HeaderBackgroundTintStrength, 0, 100, () -> s.tintStrength, v -> s.tintStrength = v, false);
@@ -320,11 +320,11 @@ public final class HeaderBgSheet {
             LinearLayout row = new LinearLayout(context);
             row.setOrientation(LinearLayout.HORIZONTAL);
             int count = Theme.keys_avatar_background.length;
-            for (int i = -1; i < count; i++) {
+            for (int i = HeaderBgSettings.TINT_THEME; i < count; i++) {
                 final int hue = i;
                 ImageView swatch = new ImageView(context);
                 swatch.setScaleType(ImageView.ScaleType.CENTER);
-                swatch.setContentDescription(hue < 0 ? getString(R.string.HeaderBackgroundTintAuto) : AvatarDrawable.colorName(hue));
+                swatch.setContentDescription(tintName(hue));
                 swatch.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector, rp), Theme.RIPPLE_MASK_CIRCLE_20DP));
                 swatch.setAccessibilityDelegate(new View.AccessibilityDelegate() {
                     @Override
@@ -348,24 +348,33 @@ public final class HeaderBgSheet {
             parent.addView(row, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 8, 0, 8, 0));
         }
 
-        // Same circle-and-ring look as the privacy profile colours. Auto is an empty ring.
+        // Same circle-and-ring look as the privacy profile colours. Auto is an empty ring; Theme is the
+        // accent with a palette mark, so it doesn't read as just another blue.
         private Drawable swatchDrawable(int hue, boolean selected) {
             int size = dp(SWATCH_DP);
             int ring = Theme.getColor(Theme.key_featuredStickers_addButton, rp);
-            if (hue < 0) {
+            if (hue == HeaderBgSettings.TINT_AUTO) {
                 return Theme.createOutlineCircleDrawable(size, selected ? ring : Theme.getColor(Theme.key_windowBackgroundWhiteGrayText, rp), dp(2));
             }
-            int color = Theme.getColor(Theme.keys_avatar_background[hue], rp);
-            if (!selected) {
-                return Theme.createCircleDrawable(size, color);
+            int color = HeaderBgDrawer.tintColor(hue, rp);
+            int inner = selected ? dp(SWATCH_DP - 8) : size;
+            ArrayList<Drawable> layers = new ArrayList<>();
+            layers.add(Theme.createCircleDrawable(inner, color));
+            if (hue == HeaderBgSettings.TINT_THEME) {
+                Drawable mark = context.getResources().getDrawable(R.drawable.msg_theme).mutate();
+                mark.setColorFilter(new android.graphics.PorterDuffColorFilter(Theme.getColor(Theme.key_featuredStickers_buttonText, rp), android.graphics.PorterDuff.Mode.SRC_IN));
+                layers.add(mark);
             }
-            int inner = dp(SWATCH_DP - 8);
-            LayerDrawable layered = new LayerDrawable(new Drawable[]{
-                    Theme.createCircleDrawable(inner, color),
-                    Theme.createOutlineCircleDrawable(size, ring, dp(2))
-            });
+            if (selected) {
+                layers.add(Theme.createOutlineCircleDrawable(size, ring, dp(2)));
+            }
+            LayerDrawable layered = new LayerDrawable(layers.toArray(new Drawable[0]));
             int inset = (size - inner) / 2;
             layered.setLayerInset(0, inset, inset, inset, inset);
+            if (hue == HeaderBgSettings.TINT_THEME) {
+                int markInset = (size - dp(18)) / 2;
+                layered.setLayerInset(1, markInset, markInset, markInset, markInset);
+            }
             return layered;
         }
     }
@@ -415,6 +424,16 @@ public final class HeaderBgSheet {
 
     private static String signed(int value) {
         return (value > 0 ? "+" : "") + value + "%";
+    }
+
+    private static String tintName(int hue) {
+        if (hue == HeaderBgSettings.TINT_AUTO) {
+            return getString(R.string.HeaderBackgroundTintAuto);
+        }
+        if (hue == HeaderBgSettings.TINT_THEME) {
+            return getString(R.string.HeaderBackgroundTintTheme);
+        }
+        return AvatarDrawable.colorName(hue);
     }
 
     private static String fromName(int from) {

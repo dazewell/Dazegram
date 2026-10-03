@@ -16,8 +16,9 @@ public final class HeaderBgSettings {
     public static final int FROM_TOP = 1;
     public static final int FROM_BOTTOM = 2;
 
-    /** No tint; otherwise an index into {@code Theme.keys_avatar_background}. */
+    /** No tint; otherwise the theme's accent, or an index into {@code Theme.keys_avatar_background}. */
     public static final int TINT_AUTO = -1;
+    public static final int TINT_THEME = -2;
 
     private static final int DEF_ZOOM = 100;
     private static final int DEF_OPACITY = 55;
@@ -88,7 +89,7 @@ public final class HeaderBgSettings {
         s.offsetY = parse(f, 2, -100, 100, 0);
         s.zoom = parse(f, 3, 100, 300, DEF_ZOOM);
         s.opacity = parse(f, 4, 10, 100, DEF_OPACITY);
-        s.tintHue = parse(f, 5, TINT_AUTO, Theme.keys_avatar_background.length - 1, TINT_AUTO);
+        s.tintHue = parse(f, 5, TINT_THEME, Theme.keys_avatar_background.length - 1, TINT_AUTO);
         s.tintStrength = parse(f, 6, 0, 100, DEF_TINT_STRENGTH);
         s.gradient = !"0".equals(field(f, 7));
         s.gradientStrength = parse(f, 8, 0, 100, DEF_GRADIENT_STRENGTH);
