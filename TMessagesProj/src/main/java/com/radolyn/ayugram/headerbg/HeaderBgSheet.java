@@ -254,7 +254,8 @@ public final class HeaderBgSheet {
         }
 
         private View slider(LinearLayout parent, int title, int min, int max, IntSupplier get, IntConsumer set, boolean signed) {
-            LinearLayout row = new LinearLayout(context);
+            // A gate, not setEnabled: SeekBarView takes drags whether or not it is enabled.
+            GateLayout row = new GateLayout(context);
             row.setOrientation(LinearLayout.VERTICAL);
 
             LinearLayout header = new LinearLayout(context);
@@ -391,6 +392,8 @@ public final class HeaderBgSheet {
         void setGateOpen(boolean open) {
             this.open = open;
             setAlpha(open ? 1f : 0.5f);
+            // Touch interception doesn't stop accessibility actions, so hide the controls from them too.
+            setImportantForAccessibility(open ? IMPORTANT_FOR_ACCESSIBILITY_AUTO : IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         }
 
         @Override
@@ -405,6 +408,10 @@ public final class HeaderBgSheet {
     }
 
     private static void setRowEnabled(View row, boolean enabled) {
+        if (row instanceof GateLayout) {
+            ((GateLayout) row).setGateOpen(enabled);
+            return;
+        }
         row.setAlpha(enabled ? 1f : 0.5f);
         setEnabledDeep(row, enabled);
     }
