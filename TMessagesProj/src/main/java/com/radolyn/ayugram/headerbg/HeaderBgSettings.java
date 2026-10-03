@@ -35,6 +35,8 @@ public final class HeaderBgSettings {
     public boolean gradient = true;
     public int gradientStrength = DEF_GRADIENT_STRENGTH;
     public int gradientFrom = FROM_TITLE;
+    /** Also paint the photo behind the strips under the header, such as the pinned message. */
+    public boolean extendPanel = true;
 
     /** Everything back to its default except {@link #enabled}. */
     public void resetLook() {
@@ -47,6 +49,7 @@ public final class HeaderBgSettings {
         gradient = true;
         gradientStrength = DEF_GRADIENT_STRENGTH;
         gradientFrom = FROM_TITLE;
+        extendPanel = true;
     }
 
     public void copyFrom(HeaderBgSettings o) {
@@ -60,12 +63,13 @@ public final class HeaderBgSettings {
         gradient = o.gradient;
         gradientStrength = o.gradientStrength;
         gradientFrom = o.gradientFrom;
+        extendPanel = o.extendPanel;
     }
 
     private boolean isDefaultLook() {
         return offsetX == 0 && offsetY == 0 && zoom == DEF_ZOOM && opacity == DEF_OPACITY
                 && tintHue == TINT_AUTO && tintStrength == DEF_TINT_STRENGTH && gradient
-                && gradientStrength == DEF_GRADIENT_STRENGTH && gradientFrom == FROM_TITLE;
+                && gradientStrength == DEF_GRADIENT_STRENGTH && gradientFrom == FROM_TITLE && extendPanel;
     }
 
     private static SharedPreferences prefs(int account) {
@@ -94,6 +98,7 @@ public final class HeaderBgSettings {
         s.gradient = !"0".equals(field(f, 7));
         s.gradientStrength = parse(f, 8, 0, 100, DEF_GRADIENT_STRENGTH);
         s.gradientFrom = parse(f, 9, FROM_TITLE, FROM_BOTTOM, FROM_TITLE);
+        s.extendPanel = !"0".equals(field(f, 10));
         return s;
     }
 
@@ -104,7 +109,8 @@ public final class HeaderBgSettings {
             editor.remove(key);
         } else {
             editor.putString(key, (enabled ? "1" : "0") + "|" + offsetX + "|" + offsetY + "|" + zoom + "|" + opacity + "|"
-                    + tintHue + "|" + tintStrength + "|" + (gradient ? "1" : "0") + "|" + gradientStrength + "|" + gradientFrom);
+                    + tintHue + "|" + tintStrength + "|" + (gradient ? "1" : "0") + "|" + gradientStrength + "|" + gradientFrom
+                    + "|" + (extendPanel ? "1" : "0"));
         }
         editor.apply();
     }

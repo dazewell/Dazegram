@@ -814,6 +814,8 @@
     <string name="HeaderBackgroundGradient">Gradient overlay</string>
     <string name="HeaderBackgroundGradientInfo">Fades the photo into the header color so the title and icons stay readable</string>
     <string name="HeaderBackgroundGradientOff">Off</string>
+    <string name="HeaderBackgroundExtend">Extend under pinned bar</string>
+    <string name="HeaderBackgroundExtendInfo">Also shows the photo behind the pinned message and other bars under the header</string>
     <string name="HeaderBackgroundGradientStrength">Gradient strength</string>
     <string name="HeaderBackgroundGradientFrom">Fade from</string>
     <string name="HeaderBackgroundFromTitle">Title side</string>

@@ -7,9 +7,11 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.Shader;
 import android.view.View;
+import android.view.ViewGroup;
 
 import androidx.core.graphics.ColorUtils;
 
+import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.LocaleController;
@@ -22,6 +24,7 @@ import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ChatActivity;
+import org.telegram.ui.Components.ChatActivityTopPanelLayout;
 
 import xyz.nextalone.nagram.helpers.InterfaceStyleController;
 import xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader;
@@ -29,7 +32,8 @@ import xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader;
 /**
  * Paints a chat's photo behind the MD3 flat chat header. ActionBar calls {@link #draw} right after
  * it paints the flat surface and before its children, so the title and icons stay on top and Glass,
- * which never takes that branch, can't show it.
+ * which never takes that branch, can't show it. The flat strip panel under the header calls
+ * {@link #drawPanel} the same way, so the photo carries on under the pinned message.
  * <p>One instance per ActionBar, owned by that ActionBar's field. The image and the avatar observer
  * follow the ActionBar's own window attachment rather than the fragment, because a theme or language
  * rebuild replaces the ActionBar while the fragment lives on.
@@ -44,9 +48,12 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
     public final HeaderBgSettings settings;
     private boolean hasPhoto;
 
-    private final Paint gradientPaint = new Paint();
-    private int shaderW, shaderH, shaderFrom = -1, shaderColor, shaderStrength;
-    private boolean shaderRtl;
+    /** The pinned bar's height: with the panel extension on, the photo always covers this much below the header. */
+    private static final int PANEL_RESERVE_DP = 48;
+
+    private ChatActivityTopPanelLayout panel;
+    private final Fade headerFade = new Fade();
+    private final Fade panelFade = new Fade();
     private int filterHue = Integer.MIN_VALUE, filterColor, filterStrength;
 
     private HeaderBgDrawer(ChatActivity fragment, ActionBar actionBar) {
@@ -59,6 +66,8 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         imageReceiver = new ImageReceiver(actionBar);
         imageReceiver.setCurrentAccount(account);
         imageReceiver.setCrossfadeWithOldImage(true);
+        // The receiver only redraws the ActionBar; the panel repaints itself when a photo lands.
+        imageReceiver.setDelegate((receiver, set, thumb, memCache) -> invalidatePanel());
         loadPhoto();
         actionBar.addOnAttachStateChangeListener(this);
         if (actionBar.isAttachedToWindow()) {
@@ -109,6 +118,27 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
 
     public void invalidate() {
         actionBar.invalidate();
+        invalidatePanel();
+    }
+
+    private void invalidatePanel() {
+        if (panel != null) {
+            panel.invalidate();
+        }
+    }
+
+    // The strips under the header are the ActionBar's sibling in the chat's content view.
+    private ChatActivityTopPanelLayout findPanel() {
+        if (!(actionBar.getParent() instanceof ViewGroup)) {
+            return null;
+        }
+        ViewGroup parent = (ViewGroup) actionBar.getParent();
+        for (int i = 0; i < parent.getChildCount(); i++) {
+            if (parent.getChildAt(i) instanceof ChatActivityTopPanelLayout) {
+                return (ChatActivityTopPanelLayout) parent.getChildAt(i);
+            }
+        }
+        return null;
     }
 
     private TLObject peer() {
@@ -136,12 +166,21 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         loadPhoto();
         imageReceiver.onAttachedToWindow();
         NotificationCenter.getInstance(account).addObserver(this, NotificationCenter.updateInterfaces);
+        panel = findPanel();
+        if (panel != null) {
+            panel.naxHeaderBg = this;
+            panel.invalidate();
+        }
     }
 
     @Override
     public void onViewDetachedFromWindow(View v) {
         imageReceiver.onDetachedFromWindow();
         NotificationCenter.getInstance(account).removeObserver(this, NotificationCenter.updateInterfaces);
+        if (panel != null && panel.naxHeaderBg == this) {
+            panel.naxHeaderBg = null;
+        }
+        panel = null;
     }
 
     @Override
@@ -157,42 +196,73 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
     }
 
     public void draw(Canvas canvas, int width, int height) {
-        if (!settings.enabled || !hasPhoto || width <= 0 || height <= 0 || !InterfaceStyleController.applyChatHeader()) {
+        float alpha = alpha();
+        if (alpha <= 0f || width <= 0 || height <= 0) {
             return;
+        }
+        canvas.save();
+        canvas.clipRect(0, 0, width, height);
+        paint(canvas, width, height, alpha, headerFade, surfaceColor(true));
+        canvas.restore();
+    }
+
+    /**
+     * The same photo in the header's coordinates, clipped to the panel's background, so the header
+     * and the strips under it read as one picture.
+     */
+    public void drawPanel(Canvas canvas, View panel, int left, int right, float bottom, float panelAlpha) {
+        if (!settings.extendPanel || right <= left || bottom <= 0) {
+            return;
+        }
+        float alpha = alpha() * panelAlpha;
+        int width = actionBar.getWidth();
+        int height = actionBar.getHeight();
+        if (alpha <= 0f || width <= 0 || height <= 0) {
+            return;
+        }
+        canvas.save();
+        canvas.clipRect(left, 0, right, bottom);
+        canvas.translate(actionBar.getX() - panel.getX(), actionBar.getY() - panel.getY());
+        paint(canvas, width, height, alpha, panelFade, surfaceColor(false));
+        canvas.restore();
+    }
+
+    // 0 when nothing should show; otherwise how far the selection-mode fade lets it through.
+    private float alpha() {
+        if (!settings.enabled || !hasPhoto || imageReceiver.getBitmapWidth() <= 0 || imageReceiver.getBitmapHeight() <= 0
+                || !InterfaceStyleController.applyChatHeader()) {
+            return 0f;
         }
         // Selection mode swaps in its own bar; fade with it instead of popping. The bar is created
         // invisible at full alpha, so its alpha only counts while it is actually visible.
         View actionMode = actionBar.getActionMode();
-        float visible = actionMode != null && actionMode.getVisibility() == View.VISIBLE ? 1f - actionBar.getActionModeFactor() : 1f;
-        if (visible <= 0f) {
-            return;
-        }
+        return actionMode != null && actionMode.getVisibility() == View.VISIBLE ? 1f - actionBar.getActionModeFactor() : 1f;
+    }
+
+    private void paint(Canvas canvas, int width, int height, float alpha, Fade fade, int surface) {
         int bw = imageReceiver.getBitmapWidth();
         int bh = imageReceiver.getBitmapHeight();
-        if (bw <= 0 || bh <= 0) {
-            return;
-        }
-        float scale = Math.max(width / (float) bw, height / (float) bh) * settings.zoom / 100f;
+        // The reserve is fixed rather than the panel's live height, so the header's framing never
+        // moves as the pinned bar comes and goes.
+        int cover = settings.extendPanel ? height + AndroidUtilities.dp(PANEL_RESERVE_DP) : height;
+        float scale = Math.max(width / (float) bw, cover / (float) bh) * settings.zoom / 100f;
         float dw = bw * scale;
         float dh = bh * scale;
         // Offsets pan within the overflow only, so no edge of the photo ever shows.
         float slackX = (dw - width) / 2f;
-        float slackY = (dh - height) / 2f;
+        float slackY = (dh - cover) / 2f;
         float x = -slackX - slackX * settings.offsetX / 100f;
         float y = -slackY - slackY * settings.offsetY / 100f;
 
-        canvas.save();
-        canvas.clipRect(0, 0, width, height);
         updateTint();
         imageReceiver.setImageCoords(x, y, dw, dh);
-        imageReceiver.setAlpha(settings.opacity / 100f * visible);
+        imageReceiver.setAlpha(settings.opacity / 100f * alpha);
         imageReceiver.draw(canvas);
         if (settings.gradient && settings.gradientStrength > 0) {
-            updateGradient(width, height);
-            gradientPaint.setAlpha((int) (255 * visible));
-            canvas.drawRect(0, 0, width, height, gradientPaint);
+            Paint paint = fade.update(width, height, settings.gradientFrom, surface, settings.gradientStrength);
+            paint.setAlpha((int) (255 * alpha));
+            canvas.drawPaint(paint);
         }
-        canvas.restore();
     }
 
     private void updateTint() {
@@ -216,39 +286,46 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         return hue >= 0 ? Theme.getColor(Theme.keys_avatar_background[hue], resourcesProvider) : 0;
     }
 
-    private void updateGradient(int width, int height) {
-        int color = surfaceColor();
-        boolean rtl = LocaleController.isRTL;
-        if (width == shaderW && height == shaderH && settings.gradientFrom == shaderFrom && color == shaderColor
-                && settings.gradientStrength == shaderStrength && rtl == shaderRtl) {
-            return;
-        }
-        shaderW = width;
-        shaderH = height;
-        shaderFrom = settings.gradientFrom;
-        shaderColor = color;
-        shaderStrength = settings.gradientStrength;
-        shaderRtl = rtl;
-        float x0 = 0, y0 = 0, x1 = 0, y1 = 0;
-        if (shaderFrom == HeaderBgSettings.FROM_TOP) {
-            y1 = height;
-        } else if (shaderFrom == HeaderBgSettings.FROM_BOTTOM) {
-            y0 = height;
-        } else if (rtl) {
-            x0 = width;
-        } else {
-            x1 = width;
-        }
-        int start = ColorUtils.setAlphaComponent(color, 255 * shaderStrength / 100);
-        gradientPaint.setShader(new LinearGradient(x0, y0, x1, y1, start, ColorUtils.setAlphaComponent(color, 0), Shader.TileMode.CLAMP));
-    }
-
-    // The colour the flat header is painted with, opaque, so the fade lands on it without a seam.
-    private int surfaceColor() {
+    // The colour the surface under the photo is painted with, opaque, so the fade lands on it without
+    // a seam. The solid header colour is the header's alone; the panel keeps the theme colour.
+    private int surfaceColor(boolean header) {
         int color = InterfaceStyleController.chatHeaderSurfaceColor(resourcesProvider);
-        if (InterfaceStyleSolidHeader.chatHeader() && !actionBar.isActionModeShowed()) {
+        if (header && InterfaceStyleSolidHeader.chatHeader() && !actionBar.isActionModeShowed()) {
             color = InterfaceStyleSolidHeader.chatHeaderSurface(color);
         }
         return ColorUtils.setAlphaComponent(color, 255);
+    }
+
+    /** One cached fade shader in the header's coordinates; the header and the panel each keep one. */
+    private static final class Fade {
+        final Paint paint = new Paint();
+        private int w, h, from = -1, color, strength;
+        private boolean rtl;
+
+        Paint update(int width, int height, int gradientFrom, int surface, int gradientStrength) {
+            boolean isRtl = LocaleController.isRTL;
+            if (width == w && height == h && gradientFrom == from && surface == color && gradientStrength == strength && isRtl == rtl) {
+                return paint;
+            }
+            w = width;
+            h = height;
+            from = gradientFrom;
+            color = surface;
+            strength = gradientStrength;
+            rtl = isRtl;
+            float x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+            if (from == HeaderBgSettings.FROM_TOP) {
+                y1 = height;
+            } else if (from == HeaderBgSettings.FROM_BOTTOM) {
+                y0 = height;
+            } else if (rtl) {
+                x0 = width;
+            } else {
+                x1 = width;
+            }
+            int start = ColorUtils.setAlphaComponent(color, 255 * strength / 100);
+            paint.setShader(new LinearGradient(x0, y0, x1, y1, start, ColorUtils.setAlphaComponent(color, 0), Shader.TileMode.CLAMP));
+            return paint;
+        }
     }
 }
