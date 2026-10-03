@@ -8,6 +8,7 @@ import android.net.Uri;
 import android.text.TextUtils;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.BaseFragment;
 
@@ -40,7 +41,10 @@ public class SettingsHelper {
         BaseFragment fragment;
         BaseNekoSettingsActivity neko_fragment = null;
         BaseNekoXSettingsActivity nekox_fragment = null;
-        xyz.nextalone.nagram.ui.InterfaceStyleActivity interfaceStyleFragment = null;
+        var row = uri.getQueryParameter("r");
+        if (TextUtils.isEmpty(row)) {
+            row = uri.getQueryParameter("row");
+        }
         if (segments.size() == 1) {
             fragment = new NekoSettingsActivity();
         } else if (PasscodeHelper.getSettingsKey().equals(segments.get(1))) {
@@ -64,10 +68,15 @@ public class SettingsHelper {
                     break;
                 case "general":
                 case "g":
-                    fragment = nekox_fragment = new NekoGeneralSettingsActivity();
+                    var general = new NekoGeneralSettingsActivity();
+                    // NagramX: the look-and-feel rows moved to Interface Style, and a link made before that still says general
+                    var interfaceStyle = new xyz.nextalone.nagram.ui.InterfaceStyleActivity();
+                    boolean moved = !TextUtils.isEmpty(row) && !general.getRowMapReverse().containsValue(row)
+                            && interfaceStyle.getRowMapReverse().containsValue(row);
+                    fragment = nekox_fragment = moved ? interfaceStyle : general;
                     break;
                 case xyz.nextalone.nagram.ui.InterfaceStyleActivity.SETTINGS_KEY:
-                    fragment = interfaceStyleFragment = new xyz.nextalone.nagram.ui.InterfaceStyleActivity();
+                    fragment = nekox_fragment = new xyz.nextalone.nagram.ui.InterfaceStyleActivity();
                     break;
                 case com.radolyn.ayugram.shortcuts.LauncherShortcutsActivity.SETTINGS_KEY:
                     fragment = nekox_fragment = new com.radolyn.ayugram.shortcuts.LauncherShortcutsActivity();
@@ -86,10 +95,6 @@ public class SettingsHelper {
             }
         }
         callback.presentFragment(fragment);
-        var row = uri.getQueryParameter("r");
-        if (TextUtils.isEmpty(row)) {
-            row = uri.getQueryParameter("row");
-        }
         var value = uri.getQueryParameter("v");
         if (TextUtils.isEmpty(value)) {
             value = uri.getQueryParameter("value");
@@ -99,9 +104,6 @@ public class SettingsHelper {
             if (neko_fragment != null) {
                 BaseNekoSettingsActivity finalNeko_fragment = neko_fragment;
                 AndroidUtilities.runOnUIThread(() -> finalNeko_fragment.scrollToRow(rowFinal, unknown));
-            } else if (interfaceStyleFragment != null) {
-                var finalInterfaceStyleFragment = interfaceStyleFragment;
-                AndroidUtilities.runOnUIThread(() -> finalInterfaceStyleFragment.scrollToRow(rowFinal, unknown));
             } else if (nekox_fragment != null) {
                 BaseNekoXSettingsActivity finalNekoX_fragment = nekox_fragment;
                 if (!TextUtils.isEmpty(value)) {
@@ -122,6 +124,7 @@ public class SettingsHelper {
         ArrayList<SettingsSearchResult> items = new ArrayList<>();
         ArrayList<BaseNekoXSettingsActivity> fragments = new ArrayList<>();
         fragments.add(new NekoGeneralSettingsActivity());
+        fragments.add(new xyz.nextalone.nagram.ui.InterfaceStyleActivity());
         fragments.add(new NekoChatSettingsActivity());
         fragments.add(new NekoExperimentalSettingsActivity());
         fragments.add(new NekoTranslatorSettingsActivity());
@@ -139,7 +142,8 @@ public class SettingsHelper {
                     continue;
                 }
                 int guid = uid + i;
-                String title = getString(key);
+                // NagramX: nullable() because a row key with no string of its own (Interface Style's "Style") resolves to a LOC_ERR title
+                String title = LocaleController.nullable(getString(key));
                 if (title == null || title.isEmpty()) {
                     continue;
                 }
