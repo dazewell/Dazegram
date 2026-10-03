@@ -196,6 +196,11 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
     }
 
     public void draw(Canvas canvas, int width, int height) {
+        // The receiver's crossfade, the selection-mode fade and any move of the bar only redraw the
+        // ActionBar; the panel follows each header frame so it never keeps a stale one.
+        if (settings.enabled && settings.extendPanel) {
+            invalidatePanel();
+        }
         float alpha = alpha();
         if (alpha <= 0f || width <= 0 || height <= 0) {
             return;
