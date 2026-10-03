@@ -51,6 +51,10 @@ final class RangeSeekBar extends View {
     private int end;
     // -1 when no handle is held; otherwise 0 for the start and 1 for the end.
     private int dragging = -1;
+    // Down but not yet a drag or a tap.
+    private boolean pending;
+    private float downX, downY;
+    private final int touchSlop;
     private Delegate delegate;
 
     RangeSeekBar(Context context, int steps, int minSpan, Theme.ResourcesProvider resourcesProvider) {
@@ -59,6 +63,7 @@ final class RangeSeekBar extends View {
         this.minSpan = minSpan;
         this.resourcesProvider = resourcesProvider;
         this.end = steps;
+        this.touchSlop = android.view.ViewConfiguration.get(context).getScaledTouchSlop();
         handles = new Handles();
         ViewCompat.setAccessibilityDelegate(this, handles);
     }
@@ -95,35 +100,67 @@ final class RangeSeekBar extends View {
         return width <= 0 ? 0 : Math.round(Math.max(0f, Math.min(1f, (x - trackLeft()) / width)) * steps);
     }
 
+    // As in SeekBarView: a drag starts only once the finger has moved sideways past the touch slop, so a
+    // vertical swipe that starts on the track still scrolls the sheet, and a tap places the nearer handle.
     @SuppressLint("ClickableViewAccessibility")
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         switch (event.getActionMasked()) {
-            case MotionEvent.ACTION_DOWN: {
-                float x = event.getX();
-                float toStart = Math.abs(x - xOf(start));
-                float toEnd = Math.abs(x - xOf(end));
-                // With the handles together, the side of the touch says which one is meant.
-                dragging = toStart < toEnd || (toStart == toEnd && x < xOf(start)) ? 0 : 1;
-                getParent().requestDisallowInterceptTouchEvent(true);
-                moveTo(x, false);
+            case MotionEvent.ACTION_DOWN:
+                downX = event.getX();
+                downY = event.getY();
+                pending = true;
                 return true;
-            }
             case MotionEvent.ACTION_MOVE:
+                if (pending) {
+                    float dx = Math.abs(event.getX() - downX);
+                    float dy = Math.abs(event.getY() - downY);
+                    if (dy > touchSlop && dy > dx) {
+                        // Hand the gesture back to the sheet's scroll.
+                        pending = false;
+                        return false;
+                    }
+                    if (dx > touchSlop) {
+                        pending = false;
+                        dragging = nearest(downX);
+                        getParent().requestDisallowInterceptTouchEvent(true);
+                    }
+                }
                 if (dragging >= 0) {
                     moveTo(event.getX(), false);
                 }
                 return true;
             case MotionEvent.ACTION_UP:
-            case MotionEvent.ACTION_CANCEL:
+                if (pending) {
+                    dragging = nearest(event.getX());
+                }
                 if (dragging >= 0) {
                     moveTo(event.getX(), true);
-                    dragging = -1;
-                    invalidate();
                 }
+                finishTouch();
+                return true;
+            case MotionEvent.ACTION_CANCEL:
+                // Keep wherever a drag had got to, without jumping to the cancelled position.
+                if (dragging >= 0) {
+                    set(dragging == 1, dragging == 1 ? end : start, true);
+                }
+                finishTouch();
                 return true;
         }
         return false;
+    }
+
+    private void finishTouch() {
+        pending = false;
+        dragging = -1;
+        invalidate();
+    }
+
+    // With the handles together, the side of the touch says which one is meant.
+    private int nearest(float x) {
+        float toStart = Math.abs(x - xOf(start));
+        float toEnd = Math.abs(x - xOf(end));
+        return toStart < toEnd || (toStart == toEnd && x < xOf(start)) ? 0 : 1;
     }
 
     private void moveTo(float x, boolean stop) {

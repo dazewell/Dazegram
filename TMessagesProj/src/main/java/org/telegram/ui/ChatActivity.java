@@ -19163,6 +19163,8 @@ public class ChatActivity extends BaseFragment implements
             if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader()) {
                 statusBarColor = ColorUtils.compositeColors((isReport() ? BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null) : BlurredBackgroundProviderImpl.chatHeaderSurface(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null, actionBar)).getBackgroundColor(), ColorUtils.setAlphaComponent(statusBarColor, 255));
             }
+            // NagramX: the header photo's status bar probe paints over this same composite, which a frosted header makes translucent.
+            if (actionBar != null && actionBar.naxHeaderBg != null) actionBar.naxHeaderBg.setStatusBarBase(statusBarColor);
             final float statusBarBrightness = AndroidUtilities.computePerceivedBrightness(statusBarColor);
             final int navigationBarColor = wallpaperBitmapProvider.getNavigationBarColor(source);
             final float navigationBarBrightness = AndroidUtilities.computePerceivedBrightness(navigationBarColor);

@@ -125,9 +125,9 @@ The pinned/call/translate strips under the header are one `ChatActivityTopPanelL
 a sibling of the ActionBar in `contentView` (`ChatActivity.java:8663-8665`); its
 equivalent spot is after `backgroundDrawable.draw` (`ChatActivityTopPanelLayout.java:141`),
 in panel coordinates, so map to the header with the two views' `getX/getY` difference.
-Its status bar icons are decided in `ChatActivity.isLightStatusBar()` (`ChatActivity.java:48403`),
+Its status bar icons are decided in `ChatActivity.isLightStatusBar()` (`ChatActivity.java:48405`),
 which falls back to `shouldHaveLightStatusBarIcons`, set from the wallpaper and header composite
-(`:19170`); `LaunchActivity.checkSystemBarColors` (`LaunchActivity.java:1152`) re-asks the top fragment,
+(`:19172`); `LaunchActivity.checkSystemBarColors` (`LaunchActivity.java:1152`) re-asks the top fragment,
 so anything that changes the pixels behind the status bar calls that.
 
 Chat list: DialogsActivity has no provider, so its `getThemedColor` override

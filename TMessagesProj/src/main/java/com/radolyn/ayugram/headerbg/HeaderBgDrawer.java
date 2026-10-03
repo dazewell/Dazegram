@@ -82,8 +82,14 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
     // cached here never outlives the photo being drawn.
     private Boolean statusLight;
     private WeakReference<Bitmap> statusSource;
-    private int statusKey;
+    private final HeaderBgSettings statusLook = new HeaderBgSettings();
+    private int statusSurface, statusWidth, statusHeight, statusBarHeight;
+    private boolean statusRtl;
     private ColorFilter statusFilter;
+    // What the chat composites behind the status bar (its header surface over the wallpaper), handed over
+    // by the chat as it recomputes it. Under a frosted header this is not the plain surface colour.
+    private int statusBase;
+    private boolean hasStatusBase;
     // draw() only runs for the flat MD3 header; stamped there and cleared on detach.
     private boolean drawn;
     /** Run after the icon choice changes, for the open sheet, whose own window draws the status bar meanwhile. */
@@ -325,6 +331,15 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         }
     }
 
+    /** From the chat each time it recomputes the colour behind its status bar. */
+    public void setStatusBarBase(int color) {
+        if (!hasStatusBase || color != statusBase) {
+            statusBase = color;
+            hasStatusBase = true;
+            invalidate();
+        }
+    }
+
     /** The chat's status bar icon choice while this header's photo is what sits behind them; null otherwise. */
     public static Boolean lightStatusBar(ActionBar actionBar) {
         HeaderBgDrawer drawer = actionBar != null ? actionBar.naxHeaderBg : null;
@@ -349,18 +364,20 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         if (source == null || source.isRecycled()) {
             statusSource = null;
         } else {
-            int surface = surfaceColor(true);
-            int key = settings.lookHash();
-            key = 31 * key + surface;
-            key = 31 * key + width;
-            key = 31 * key + height;
-            key = 31 * key + AndroidUtilities.statusBarHeight;
-            key = 31 * key + (LocaleController.isRTL ? 1 : 0);
-            if (statusSource != null && statusSource.get() == source && key == statusKey && statusFilter == photoFilter) {
+            // The chat's composite when it has handed one over, otherwise the opaque surface alone.
+            int surface = hasStatusBase ? ColorUtils.setAlphaComponent(statusBase, 255) : surfaceColor(true);
+            if (statusSource != null && statusSource.get() == source && statusLook.sameAs(settings) && statusSurface == surface
+                    && statusWidth == width && statusHeight == height && statusBarHeight == AndroidUtilities.statusBarHeight
+                    && statusRtl == LocaleController.isRTL && statusFilter == photoFilter) {
                 return;
             }
             statusSource = new WeakReference<>(source);
-            statusKey = key;
+            statusLook.copyFrom(settings);
+            statusSurface = surface;
+            statusWidth = width;
+            statusHeight = height;
+            statusBarHeight = AndroidUtilities.statusBarHeight;
+            statusRtl = LocaleController.isRTL;
             statusFilter = photoFilter;
             light = probeStatusBar(source, width, height, surface);
         }
