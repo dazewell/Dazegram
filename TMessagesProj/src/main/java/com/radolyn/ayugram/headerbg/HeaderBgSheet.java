@@ -242,7 +242,7 @@ public final class HeaderBgSheet {
                 if (!s.gradient) {
                     return;
                 }
-                s.gradientCurve = (s.gradientCurve + 1) % 4;
+                s.gradientCurve = (s.gradientCurve + 1) % (HeaderBgSettings.CURVE_SMOOTH + 1);
                 changed(true);
             });
             syncs.add(() -> {

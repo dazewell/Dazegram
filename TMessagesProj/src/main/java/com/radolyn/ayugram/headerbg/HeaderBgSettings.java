@@ -121,6 +121,7 @@ public final class HeaderBgSettings {
         s.gradientCurve = parse(f, 11, CURVE_LINEAR, CURVE_SMOOTH, CURVE_LINEAR);
         s.gradientStart = parse(f, 12, 0, 100 - MIN_FADE_SPAN, 0);
         s.gradientEnd = parse(f, 13, MIN_FADE_SPAN, 100, 100);
+        s.gradientEnd = Math.max(s.gradientEnd, s.gradientStart + MIN_FADE_SPAN);
         return s;
     }
 
