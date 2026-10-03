@@ -129,8 +129,23 @@ public final class HeaderBgSheet {
             HeaderBgDrawer drawer = HeaderBgDrawer.obtain(fragment);
             if (drawer != null) {
                 drawer.settings.copyFrom(s);
+                drawer.onStatusIconsChanged = statusSync;
                 drawer.invalidate();
             }
+        }
+
+        private final Runnable statusSync = this::syncStatusBar;
+
+        // While open, the sheet's own window draws the status bar, with icons set from the theme when it was
+        // built; it takes the chat's current choice instead, so the icons follow the photo under it.
+        private void syncStatusBar() {
+            if (sheet == null || !sheet.isShowing()) {
+                return;
+            }
+            View container = sheet.getContainer();
+            int flags = container.getSystemUiVisibility();
+            flags = fragment.isLightStatusBar() ? flags | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR : flags & ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            container.setSystemUiVisibility(flags);
         }
 
         private void save() {
@@ -238,8 +253,16 @@ public final class HeaderBgSheet {
                 r.run();
             }
             sheet = present(fragment, content, true);
+            push();
+            syncStatusBar();
             // A drag the sheet closed under never reported its stop.
-            sheet.setOnHideListener(d -> save());
+            sheet.setOnHideListener(d -> {
+                save();
+                HeaderBgDrawer drawer = HeaderBgDrawer.obtain(fragment);
+                if (drawer != null && drawer.onStatusIconsChanged == statusSync) {
+                    drawer.onStatusIconsChanged = null;
+                }
+            });
         }
 
         private GateLayout section(LinearLayout content, int title, boolean expanded, java.util.function.Supplier<CharSequence> summary) {

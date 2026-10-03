@@ -86,6 +86,8 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
     private ColorFilter statusFilter;
     // draw() only runs for the flat MD3 header; stamped there and cleared on detach.
     private boolean drawn;
+    /** Run after the icon choice changes, for the open sheet, whose own window draws the status bar meanwhile. */
+    public Runnable onStatusIconsChanged;
 
     private HeaderBgDrawer(ChatActivity fragment, ActionBar actionBar) {
         this.account = fragment.getCurrentAccount();
@@ -369,6 +371,9 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
                 LaunchActivity activity = LaunchActivity.instance;
                 if (activity != null) {
                     activity.checkSystemBarColors(true, true, false);
+                }
+                if (onStatusIconsChanged != null) {
+                    onStatusIconsChanged.run();
                 }
             });
         }
