@@ -532,7 +532,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
         if (useCamera2) {
             // NagramX: pick the rear session by facing, not slot. A dual pair slots by the starting camera, a single
-            // session by its own facing, and a pair that lost its second camera keeps the dual slot, so any fixed
+            // session by its own facing, and a pair whose second camera failed to open keeps the dual slot, so any fixed
             // index sends the torch to an empty slot when recording starts on the rear camera
             for (Camera2Session session : camera2Sessions) {
                 if (session != null) {
@@ -1693,6 +1693,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 camera2SessionCurrent.setRoundVideo(); // NagramX
                 previewSize[0] = new Size(camera2SessionCurrent.getPreviewWidth(), camera2SessionCurrent.getPreviewHeight());
                 cameraThread.setCurrentSession(camera2SessionCurrent);
+                updateFlash(); // NagramX: the flash was set above, before this session existed
                 adaptZoomToSession(carriedZoom); // NagramX
                 applyLockedZoomToCamera();
                 updateZoomControlAvailability();
