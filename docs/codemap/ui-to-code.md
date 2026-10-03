@@ -634,9 +634,13 @@ that opens `ChatPrivacySheet.show(...)` (`org/telegram/ui/ChatActivity.java:498`
 
 Inside that sheet, `Hide last message` toggles
 `HideLastMessageController.setHidden(...)`, and the `Placeholder text` value row
-opens `HideLastMessageDialog.showPlaceholderEditor(...)` for Save/Cancel editing
-(`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:173`, `:181`;
-`com/radolyn/ayugram/hidelastmessage/HideLastMessageDialog.java:113-172`).
+opens a mode picker — custom text, chat status, unread count, message type —
+whose `Custom text` choice then opens `HideLastMessageDialog.showPlaceholderEditor(...)`
+(`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:175`, `:181-185`, `:272`).
+The mode lives beside the custom text in `hidelastmessage_<account>` under
+`m<dialogId>`, and `HideLastMessagePreview.resolve(...)` renders it for the row
+(`com/radolyn/ayugram/hidelastmessage/HideLastMessageController.java:124-153`;
+`HideLastMessagePreview.java:59`).
 
 `Require password` state is read from the persisted lock flag via
 `ChatLockController.isFlagged(...)` (not `isLocked(...)`), so a stored flag is
@@ -647,7 +651,7 @@ When turned on with a passcode present, the sheet keeps the existing one-way
 coupling: it auto-enables hide only when hide was off, preserving a custom
 placeholder, and shows the existing enabled bulletin (`ChatPrivacySheet.java:197-204`).
 
-*(Updated 2026-09-07.)*
+*(Updated 2026-10-03, `#hide-last-message`.)*
 
 ## Hide last message is a chat-list override, not a search-result override
 
