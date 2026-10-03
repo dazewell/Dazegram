@@ -19663,10 +19663,12 @@ public class ChatActivity extends BaseFragment implements
             if (actionBar != null && actionBar.getVisibility() == VISIBLE && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() && xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividers()) {
                 float naxHeaderBottom = actionBar.getY() + actionBar.getMeasuredHeight() + (actionBarSearchTags != null ? actionBarSearchTags.getCurrentHeight() : 0) + (hashtagSearchTabs != null ? hashtagSearchTabs.getCurrentHeight() : 0);
                 if (topPanelLayout != null && topPanelLayout.getMetadata().getTotalVisibility() > 0) {
-                    // An expanded input hides the pinned bar and grows into its rows, so the line keeps to where the
-                    // panel ends up instead of riding the bar's exit out of step with the island.
+                    // An expanded input hides the pinned bar and grows into its rows, so a shrinking panel's line keeps to
+                    // where the panel ends up instead of riding the bar's exit out of step with the island. A panel
+                    // appearing meanwhile still carries the line down its growing edge.
+                    final float animatedHeight = topPanelLayout.getMetadata().getTotalHeight();
                     final float panelHeight = chatActivityEnterView != null && chatActivityEnterView.isMessageEditExpanded()
-                        ? topPanelLayout.getSumHeightOfAllVisibleChild() : topPanelLayout.getMetadata().getTotalHeight();
+                        ? Math.min(animatedHeight, topPanelLayout.getSumHeightOfAllVisibleChild()) : animatedHeight;
                     naxHeaderBottom = Math.max(naxHeaderBottom, topPanelLayout.getY() + panelHeight);
                 }
                 canvas.drawRect(0, naxHeaderBottom, getMeasuredWidth(), naxHeaderBottom + Math.max(1, AndroidUtilities.dp(0.66f)), xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividerPaint(xyz.nextalone.nagram.helpers.InterfaceStyleController.chatHeaderSurfaceColor(themeDelegate), themeDelegate));
