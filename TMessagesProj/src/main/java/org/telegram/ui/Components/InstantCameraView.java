@@ -531,10 +531,13 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         }
 
         if (useCamera2) {
-            // NagramX: only a dual pair slots sessions by the starting camera; a single one puts the rear in slot 1,
-            // so starting on the rear camera (camera setting or video memo shortcut) sent the torch to an empty slot
-            if (camera2Sessions[bothCameras && !initialCameraFront ? 0 : 1] != null) {
-                camera2Sessions[bothCameras && !initialCameraFront ? 0 : 1].setFlash(flashing && !isFrontface && recording);
+            // NagramX: pick the rear session by facing, not slot. A dual pair slots by the starting camera, a single
+            // session by its own facing, and a pair that lost its second camera keeps the dual slot, so any fixed
+            // index sends the torch to an empty slot when recording starts on the rear camera
+            for (Camera2Session session : camera2Sessions) {
+                if (session != null) {
+                    session.setFlash(flashing && !isFrontface && recording && !session.isFront());
+                }
             }
         } else {
             if (cameraSession != null) {
