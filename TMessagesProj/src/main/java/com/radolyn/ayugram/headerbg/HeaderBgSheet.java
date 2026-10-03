@@ -301,13 +301,19 @@ public final class HeaderBgSheet {
             });
             // 48dp rather than the app-wide 38dp, as in the trigger sheet, to clear the touch-target minimum.
             row.addView(bar, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, 13, 0, 13, 0));
-            syncs.add(() -> {
-                valueView.setText(format(get.getAsInt(), signed));
+            Runnable place = () -> {
                 if (!bar.isDragging()) {
-                    // Holds the value itself until the bar is measured, then applies it.
                     bar.setProgress((get.getAsInt() - min) / (float) (max - min));
                 }
+            };
+            syncs.add(() -> {
+                valueView.setText(format(get.getAsInt(), signed));
+                place.run();
             });
+            // SeekBarView keeps the thumb in pixels from whatever width it had when the value was set, and
+            // the sheet measures it at more than one width while opening, so re-place it after every layout.
+            // setProgress only invalidates, so this can't loop.
+            bar.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> place.run());
             parent.addView(row, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
             return row;
         }
