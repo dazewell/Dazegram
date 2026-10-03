@@ -48416,6 +48416,8 @@ public class ChatActivity extends BaseFragment implements
         }
         // NagramX: selection mode drops the Classic solid header, so the icons follow the theme's own header there.
         if (xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeaderSelectionShowing(actionBar)) return ColorUtils.calculateLuminance(xyz.nextalone.nagram.helpers.InterfaceStyleController.chatHeaderSurfaceColor(themeDelegate)) > 0.7f;
+        // NagramX: a header photo decides the icons from the pixels it draws behind the status bar.
+        Boolean naxIcons = com.radolyn.ayugram.headerbg.HeaderBgDrawer.lightStatusBar(actionBar); if (naxIcons != null) return naxIcons;
         return !shouldHaveLightStatusBarIcons;
     }
 

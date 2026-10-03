@@ -91,6 +91,27 @@ public final class HeaderBgSettings {
         desaturate = o.desaturate;
     }
 
+    /** Every field the drawer paints from, so a cache keyed on it notices any change; keep in step with the fields. */
+    public int lookHash() {
+        int h = enabled ? 1 : 0;
+        h = 31 * h + offsetX;
+        h = 31 * h + offsetY;
+        h = 31 * h + zoom;
+        h = 31 * h + opacity;
+        h = 31 * h + tintHue;
+        h = 31 * h + tintStrength;
+        h = 31 * h + (gradient ? 1 : 0);
+        h = 31 * h + gradientStrength;
+        h = 31 * h + gradientFrom;
+        h = 31 * h + (extendPanel ? 1 : 0);
+        h = 31 * h + gradientCurve;
+        h = 31 * h + gradientStart;
+        h = 31 * h + gradientEnd;
+        h = 31 * h + blur;
+        h = 31 * h + desaturate;
+        return h;
+    }
+
     private boolean isDefaultLook() {
         return offsetX == 0 && offsetY == 0 && zoom == DEF_ZOOM && opacity == DEF_OPACITY
                 && tintHue == TINT_AUTO && tintStrength == DEF_TINT_STRENGTH && gradient

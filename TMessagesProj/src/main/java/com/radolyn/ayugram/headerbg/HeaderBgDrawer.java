@@ -31,6 +31,7 @@ import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ChatActivity;
+import org.telegram.ui.LaunchActivity;
 import org.telegram.ui.Components.ChatActivityTopPanelLayout;
 
 import xyz.nextalone.nagram.helpers.InterfaceStyleController;
@@ -73,7 +74,18 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
     private WeakReference<Bitmap> blurSource;
     private int blurSourceW, blurSourceH, blurLevel;
     private final Paint blurPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
-    private final RectF blurRect = new RectF();
+    // Where the photo lands in header coordinates; filled by frame() just before each use.
+    private final RectF frameRect = new RectF();
+
+    // Whether the status bar icons should be dark over what this header draws behind them, or null to
+    // leave them to the chat. Filled by draw(); lightStatusBar() re-checks the live conditions, so a value
+    // cached here never outlives the photo being drawn.
+    private Boolean statusLight;
+    private WeakReference<Bitmap> statusSource;
+    private int statusKey;
+    private ColorFilter statusFilter;
+    // draw() only runs for the flat MD3 header; stamped there and cleared on detach.
+    private boolean drawn;
 
     private HeaderBgDrawer(ChatActivity fragment, ActionBar actionBar) {
         this.account = fragment.getCurrentAccount();
@@ -202,6 +214,9 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         panel = null;
         blurred = null;
         blurSource = null;
+        drawn = false;
+        statusLight = null;
+        statusSource = null;
     }
 
     @Override
@@ -222,6 +237,8 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         if (settings.enabled && settings.extendPanel) {
             invalidatePanel();
         }
+        drawn = true;
+        updateStatusIcons(width, height);
         float alpha = alpha();
         if (alpha <= 0f || width <= 0 || height <= 0) {
             return;
@@ -265,7 +282,9 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         return actionMode != null && actionMode.getVisibility() == View.VISIBLE ? 1f - actionBar.getActionModeFactor() : 1f;
     }
 
-    private void paint(Canvas canvas, int width, int height, float alpha, Fade fade, int surface) {
+    // Fills out with the photo's rect in header coordinates and returns the height it covers. Sized from
+    // the receiver's bitmap, not the smaller blurred copy, so every path frames the photo the same.
+    private int frame(int width, int height, RectF out) {
         int bw = imageReceiver.getBitmapWidth();
         int bh = imageReceiver.getBitmapHeight();
         // The reserve is fixed rather than the panel's live height, so the header's framing never
@@ -279,17 +298,20 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         float slackY = (dh - cover) / 2f;
         float x = -slackX - slackX * settings.offsetX / 100f;
         float y = -slackY - slackY * settings.offsetY / 100f;
+        out.set(x, y, x + dw, y + dh);
+        return cover;
+    }
 
+    private void paint(Canvas canvas, int width, int height, float alpha, Fade fade, int surface) {
+        int cover = frame(width, height, frameRect);
         updateFilter();
         Bitmap blurredPhoto = settings.blur > 0 ? blurredPhoto() : null;
         if (blurredPhoto != null) {
-            // Sized from the receiver's bitmap, not the smaller copy, so framing matches the unblurred photo.
-            blurRect.set(x, y, x + dw, y + dh);
             blurPaint.setAlpha((int) (255 * settings.opacity / 100f * alpha));
             blurPaint.setColorFilter(photoFilter);
-            canvas.drawBitmap(blurredPhoto, null, blurRect, blurPaint);
+            canvas.drawBitmap(blurredPhoto, null, frameRect, blurPaint);
         } else {
-            imageReceiver.setImageCoords(x, y, dw, dh);
+            imageReceiver.setImageCoords(frameRect.left, frameRect.top, frameRect.width(), frameRect.height());
             imageReceiver.setAlpha(settings.opacity / 100f * alpha);
             imageReceiver.draw(canvas);
         }
@@ -298,6 +320,101 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
             Paint paint = fade.update(width, cover, settings, surface);
             paint.setAlpha((int) (255 * alpha));
             canvas.drawPaint(paint);
+        }
+    }
+
+    /** The chat's status bar icon choice while this header's photo is what sits behind them; null otherwise. */
+    public static Boolean lightStatusBar(ActionBar actionBar) {
+        HeaderBgDrawer drawer = actionBar != null ? actionBar.naxHeaderBg : null;
+        if (drawer == null || !drawer.drawn || drawer.statusLight == null || drawer.alpha() < 1f || !actionBar.getOccupyStatusBar()) {
+            return null;
+        }
+        return drawer.statusLight;
+    }
+
+    // Rebuilt only when what lands behind the status bar can have changed: the bitmap drawn, any look
+    // setting, the filter, the surface, the size or the layout direction.
+    private void updateStatusIcons(int width, int height) {
+        Boolean light = null;
+        Bitmap source = null;
+        if (alpha() >= 1f && actionBar.getOccupyStatusBar() && width > 0 && height > 0 && AndroidUtilities.statusBarHeight > 0) {
+            updateFilter();
+            source = settings.blur > 0 ? blurredPhoto() : null;
+            if (source == null) {
+                source = imageReceiver.getBitmap();
+            }
+        }
+        if (source == null || source.isRecycled()) {
+            statusSource = null;
+        } else {
+            int surface = surfaceColor(true);
+            int key = settings.lookHash();
+            key = 31 * key + surface;
+            key = 31 * key + width;
+            key = 31 * key + height;
+            key = 31 * key + AndroidUtilities.statusBarHeight;
+            key = 31 * key + (LocaleController.isRTL ? 1 : 0);
+            if (statusSource != null && statusSource.get() == source && key == statusKey && statusFilter == photoFilter) {
+                return;
+            }
+            statusSource = new WeakReference<>(source);
+            statusKey = key;
+            statusFilter = photoFilter;
+            light = probeStatusBar(source, width, height, surface);
+        }
+        if (light == null ? statusLight != null : !light.equals(statusLight)) {
+            statusLight = light;
+            // Posted out of the draw pass. It re-asks whichever fragment is on top, so it is harmless when this chat is not.
+            AndroidUtilities.runOnUIThread(() -> {
+                LaunchActivity activity = LaunchActivity.instance;
+                if (activity != null) {
+                    activity.checkSystemBarColors(true, true, false);
+                }
+            });
+        }
+    }
+
+    // Paints the status bar rows small, as the header does, and judges their average the way the chat
+    // judges its own header. Null on any failure, which leaves the icons to the chat.
+    private Boolean probeStatusBar(Bitmap source, int width, int height, int surface) {
+        Bitmap readable = null;
+        try {
+            int probeWidth = 32;
+            float k = probeWidth / (float) width;
+            int probeHeight = Math.max(1, Math.round(AndroidUtilities.statusBarHeight * k));
+            Bitmap probe = Bitmap.createBitmap(probeWidth, probeHeight, Bitmap.Config.ARGB_8888);
+            Canvas c = new Canvas(probe);
+            c.scale(k, k);
+            c.drawColor(surface);
+            int cover = frame(width, height, frameRect);
+            readable = source.getConfig() == Bitmap.Config.HARDWARE ? source.copy(Bitmap.Config.ARGB_8888, false) : source;
+            Paint photo = new Paint(Paint.FILTER_BITMAP_FLAG);
+            photo.setAlpha(255 * settings.opacity / 100);
+            photo.setColorFilter(photoFilter);
+            c.drawBitmap(readable, null, frameRect, photo);
+            if (settings.gradient && settings.gradientStrength > 0) {
+                Paint fade = headerFade.update(width, cover, settings, surface);
+                fade.setAlpha(255);
+                c.drawPaint(fade);
+            }
+            int[] pixels = new int[probeWidth * probeHeight];
+            probe.getPixels(pixels, 0, probeWidth, 0, 0, probeWidth, probeHeight);
+            long r = 0, g = 0, b = 0;
+            for (int p : pixels) {
+                r += android.graphics.Color.red(p);
+                g += android.graphics.Color.green(p);
+                b += android.graphics.Color.blue(p);
+            }
+            int n = pixels.length;
+            int average = android.graphics.Color.rgb((int) (r / n), (int) (g / n), (int) (b / n));
+            return AndroidUtilities.computePerceivedBrightness(average) > 0.721f;
+        } catch (Throwable e) {
+            FileLog.e(e);
+            return null;
+        } finally {
+            if (readable != null && readable != source) {
+                readable.recycle();
+            }
         }
     }
 
