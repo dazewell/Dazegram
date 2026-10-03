@@ -142,10 +142,10 @@ public final class HeaderBgSheet {
             if (sheet == null || !sheet.isShowing()) {
                 return;
             }
-            View container = sheet.getContainer();
-            int flags = container.getSystemUiVisibility();
-            flags = fragment.isLightStatusBar() ? flags | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR : flags & ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
-            container.setSystemUiVisibility(flags);
+            // The window ORs every view's flag, and the sheet sets it on its container as well as the decor.
+            boolean light = fragment.isLightStatusBar();
+            AndroidUtilities.setLightStatusBar(sheet.getContainer(), light);
+            AndroidUtilities.setLightStatusBar(sheet.getWindow(), light);
         }
 
         private void save() {
