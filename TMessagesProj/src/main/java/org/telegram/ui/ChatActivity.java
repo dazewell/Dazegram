@@ -5262,7 +5262,7 @@ public class ChatActivity extends BaseFragment implements
             // NagramX: one per-chat privacy entry that owns both hide-last-message and require-password.
             headerItem.lazilyAddSubItem(nkheaderbtn_chat_privacy, R.drawable.outline_header_lock_24, getString(R.string.ChatPrivacy));
             // NagramX: shown in Glass too; the sheet then explains it needs MD3 and links to the switch.
-            if (com.radolyn.ayugram.headerbg.HeaderBgDrawer.eligible(this)) headerItem.lazilyAddSubItem(nkheaderbtn_header_bg, R.drawable.msg_photo_settings, getString(R.string.HeaderBackground));
+            if (com.radolyn.ayugram.headerbg.HeaderBgDrawer.eligible(this)) headerItem.lazilyAddSubItem(nkheaderbtn_header_bg, R.drawable.menu_feature_cover_24, getString(R.string.HeaderBackground));
             boolean addedSettings = false;
             if (NaConfig.INSTANCE.getChatMenuItemToBeginning().Bool()) headerItem.lazilyAddSubItem(to_the_beginning, R.drawable.ic_upward, getString(R.string.ToTheBeginning));
             if (NaConfig.INSTANCE.getChatMenuItemGoToMessage().Bool()) headerItem.lazilyAddSubItem(to_the_message, R.drawable.msg_go_up, getString(R.string.ToTheMessage));
