@@ -259,7 +259,7 @@ The pause button and the view-once "(1)" toggle are larger and lifted slightly h
 
 ### Hold the video to send <!-- #video-hold-send -->
 
-While a round video message records hands-free or waits paused in its preview, press and hold the video instead of the send button: it fills from the centre with a building buzz and sends when you let go. Let go early or slide off to back out. In the preview, sound moves to its own button above pause. N-Settings → Chat → Camera → *Hold the video to send*, on by default.
+While a round video records hands-free or waits paused in its preview, press and hold the video instead of the send button: it ticks on touch, buzzes when ready, and sends when you let go. Slide off to back out. In the preview, sound moves to its own button above pause. N-Settings → Chat → Camera → *Hold the video to send*, on by default.
 
 ### Don't lose an unsent video message <!-- #video-draft-guard -->
 

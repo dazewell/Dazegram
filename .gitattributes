@@ -2,3 +2,4 @@
 # ways `sh -n` in process-rules.yml would not catch. Keep the bytes that run
 # locally identical to the bytes CI checks.
 .githooks/* text eol=lf
+.github/scripts/*.sh text eol=lf
