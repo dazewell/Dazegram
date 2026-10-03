@@ -105,11 +105,11 @@ too (`ChatActivity.java:8646,9918,11180-11181`). Foregrounds go through
 `ChatAvatarContainer.getThemedColor` for avatar containers whose `parentFragment`
 is set, which only ChatActivity does (`ChatAvatarContainer.java:2040-2043`).
 They are also pushed onto the ActionBar after `setupGlass` and again from
-`selectedBackgroundDelegate` (`ChatActivity.java:5410,46488-46493`). The mute and
+`selectedBackgroundDelegate` (`ChatActivity.java:5410,46488-46492`). The mute and
 lock icons are shared static drawables, so the header gets private copies that pick
 their colour as they draw (`ChatActivity.java:21779,21783`) and ignore outside tints:
 a key-only description recolours the title's side drawables with the subtitle key
-(`ChatActivity.java:46607`, `ThemeDescription.java:411`). The auto-delete timer draws its ring and label
+(`ChatActivity.java:46606`, `ThemeDescription.java:411`). The auto-delete timer draws its ring and label
 from `key_actionBarDefaultTitle` through its own provider (`TimerDrawable.java:160,168`),
 so it gets a scoped one (`ChatAvatarContainer.java:456-457`). A provider-level hook on `themeDelegate` is
 the wrong chokepoint: `MessagePreviewView` reads the same title keys through it.
@@ -131,7 +131,7 @@ The pinned/call/translate strips under the header are one `ChatActivityTopPanelL
 a sibling of the ActionBar in `contentView` (`ChatActivity.java:8663-8665`); its
 equivalent spot is after `backgroundDrawable.draw` (`ChatActivityTopPanelLayout.java:141`),
 in panel coordinates, so map to the header with the two views' `getX/getY` difference.
-Its status bar icons are decided in `ChatActivity.isLightStatusBar()` (`ChatActivity.java:48405`),
+Its status bar icons are decided in `ChatActivity.isLightStatusBar()` (`ChatActivity.java:48404`),
 which falls back to `shouldHaveLightStatusBarIcons`, set from the wallpaper and header composite
 (`:19172`); `LaunchActivity.checkSystemBarColors` (`LaunchActivity.java:1152`) re-asks the top fragment,
 so anything that changes the pixels behind the status bar calls that.

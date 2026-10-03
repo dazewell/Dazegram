@@ -79,8 +79,8 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
     private final RectF frameRect = new RectF();
 
     // The average opaque colour of the whole header band, status bar included, as the photo paints it,
-    // or null while no photo is fully shown. Written by the draw pass only, and held while selection mode
-    // covers the header, since selection has its own colours and fades the photo out and back.
+    // or null while no photo is fully shown. Written by the draw pass and cleared on detach; held while selection
+    // mode covers the header, since selection has its own colours and fades the photo out and back.
     private Integer band;
     // Whether the status bar icons should be dark, from the same choice as the header's foregrounds, or null
     // to leave them to the chat. lightStatusBar() re-checks the live conditions, so it never outlives the photo.

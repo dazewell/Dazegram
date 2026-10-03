@@ -19163,7 +19163,7 @@ public class ChatActivity extends BaseFragment implements
             if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader()) {
                 statusBarColor = ColorUtils.compositeColors((isReport() ? BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null) : BlurredBackgroundProviderImpl.chatHeaderSurface(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null, actionBar)).getBackgroundColor(), ColorUtils.setAlphaComponent(statusBarColor, 255));
             }
-            // NagramX: the header photo's status bar probe paints over this same composite, which a frosted header makes translucent.
+            // NagramX: the header photo's probe paints over this same composite, which a frosted header makes translucent.
             if (actionBar != null && actionBar.naxHeaderBg != null) actionBar.naxHeaderBg.setStatusBarBase(statusBarColor);
             final float statusBarBrightness = AndroidUtilities.computePerceivedBrightness(statusBarColor);
             final int navigationBarColor = wallpaperBitmapProvider.getNavigationBarColor(source);
@@ -46489,7 +46489,6 @@ public class ChatActivity extends BaseFragment implements
             // NagramX: the key-only header descriptions below have just pushed the shared palette back in.
             if ((xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeaderOptedIn() || actionBar != null && actionBar.naxHeaderBg != null) && !isReport()) {
                 com.radolyn.ayugram.headerbg.HeaderBgForeground.applyChatHeader(this);
-                updateTitleIcons();
             }
             if (blurredBackgroundColorProvider != null) {
                 blurredBackgroundColorProvider.updateColors();
@@ -48418,7 +48417,7 @@ public class ChatActivity extends BaseFragment implements
         }
         // NagramX: selection mode drops the Classic solid header, so the icons follow the theme's own header there.
         if (xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeaderSelectionShowing(actionBar)) return ColorUtils.calculateLuminance(xyz.nextalone.nagram.helpers.InterfaceStyleController.chatHeaderSurfaceColor(themeDelegate)) > 0.7f;
-        // NagramX: a header photo decides the icons from the pixels it draws behind the status bar.
+        // NagramX: a header photo decides the icons together with the header's text, from the pixels it draws behind the header.
         Boolean naxIcons = com.radolyn.ayugram.headerbg.HeaderBgDrawer.lightStatusBar(actionBar); if (naxIcons != null) return naxIcons;
         return !shouldHaveLightStatusBarIcons;
     }
