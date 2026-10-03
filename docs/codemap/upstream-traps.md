@@ -2598,13 +2598,21 @@ programmatic change (a Reset) never triggers.
 
 *(Established 2026-10-03, `#header-avatar-bg`.)*
 
-## A status update repaints a chat-list row without rebuilding its text
+## A chat-list row only rebuilds its text when its redraw key changes
+
+Two gates stand between a state change and a `DialogCell`'s text.
+
+`DialogCell.buildLayout()` returns early unless `DialogUpdateHelper.update()`
+reports a change (`DialogCell.java:1258-1262`). That key covers only the message,
+read/unread counts, draft, typing, size, pin and call state (`:6393-6466`).
+Anything else the row's text depends on stays stale until an app restart — even
+across `notifyDataSetChanged()`. The hidden preview folds a hash of its
+rendered text into the key (`:6418-6419`).
 
 `DialogCell.update(mask)` handles `UPDATE_MASK_STATUS` by re-fetching the user
-and invalidating only when the online dot flips (`DialogCell.java:3453-3457`).
-Setting `rebuildLayout` there does nothing: unless `continueUpdate` is set, the
-method invalidates and returns at `:3606-3610`, before the `buildLayout()` at
-`:3839`. Any text in the row that depends on the peer's status — the hidden
-preview's chat-status mode — must set `continueUpdate = true` (`:3459-3461`).
+and invalidating only when the online dot flips (`:3453-3457`). Setting
+`rebuildLayout` there does nothing: unless `continueUpdate` is set, the method
+invalidates and returns at `:3606-3610`, before the `buildLayout()` at `:3839`.
+Status-dependent text must set `continueUpdate = true` (`:3459-3461`).
 
 *(Established 2026-10-03, `#hide-last-message`.)*

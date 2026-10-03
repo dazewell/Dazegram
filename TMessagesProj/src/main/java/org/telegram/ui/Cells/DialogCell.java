@@ -6415,6 +6415,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                     readHash |= (1 << 22);
                 }
             }
+            // NagramX: a hidden preview can change with no message or read change (its mode, the peer's status), so its text joins this redraw key.
+            readHash ^= (long) com.radolyn.ayugram.hidelastmessage.HideLastMessagePreview.drawnHash(currentAccount, getDialogId(), message, unreadCount) << 32;
 
             if (!isForumCell() && (isDialogCell || isTopic)) {
                 if (!TextUtils.isEmpty(MessagesController.getInstance(currentAccount).getPrintingString(currentDialogId, getTopicId(), true))) {

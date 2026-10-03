@@ -74,6 +74,15 @@ public final class HideLastMessagePreview {
         return TextUtils.isEmpty(text) ? HideLastMessageController.getPlaceholder(account, dialogId) : text;
     }
 
+    /**
+     * Folded into DialogCell's redraw key, which otherwise skips buildLayout unless the
+     * message, read state or draft changed. 0 when the dialog is not hidden.
+     */
+    public static int drawnHash(int account, long dialogId, @Nullable MessageObject message, int unreadCount) {
+        if (!HideLastMessageController.isHidden(account, dialogId)) return 0;
+        return resolve(account, dialogId, message, unreadCount).toString().hashCode();
+    }
+
     /** The chat header subtitle, as ChatAvatarContainer.updateSubtitle builds it. */
     @Nullable
     private static CharSequence status(int account, long dialogId) {
