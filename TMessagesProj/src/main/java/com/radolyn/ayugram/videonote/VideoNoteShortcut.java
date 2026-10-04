@@ -333,7 +333,6 @@ public final class VideoNoteShortcut {
     }
 
     private static void lockNow() {
-        android.util.Log.e("VideoNoteShortcut", "NAX_SMOKE_video-memo-exit lockNow phase=" + phase + " from " + new Throwable().getStackTrace()[1] + " <- " + new Throwable().getStackTrace()[2]);
         LaunchActivity activity = LaunchActivity.instance;
         if (activity != null && !activity.isFinishing()) {
             activity.showPasscodeActivity(true, false, -1, -1, null, null);
@@ -348,7 +347,6 @@ public final class VideoNoteShortcut {
         lockNow();
         if (activity != null && !activity.isFinishing()) {
             activity.moveTaskToBack(true);
-            android.util.Log.e("VideoNoteShortcut", "NAX_SMOKE_video-memo-exit left to launcher");
         }
     }
 
