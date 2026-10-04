@@ -27,6 +27,7 @@ import org.telegram.ui.Cells.SlideIntChooseView;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.Components.BatteryDrawable;
 import org.telegram.ui.Components.BulletinFactory;
+import org.telegram.ui.Components.ItemOptions;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.UndoView;
 import org.telegram.ui.LaunchActivity;
@@ -34,6 +35,7 @@ import org.telegram.ui.LaunchActivity;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 
 import tw.nekomimi.nekogram.NekoConfig;
@@ -243,6 +245,28 @@ public class InterfaceStyleActivity extends BaseNekoXSettingsActivity {
         if ((key.equals(NaConfig.INSTANCE.getChatDecoration().getKey()) || key.equals(NekoConfig.tabsTitleType.getKey())) && parentLayout != null) {
             parentLayout.rebuildFragments(0);
         }
+    }
+
+    // The MD3 radio has no key of its own in the row map (see liquidGlassRow) and the blur slider is not an enabled row, so the
+    // base long-press would offer a numeric link or none. Both radios copy the "Style" link, as they did before the page moved.
+    @Override
+    protected boolean onItemLongClick(View view, int position, float x, float y) {
+        AbstractConfigCell row = position >= 0 && position < cellGroup.rows.size() ? cellGroup.rows.get(position) : null;
+        String key;
+        if (row == liquidGlassRow || row == materialDesign3Row) {
+            key = ROW_KEY_STYLE;
+        } else if (row == blurStrengthRow) {
+            key = NaConfig.INSTANCE.getInterfaceStyleBlurStrength().getKey();
+        } else {
+            return false;
+        }
+        ItemOptions options = makeLongClickOptions(view);
+        options.add(R.drawable.msg_link2, getString(R.string.CopyLink), () -> {
+            AndroidUtilities.addToClipboard(String.format(Locale.getDefault(), "https://%s/nasettings/%s?r=%s", getMessagesController().linkPrefix, SETTINGS_KEY, key));
+            BulletinFactory.of(this).createCopyLinkBulletin().show();
+        });
+        showLongClickOptions(view, options);
+        return true;
     }
 
     // True for a row this page has, even one hidden at the moment (the main tabs pair goes with the bottom bar), so an old link to it still lands here
