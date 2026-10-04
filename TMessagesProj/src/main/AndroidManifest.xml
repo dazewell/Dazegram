@@ -608,7 +608,7 @@
             android:exported="false"
             android:launchMode="singleTask"
             android:taskAffinity=""
-            android:theme="@style/Theme.TMessages.PopupNotification"
+            android:theme="@style/Theme.TMessages.TextMemo"
             android:windowSoftInputMode="adjustResize|stateAlwaysVisible" />
         <activity android:name="org.telegram.ui.VoIPPermissionActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|uiMode"

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- The text memo's window. No starting window: ColorOS adds one even for a translucent activity, and it shows
+         black until the first frame, which on a cold start is a second or two. -->
+    <style name="Theme.TMessages.TextMemo" parent="Theme.TMessages.PopupNotification">
+        <item name="android:windowDisablePreview">true</item>
+    </style>
+
+</resources>
