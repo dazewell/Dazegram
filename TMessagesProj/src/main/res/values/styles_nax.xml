@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <!-- The text memo's window. No starting window: ColorOS adds one even for a translucent activity, and it shows
-         black until the first frame, which on a cold start is a second or two. -->
-    <style name="Theme.TMessages.TextMemo" parent="Theme.TMessages.PopupNotification">
+    <!-- The text memo's window: floating, as VoIPPermissionActivity's is. ColorOS opened the merely translucent version
+         as a full-screen opaque task and showed black behind it until a runtime conversion landed a second or two later.
+         No starting window either: ColorOS adds one even for a translucent activity, and it shows black. -->
+    <style name="Theme.TMessages.TextMemo" parent="Theme.TMessages.Transparent">
         <item name="android:windowDisablePreview">true</item>
     </style>
 

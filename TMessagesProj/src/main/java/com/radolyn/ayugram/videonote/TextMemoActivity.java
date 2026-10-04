@@ -17,6 +17,7 @@ import android.text.TextWatcher;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewTreeObserver;
 import android.view.Window;
@@ -27,10 +28,6 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowCompat;
-import androidx.core.view.WindowInsetsCompat;
 
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
@@ -98,33 +95,21 @@ public class TextMemoActivity extends Activity {
             }
         });
 
-        WindowCompat.setDecorFitsSystemWindows(window, false);
-        window.setStatusBarColor(Color.TRANSPARENT);
-        window.setNavigationBarColor(Color.TRANSPARENT);
         createView();
         setContentView(root);
+        // A floating window just the card's size, docked at the bottom; adjustResize keeps it above the keyboard
+        window.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT);
+        window.setGravity(Gravity.BOTTOM);
         applyColors();
         animateIn();
     }
 
     private void createView() {
         root = new FrameLayout(this);
-        // Edge to edge on recent Android, so adjustResize doesn't move anything: the card rides the keyboard by insets
-        ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
-            Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.ime() | WindowInsetsCompat.Type.displayCutout());
-            v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
-            return WindowInsetsCompat.CONSUMED;
-        });
-
-        // A tap outside closes an empty card like any dialog, but never throws away typed text
-        root.setOnClickListener(v -> {
-            if (field.length() == 0) {
-                dismiss();
-            }
-        });
+        // Room for the card's shadow inside the window
+        root.setClipToPadding(false);
 
         card = new LinearLayout(this);
-        card.setClickable(true);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setElevation(dp(8));
         card.setPadding(dp(20), dp(16), dp(12), dp(12));
@@ -300,6 +285,17 @@ public class TextMemoActivity extends Activity {
             finish();
             overridePendingTransition(0, 0);
         }
+    }
+
+    // A floating window's activity gets the touches that land outside it. One closes an empty card like any dialog,
+    // but never throws away typed text.
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        if (event.getAction() == MotionEvent.ACTION_DOWN && root != null && field.length() == 0) {
+            dismiss();
+            return true;
+        }
+        return super.onTouchEvent(event);
     }
 
     @Override
