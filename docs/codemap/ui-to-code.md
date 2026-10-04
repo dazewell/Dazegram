@@ -237,6 +237,34 @@ passes, in regular weight, medium when selected (`GlassTabView.java:160`,
 
 *(Established 2026-09-22, during `#interface-style`; rounded navigation 2026-09-26, `#rounded-navigation`.)*
 
+## Interface Style's Main Tabs preview is the real bar, built outside MainTabsActivity
+
+The preview row under Interface Style → Main Tabs is `MainTabsPreviewCell`, the
+real `MainTabsLayout` and `GlassTabView`s configured as `MainTabsActivity.createView()`
+configures them (`MainTabsPreviewCell.java:48-72`, `:74-119`; `MainTabsActivity.java:352-374`,
+`:453-472`). None of the three needs the activity: `MainTabsLayout` takes a context
+and a resources provider, the tabs come from `GlassTabView.createMainTab`/`createAvatar`,
+and the observers, counters and badges all live in the activity. Leaving the factory's
+`setSourceRootView` unset means no `ViewPositionWatcher` is subscribed. The backdrop
+is a `windowBackgroundWhite` colour source, the colour the real bar's glass source paints
+first (`MainTabsActivity.java:185`, `:217`): the bar never sits over the wallpaper.
+A colour or bitmap source gets no refraction, which is applied only to
+`BlurredBackgroundDrawableRenderNode` (`BlurredBackgroundDrawableViewFactory.java:96-102`),
+so in the preview Liquid Glass and MD3 with Bottom navigation off draw near-identical pills.
+
+Two traps shaped it. A Chats tab plays its fill animation whenever it is first
+selected, `animated` or not (`GlassTabView.java:430-442`), so the cell is built once and
+`update()` pushes settings through the bar's own setters; rebuilding per bind replays it
+on every toggle. `rebuildFragments(0)` skips the top fragment (`ActionBarLayout.java:3374-3376`),
+so Hide titles and Hide contacts rebind the page themselves (`InterfaceStyleActivity.java:417-419`).
+
+A matching hero (chat header, list row, composer) was rejected: `HeaderBgDrawer` is
+private and `ChatActivity`-bound (`HeaderBgDrawer.java:108`), `ChatActivityEnterView` needs a
+`ChatActivity` (`ChatActivityEnterView.java:2798`), and every surface provider reads the
+`InterfaceStyleController` statics, so showing the unselected style means duplicating them.
+
+*(Established 2026-10-04, during `#interface-style`.)*
+
 ## MD3 Composer paints one island from ChatInputViewsContainer
 
 The Composer Apply to switch reaches the real chat through one draw hook.
