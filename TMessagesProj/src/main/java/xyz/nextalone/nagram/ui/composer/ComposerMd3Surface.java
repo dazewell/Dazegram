@@ -82,7 +82,7 @@ public final class ComposerMd3Surface {
     // How far the keyboard or emoji panel lifts the island before its lift has fully turned from docked to floating.
     private static final int SHEET_MORPH = 48;
     // The sheet's shape morphs on its own clock, so the change stays visible however fast the keyboard moves.
-    private static final long SHEET_SHAPE_DURATION = 500;
+    private static final long SHEET_SHAPE_DURATION = 300;
     // A docked sheet starts floating once its dock factor drops below this, a few dp into the lift.
     private static final float SHEET_FLOAT_AT = 0.9f;
     // Docked, the tools row's bottom sits this far above the nav bar in place of the floating lift.
