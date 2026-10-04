@@ -40,9 +40,9 @@ import xyz.nextalone.nagram.NaConfig;
  * Press and hold the round video circle to send a hands-free (locked) recording, or the paused preview it
  * stopped into, so the send doesn't need the small button in the corner. A disc fills the circle from its centre
  * while held; once full, letting go sends. A light tick marks the touch, a firm one the moment it arms, and a
- * short one when sliding off disarms it. Letting go early, sliding off the
- * circle or a second finger (pinch zoom) cancels and nothing changes. The rim is left alone on purpose: it
- * already carries the recording-time arc.
+ * short one when sliding off disarms it. Letting go before it arms is a tap, which pauses or resumes as the
+ * composer's pause button would. Sliding off the circle or a second finger (pinch zoom) cancels and nothing
+ * changes. The rim is left alone on purpose: it already carries the recording-time arc.
  * A small label above the circle says how it works whenever it's available.
  * The preview used to toggle its sound on any tap, which the hold now owns, so its sound moves to a chip in the
  * composer's record controls (VideoPreviewSoundChip) for as long as the preview is up.
@@ -58,6 +58,8 @@ public final class VideoHoldToSend {
     private final Runnable send;
     private final Utilities.Callback0Return<VideoPlayer> previewPlayer;
     private final Utilities.Callback0Return<Boolean> previewSends;
+    private final Utilities.Callback0Return<Boolean> canToggle;
+    private final Runnable toggle;
 
     private View circle;
     private View host;
@@ -77,13 +79,17 @@ public final class VideoHoldToSend {
     private final Runnable armRunnable = this::arm;
 
     // previewPlayer is the paused preview's player, null while there's no preview. previewSends says whether the
-    // host can send from its preview at all; story replies can't, and keep tap-to-toggle-sound.
+    // host can send from its preview at all; story replies can't, and keep tap-to-toggle-sound. canToggle is
+    // separate from canSend because resuming sends nothing, so slow mode or a disabled send button mustn't block it.
     public VideoHoldToSend(Utilities.Callback0Return<Boolean> canSend, Runnable send,
-                           Utilities.Callback0Return<VideoPlayer> previewPlayer, Utilities.Callback0Return<Boolean> previewSends) {
+                           Utilities.Callback0Return<VideoPlayer> previewPlayer, Utilities.Callback0Return<Boolean> previewSends,
+                           Utilities.Callback0Return<Boolean> canToggle, Runnable toggle) {
         this.canSend = canSend;
         this.send = send;
         this.previewPlayer = previewPlayer;
         this.previewSends = previewSends;
+        this.canToggle = canToggle;
+        this.toggle = toggle;
     }
 
     // True when a tap on the preview belongs to the hold rather than toggling its sound.
@@ -116,14 +122,21 @@ public final class VideoHoldToSend {
         switch (ev.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 reset();
-                if (!NaConfig.INSTANCE.getVideoMessagesHoldToSend().Bool() || !contains(circle, ev) || !canSend.run()) {
+                if (!NaConfig.INSTANCE.getVideoMessagesHoldToSend().Bool() || !contains(circle, ev)) {
+                    return;
+                }
+                final boolean sendable = canSend.run();
+                if (!sendable && !canToggle.run()) {
                     return;
                 }
                 this.circle = circle;
                 tracking = true;
-                buzz(10, 40, HapticFeedbackConstants.CLOCK_TICK);
-                animateTo(1f, ARM_MS);
-                AndroidUtilities.runOnUIThread(armRunnable, ARM_MS);
+                // a hold that can't send has nothing to arm, so only a tap is tracked, without the tick or the fill
+                if (sendable) {
+                    buzz(10, 40, HapticFeedbackConstants.CLOCK_TICK);
+                    animateTo(1f, ARM_MS);
+                    AndroidUtilities.runOnUIThread(armRunnable, ARM_MS);
+                }
                 break;
             case MotionEvent.ACTION_POINTER_DOWN:
                 cancel();
@@ -135,11 +148,18 @@ public final class VideoHoldToSend {
                 break;
             case MotionEvent.ACTION_UP:
                 // a fast slide-off can report its last position only in the UP, with no MOVE outside first
-                if (tracking && armed && contains(circle, ev) && canSend.run()) {
+                // the event times, not armRunnable, tell a tap from a hold: a stalled main thread can arm before
+                // a quick release is processed, and that tap must not send
+                final boolean held = ev.getEventTime() - ev.getDownTime() >= ARM_MS;
+                if (tracking && armed && held && contains(circle, ev) && canSend.run()) {
                     // cleared before sending: a paid-message confirmation pauses into the preview instead of
                     // closing the camera, and the disc must not stay painted over it
                     reset();
                     send.run();
+                } else if (tracking && !held && contains(circle, ev) && canToggle.run()) {
+                    // a tap; also where nothing arms, since a long press that can't send isn't one
+                    cancel();
+                    toggle.run();
                 } else {
                     cancel();
                 }

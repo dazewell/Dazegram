@@ -221,7 +221,10 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 }
             },
             () -> videoPlayer,
-            () -> delegate != null && delegate.hasVideoPreviewSend());
+            () -> delegate != null && delegate.hasVideoPreviewSend(),
+            // a tap pauses or resumes through the composer's pause button, so it needs the host's send path too
+            () -> !cameraFileHandedOff && delegate != null && (recording ? !encoderTeardownPending && delegate.isRecordLocked() : videoPlayer != null && delegate.hasVideoPreviewSend()),
+            () -> delegate.toggleRecordingPause());
     private long recordedTime;
     private boolean cancelled;
 
@@ -5289,6 +5292,10 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         }
 
         default void sendLockedRecording() {
+        }
+
+        // NagramX (#video-hold-send): the host's pause button, for a tap on the circle
+        default void toggleRecordingPause() {
         }
 
         // NagramX (#video-hold-send): the same for the paused preview. hasVideoPreviewSend says the host sends from

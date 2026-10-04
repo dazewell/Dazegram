@@ -39226,6 +39226,14 @@ public class ChatActivity extends BaseFragment implements
         }
     }
 
+    // NagramX (#video-hold-send): the composer's pause button, for a tap on the round video
+    @Override
+    public void toggleRecordingPause() {
+        if (chatActivityEnterView != null) {
+            chatActivityEnterView.performVideoPauseClick();
+        }
+    }
+
     // NagramX (#video-hold-send): and on its paused preview, through the composer's send button
     @Override
     public boolean hasVideoPreviewSend() {
