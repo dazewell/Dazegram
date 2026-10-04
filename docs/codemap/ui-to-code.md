@@ -12,26 +12,26 @@ style enum: `InterfaceStyleController.isMaterialDesign3()` derives MD3 from the
 existing Liquid Glass setting and support gate
 (`InterfaceStyleController.java:17-18`). The page writes Liquid Glass with
 `LiteMode.toggleFlag(...)` and reloads the interface
-(`InterfaceStyleActivity.java:455-461`).
+(`InterfaceStyleActivity.java:459-465`).
 
 The shared Blur strength row is visible in both styles because composer glass
-already consumes it (`InterfaceStyleActivity.java:324-328,487-490`;
+already consumes it (`InterfaceStyleActivity.java:325-329,491-494`;
 `ComposerGlassProvider.java:74-75`; `NaConfig.kt:1485-1489`). MD3-only rows are
 visible only after the Material Design 3 radio is selected
-(`InterfaceStyleActivity.java:328-347`). The Apply to rows expose Chat header,
+(`InterfaceStyleActivity.java:329-348`). The Apply to rows expose Chat header,
 Chat list top bar, Buttons, Composer, Bottom navigation, and Panel dividers;
 the Composer row is assigned only while `COMPOSER_STYLE_AVAILABLE` is true,
-which it now is (`InterfaceStyleActivity.java:333-335`;
+which it now is (`InterfaceStyleActivity.java:334-336`;
 `InterfaceStyleController.java:33-36`). Like every other Apply to row, its
 stored default is on (`NaConfig.kt:1467-1471`). The Panel colors row, Match
 Classic and Day header color, shows only on MD3 with Classic or Day selected as
-the day theme and defaults off (`InterfaceStyleActivity.java:342-346`;
+the day theme and defaults off (`InterfaceStyleActivity.java:343-347`;
 `NaConfig.kt:1491-1495`); its render path is the next entry.
 
 Panel dividers are a shipped MD3 row: `NaConfig` stores
 `interfaceStylePanelDividers`, and `InterfaceStyleController.panelDividers()`
 gates the render paths (`NaConfig.kt:1497-1501`;
-`InterfaceStyleController.java:48-50`; `InterfaceStyleActivity.java:340`).
+`InterfaceStyleController.java:48-50`; `InterfaceStyleActivity.java:341`).
 It draws hairlines coloured as MD3 outline-variant (the local surface blended 12% towards `key_windowBackgroundWhiteBlackText`, `InterfaceStyleController.java:62-70`, because Night/AMOLED `key_divider` is pure black) at
 Dialogs' captured top-surface bottom after `super.dispatchDraw(...)`, and under
 ChatActivity's header group after `super.dispatchDraw(...)`
@@ -214,7 +214,7 @@ list (`MainTabsActivity.java:438-448`). Liquid Glass keeps its stadium pill and
 tab geometry.
 
 Rounded navigation, an MD3 sub-toggle shown only while Bottom navigation is on
-(`InterfaceStyleActivity.java:337-339`; `InterfaceStyleController.java:43-46`),
+(`InterfaceStyleActivity.java:338-340`; `InterfaceStyleController.java:43-46`),
 keeps this slot, lift and provider and changes shape and labels. Its whole-tab
 highlight is a different stadium from the dropped one. The panel radius
 becomes half its height, tabs abut 4dp inside it at 80dp each within the same cap
