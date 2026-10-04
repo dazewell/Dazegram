@@ -274,6 +274,8 @@ public final class VideoNoteShortcut {
     private static boolean stopRequested; // a stop into the preview (state 3) is under way or done: nothing left to cancel
     private static WeakReference<ChatActivity> sessionChat;
     private static final Runnable poll = VideoNoteShortcut::poll;
+    private static final Runnable leave = VideoNoteShortcut::lockAndLeave;
+    private static final long LEAVE_DELAY_MS = 220; // InstantCameraView.startAnimation's 180ms, plus a margin
 
     private static void setPhase(int newPhase) {
         phase = newPhase;
@@ -318,6 +320,7 @@ public final class VideoNoteShortcut {
         pendingAccount = -1;
         pendingDialogId = 0;
         AndroidUtilities.cancelRunOnUIThread(poll);
+        AndroidUtilities.cancelRunOnUIThread(leave);
         if (chat != null && !chat.finalizeRoundVideoForLock() && cameraMayBeOpening) {
             // A lock raised in the foreground gets no onPause, so a live recording is stopped into the preview above or
             // the unlock rebuild throws it away. A camera still opening has recorded nothing yet, and left alone it
@@ -416,7 +419,15 @@ public final class VideoNoteShortcut {
     /** ChatActivity.sendMedia, once the clip has been handed to SendMessagesHelper. Ends the memo on the launcher. */
     public static void onMediaSent(ChatActivity chat) {
         if (isSessionChat(chat) && (phase == RECORDING || phase == FINALIZING || phase == SENDING)) {
-            lockAndLeave();
+            // The round camera's own shrink-and-fade plays first: the passcode would cover it. The lock is already saved,
+            // so the wait fails closed, and any other lock cancels the pending leave (onPasscodeShown).
+            if (chat.instantCameraView != null && AndroidUtilities.shouldEnableAnimation()) {
+                chat.instantCameraView.startAnimation(false, false);
+                AndroidUtilities.cancelRunOnUIThread(leave);
+                AndroidUtilities.runOnUIThread(leave, LEAVE_DELAY_MS);
+            } else {
+                lockAndLeave();
+            }
         }
     }
 
