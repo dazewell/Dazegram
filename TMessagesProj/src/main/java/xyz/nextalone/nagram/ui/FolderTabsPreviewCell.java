@@ -25,8 +25,8 @@ import xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader;
 /**
  * Interface Style's preview of the folder tabs: the real FilterTabsView with made-up folders, configured the way
  * DialogsActivity builds it. Keep the two in step when the bar's look changes there.
- * Built once; {@link #update()} rebuilds the tabs only when the title type changes, because a Tab caches its title and
- * icon width when it is created, and otherwise just redraws, which is all the stroke setting needs. The backdrop is the
+ * Built once; {@link #update()} rebuilds the tabs only when the title type or hide-All-tab changes, as a Tab caches its
+ * title and icon width when created, and otherwise just redraws, which is all the stroke needs. The backdrop is the
  * window colour under the glass pill, or the top bar's own surface when it is flat.
  */
 @SuppressLint("ViewConstructor")
@@ -122,7 +122,7 @@ public class FolderTabsPreviewCell extends FrameLayout {
             tabsView.setBlurredBackground(null);
             tabsView.setBackgroundColor(Theme.getColor(Theme.key_actionBarDefault, barResourcesProvider));
         } else {
-            // A new drawable each time: its provider reads the top bar's style when it is created
+            // A new drawable each time, as the bottom bar preview does: it is cheap and subscribes to nothing
             backgroundSource.setColor(Theme.getColor(Theme.key_windowBackgroundWhite, resourcesProvider));
             BlurredBackgroundDrawable background = backgroundFactory.create(tabsView, BlurredBackgroundProviderImpl.dialogsTopPanel(currentAccount, barResourcesProvider));
             background.setRadius(dp(18));
