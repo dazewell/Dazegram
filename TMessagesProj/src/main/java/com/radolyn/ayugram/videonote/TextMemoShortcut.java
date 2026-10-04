@@ -48,8 +48,6 @@ public final class TextMemoShortcut {
         try {
             Intent intent = new Intent(ApplicationLoader.applicationContext, TextMemoActivity.class);
             intent.setAction(ACTION);
-            // No launch animation: a launcher's app-open zoom pulls the home screen away behind the card
-            intent.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION);
             intent.putExtra(EXTRA_HASH, SharedConfig.directShareHash);
             String label = LocaleController.getString(R.string.TextMemoShortcutLabel);
             ShortcutInfoCompat shortcut = new ShortcutInfoCompat.Builder(ApplicationLoader.applicationContext, SHORTCUT_ID)

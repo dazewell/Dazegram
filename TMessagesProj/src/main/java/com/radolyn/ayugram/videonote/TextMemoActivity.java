@@ -8,6 +8,7 @@ import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.text.Editable;
@@ -17,17 +18,20 @@ import android.text.TextWatcher;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewTreeObserver;
 import android.view.Window;
-import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
@@ -42,16 +46,17 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.EditTextBoldCursor;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.SizeNotifierFrameLayout;
 
 /**
- * The text memo: a bare card to type a message into, floating over the launcher, in its own task. Nothing of the app is
- * shown, so it never touches the app lock: a locked app stays locked, and closing returns to the launcher. The text is
+ * The text memo: a bare card to type a message into, over the chat wallpaper, in its own task. No chat is shown, so it
+ * never touches the app lock: a locked app stays locked, and closing returns to the launcher. The text is
  * never stored; leaving the screen drops it.
  */
 public class TextMemoActivity extends Activity {
 
     private int account = -1;
-    private FrameLayout root;
+    private SizeNotifierFrameLayout root;
     private LinearLayout card;
     private EditTextBoldCursor field;
     private TextView discardButton;
@@ -67,12 +72,6 @@ public class TextMemoActivity extends Activity {
         ApplicationLoader.postInitApplication();
         Window window = getWindow();
         super.onCreate(savedInstanceState);
-        // ColorOS's launcher played its full app-open zoom for this, taking the home screen away for a couple of seconds
-        if (android.os.Build.VERSION.SDK_INT >= 34) {
-            overrideActivityTransition(OVERRIDE_TRANSITION_OPEN, 0, 0);
-            overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, 0, 0);
-        }
-        overridePendingTransition(0, 0);
 
         Intent intent = getIntent();
         // A restore after process death or a relaunch from history must not reopen it, and nothing replays the intent
@@ -85,11 +84,6 @@ public class TextMemoActivity extends Activity {
             return;
         }
         account = selected;
-        // The translucent theme alone left the task opaque on a ColorOS launcher, so whatever was on screen wasn't drawn
-        // behind the card and a solid wall showed instead. Ask for it at runtime too.
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-            setTranslucent(true);
-        }
         VideoNoteTarget.resolveAsync(account, false, id -> {
             dialogId = id;
             if (pendingText != null) {
@@ -98,21 +92,45 @@ public class TextMemoActivity extends Activity {
             }
         });
 
+        WindowCompat.setDecorFitsSystemWindows(window, false);
+        window.setStatusBarColor(Color.TRANSPARENT);
+        window.setNavigationBarColor(Color.TRANSPARENT);
         createView();
         setContentView(root);
-        // A floating window just the card's size, docked at the bottom; adjustResize keeps it above the keyboard
-        window.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT);
-        window.setGravity(Gravity.BOTTOM);
         applyColors();
         animateIn();
     }
 
     private void createView() {
-        root = new FrameLayout(this);
-        // Room for the card's shadow inside the window
-        root.setClipToPadding(false);
+        // The chat wallpaper behind the card, as the video memo's shield shows: something of Telegram's own on screen,
+        // but no chat. A see-through window was tried first; a launcher can drop its home screen for a second or two
+        // when it hands over, and that showed through as black.
+        root = new SizeNotifierFrameLayout(this);
+        Drawable wallpaper = Theme.getCachedWallpaper();
+        if (wallpaper == null) {
+            Theme.loadWallpaper(false); // a cold start from the shortcut, before anything else loaded it
+            wallpaper = Theme.getCachedWallpaper();
+        }
+        if (wallpaper != null) {
+            root.setBackgroundImage(wallpaper, Theme.isWallpaperMotion());
+        } else {
+            root.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
+        }
+        // Edge to edge on recent Android, so adjustResize doesn't move anything: the card rides the keyboard by insets
+        ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
+            Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.ime() | WindowInsetsCompat.Type.displayCutout());
+            v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            return WindowInsetsCompat.CONSUMED;
+        });
+        // A tap outside closes an empty card like any dialog, but never throws away typed text
+        root.setOnClickListener(v -> {
+            if (field.length() == 0) {
+                dismiss();
+            }
+        });
 
         card = new LinearLayout(this);
+        card.setClickable(true);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setElevation(dp(8));
         card.setPadding(dp(20), dp(16), dp(12), dp(12));
@@ -179,9 +197,11 @@ public class TextMemoActivity extends Activity {
     }
 
     private void applyColors() {
-        // No backdrop at all: the card floats over whatever was on screen, like a floating window. This task holds
-        // nothing else of the app, so there is nothing to hide back there.
-        root.setBackground(null);
+        // Status and navigation icons follow the theme, as in a chat
+        boolean light = !Theme.isCurrentThemeDark();
+        WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        controller.setAppearanceLightStatusBars(light);
+        controller.setAppearanceLightNavigationBars(light);
 
         GradientDrawable cardBackground = new GradientDrawable();
         cardBackground.setCornerRadius(dp(20));
@@ -206,8 +226,6 @@ public class TextMemoActivity extends Activity {
     }
 
     private void animateIn() {
-        root.setAlpha(0f);
-        root.animate().alpha(1f).setDuration(120).start();
         card.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
             @Override
             public boolean onPreDraw() {
@@ -279,26 +297,11 @@ public class TextMemoActivity extends Activity {
         dismissing = true;
         field.setText("");
         AndroidUtilities.hideKeyboard(field);
-        card.animate().translationY(card.getHeight() + dp(8)).setDuration(200).setInterpolator(CubicBezierInterpolator.EASE_IN).start();
-        root.animate().alpha(0f).setStartDelay(80).setDuration(120).withEndAction(this::finishQuietly).start();
-    }
-
-    private void finishQuietly() {
-        if (!isFinishing()) {
-            finish();
-            overridePendingTransition(0, 0);
-        }
-    }
-
-    // A floating window's activity gets the touches that land outside it. One closes an empty card like any dialog,
-    // but never throws away typed text.
-    @Override
-    public boolean onTouchEvent(MotionEvent event) {
-        if (event.getAction() == MotionEvent.ACTION_DOWN && root != null && field.length() == 0) {
-            dismiss();
-            return true;
-        }
-        return super.onTouchEvent(event);
+        card.animate().translationY(card.getHeight() + dp(8)).setDuration(200).setInterpolator(CubicBezierInterpolator.EASE_IN).withEndAction(() -> {
+            if (!isFinishing()) {
+                finish();
+            }
+        }).start();
     }
 
     @Override
