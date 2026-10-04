@@ -419,7 +419,8 @@ public final class VideoNoteShortcut {
         if (isSessionChat(chat) && (phase == RECORDING || phase == FINALIZING || phase == SENDING)) {
             // The round video fades first: the passcode would cover it. The lock is already saved,
             // so the wait fails closed, and any other lock cancels the pending leave (onPasscodeShown).
-            if (chat.instantCameraView != null && AndroidUtilities.shouldEnableAnimation()) {
+            if (chat.instantCameraView != null && org.telegram.messenger.SharedConfig.animationsEnabled() && AndroidUtilities.getAnimatorDurationScale() > 0 && AndroidUtilities.shouldEnableAnimation()) {
+                AndroidUtilities.cancelRunOnUIThread(poll); // the clip is handed off: a timeout firing now would lock and cancel the leave
                 chat.instantCameraView.animate().alpha(0f).setDuration(LEAVE_DELAY_MS - 20).start(); // a plain fade: the camera's own shrink glitches under the lock
                 AndroidUtilities.cancelRunOnUIThread(leave);
                 AndroidUtilities.runOnUIThread(leave, LEAVE_DELAY_MS);
