@@ -155,6 +155,7 @@ public class InterfaceStyleActivity extends BaseNekoXSettingsActivity {
     private final AbstractConfigCell dividerMainTabs = bind(new ConfigCellDivider());
 
     private final AbstractConfigCell headerFolder = bind(new ConfigCellHeader(getString(R.string.Folder)));
+    private final AbstractConfigCell folderTabsPreviewRow = bind(new ConfigCellCustom(null, ConfigCellCustom.CUSTOM_ITEM_InterfaceStyleFolderPreview, false));
     private final AbstractConfigCell tabsTitleTypeRow = bind(new ConfigCellSelectBox(null, NekoConfig.tabsTitleType, new String[]{
             getString(R.string.TabTitleTypeText),
             getString(R.string.TabTitleTypeIcon),
@@ -387,6 +388,7 @@ public class InterfaceStyleActivity extends BaseNekoXSettingsActivity {
         rows.add(dividerMainTabs);
 
         rows.add(headerFolder);
+        rows.add(folderTabsPreviewRow);
         rows.add(tabsTitleTypeRow);
         rows.add(tabStyleStrokeRow);
         rows.add(dividerFolder);
@@ -435,7 +437,9 @@ public class InterfaceStyleActivity extends BaseNekoXSettingsActivity {
             if (parentLayout != null) {
                 parentLayout.rebuildFragments(0);
             }
-        } else if (key.equals(NaConfig.INSTANCE.getTabStyleStroke().getKey())) {
+        } else if (key.equals(NaConfig.INSTANCE.getTabStyleStroke().getKey()) || key.equals(NekoConfig.tabsTitleType.getKey())) {
+            // The rebuild of the other fragments skips this page, so the preview is rebound here
+            updateRows();
             getNotificationCenter().postNotificationName(NotificationCenter.dialogFiltersUpdated);
         }
     }
@@ -558,6 +562,8 @@ public class InterfaceStyleActivity extends BaseNekoXSettingsActivity {
                     ((SlideIntChooseView) child).updateColors();
                 } else if (child instanceof MainTabsPreviewCell) {
                     ((MainTabsPreviewCell) child).update();
+                } else if (child instanceof FolderTabsPreviewCell) {
+                    ((FolderTabsPreviewCell) child).update();
                 }
             }
         };
@@ -590,6 +596,8 @@ public class InterfaceStyleActivity extends BaseNekoXSettingsActivity {
                 return view;
             } else if (viewType == ConfigCellCustom.CUSTOM_ITEM_InterfaceStyleNavPreview) {
                 return new MainTabsPreviewCell(mContext, currentAccount, getResourceProvider());
+            } else if (viewType == ConfigCellCustom.CUSTOM_ITEM_InterfaceStyleFolderPreview) {
+                return new FolderTabsPreviewCell(mContext, currentAccount, getResourceProvider());
             }
             return null;
         }
@@ -626,6 +634,8 @@ public class InterfaceStyleActivity extends BaseNekoXSettingsActivity {
                 cell.setFixedSize(0);
             } else if (row == mainTabsPreviewRow) {
                 ((MainTabsPreviewCell) holder.itemView).update();
+            } else if (row == folderTabsPreviewRow) {
+                ((FolderTabsPreviewCell) holder.itemView).update();
             } else if (row == infoRow) {
                 TextInfoPrivacyCell cell = (TextInfoPrivacyCell) holder.itemView;
                 cell.setText(getString(R.string.InterfaceStyleInfo));
