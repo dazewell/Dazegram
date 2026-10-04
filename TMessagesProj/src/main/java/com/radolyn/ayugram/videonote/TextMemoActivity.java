@@ -241,9 +241,6 @@ public class TextMemoActivity extends Activity {
 
         LinearLayout inputRow = new LinearLayout(this);
         inputRow.setOrientation(LinearLayout.HORIZONTAL);
-        // The send button's pop and shadow reach past the row
-        inputRow.setClipChildren(false);
-        card.setClipChildren(false);
         card.addView(inputRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 8, 0, 0));
 
         // The input drawn like the composer's bubble, tinted with the send colour, and outlined harder while focused
@@ -253,7 +250,8 @@ public class TextMemoActivity extends Activity {
         inputBubble.setBackground(inputBackground);
         inputBubble.setPadding(dp(14), dp(8), dp(14), dp(8));
         inputBubble.setMinimumHeight(dp(44));
-        inputRow.addView(inputBubble, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f));
+        // Bottom edge level with the send circle, which sits 4dp inside its view
+        inputRow.addView(inputBubble, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, Gravity.BOTTOM, 0, 0, 0, 4));
 
         field = new EditTextBoldCursor(this);
         field.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
@@ -291,7 +289,8 @@ public class TextMemoActivity extends Activity {
         sendButton.setImageResource(R.drawable.ic_send);
         sendButton.setContentDescription(LocaleController.getString(R.string.Send));
         sendButton.setOnClickListener(v -> send());
-        inputRow.addView(sendButton, LayoutHelper.createLinear(44, 44, Gravity.BOTTOM, 8, 0, 0, 0));
+        // 52dp around a 44dp circle, so its pop on waking stays inside its own bounds and nothing clips it
+        inputRow.addView(sendButton, LayoutHelper.createLinear(52, 52, Gravity.BOTTOM, 4, 0, 0, 0));
 
         updateSendButton(false);
     }
@@ -333,7 +332,7 @@ public class TextMemoActivity extends Activity {
         GradientDrawable sendBackground = new GradientDrawable();
         sendBackground.setShape(GradientDrawable.OVAL);
         sendBackground.setColor(accent);
-        sendButton.setBackground(sendBackground);
+        sendButton.setBackground(new android.graphics.drawable.InsetDrawable(sendBackground, dp(4)));
         // The colour the record button's icon uses on the same accent, which a light accent needs over plain white
         sendButton.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_messagePanelVoicePressed), PorterDuff.Mode.SRC_IN));
     }
