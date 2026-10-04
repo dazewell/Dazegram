@@ -438,8 +438,15 @@ public class InterfaceStyleActivity extends BaseNekoXSettingsActivity {
                 parentLayout.rebuildFragments(0);
             }
         } else if (key.equals(NaConfig.INSTANCE.getTabStyleStroke().getKey()) || key.equals(NekoConfig.tabsTitleType.getKey())) {
-            // The rebuild of the other fragments skips this page, so the preview is rebound here
-            updateRows();
+            // The rebuild of the other fragments skips this page, so the preview is refreshed here. Not updateRows():
+            // rebinding the select row under its still-closing popup flashes the menu at the top of the screen
+            if (listView != null) {
+                for (int i = 0; i < listView.getChildCount(); i++) {
+                    if (listView.getChildAt(i) instanceof FolderTabsPreviewCell) {
+                        ((FolderTabsPreviewCell) listView.getChildAt(i)).update();
+                    }
+                }
+            }
             getNotificationCenter().postNotificationName(NotificationCenter.dialogFiltersUpdated);
         }
     }
