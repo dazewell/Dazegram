@@ -275,7 +275,7 @@ public final class VideoNoteShortcut {
     private static WeakReference<ChatActivity> sessionChat;
     private static final Runnable poll = VideoNoteShortcut::poll;
     private static final Runnable leave = VideoNoteShortcut::lockAndLeave;
-    private static final long LEAVE_DELAY_MS = 220; // InstantCameraView.startAnimation's 180ms, plus a margin
+    private static final long LEAVE_DELAY_MS = 220; // the fade below, plus a margin
 
     private static void setPhase(int newPhase) {
         phase = newPhase;
@@ -419,10 +419,10 @@ public final class VideoNoteShortcut {
     /** ChatActivity.sendMedia, once the clip has been handed to SendMessagesHelper. Ends the memo on the launcher. */
     public static void onMediaSent(ChatActivity chat) {
         if (isSessionChat(chat) && (phase == RECORDING || phase == FINALIZING || phase == SENDING)) {
-            // The round camera's own shrink-and-fade plays first: the passcode would cover it. The lock is already saved,
+            // The round video fades first: the passcode would cover it. The lock is already saved,
             // so the wait fails closed, and any other lock cancels the pending leave (onPasscodeShown).
             if (chat.instantCameraView != null && AndroidUtilities.shouldEnableAnimation()) {
-                chat.instantCameraView.startAnimation(false, false);
+                chat.instantCameraView.animate().alpha(0f).setDuration(LEAVE_DELAY_MS - 20).start(); // a plain fade: the camera's own shrink glitches under the lock
                 AndroidUtilities.cancelRunOnUIThread(leave);
                 AndroidUtilities.runOnUIThread(leave, LEAVE_DELAY_MS);
             } else {
