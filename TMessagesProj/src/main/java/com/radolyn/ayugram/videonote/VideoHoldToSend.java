@@ -149,13 +149,16 @@ public final class VideoHoldToSend {
                 break;
             case MotionEvent.ACTION_UP:
                 // a fast slide-off can report its last position only in the UP, with no MOVE outside first
-                if (tracking && armed && contains(circle, ev) && canSend.run()) {
+                // the event times, not armRunnable, tell a tap from a hold: a stalled main thread can arm before
+                // a quick release is processed, and that tap must not send
+                final boolean held = ev.getEventTime() - ev.getDownTime() >= ARM_MS;
+                if (tracking && armed && held && contains(circle, ev) && canSend.run()) {
                     // cleared before sending: a paid-message confirmation pauses into the preview instead of
                     // closing the camera, and the disc must not stay painted over it
                     reset();
                     send.run();
-                } else if (tracking && !armed && ev.getEventTime() - ev.getDownTime() < ARM_MS && contains(circle, ev) && canToggle.run()) {
-                    // a tap. The time check matters only where nothing arms: a long press that can't send isn't a tap
+                } else if (tracking && !held && contains(circle, ev) && canToggle.run()) {
+                    // a tap; also where nothing arms, since a long press that can't send isn't one
                     cancel();
                     toggle.run();
                 } else {
