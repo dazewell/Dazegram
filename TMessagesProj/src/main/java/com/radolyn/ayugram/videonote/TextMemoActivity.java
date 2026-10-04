@@ -366,9 +366,14 @@ public class TextMemoActivity extends Activity {
             plane.getAnimatedDrawable().setAutoRepeat(1);
         }
         plane.postDelayed(plane::playAnimation, 220);
-        // Once the card is nearly in, so the keyboard's lift continues its entry instead of fighting it
+        // Not with the window: the card settles first, and an automation that swaps the keyboard per app (Tasker) gets
+        // to switch it before it comes up, rather than the wrong one opening and then reopening
         field.requestFocus();
-        field.postDelayed(() -> AndroidUtilities.showKeyboard(field), 180);
+        field.postDelayed(() -> {
+            if (!dismissing) {
+                AndroidUtilities.showKeyboard(field);
+            }
+        }, 500);
     }
 
     private void playPlane() {
