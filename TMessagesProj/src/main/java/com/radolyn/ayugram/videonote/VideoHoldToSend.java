@@ -40,10 +40,9 @@ import xyz.nextalone.nagram.NaConfig;
  * Press and hold the round video circle to send a hands-free (locked) recording, or the paused preview it
  * stopped into, so the send doesn't need the small button in the corner. A disc fills the circle from its centre
  * while held; once full, letting go sends. A light tick marks the touch, a firm one the moment it arms, and a
- * short one when sliding off disarms it. Letting go early, sliding off the
- * circle or a second finger (pinch zoom) cancels and nothing changes. The rim is left alone on purpose: it
- * already carries the recording-time arc.
- * A tap (let go before it arms) pauses or resumes instead, as the composer's pause button would.
+ * short one when sliding off disarms it. Letting go before it arms is a tap, which pauses or resumes as the
+ * composer's pause button would. Sliding off the circle or a second finger (pinch zoom) cancels and nothing
+ * changes. The rim is left alone on purpose: it already carries the recording-time arc.
  * A small label above the circle says how it works whenever it's available.
  * The preview used to toggle its sound on any tap, which the hold now owns, so its sound moves to a chip in the
  * composer's record controls (VideoPreviewSoundChip) for as long as the preview is up.
