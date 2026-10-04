@@ -600,7 +600,7 @@
             android:resizeableActivity="false"
             android:windowSoftInputMode="adjustResize|stateHidden">
         </activity>
-        <!-- NagramX: the text memo launcher shortcut, in its own task so nothing of the app shows behind it -->
+        <!-- NagramX: the text memo launcher shortcut, in its own task so the chat list never comes forward and closing returns to the launcher -->
         <activity
             android:name="com.radolyn.ayugram.videonote.TextMemoActivity"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize"

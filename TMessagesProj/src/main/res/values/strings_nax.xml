@@ -460,7 +460,7 @@
     <string name="VideoNoteShortcutTargetUnsupported">Video memos can only go to a person.</string>
     <string name="MemoShortcutsHeader">Memos</string>
     <string name="TextMemoShortcut">Text memo shortcut</string>
-    <string name="TextMemoShortcutNotice">Adds a launcher shortcut that opens a bare box to type a message to Saved Messages or a person you pick, even while the app is locked. Nothing else of the app is shown.</string>
+    <string name="TextMemoShortcutNotice">Adds a launcher shortcut that opens a card to type a message to Saved Messages or a person you pick, even while the app is locked. The chat itself is never shown.</string>
     <string name="TextMemoShortcutLabel">Text memo</string>
     <string name="TextMemoHint">Goes straight to the chat, without opening it</string>
     <string name="LauncherShortcuts">Launcher shortcuts</string>

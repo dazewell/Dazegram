@@ -2,6 +2,8 @@ package com.radolyn.ayugram.videonote;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.content.Intent;
@@ -12,6 +14,7 @@ import android.graphics.PorterDuffColorFilter;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.InsetDrawable;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.InputType;
@@ -332,7 +335,7 @@ public class TextMemoActivity extends Activity {
         GradientDrawable sendBackground = new GradientDrawable();
         sendBackground.setShape(GradientDrawable.OVAL);
         sendBackground.setColor(accent);
-        sendButton.setBackground(new android.graphics.drawable.InsetDrawable(sendBackground, dp(4)));
+        sendButton.setBackground(new InsetDrawable(sendBackground, dp(4)));
         // The colour the record button's icon uses on the same accent, which a light accent needs over plain white
         sendButton.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_messagePanelVoicePressed), PorterDuff.Mode.SRC_IN));
     }
@@ -369,7 +372,7 @@ public class TextMemoActivity extends Activity {
         // to switch it before it comes up, rather than the wrong one opening and then reopening
         field.requestFocus();
         field.postDelayed(() -> {
-            if (!dismissing) {
+            if (!dismissing && !isFinishing()) {
                 AndroidUtilities.showKeyboard(field);
             }
         }, 500);
@@ -490,9 +493,9 @@ public class TextMemoActivity extends Activity {
                 // Gone by the time it reaches the plane, over its last 80 ms
                 bubble.setAlpha(Math.min(1f, (1f - t) * 280 / 80f));
             });
-            flight.addListener(new android.animation.AnimatorListenerAdapter() {
+            flight.addListener(new AnimatorListenerAdapter() {
                 @Override
-                public void onAnimationEnd(android.animation.Animator animation) {
+                public void onAnimationEnd(Animator animation) {
                     root.removeView(bubble);
                 }
             });
