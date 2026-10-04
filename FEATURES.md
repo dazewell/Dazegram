@@ -265,9 +265,9 @@ While a round video records hands-free or waits paused in its preview, tap the v
 
 A round video message you've recorded but haven't sent survives backing out of the chat, switching apps mid-recording, or the chat locking behind a passcode — the clip waits in the preview, trimmed the way you left it, for up to a day. What comes back after the app or chat was torn down is the trim strip and send button rather than the round preview itself.
 
-### Video memo shortcut <!-- #video-note-shortcut -->
+### Video and text memo shortcuts <!-- #video-note-shortcut --> <!-- #text-memo-shortcut -->
 
-Turn on *Video memo shortcut* under N-Settings → General → Launcher shortcuts (off by default) and long-pressing the app icon offers *Video memo*: it starts a hands-free round video for Saved Messages, or for the *Recipient* you pick, on the chosen *Camera* (front by default). Choose *Both* for two shortcuts, one per camera. It works while the app is locked: the passcode comes up once you send or discard.
+Turn on *Video memo shortcut* or *Text memo shortcut* under N-Settings → General → Launcher shortcuts (off by default) and long-pressing the app icon offers *Video memo*, a hands-free round video on the chosen *Camera* (*Both* gives two shortcuts), or *Text memo*, a box over the chat wallpaper to type a message, with no chat in sight. Both go to Saved Messages or your *Recipient*, even while the app is locked.
 
 ### Custom file names for saved media <!-- #custom-file-names -->
 

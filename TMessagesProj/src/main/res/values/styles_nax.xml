@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- The text memo's window. No starting window: it would flash the theme's plain background before the chat
+         wallpaper is drawn. -->
+    <style name="Theme.TMessages.TextMemo" parent="Theme.TMessages">
+        <item name="android:windowDisablePreview">true</item>
+    </style>
+
+</resources>

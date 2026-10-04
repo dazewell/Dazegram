@@ -5216,7 +5216,7 @@ public class MediaDataController extends BaseController {
                     ShortcutInfoCompat.Builder builder = new ShortcutInfoCompat.Builder(ApplicationLoader.applicationContext, id)
                             .setShortLabel(name)
                             .setLongLabel(name)
-                            .setRank(3 + a + com.radolyn.ayugram.videonote.VideoNoteShortcut.getExtraRanks()) // NagramX: a second video memo shortcut takes rank 3, keep recent chats after it
+                            .setRank(3 + a + com.radolyn.ayugram.videonote.VideoNoteShortcut.getExtraRanks()) // NagramX: memo shortcuts past the first take ranks from 3, keep recent chats after them
                             .setIntent(shortcutIntent);
                     if (SharedConfig.directShare) {
                         builder.setCategories(category);

@@ -600,6 +600,16 @@
             android:resizeableActivity="false"
             android:windowSoftInputMode="adjustResize|stateHidden">
         </activity>
+        <!-- NagramX: the text memo launcher shortcut, in its own task so the chat list never comes forward and closing returns to the launcher -->
+        <activity
+            android:name="com.radolyn.ayugram.videonote.TextMemoActivity"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:theme="@style/Theme.TMessages.TextMemo"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
         <activity android:name="org.telegram.ui.VoIPPermissionActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|uiMode"
             android:taskAffinity="${applicationId}.voip"

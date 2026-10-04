@@ -1065,6 +1065,12 @@ object NaConfig {
             ConfigItem.configTypeInt,
             0 // 0: front; 1: rear; 2: both, as two shortcuts
         )
+    val textMemoShortcut =
+        addConfig(
+            "TextMemoShortcut",
+            ConfigItem.configTypeBool,
+            false
+        )
     val ghostModeShortcut =
         addConfig(
             "GhostModeShortcut",

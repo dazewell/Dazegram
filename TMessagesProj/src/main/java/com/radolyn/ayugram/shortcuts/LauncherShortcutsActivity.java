@@ -20,6 +20,7 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.radolyn.ayugram.videonote.TextMemoShortcut;
 import com.radolyn.ayugram.videonote.VideoNoteShortcut;
 import com.radolyn.ayugram.videonote.VideoNoteTarget;
 
@@ -38,8 +39,6 @@ import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.DialogsActivity;
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 
 import kotlin.Unit;
 import tw.nekomimi.nekogram.config.CellGroup;
@@ -72,24 +71,24 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
     private final AbstractConfigCell ghostModeRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getGhostModeShortcut(), getString(R.string.GhostModeShortcutNotice)));
     private final AbstractConfigCell dividerGhostMode = cellGroup.appendCell(new ConfigCellDivider());
 
-    private final AbstractConfigCell headerVideoNote = cellGroup.appendCell(new ConfigCellHeader(getString(R.string.VideoNoteShortcutLabel)));
+    private final AbstractConfigCell headerVideoNote = cellGroup.appendCell(new ConfigCellHeader(getString(R.string.MemoShortcutsHeader)));
     private final AbstractConfigCell videoNoteRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getVideoNoteShortcut(), getString(R.string.VideoNoteShortcutNotice)));
     private final AbstractConfigCell videoNoteCameraRow = cellGroup.appendCell(new ConfigCellSelectBox("VideoNoteShortcutCamera", NaConfig.INSTANCE.getVideoNoteShortcutCamera(), new String[]{
             getString(R.string.CameraInVideoMessagesFront),
             getString(R.string.CameraInVideoMessagesRear),
             getString(R.string.VideoNoteShortcutCameraBoth)
     }, null));
+    private final AbstractConfigCell textMemoRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getTextMemoShortcut(), getString(R.string.TextMemoShortcutNotice)));
+    // Shared by both memos, so it sits last
     private final ConfigCellText videoNoteTargetRow = (ConfigCellText) cellGroup.appendCell(new ConfigCellText("VideoNoteShortcutTarget", null));
     private final AbstractConfigCell dividerVideoNote = cellGroup.appendCell(new ConfigCellDivider());
-    // Shown only while the shortcut is on, in this order right under its switch
-    private final List<AbstractConfigCell> videoNoteOptionRows = Arrays.asList(videoNoteCameraRow, videoNoteTargetRow);
 
     private ListAdapter listAdapter;
     private PreviewCell previewCell;
     private int targetLoadRequest;
 
     public LauncherShortcutsActivity() {
-        updateVideoNoteRows(false);
+        updateMemoRows(false);
         updateTargetValue();
         addRowsToMap(cellGroup);
     }
@@ -143,44 +142,50 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
     }
 
     private void onShortcutSettingChanged(String key) {
-        boolean videoNote = key.equals(NaConfig.INSTANCE.getVideoNoteShortcut().getKey());
+        boolean memo = key.equals(NaConfig.INSTANCE.getVideoNoteShortcut().getKey()) || key.equals(NaConfig.INSTANCE.getTextMemoShortcut().getKey());
         // The camera decides how many video memo shortcuts there are and what they are called
         boolean camera = key.equals(NaConfig.INSTANCE.getVideoNoteShortcutCamera().getKey());
-        if (!videoNote && !camera && !key.equals(NaConfig.INSTANCE.getGhostModeShortcut().getKey())) {
+        if (!memo && !camera && !key.equals(NaConfig.INSTANCE.getGhostModeShortcut().getKey())) {
             return;
         }
         MediaDataController.getInstance(currentAccount).buildShortcuts();
-        if (videoNote) {
-            updateVideoNoteRows(true);
+        if (memo) {
+            updateMemoRows(true);
         }
         if (previewCell != null) {
             previewCell.update();
         }
     }
 
-    // The camera and the recipient only mean something while the shortcut is on. ConfigCellSelectBox can't be dimmed,
-    // so the rows are taken out instead, and the row map is rebuilt so search results and settings links still land on
-    // the right row.
-    private void updateVideoNoteRows(boolean animated) {
-        boolean show = VideoNoteShortcut.isEnabled();
-        if (show == cellGroup.rows.contains(videoNoteCameraRow)) {
+    // The camera only means something while the video memo is on, the recipient while either memo is. ConfigCellSelectBox
+    // can't be dimmed, so the rows are taken out instead, and the row map is rebuilt so search results and settings links
+    // still land on the right row.
+    private void updateMemoRows(boolean animated) {
+        setRowShown(videoNoteCameraRow, videoNoteRow, VideoNoteShortcut.isEnabled(), animated);
+        setRowShown(videoNoteTargetRow, textMemoRow, VideoNoteShortcut.isEnabled() || TextMemoShortcut.isEnabled(), animated);
+        addRowsToMap(cellGroup);
+    }
+
+    private void setRowShown(AbstractConfigCell row, AbstractConfigCell after, boolean show, boolean animated) {
+        if (show == cellGroup.rows.contains(row)) {
             return;
         }
-        int index = cellGroup.rows.indexOf(videoNoteRow) + 1;
+        int index;
         if (show) {
-            cellGroup.rows.addAll(index, videoNoteOptionRows);
+            index = cellGroup.rows.indexOf(after) + 1;
+            cellGroup.rows.add(index, row);
         } else {
-            cellGroup.rows.removeAll(videoNoteOptionRows);
+            index = cellGroup.rows.indexOf(row);
+            cellGroup.rows.remove(index);
         }
         if (animated && listAdapter != null) {
             if (show) {
-                listAdapter.notifyItemRangeInserted(index, videoNoteOptionRows.size());
+                listAdapter.notifyItemInserted(index);
             } else {
-                listAdapter.notifyItemRangeRemoved(index, videoNoteOptionRows.size());
+                listAdapter.notifyItemRemoved(index);
             }
-            listAdapter.notifyItemChanged(index - 1); // the switch: its divider follows the next row
+            listAdapter.notifyItemChanged(index - 1); // the row above: its divider follows the next row
         }
-        addRowsToMap(cellGroup);
     }
 
     private void updateTargetValue() {
@@ -312,7 +317,7 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
         private static final int POPUP_PADDING = 6;
         private static final int POPUP_TOP = 8;
         private static final int POPUP_BOTTOM = 16;
-        private static final int ITEM_COUNT = 4;
+        private static final int ITEM_COUNT = 5;
 
         private final LinearLayout popup;
         private final GradientDrawable popupBackground = new GradientDrawable();
@@ -320,6 +325,7 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
         private final View ghostModeItem;
         private final View videoNoteItem;
         private final View videoNoteRearItem;
+        private final View textMemoItem;
 
         PreviewCell(Context context) {
             super(context);
@@ -340,6 +346,7 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
             ghostModeItem = addItem(context, 1, 0, GhostModeShortcut.createIcon(), R.string.AyuModeShortcut);
             videoNoteItem = addItem(context, 2, 0, VideoNoteShortcut.createIcon(), R.string.VideoNoteShortcutLabel);
             videoNoteRearItem = addItem(context, 3, 0, VideoNoteShortcut.createIcon(), R.string.VideoNoteShortcutLabel);
+            textMemoItem = addItem(context, 4, 0, TextMemoShortcut.createIcon(), R.string.TextMemoShortcutLabel);
 
             setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
             update();
@@ -403,6 +410,7 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
             labels[3].setText(VideoNoteShortcut.getLabel(true, true));
             videoNoteItem.setVisibility(VideoNoteShortcut.isEnabled() ? VISIBLE : GONE);
             videoNoteRearItem.setVisibility(VideoNoteShortcut.isEnabled() && both ? VISIBLE : GONE);
+            textMemoItem.setVisibility(TextMemoShortcut.isEnabled() ? VISIBLE : GONE);
         }
     }
 }
