@@ -291,7 +291,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     // it the same capsule end the right gets. Recomputed from dispatchDraw rather than baked in at
     // setup because centering is read live (ChatActivity.canShowCenteredTitle) and can flip under
     // an ActionBar that survives it: the settings row only rebuilds background fragments when its
-    // own centered predicate changes (NekoGeneralSettingsActivity.animateActionBarUpdate), and
+    // own centered predicate changes (InterfaceStyleActivity.animateActionBarUpdate), and
     // that predicate ignores type 2 while the chat's ignores type 3, so switching "always" to
     // "settings only" flips the chat and rebuilds nothing.
     //

@@ -351,6 +351,7 @@
     <string name="StyleMaterialDesign3" translatable="false">Material Design 3</string>
     <string name="InterfaceStyle">Interface Style</string>
     <string name="InterfaceStyleHeaderStyle">Style</string>
+    <string name="InterfaceStyleHeaderTitleAndDecoration">Title and decoration</string>
     <string name="InterfaceStyleLiquidGlass">Liquid Glass</string>
     <string name="InterfaceStyleLiquidGlassUnsupported">Your device can\'t render this</string>
     <string name="InterfaceStyleApplyToHeader">Apply to</string>
