@@ -83,6 +83,8 @@ public final class ComposerMd3Surface {
     private static final int SHEET_MORPH = 48;
     // The sheet's shape morphs on its own clock, so the change stays visible however fast the keyboard moves.
     private static final long SHEET_SHAPE_DURATION = 500;
+    // A docked sheet starts floating once its dock factor drops below this, a few dp into the lift.
+    private static final float SHEET_FLOAT_AT = 0.9f;
     // Docked, the tools row's bottom sits this far above the nav bar in place of the floating lift.
     private static final int DOCKED_LIFT = 4;
     private static final int SHADOW_RADIUS = 4;
@@ -390,9 +392,11 @@ public final class ComposerMd3Surface {
         }
         island.set(left / weight, top / weight, right / weight, bottom / weight);
         // Docked, the island keeps its width and runs down off the screen, so it has no bottom edge to show. The shape
-        // switches halfway through the lift either way, so closing the keyboard doesn't wait for the island to land.
+        // starts floating as soon as the keyboard begins lifting it, so the morph plays alongside the keyboard rather
+        // than after it, and docks again halfway down, so closing the keyboard doesn't wait for the island to land.
         final float resting = dockFactor(height - host.getInputBubbleBottom() - host.getInputBubbleBottomLift());
-        final float dock = sheetShape != null ? sheetShape.set(resting > 0.5f ? 1f : 0f) : resting;
+        final float dockAt = sheetShape != null && sheetShape.getTargetValue() > 0.5f ? SHEET_FLOAT_AT : 0.5f;
+        final float dock = sheetShape != null ? sheetShape.set(resting > dockAt ? 1f : 0f) : resting;
         island.bottom += (height - island.bottom) * dock;
         final float radius = Math.min(dp(ISLAND_RADIUS), island.height() / 2f);
         final float bottomRadius = Math.min(dp(ISLAND_RADIUS) * (1f - dock), island.height() / 2f);
