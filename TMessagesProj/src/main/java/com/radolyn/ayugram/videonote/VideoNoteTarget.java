@@ -101,7 +101,6 @@ public final class VideoNoteTarget {
                 loaded = false;
             }
             if (!loaded) {
-                android.util.Log.i("NAX_SMOKE_text-memo-shortcut", "NAX_SMOKE_text-memo-shortcut fallback=timeout video=" + video);
                 return selfId;
             }
             if (needUser && dbUser[0] != null) {
@@ -123,8 +122,6 @@ public final class VideoNoteTarget {
     static void resolveAsync(int account, boolean video, LongConsumer done) {
         long selfId = UserConfig.getInstance(account).getClientUserId();
         long id = get(account);
-        android.util.Log.i("NAX_SMOKE_text-memo-shortcut", "NAX_SMOKE_text-memo-shortcut BEGIN " + org.telegram.messenger.BuildConfig.BUILD_VERSION_STRING
-                + " account=" + account + " selected=" + UserConfig.selectedAccount + " stored=" + (id != 0) + " self=" + (id == selfId));
         if (id == 0 || id == selfId) {
             done.accept(selfId);
             return;
@@ -172,25 +169,18 @@ public final class VideoNoteTarget {
     // What we don't know counts as no: the recording happens behind the lock shield, where the user can't see which
     // chat they're in, so a send that would bounce or cost Stars must never be armed.
     private static boolean canReceive(int account, MessagesController controller, TLRPC.User user, TLRPC.UserFull full, boolean video) {
-        android.util.Log.i("NAX_SMOKE_text-memo-shortcut", "NAX_SMOKE_text-memo-shortcut canReceive account=" + account + " video=" + video
-                + " user=" + (user != null) + " eligible=" + isEligible(account, user) + " full=" + (full != null));
         if (!isEligible(account, user) || full == null || controller.getRestrictionReason(user.restriction_reason) != null) {
-            android.util.Log.i("NAX_SMOKE_text-memo-shortcut", "NAX_SMOKE_text-memo-shortcut fallback=unknown-or-restricted");
             return false;
         }
         if (full.blocked || controller.blockePeers.indexOfKey(user.id) >= 0 || video && full.voice_messages_forbidden) {
-            android.util.Log.i("NAX_SMOKE_text-memo-shortcut", "NAX_SMOKE_text-memo-shortcut fallback=blocked-or-voice");
             return false;
         }
         // The full info is the price for you; the user's own field is only a hint, set even when you're exempt.
         // Same precedence as MessagesController.getSendPaidMessagesStars.
         if (full.send_paid_messages_stars > 0) {
-            android.util.Log.i("NAX_SMOKE_text-memo-shortcut", "NAX_SMOKE_text-memo-shortcut fallback=paid");
             return false;
         }
-        boolean ok = controller.isUserContactBlocked(user.id, true) == null
+        return controller.isUserContactBlocked(user.id, true) == null
                 && !(full.contact_require_premium && !UserConfig.getInstance(account).isPremium());
-        android.util.Log.i("NAX_SMOKE_text-memo-shortcut", "NAX_SMOKE_text-memo-shortcut result=" + (ok ? "recipient" : "fallback=premium-required"));
-        return ok;
     }
 }
