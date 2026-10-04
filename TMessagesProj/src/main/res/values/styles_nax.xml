@@ -6,6 +6,9 @@
          No starting window either: ColorOS adds one even for a translucent activity, and it shows black. -->
     <style name="Theme.TMessages.TextMemo" parent="Theme.TMessages.Transparent">
         <item name="android:windowDisablePreview">true</item>
+        <!-- The ColorOS launcher stops drawing its home screen when it hands over to an app and takes about a second
+             to redraw it under this card; with the wallpaper behind the window that gap shows the wallpaper, not black -->
+        <item name="android:windowShowWallpaper">true</item>
     </style>
 
 </resources>
