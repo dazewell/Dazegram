@@ -38,6 +38,7 @@ import org.telegram.ui.Components.SectionsScrollView;
 import org.telegram.ui.Components.SeekBarView;
 
 import java.util.ArrayList;
+import java.util.function.BooleanSupplier;
 import java.util.function.IntConsumer;
 import java.util.function.IntSupplier;
 
@@ -215,6 +216,8 @@ public final class HeaderBgSheet {
             tintRow(look);
             View tintStrength = slider(look, R.string.HeaderBackgroundTintStrength, 0, 100, () -> s.tintStrength, v -> s.tintStrength = v, false);
             syncs.add(() -> setRowEnabled(tintStrength, s.tintHue != HeaderBgSettings.TINT_AUTO));
+            TextSettingsCell alternateCell = choice(look, () -> true, () -> s.alternate = (s.alternate + 1) % (HeaderBgSettings.ALT_PIN + 1));
+            syncs.add(() -> alternateCell.setTextAndValue(getString(R.string.HeaderBackgroundAlternate), alternateName(s.alternate), false));
             addSpacer(content, 8);
 
             // The choices sit together under the switch, where a tap target reads as one; the sliders follow.
@@ -229,8 +232,8 @@ public final class HeaderBgSheet {
             });
             syncs.add(() -> gradientCell.setTextAndValueAndCheck(getString(R.string.HeaderBackgroundGradient), getString(R.string.HeaderBackgroundGradientInfo), s.gradient, true, false));
             gradient.addView(gradientCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-            TextSettingsCell fromCell = choice(gradient, () -> s.gradientFrom = (s.gradientFrom + 1) % 3);
-            TextSettingsCell curveCell = choice(gradient, () -> s.gradientCurve = (s.gradientCurve + 1) % (HeaderBgSettings.CURVE_SMOOTH + 1));
+            TextSettingsCell fromCell = choice(gradient, () -> s.gradient, () -> s.gradientFrom = (s.gradientFrom + 1) % 3);
+            TextSettingsCell curveCell = choice(gradient, () -> s.gradient, () -> s.gradientCurve = (s.gradientCurve + 1) % (HeaderBgSettings.CURVE_SMOOTH + 1));
             View gradientStrength = slider(gradient, R.string.HeaderBackgroundGradientStrength, 0, 100, () -> s.gradientStrength, v -> s.gradientStrength = v, false);
             View fadeRange = rangeSlider(gradient);
             syncs.add(() -> {
@@ -284,12 +287,12 @@ public final class HeaderBgSheet {
             return body;
         }
 
-        // A row that cycles its value on tap; ignored while the gradient is off.
-        private TextSettingsCell choice(LinearLayout parent, Runnable next) {
+        // A row that cycles its value on tap; ignored while it is not enabled.
+        private TextSettingsCell choice(LinearLayout parent, BooleanSupplier enabled, Runnable next) {
             TextSettingsCell cell = new TextSettingsCell(context, 21, rp);
             cell.setBackground(Theme.getSelectorDrawable(false, rp));
             cell.setOnClickListener(v -> {
-                if (!s.gradient) {
+                if (!enabled.getAsBoolean()) {
                     return;
                 }
                 next.run();
@@ -543,6 +546,19 @@ public final class HeaderBgSheet {
             return getString(R.string.HeaderBackgroundFromBottom);
         }
         return getString(R.string.HeaderBackgroundFromTitle);
+    }
+
+    private static String alternateName(int alternate) {
+        switch (alternate) {
+            case HeaderBgSettings.ALT_HEADER:
+                return getString(R.string.HeaderBackgroundAlternateHeader);
+            case HeaderBgSettings.ALT_BOTH:
+                return getString(R.string.HeaderBackgroundAlternateBoth);
+            case HeaderBgSettings.ALT_PIN:
+                return getString(R.string.HeaderBackgroundAlternatePin);
+            default:
+                return getString(R.string.HeaderBackgroundGradientOff);
+        }
     }
 
     private static String curveName(int curve) {

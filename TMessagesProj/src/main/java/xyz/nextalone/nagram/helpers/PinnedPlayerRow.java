@@ -16,6 +16,8 @@ import android.widget.FrameLayout;
 
 import androidx.annotation.NonNull;
 
+import com.radolyn.ayugram.headerbg.HeaderBgForeground;
+
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.UserObject;
 import org.telegram.ui.ActionBar.SimpleTextView;
@@ -88,6 +90,13 @@ public class PinnedPlayerRow extends FrameLayout {
         }
         r.setPanelListener(true);
         r.apply();
+    }
+
+    /** The compact copy reads its colours as it draws, so a recolour of the pinned strip has to redraw it. */
+    public static void invalidateCompact(View row) {
+        if (row instanceof PinnedPlayerRow && ((PinnedPlayerRow) row).compact != null) {
+            ((PinnedPlayerRow) row).compact.invalidate();
+        }
     }
 
     public static void setPinnedContent(View row, CharSequence label, int number, CharSequence text, boolean buttonVariant) {
@@ -325,8 +334,9 @@ public class PinnedPlayerRow extends FrameLayout {
         @Override
         protected void dispatchDraw(@NonNull Canvas canvas) {
             final Theme.ResourcesProvider resourcesProvider = chat != null ? chat.getResourceProvider() : null;
-            final int label = Theme.getColor(Theme.key_chat_topPanelTitle, resourcesProvider);
-            final int text = Theme.getColor(Theme.key_chat_topPanelMessage, resourcesProvider);
+            // Through the header photo's Alternate colour, like the pinned strip it copies.
+            final int label = HeaderBgForeground.pinColor(chat, Theme.key_chat_topPanelTitle, Theme.getColor(Theme.key_chat_topPanelTitle, resourcesProvider));
+            final int text = HeaderBgForeground.pinColor(chat, Theme.key_chat_topPanelMessage, Theme.getColor(Theme.key_chat_topPanelMessage, resourcesProvider));
             if (label != labelColor) {
                 labelColor = label;
                 labelView.setTextColor(label);
