@@ -48,7 +48,7 @@ import org.telegram.ui.Components.EditTextBoldCursor;
 import org.telegram.ui.Components.LayoutHelper;
 
 /**
- * The text memo: a bare card to type a message into, over a plain surface, in its own task. Nothing of the app is
+ * The text memo: a bare card to type a message into, over the dimmed launcher, in its own task. Nothing of the app is
  * shown, so it never touches the app lock: a locked app stays locked, and closing returns to the launcher. The text is
  * never stored; leaving the screen drops it.
  */
@@ -62,6 +62,9 @@ public class TextMemoActivity extends Activity {
     private ImageView sendButton;
     private boolean canSend;
     private boolean dismissing;
+    // 0 until the recipient is resolved; a send before that waits for it in pendingText
+    private long dialogId;
+    private String pendingText;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -82,6 +85,13 @@ public class TextMemoActivity extends Activity {
             return;
         }
         account = selected;
+        VideoNoteTarget.resolveAsync(account, false, id -> {
+            dialogId = id;
+            if (pendingText != null) {
+                sendTo(pendingText, id);
+                pendingText = null;
+            }
+        });
 
         WindowCompat.setDecorFitsSystemWindows(window, false);
         window.setStatusBarColor(Color.TRANSPARENT);
@@ -101,7 +111,15 @@ public class TextMemoActivity extends Activity {
             return WindowInsetsCompat.CONSUMED;
         });
 
+        // A tap outside closes an empty card like any dialog, but never throws away typed text
+        root.setOnClickListener(v -> {
+            if (field.length() == 0) {
+                dismiss();
+            }
+        });
+
         card = new LinearLayout(this);
+        card.setClickable(true);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setElevation(dp(8));
         card.setPadding(dp(20), dp(16), dp(12), dp(12));
@@ -168,12 +186,12 @@ public class TextMemoActivity extends Activity {
     }
 
     private void applyColors() {
-        int surface = Theme.getColor(Theme.key_windowBackgroundGray);
-        root.setBackgroundColor(surface);
-        boolean light = AndroidUtilities.computePerceivedBrightness(surface) > 0.721f;
+        // The material scrim: the launcher stays visible, dimmed, behind the card. This task holds nothing else of the
+        // app, so there is nothing to hide back there.
+        root.setBackgroundColor(0x52000000);
         WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
-        controller.setAppearanceLightStatusBars(light);
-        controller.setAppearanceLightNavigationBars(light);
+        controller.setAppearanceLightStatusBars(false);
+        controller.setAppearanceLightNavigationBars(false);
 
         GradientDrawable cardBackground = new GradientDrawable();
         cardBackground.setCornerRadius(dp(20));
@@ -247,15 +265,21 @@ public class TextMemoActivity extends Activity {
         if (dismissing || text.isEmpty()) {
             return;
         }
+        sendButton.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+        if (dialogId != 0) {
+            sendTo(text, dialogId);
+        } else {
+            pendingText = text; // goes out from the resolve callback, which outlives this screen
+        }
+        dismiss();
+    }
+
+    private void sendTo(String text, long dialogId) {
         try {
-            // Resolved now, not at launch: the recipient may have changed their privacy while this was open
-            long dialogId = VideoNoteTarget.resolve(account, false);
             SendMessagesHelper.prepareSendingText(AccountInstance.getInstance(account), text, dialogId, true, 0, 0, 0);
-            sendButton.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
         } catch (Throwable e) {
             FileLog.e(e);
         }
-        dismiss();
     }
 
     private void dismiss() {
