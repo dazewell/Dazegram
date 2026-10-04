@@ -114,6 +114,17 @@ public class InterfaceStyleActivity extends BaseNekoXSettingsActivity {
             getString(R.string.IconReplacementSolar),
     }, null));
     private final AbstractConfigCell alwaysShowDownloadIconRow = bind(new ConfigCellTextCheck(NaConfig.INSTANCE.getAlwaysShowDownloadIcon()));
+    private final AbstractConfigCell notificationIconRow = bind(new ConfigCellSelectBox(null, NaConfig.INSTANCE.getNotificationIcon(), new String[]{
+            getString(R.string.MapPreviewProviderTelegram),
+            getString(R.string.NagramX),
+            getString(R.string.Nagram),
+            getString(R.string.NekoX)
+    }, null));
+    private final AbstractConfigCell tabletModeRow = bind(new ConfigCellSelectBox(null, NekoConfig.tabletMode, new String[]{
+            getString(R.string.TabletModeDefault),
+            getString(R.string.TabletModeOn),
+            getString(R.string.TabletModeOff)
+    }, null));
     private final AbstractConfigCell dividerAppearance = bind(new ConfigCellDivider());
 
     private final AbstractConfigCell headerTitleAndDecoration = bind(new ConfigCellHeader(getString(R.string.InterfaceStyleHeaderTitleAndDecoration)));
@@ -356,6 +367,8 @@ public class InterfaceStyleActivity extends BaseNekoXSettingsActivity {
         rows.add(typefaceRow);
         rows.add(iconReplacementsRow);
         rows.add(alwaysShowDownloadIconRow);
+        rows.add(notificationIconRow);
+        rows.add(tabletModeRow);
         rows.add(dividerAppearance);
 
         rows.add(headerTitleAndDecoration);
@@ -396,7 +409,9 @@ public class InterfaceStyleActivity extends BaseNekoXSettingsActivity {
                 || key.equals(NaConfig.INSTANCE.getHideDividers().getKey())
                 || key.equals(NaConfig.INSTANCE.getIconReplacements().getKey())
                 || key.equals(NekoConfig.typeface.getKey())
-                || key.equals(NaConfig.INSTANCE.getAlwaysShowDownloadIcon().getKey())) {
+                || key.equals(NaConfig.INSTANCE.getAlwaysShowDownloadIcon().getKey())
+                || key.equals(NaConfig.INSTANCE.getNotificationIcon().getKey())
+                || key.equals(NekoConfig.tabletMode.getKey())) {
             showRestartTooltip();
         } else if (key.equals(NaConfig.INSTANCE.getSwitchStyle().getKey()) || key.equals(NaConfig.INSTANCE.getSliderStyle().getKey())) {
             // The rebuild makes a fresh list, so the saved position goes onto the new layout manager, read after the rebuild
