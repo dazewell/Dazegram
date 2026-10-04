@@ -31,7 +31,6 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
-import androidx.core.view.WindowInsetsControllerCompat;
 
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
@@ -48,7 +47,7 @@ import org.telegram.ui.Components.EditTextBoldCursor;
 import org.telegram.ui.Components.LayoutHelper;
 
 /**
- * The text memo: a bare card to type a message into, over the dimmed launcher, in its own task. Nothing of the app is
+ * The text memo: a bare card to type a message into, floating over the launcher, in its own task. Nothing of the app is
  * shown, so it never touches the app lock: a locked app stays locked, and closing returns to the launcher. The text is
  * never stored; leaving the screen drops it.
  */
@@ -186,12 +185,9 @@ public class TextMemoActivity extends Activity {
     }
 
     private void applyColors() {
-        // The material scrim: the launcher stays visible, dimmed, behind the card. This task holds nothing else of the
-        // app, so there is nothing to hide back there.
-        root.setBackgroundColor(0x52000000);
-        WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
-        controller.setAppearanceLightStatusBars(false);
-        controller.setAppearanceLightNavigationBars(false);
+        // No backdrop at all: the card floats over whatever was on screen, like a floating window. This task holds
+        // nothing else of the app, so there is nothing to hide back there.
+        root.setBackground(null);
 
         GradientDrawable cardBackground = new GradientDrawable();
         cardBackground.setCornerRadius(dp(20));
