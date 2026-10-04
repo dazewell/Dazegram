@@ -241,6 +241,9 @@ public class TextMemoActivity extends Activity {
 
         LinearLayout inputRow = new LinearLayout(this);
         inputRow.setOrientation(LinearLayout.HORIZONTAL);
+        // The send button's pop and shadow reach past the row
+        inputRow.setClipChildren(false);
+        card.setClipChildren(false);
         card.addView(inputRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 8, 0, 0));
 
         // The input drawn like the composer's bubble, tinted with the send colour, and outlined harder while focused
@@ -358,8 +361,11 @@ public class TextMemoActivity extends Activity {
         plane.animate().alpha(1f).setStartDelay(100).setDuration(200).start();
         hint.setAlpha(0f);
         hint.animate().alpha(1f).setStartDelay(100).setDuration(200).start();
-        // The plane hovers on a continuous loop, as on the QR login screen; a rest between loops read as a stall
-        plane.setAutoRepeat(true);
+        // The plane hovers on a continuous loop, as on the QR login screen; a rest between loops read as a stall. Set on the
+        // drawable: the view's own setAutoRepeat only applies to an animation loaded after it.
+        if (plane.getAnimatedDrawable() != null) {
+            plane.getAnimatedDrawable().setAutoRepeat(1);
+        }
         plane.postDelayed(plane::playAnimation, 220);
         // Once the card is nearly in, so the keyboard's lift continues its entry instead of fighting it
         field.requestFocus();
