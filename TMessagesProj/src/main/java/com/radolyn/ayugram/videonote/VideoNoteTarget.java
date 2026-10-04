@@ -182,7 +182,9 @@ public final class VideoNoteTarget {
             android.util.Log.i("NAX_SMOKE_text-memo-shortcut", "NAX_SMOKE_text-memo-shortcut fallback=blocked-or-voice");
             return false;
         }
-        if (user.send_paid_messages_stars > 0 || full.send_paid_messages_stars > 0) {
+        // The full info is the price for you; the user's own field is only a hint, set even when you're exempt.
+        // Same precedence as MessagesController.getSendPaidMessagesStars.
+        if (full.send_paid_messages_stars > 0) {
             android.util.Log.i("NAX_SMOKE_text-memo-shortcut", "NAX_SMOKE_text-memo-shortcut fallback=paid");
             return false;
         }
