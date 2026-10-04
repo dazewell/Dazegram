@@ -155,8 +155,12 @@ public class TextMemoActivity extends Activity {
         content.setOrientation(LinearLayout.VERTICAL);
         root.addView(content, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
         ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
-            Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.ime() | WindowInsetsCompat.Type.displayCutout());
-            content.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            // Frozen while leaving: the keyboard hides at the start of an exit, and the card leaves on its own motion
+            // rather than jumping down with the inset
+            if (!dismissing) {
+                Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.ime() | WindowInsetsCompat.Type.displayCutout());
+                content.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            }
             return WindowInsetsCompat.CONSUMED;
         });
 
@@ -227,9 +231,9 @@ public class TextMemoActivity extends Activity {
         field.setMinLines(1);
         field.setMaxLines(6);
         field.setVerticalScrollBarEnabled(true);
-        field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES | InputType.TYPE_TEXT_FLAG_AUTO_CORRECT);
-        // Nothing is kept by the app; ask the keyboard not to keep it either
-        field.setImeOptions(EditorInfo.IME_FLAG_NO_EXTRACT_UI | EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING);
+        // The composer's own flags, so the keyboard behaves as it does in any chat
+        field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        field.setImeOptions(EditorInfo.IME_FLAG_NO_EXTRACT_UI);
         field.setHint(LocaleController.getString(R.string.TypeMessage));
         field.setCursorSize(dp(20));
         field.setCursorWidth(1.5f);
@@ -304,12 +308,7 @@ public class TextMemoActivity extends Activity {
 
     private void animateIn() {
         scrim.setAlpha(0f);
-        scrim.animate().alpha(1f).setDuration(250).start();
-        plane.setAlpha(0f);
-        hint.setAlpha(0f);
-        plane.animate().alpha(1f).setStartDelay(80).setDuration(200).start();
-        hint.animate().alpha(1f).setStartDelay(80).setDuration(200).start();
-        plane.postDelayed(plane::playAnimation, 120);
+        scrim.animate().alpha(1f).setDuration(250).setInterpolator(CubicBezierInterpolator.EASE_OUT).start();
         card.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
             @Override
             public boolean onPreDraw() {
@@ -317,12 +316,43 @@ public class TextMemoActivity extends Activity {
                 card.setTranslationY(card.getHeight() + dp(8));
                 card.setScaleX(.96f);
                 card.setScaleY(.96f);
-                card.animate().translationY(0).scaleX(1f).scaleY(1f).setDuration(320).setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT).start();
+                card.animate().translationY(0).scaleX(1f).scaleY(1f).setDuration(340).setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT).start();
                 return true;
             }
         });
+        plane.setAlpha(0f);
+        plane.setTranslationY(dp(12));
+        plane.setScaleX(.8f);
+        plane.setScaleY(.8f);
+        plane.animate().translationY(0).scaleX(1f).scaleY(1f).setStartDelay(100).setDuration(320).setInterpolator(CubicBezierInterpolator.EASE_OUT_BACK).start();
+        plane.animate().alpha(1f).setStartDelay(100).setDuration(200).start();
+        hint.setAlpha(0f);
+        hint.animate().alpha(1f).setStartDelay(100).setDuration(200).start();
+        plane.postDelayed(idleLoop, 220);
+        // Once the card is nearly in, so the keyboard's lift continues its entry instead of fighting it
         field.requestFocus();
-        field.post(() -> AndroidUtilities.showKeyboard(field));
+        field.postDelayed(() -> AndroidUtilities.showKeyboard(field), 180);
+    }
+
+    // The plane's hover, then a rest: a calm hero, not a spinner. It stops while there's text or no room for it.
+    private final Runnable idleLoop = new Runnable() {
+        @Override
+        public void run() {
+            if (dismissing) {
+                return;
+            }
+            if (!heroHidden && field.length() == 0) {
+                playPlane();
+            }
+            plane.postDelayed(this, 2500);
+        }
+    };
+
+    private void playPlane() {
+        if (plane.getAnimatedDrawable() != null) {
+            plane.getAnimatedDrawable().setCurrentFrame(0, false);
+        }
+        plane.playAnimation();
     }
 
     private void setHeroHidden(boolean hidden) {
@@ -380,12 +410,18 @@ public class TextMemoActivity extends Activity {
         } else {
             pendingText = text; // goes out from the resolve callback, which outlives this screen
         }
-        flyOut(text);
-        dismiss();
+        beginExit();
+        // One thing moves at a time: the text lifts out of the card to the plane, the plane takes off, then the card drops
+        sendButton.animate().alpha(.5f).scaleX(.85f).scaleY(.85f).setDuration(150).setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT).start();
+        flyToPlane(text);
+        field.setAlpha(0f);
+        hint.animate().alpha(0f).setStartDelay(120).setDuration(150).start();
+        AndroidUtilities.runOnUIThread(this::takeOff, 200);
+        exitCard(280);
     }
 
-    // The text leaves as an outgoing bubble, up and away, which is all the confirmation there is
-    private void flyOut(String text) {
+    // The text, as an outgoing bubble over the input, flies into the plane
+    private void flyToPlane(String text) {
         try {
             TextView bubble = new TextView(this);
             bubble.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
@@ -394,30 +430,73 @@ public class TextMemoActivity extends Activity {
             bubble.setText(text);
             bubble.setTextColor(Theme.getColor(Theme.key_chat_messageTextOut));
             bubble.setPadding(dp(12), dp(8), dp(12), dp(8));
-            bubble.setMaxWidth((int) (root.getWidth() * .7f));
             GradientDrawable bubbleBackground = new GradientDrawable();
             bubbleBackground.setCornerRadius(dp(16));
             bubbleBackground.setColor(Theme.getColor(Theme.key_chat_outBubble));
             bubble.setBackground(bubbleBackground);
             bubble.setElevation(dp(2));
 
-            // The root has no padding, so window coordinates relative to it place the bubble over the input
+            // Same box as the input; the root has no padding, so window coordinates relative to it place it exactly
             int[] rootAt = new int[2];
             int[] inputAt = new int[2];
+            int[] planeAt = new int[2];
             root.getLocationInWindow(rootAt);
             inputBubble.getLocationInWindow(inputAt);
-            root.addView(bubble, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.END));
-            bubble.setTranslationX(-(root.getWidth() - (inputAt[0] - rootAt[0]) - inputBubble.getWidth()));
-            bubble.setTranslationY(inputAt[1] - rootAt[1]);
-            bubble.animate()
-                    .translationYBy(-root.getHeight() * .35f)
-                    .scaleX(.6f).scaleY(.6f)
-                    .setDuration(380).setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT).start();
-            bubble.animate().alpha(0f).setStartDelay(260).setDuration(120).start();
-            plane.animate().translationXBy(dp(60)).translationYBy(-dp(60)).alpha(0f).setStartDelay(0).setDuration(300).start();
+            plane.getLocationInWindow(planeAt);
+            root.addView(bubble, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.START));
+            bubble.measure(View.MeasureSpec.makeMeasureSpec(inputBubble.getWidth(), View.MeasureSpec.AT_MOST), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+            float startX = inputAt[0] - rootAt[0];
+            float startY = inputAt[1] - rootAt[1];
+            float endX = planeAt[0] - rootAt[0] + plane.getWidth() / 2f - bubble.getMeasuredWidth() / 2f;
+            float endY = planeAt[1] - rootAt[1] + plane.getHeight() / 2f - bubble.getMeasuredHeight() / 2f;
+            bubble.setTranslationX(startX);
+            bubble.setTranslationY(startY);
+            ValueAnimator flight = ValueAnimator.ofFloat(0f, 1f);
+            flight.setDuration(280);
+            flight.setInterpolator(CubicBezierInterpolator.EASE_BOTH);
+            flight.addUpdateListener(a -> {
+                float t = (float) a.getAnimatedValue();
+                bubble.setTranslationX(startX + (endX - startX) * t);
+                bubble.setTranslationY(startY + (endY - startY) * t);
+                bubble.setScaleX(1f - .7f * t);
+                bubble.setScaleY(1f - .7f * t);
+                // Gone by the time it reaches the plane, over its last 80 ms
+                bubble.setAlpha(Math.min(1f, (1f - t) * 280 / 80f));
+            });
+            flight.addListener(new android.animation.AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(android.animation.Animator animation) {
+                    root.removeView(bubble);
+                }
+            });
+            flight.start();
         } catch (Throwable e) {
             FileLog.e(e);
         }
+    }
+
+    // A catch as the text lands, then the plane leaves toward the top end corner
+    private void takeOff() {
+        if (isFinishing()) {
+            return;
+        }
+        float direction = LocaleController.isRTL ? -1 : 1;
+        plane.animate().scaleX(1.12f).scaleY(1.12f).setStartDelay(0).setDuration(90).setInterpolator(CubicBezierInterpolator.EASE_OUT).withEndAction(() -> {
+            playPlane();
+            ValueAnimator flight = ValueAnimator.ofFloat(0f, 1f);
+            flight.setDuration(260);
+            flight.setInterpolator(CubicBezierInterpolator.EmphasizedAccelerate);
+            flight.addUpdateListener(a -> {
+                float t = (float) a.getAnimatedValue();
+                plane.setTranslationX(direction * dp(120) * t);
+                plane.setTranslationY(-dp(150) * t);
+                plane.setRotation(-12 * direction * t);
+                plane.setScaleX(1.12f - .42f * t);
+                plane.setScaleY(1.12f - .42f * t);
+                plane.setAlpha(Math.min(1f, (1f - t) * 260 / 140f));
+            });
+            flight.start();
+        }).start();
     }
 
     private void sendTo(String text, long dialogId) {
@@ -428,19 +507,42 @@ public class TextMemoActivity extends Activity {
         }
     }
 
+    // Close, back, or a tap outside an empty card: nothing flies, so it never looks sent
     private void dismiss() {
         if (dismissing) {
             return;
         }
-        dismissing = true;
+        beginExit();
         field.setText("");
+        hero.animate().alpha(0f).setDuration(120).start();
+        exitCard(0);
+    }
+
+    // Shared start of both exits: stop whatever the open or idle loop has running, freeze the insets, drop the keyboard
+    private void beginExit() {
+        dismissing = true;
+        plane.removeCallbacks(idleLoop);
+        plane.animate().cancel();
+        hint.animate().cancel();
+        sendButton.animate().cancel();
         AndroidUtilities.hideKeyboard(field);
-        card.animate().translationY(card.getHeight() + dp(8)).setDuration(200).setInterpolator(CubicBezierInterpolator.EASE_IN).start();
+        // A fallback in case an end action never runs
         root.postDelayed(() -> {
             if (!isFinishing()) {
                 finish();
             }
-        }, 400);
+        }, 800);
+    }
+
+    private void exitCard(long delay) {
+        scrim.animate().alpha(0f).setStartDelay(delay + 20).setDuration(200).start();
+        card.animate().translationY(root.getHeight() - card.getTop()).scaleX(1f).scaleY(1f)
+                .setStartDelay(delay).setDuration(220).setInterpolator(CubicBezierInterpolator.EmphasizedAccelerate)
+                .withEndAction(() -> {
+                    if (!isFinishing()) {
+                        finish();
+                    }
+                }).start();
     }
 
     @Override
