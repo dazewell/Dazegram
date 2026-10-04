@@ -8162,6 +8162,18 @@ public class ChatActivityEnterView extends FrameLayout implements
         return sendButton.isShown() && isSendButtonEnabled() && !animatorIsBlockedByStreaming.getValue() && !isSendClickIgnored();
     }
 
+    // NagramX (#video-hold-send): the video pause button's action, verbatim, for a tap on the round video, and only
+    // while that button is up. Disabling slideText matters: its Cancel would otherwise stay live over the paused preview
+    public void performVideoPauseClick() {
+        if (recordCircle == null || !recordCircle.isSendButtonVisible() || !isInVideoMode()) {
+            return;
+        }
+        if (slideText != null) {
+            slideText.setEnabled(false);
+        }
+        delegate.toggleVideoRecordingPause();
+    }
+
     // NagramX (#video-hold-send): the locked-state send button's action, verbatim, shared with a hold on the round video
     public void sendLockedRecording() {
         if (!hasRecordVideo || calledRecordRunnable) {

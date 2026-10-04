@@ -43,6 +43,7 @@ import xyz.nextalone.nagram.NaConfig;
  * short one when sliding off disarms it. Letting go early, sliding off the
  * circle or a second finger (pinch zoom) cancels and nothing changes. The rim is left alone on purpose: it
  * already carries the recording-time arc.
+ * A tap (let go before it arms) pauses or resumes instead, as the composer's pause button would.
  * A small label above the circle says how it works whenever it's available.
  * The preview used to toggle its sound on any tap, which the hold now owns, so its sound moves to a chip in the
  * composer's record controls (VideoPreviewSoundChip) for as long as the preview is up.
@@ -58,6 +59,8 @@ public final class VideoHoldToSend {
     private final Runnable send;
     private final Utilities.Callback0Return<VideoPlayer> previewPlayer;
     private final Utilities.Callback0Return<Boolean> previewSends;
+    private final Utilities.Callback0Return<Boolean> canToggle;
+    private final Runnable toggle;
 
     private View circle;
     private View host;
@@ -77,13 +80,17 @@ public final class VideoHoldToSend {
     private final Runnable armRunnable = this::arm;
 
     // previewPlayer is the paused preview's player, null while there's no preview. previewSends says whether the
-    // host can send from its preview at all; story replies can't, and keep tap-to-toggle-sound.
+    // host can send from its preview at all; story replies can't, and keep tap-to-toggle-sound. canToggle is
+    // separate from canSend because resuming sends nothing, so slow mode or a disabled send button mustn't block it.
     public VideoHoldToSend(Utilities.Callback0Return<Boolean> canSend, Runnable send,
-                           Utilities.Callback0Return<VideoPlayer> previewPlayer, Utilities.Callback0Return<Boolean> previewSends) {
+                           Utilities.Callback0Return<VideoPlayer> previewPlayer, Utilities.Callback0Return<Boolean> previewSends,
+                           Utilities.Callback0Return<Boolean> canToggle, Runnable toggle) {
         this.canSend = canSend;
         this.send = send;
         this.previewPlayer = previewPlayer;
         this.previewSends = previewSends;
+        this.canToggle = canToggle;
+        this.toggle = toggle;
     }
 
     // True when a tap on the preview belongs to the hold rather than toggling its sound.
@@ -116,14 +123,21 @@ public final class VideoHoldToSend {
         switch (ev.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 reset();
-                if (!NaConfig.INSTANCE.getVideoMessagesHoldToSend().Bool() || !contains(circle, ev) || !canSend.run()) {
+                if (!NaConfig.INSTANCE.getVideoMessagesHoldToSend().Bool() || !contains(circle, ev)) {
+                    return;
+                }
+                final boolean sendable = canSend.run();
+                if (!sendable && !canToggle.run()) {
                     return;
                 }
                 this.circle = circle;
                 tracking = true;
-                buzz(10, 40, HapticFeedbackConstants.CLOCK_TICK);
-                animateTo(1f, ARM_MS);
-                AndroidUtilities.runOnUIThread(armRunnable, ARM_MS);
+                // a hold that can't send has nothing to arm, so only a tap is tracked, without the tick or the fill
+                if (sendable) {
+                    buzz(10, 40, HapticFeedbackConstants.CLOCK_TICK);
+                    animateTo(1f, ARM_MS);
+                    AndroidUtilities.runOnUIThread(armRunnable, ARM_MS);
+                }
                 break;
             case MotionEvent.ACTION_POINTER_DOWN:
                 cancel();
@@ -140,6 +154,10 @@ public final class VideoHoldToSend {
                     // closing the camera, and the disc must not stay painted over it
                     reset();
                     send.run();
+                } else if (tracking && !armed && ev.getEventTime() - ev.getDownTime() < ARM_MS && contains(circle, ev) && canToggle.run()) {
+                    // a tap. The time check matters only where nothing arms: a long press that can't send isn't a tap
+                    cancel();
+                    toggle.run();
                 } else {
                     cancel();
                 }
