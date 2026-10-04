@@ -328,25 +328,13 @@ public class TextMemoActivity extends Activity {
         plane.animate().alpha(1f).setStartDelay(100).setDuration(200).start();
         hint.setAlpha(0f);
         hint.animate().alpha(1f).setStartDelay(100).setDuration(200).start();
-        plane.postDelayed(idleLoop, 220);
+        // The plane hovers on a continuous loop, as on the QR login screen; a rest between loops read as a stall
+        plane.setAutoRepeat(true);
+        plane.postDelayed(plane::playAnimation, 220);
         // Once the card is nearly in, so the keyboard's lift continues its entry instead of fighting it
         field.requestFocus();
         field.postDelayed(() -> AndroidUtilities.showKeyboard(field), 180);
     }
-
-    // The plane's hover, then a rest: a calm hero, not a spinner. It stops while there's text or no room for it.
-    private final Runnable idleLoop = new Runnable() {
-        @Override
-        public void run() {
-            if (dismissing) {
-                return;
-            }
-            if (!heroHidden && field.length() == 0) {
-                playPlane();
-            }
-            plane.postDelayed(this, 2500);
-        }
-    };
 
     private void playPlane() {
         if (plane.getAnimatedDrawable() != null) {
@@ -521,7 +509,6 @@ public class TextMemoActivity extends Activity {
     // Shared start of both exits: stop whatever the open or idle loop has running, freeze the insets, drop the keyboard
     private void beginExit() {
         dismissing = true;
-        plane.removeCallbacks(idleLoop);
         plane.animate().cancel();
         hint.animate().cancel();
         sendButton.animate().cancel();
