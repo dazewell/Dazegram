@@ -44,6 +44,7 @@ import tw.nekomimi.nekogram.config.cell.ConfigCellDivider;
 import tw.nekomimi.nekogram.config.cell.ConfigCellHeader;
 import tw.nekomimi.nekogram.config.cell.ConfigCellSelectBox;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextCheck;
+import tw.nekomimi.nekogram.config.cell.WithKey;
 import tw.nekomimi.nekogram.settings.BaseNekoXSettingsActivity;
 import xyz.nextalone.nagram.NaConfig;
 import xyz.nextalone.nagram.helpers.InterfaceStyleController;
@@ -238,6 +239,23 @@ public class InterfaceStyleActivity extends BaseNekoXSettingsActivity {
     @Override
     protected void onConfigImported(String key, Object value) {
         onSettingChanged(key);
+        // A click on these two selects rebuilds the fragments from ConfigCellSelectBox; an import skips that
+        if ((key.equals(NaConfig.INSTANCE.getChatDecoration().getKey()) || key.equals(NekoConfig.tabsTitleType.getKey())) && parentLayout != null) {
+            parentLayout.rebuildFragments(0);
+        }
+    }
+
+    // True for a row this page has, even one hidden at the moment (the main tabs pair goes with the bottom bar), so an old link to it still lands here
+    public boolean ownsRow(String key) {
+        if (getRowMapReverse().containsValue(key)) {
+            return true;
+        }
+        for (AbstractConfigCell row : Arrays.asList(hideTitlesRow, hideContactsRow)) {
+            if (row instanceof WithKey withKey && key.equals(withKey.getKey())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
