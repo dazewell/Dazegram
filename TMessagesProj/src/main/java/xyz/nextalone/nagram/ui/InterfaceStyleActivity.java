@@ -137,6 +137,7 @@ public class InterfaceStyleActivity extends BaseNekoXSettingsActivity {
     private final AbstractConfigCell dividerTitleAndDecoration = bind(new ConfigCellDivider());
 
     private final AbstractConfigCell headerMainTabs = bind(new ConfigCellHeader(getString(R.string.MainTabsSettingsHeader)));
+    private final AbstractConfigCell mainTabsPreviewRow = bind(new ConfigCellCustom(null, ConfigCellCustom.CUSTOM_ITEM_InterfaceStyleNavPreview, false));
     private final AbstractConfigCell hideTitlesRow = bind(new ConfigCellTextCheck(NaConfig.INSTANCE.getMainTabsHideTitles()));
     private final AbstractConfigCell hideContactsRow = bind(new ConfigCellTextCheck(NaConfig.INSTANCE.getMainTabsHideContacts()));
     private final AbstractConfigCell hideBottomNavigationBarRow = bind(new ConfigCellTextCheck(NaConfig.INSTANCE.getHideBottomNavigationBar()));
@@ -365,6 +366,7 @@ public class InterfaceStyleActivity extends BaseNekoXSettingsActivity {
 
         rows.add(headerMainTabs);
         if (!NaConfig.INSTANCE.getHideBottomNavigationBar().Bool()) {
+            rows.add(mainTabsPreviewRow);
             rows.add(hideTitlesRow);
             rows.add(hideContactsRow);
         }
@@ -413,6 +415,8 @@ public class InterfaceStyleActivity extends BaseNekoXSettingsActivity {
                 parentLayout.rebuildFragments(0);
             }
         } else if (key.equals(NaConfig.INSTANCE.getMainTabsHideTitles().getKey()) || key.equals(NaConfig.INSTANCE.getMainTabsHideContacts().getKey())) {
+            // The rebuild below skips this page, so the preview is rebound here
+            updateRows();
             if (parentLayout != null) {
                 parentLayout.rebuildFragments(0);
             }
@@ -537,6 +541,8 @@ public class InterfaceStyleActivity extends BaseNekoXSettingsActivity {
                 View child = listView.getChildAt(i);
                 if (child instanceof SlideIntChooseView) {
                     ((SlideIntChooseView) child).updateColors();
+                } else if (child instanceof MainTabsPreviewCell) {
+                    ((MainTabsPreviewCell) child).update();
                 }
             }
         };
@@ -567,6 +573,8 @@ public class InterfaceStyleActivity extends BaseNekoXSettingsActivity {
                 SlideIntChooseView view = new SlideIntChooseView(mContext, null);
                 view.setSnapToValue(true);
                 return view;
+            } else if (viewType == ConfigCellCustom.CUSTOM_ITEM_InterfaceStyleNavPreview) {
+                return new MainTabsPreviewCell(mContext, currentAccount, getResourceProvider());
             }
             return null;
         }
@@ -601,6 +609,8 @@ public class InterfaceStyleActivity extends BaseNekoXSettingsActivity {
                 TextInfoPrivacyCell cell = (TextInfoPrivacyCell) holder.itemView;
                 cell.setText(getString(R.string.InterfaceStyleBlurStrengthInfo));
                 cell.setFixedSize(0);
+            } else if (row == mainTabsPreviewRow) {
+                ((MainTabsPreviewCell) holder.itemView).update();
             } else if (row == infoRow) {
                 TextInfoPrivacyCell cell = (TextInfoPrivacyCell) holder.itemView;
                 cell.setText(getString(R.string.InterfaceStyleInfo));
