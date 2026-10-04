@@ -92,7 +92,8 @@ public final class VideoNoteShortcut {
 
     /** MediaDataController.buildShortcuts: ranks taken past the one it hands to publish, which recent chats skip. */
     public static int getExtraRanks() {
-        return publishes(false) && publishes(true) ? 1 : 0;
+        int count = (publishes(false) ? 1 : 0) + (publishes(true) ? 1 : 0) + (TextMemoShortcut.isEnabled() ? 1 : 0);
+        return Math.max(0, count - 1);
     }
 
     /** MediaDataController.buildShortcuts: the ids it keeps when pruning stale shortcuts. */
@@ -103,6 +104,7 @@ public final class VideoNoteShortcut {
         if (publishes(true)) {
             wantedIds.add(SHORTCUT_ID_REAR);
         }
+        TextMemoShortcut.addShortcutId(wantedIds);
     }
 
     /** MediaDataController.buildShortcuts, on its queue after directShareHash is set. */
@@ -114,8 +116,10 @@ public final class VideoNoteShortcut {
             publish(false, recreate, existingIds, rank++);
         }
         if (publishes(true)) {
-            publish(true, recreate, existingIds, rank);
+            publish(true, recreate, existingIds, rank++);
         }
+        // The text memo rides these hooks rather than adding its own to MediaDataController
+        TextMemoShortcut.publish(recreate, existingIds, rank);
     }
 
     // Own try so a launcher rejecting one can't abort the rest
@@ -147,13 +151,17 @@ public final class VideoNoteShortcut {
 
     // Same look as the Ayu Mode shortcut: white glyph on the Telegram-blue disc, rasterized for picky OEM launchers.
     public static Bitmap createIcon() {
+        return createIcon(R.drawable.input_video);
+    }
+
+    static Bitmap createIcon(int glyphRes) {
         int size = AndroidUtilities.dp(48);
         Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         paint.setColor(0xff3390ec);
         canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint);
-        Drawable glyph = ApplicationLoader.applicationContext.getResources().getDrawable(R.drawable.input_video, null).mutate();
+        Drawable glyph = ApplicationLoader.applicationContext.getResources().getDrawable(glyphRes, null).mutate();
         glyph.setColorFilter(new PorterDuffColorFilter(0xffffffff, PorterDuff.Mode.SRC_IN));
         int inset = size / 5;
         glyph.setBounds(inset, inset, size - inset, size - inset);
@@ -184,7 +192,7 @@ public final class VideoNoteShortcut {
             }
             return 0;
         }
-        long userId = VideoNoteTarget.resolve(account);
+        long userId = VideoNoteTarget.resolve(account, true);
         pendingAccount = account;
         pendingDialogId = userId;
         pendingSince = SystemClock.elapsedRealtime();

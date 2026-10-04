@@ -17,7 +17,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 /**
- * The person a video memo is recorded for, per account. Unset, or anyone the memo can't be sent to, means Saved
+ * The person a video or text memo is sent to, per account. Unset, or anyone the memo can't be sent to, means Saved
  * Messages. Only read and written on the UI thread.
  */
 public final class VideoNoteTarget {
@@ -68,9 +68,10 @@ public final class VideoNoteTarget {
      * The user id the shortcut opens: the stored person when everything known about them says the memo can be sent,
      * otherwise Saved Messages. Never asks the network. When a person isn't cached in memory, which is every time on a
      * cold start, they are read from the local database with a bounded wait. ChatActivity would otherwise do the same
-     * read itself, unbounded, and drop the chat if it found nothing.
+     * read itself, unbounded, and drop the chat if it found nothing. A text memo skips the voice-and-video privacy
+     * rule, which doesn't stop text.
      */
-    static long resolve(int account) {
+    static long resolve(int account, boolean video) {
         long selfId = UserConfig.getInstance(account).getClientUserId();
         long id = get(account);
         if (id == 0 || id == selfId) {
@@ -120,16 +121,16 @@ public final class VideoNoteTarget {
                 full = dbFull[0]; // for this check only, the chat loads its own
             }
         }
-        return canReceive(account, controller, user, full) ? id : selfId;
+        return canReceive(account, controller, user, full, video) ? id : selfId;
     }
 
     // What we don't know counts as no: the recording happens behind the lock shield, where the user can't see which
     // chat they're in, so a send that would bounce or cost Stars must never be armed.
-    private static boolean canReceive(int account, MessagesController controller, TLRPC.User user, TLRPC.UserFull full) {
+    private static boolean canReceive(int account, MessagesController controller, TLRPC.User user, TLRPC.UserFull full, boolean video) {
         if (!isEligible(account, user) || full == null || controller.getRestrictionReason(user.restriction_reason) != null) {
             return false;
         }
-        if (full.blocked || controller.blockePeers.indexOfKey(user.id) >= 0 || full.voice_messages_forbidden) {
+        if (full.blocked || controller.blockePeers.indexOfKey(user.id) >= 0 || video && full.voice_messages_forbidden) {
             return false;
         }
         if (user.send_paid_messages_stars > 0 || full.send_paid_messages_stars > 0) {
