@@ -43,8 +43,12 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SendMessagesHelper;
 import org.telegram.messenger.UserConfig;
+import org.telegram.messenger.UserObject;
 import org.telegram.tgnet.ConnectionsManager;
+import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.Components.AvatarDrawable;
+import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.EditTextBoldCursor;
 import org.telegram.ui.Components.LayoutHelper;
@@ -67,6 +71,7 @@ public class TextMemoActivity extends Activity {
     private TextView hint;
     private LinearLayout card;
     private TextView title;
+    private TextView subtitle;
     private ImageView closeButton;
     private FrameLayout inputBubble;
     private GradientDrawable inputBackground;
@@ -193,15 +198,39 @@ public class TextMemoActivity extends Activity {
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        card.addView(header, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 44));
+        card.addView(header, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48));
+
+        // You, as the sender: the recipient stays off screen, but the card still has a face
+        TLRPC.User self = UserConfig.getInstance(account).getCurrentUser();
+        BackupImageView avatar = new BackupImageView(this);
+        avatar.setRoundRadius(dp(18));
+        AvatarDrawable avatarDrawable = new AvatarDrawable();
+        if (self != null) {
+            avatarDrawable.setInfo(account, self);
+            avatar.setForUserOrChat(self, avatarDrawable);
+        } else {
+            avatar.setImageDrawable(avatarDrawable);
+        }
+        header.addView(avatar, LayoutHelper.createLinear(36, 36, Gravity.CENTER_VERTICAL));
+
+        LinearLayout names = new LinearLayout(this);
+        names.setOrientation(LinearLayout.VERTICAL);
+        header.addView(names, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, Gravity.CENTER_VERTICAL, 10, 0, 8, 0));
 
         title = new TextView(this);
-        title.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 17);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         title.setTypeface(AndroidUtilities.bold());
         title.setSingleLine(true);
         title.setEllipsize(TextUtils.TruncateAt.END);
-        title.setText(LocaleController.getString(R.string.TextMemoShortcutLabel));
-        header.addView(title, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, Gravity.CENTER_VERTICAL));
+        title.setText(self != null ? UserObject.getUserName(self) : LocaleController.getString(R.string.TextMemoShortcutLabel));
+        names.addView(title, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        subtitle = new TextView(this);
+        subtitle.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 12);
+        subtitle.setSingleLine(true);
+        subtitle.setText(LocaleController.getString(R.string.TextMemoShortcutLabel));
+        subtitle.setVisibility(self != null ? View.VISIBLE : View.GONE);
+        names.addView(subtitle, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT));
 
         closeButton = new ImageView(this);
         closeButton.setScaleType(ImageView.ScaleType.CENTER);
@@ -288,6 +317,7 @@ public class TextMemoActivity extends Activity {
         cardBackground.setColor(Theme.getColor(Theme.key_dialogBackground));
         card.setBackground(cardBackground);
         title.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+        subtitle.setTextColor(Theme.getColor(Theme.key_dialogTextGray2));
         closeButton.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_dialogTextGray2), PorterDuff.Mode.SRC_IN));
         closeButton.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector), Theme.RIPPLE_MASK_CIRCLE_20DP));
 
