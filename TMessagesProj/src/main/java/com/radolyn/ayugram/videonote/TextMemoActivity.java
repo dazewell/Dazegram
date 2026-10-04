@@ -123,7 +123,8 @@ public class TextMemoActivity extends Activity {
         field.setMaxLines(8);
         field.setVerticalScrollBarEnabled(true);
         field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES | InputType.TYPE_TEXT_FLAG_AUTO_CORRECT);
-        field.setImeOptions(EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+        // Nothing is kept by the app; ask the keyboard not to keep it either
+        field.setImeOptions(EditorInfo.IME_FLAG_NO_EXTRACT_UI | EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING);
         field.setHint(LocaleController.getString(R.string.TypeMessage));
         field.setCursorSize(dp(20));
         field.setCursorWidth(1.5f);
