@@ -67,7 +67,8 @@ public class TextMemoActivity extends Activity {
         ApplicationLoader.postInitApplication();
         Window window = getWindow();
         // Always, not only with a passcode: this screen exists to be private, and the cost is a blank recents card
-        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
+        // NAX_SMOKE_text-memo-shortcut experiment: secure flag off to test the ColorOS black security mask
+        if (false) window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         super.onCreate(savedInstanceState);
 
         Intent intent = getIntent();
