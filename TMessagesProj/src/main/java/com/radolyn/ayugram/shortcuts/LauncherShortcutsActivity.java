@@ -79,6 +79,7 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
             getString(R.string.VideoNoteShortcutCameraBoth)
     }, null));
     private final AbstractConfigCell textMemoRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getTextMemoShortcut(), getString(R.string.TextMemoShortcutNotice)));
+    private final AbstractConfigCell textMemoBackdropRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getTextMemoBackdrop(), getString(R.string.TextMemoBackdropNotice)));
     // Shared by both memos, so it sits last
     private final ConfigCellText videoNoteTargetRow = (ConfigCellText) cellGroup.appendCell(new ConfigCellText("VideoNoteShortcutTarget", null));
     private final AbstractConfigCell dividerVideoNote = cellGroup.appendCell(new ConfigCellDivider());
@@ -145,6 +146,11 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
         boolean memo = key.equals(NaConfig.INSTANCE.getVideoNoteShortcut().getKey()) || key.equals(NaConfig.INSTANCE.getTextMemoShortcut().getKey());
         // The camera decides how many video memo shortcuts there are and what they are called
         boolean camera = key.equals(NaConfig.INSTANCE.getVideoNoteShortcutCamera().getKey());
+        if (key.equals(NaConfig.INSTANCE.getTextMemoBackdrop().getKey())) {
+            // The activity is part of the shortcut's intent
+            TextMemoShortcut.refresh();
+            return;
+        }
         if (!memo && !camera && !key.equals(NaConfig.INSTANCE.getGhostModeShortcut().getKey())) {
             return;
         }
@@ -162,7 +168,8 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
     // still land on the right row.
     private void updateMemoRows(boolean animated) {
         setRowShown(videoNoteCameraRow, videoNoteRow, VideoNoteShortcut.isEnabled(), animated);
-        setRowShown(videoNoteTargetRow, textMemoRow, VideoNoteShortcut.isEnabled() || TextMemoShortcut.isEnabled(), animated);
+        setRowShown(textMemoBackdropRow, textMemoRow, TextMemoShortcut.isEnabled(), animated);
+        setRowShown(videoNoteTargetRow, cellGroup.rows.contains(textMemoBackdropRow) ? textMemoBackdropRow : textMemoRow, VideoNoteShortcut.isEnabled() || TextMemoShortcut.isEnabled(), animated);
         addRowsToMap(cellGroup);
     }
 

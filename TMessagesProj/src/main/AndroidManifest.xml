@@ -610,6 +610,16 @@
             android:taskAffinity=""
             android:theme="@style/Theme.TMessages.TextMemo"
             android:windowSoftInputMode="adjustResize|stateHidden" />
+        <!-- NagramX: the same memo with its Background off. Translucency can't be switched at runtime, so it is a second activity with a floating theme, picked by the shortcut's intent -->
+        <activity
+            android:name="com.radolyn.ayugram.videonote.TextMemoCardActivity"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:theme="@style/Theme.TMessages.TextMemoCard"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
         <activity android:name="org.telegram.ui.VoIPPermissionActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|uiMode"
             android:taskAffinity="${applicationId}.voip"

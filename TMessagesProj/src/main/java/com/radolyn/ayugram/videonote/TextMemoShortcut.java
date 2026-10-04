@@ -1,5 +1,6 @@
 package com.radolyn.ayugram.videonote;
 
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
 
@@ -12,6 +13,7 @@ import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
+import org.telegram.messenger.Utilities;
 
 import java.util.Collections;
 import java.util.List;
@@ -46,17 +48,7 @@ public final class TextMemoShortcut {
             return;
         }
         try {
-            Intent intent = new Intent(ApplicationLoader.applicationContext, TextMemoActivity.class);
-            intent.setAction(ACTION);
-            intent.putExtra(EXTRA_HASH, SharedConfig.directShareHash);
-            String label = LocaleController.getString(R.string.TextMemoShortcutLabel);
-            ShortcutInfoCompat shortcut = new ShortcutInfoCompat.Builder(ApplicationLoader.applicationContext, SHORTCUT_ID)
-                    .setShortLabel(label)
-                    .setLongLabel(label)
-                    .setIcon(IconCompat.createWithBitmap(createIcon()))
-                    .setRank(rank)
-                    .setIntent(intent)
-                    .build();
+            ShortcutInfoCompat shortcut = buildShortcut(rank);
             if (recreate) {
                 ShortcutManagerCompat.pushDynamicShortcut(ApplicationLoader.applicationContext, shortcut);
             } else if (existingIds.contains(SHORTCUT_ID)) {
@@ -67,6 +59,46 @@ public final class TextMemoShortcut {
         } catch (Throwable e) {
             FileLog.e(e);
         }
+    }
+
+    // The Background switch picks the activity, and so the window theme, which can't change once it is open
+    private static ShortcutInfoCompat buildShortcut(int rank) {
+        Class<?> target = NaConfig.INSTANCE.getTextMemoBackdrop().Bool() ? TextMemoActivity.class : TextMemoCardActivity.class;
+        Intent intent = new Intent(ApplicationLoader.applicationContext, target);
+        intent.setAction(ACTION);
+        intent.putExtra(EXTRA_HASH, SharedConfig.directShareHash);
+        String label = LocaleController.getString(R.string.TextMemoShortcutLabel);
+        return new ShortcutInfoCompat.Builder(ApplicationLoader.applicationContext, SHORTCUT_ID)
+                .setShortLabel(label)
+                .setLongLabel(label)
+                .setIcon(IconCompat.createWithBitmap(createIcon()))
+                .setRank(rank)
+                .setIntent(intent)
+                .build();
+    }
+
+    /**
+     * Points the published shortcut, and any pinned copy, at the activity the Background switch now picks.
+     * MediaDataController.buildShortcuts won't do: below API 30 it returns early while the set of ids is unchanged.
+     */
+    public static void refresh() {
+        if (!isEnabled() || SharedConfig.directShareHash == null) {
+            return;
+        }
+        Utilities.globalQueue.postRunnable(() -> {
+            try {
+                Context context = ApplicationLoader.applicationContext;
+                int rank = 0;
+                for (ShortcutInfoCompat existing : ShortcutManagerCompat.getDynamicShortcuts(context)) {
+                    if (SHORTCUT_ID.equals(existing.getId())) {
+                        rank = existing.getRank();
+                    }
+                }
+                ShortcutManagerCompat.updateShortcuts(context, Collections.singletonList(buildShortcut(rank)));
+            } catch (Throwable e) {
+                FileLog.e(e);
+            }
+        });
     }
 
     // The video memo's disc with a pencil, so the two read as a pair
