@@ -8165,7 +8165,6 @@ public class ChatActivityEnterView extends FrameLayout implements
     // NagramX (#video-hold-send): the video pause button's action, verbatim, for a tap on the round video, and only
     // while that button is up. Disabling slideText matters: its Cancel would otherwise stay live over the paused preview
     public void performVideoPauseClick() {
-        android.util.Log.i("NaxSmoke", "NAX_SMOKE_video-tap-pause tap buttonUp=" + (recordCircle != null && recordCircle.isSendButtonVisible()) + " videoMode=" + isInVideoMode() + " recording=" + recordingAudioVideo);
         if (recordCircle == null || !recordCircle.isSendButtonVisible() || !isInVideoMode()) {
             return;
         }
