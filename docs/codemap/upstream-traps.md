@@ -392,7 +392,7 @@ upstream's `case 1` asset (`nagram_notification`) moved down a slot, to
 (`case 3`) are both new here. The backing config is
 `TMessagesProj/src/main/kotlin/xyz/nextalone/nagram/NaConfig.kt:256-260` (key
 `"NotificationIcon"`, `configTypeInt`, default `1`), surfaced as 4 labels
-(Telegram, NagramX, Nagram, NekoX) at `NekoGeneralSettingsActivity.java:185-190`.
+(Telegram, NagramX, Nagram, NekoX) at `InterfaceStyleActivity.java:117-122`.
 
 The trap: **the same stored integer already means a different icon in the two
 codebases.** A user's persisted `1` is upstream's `nagram_notification` but

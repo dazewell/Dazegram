@@ -132,9 +132,9 @@ other ColorOS versions, or other OEM skins, consistent with the evidence
 disclaimer in the entry above:
 1. With the Neon launcher alias enabled, a new-message notification rendered
    the fixed `<application>` icon, not the alias icon (the entry above).
-2. Changing Nagram Settings › General › Notification Icon
-   (`NaConfig.notificationIcon`, the `ConfigCellSelectBox` at
-   `NekoGeneralSettingsActivity.java:185-190`) from its then-current value to
+2. Changing Nagram Settings › General › Notification Icon (then under
+   General; now `InterfaceStyleActivity.java:117-122`; `NaConfig.notificationIcon`,
+   a `ConfigCellSelectBox`) from its then-current value to
    one visibly different option, restarting the app, and sending a message
    produced no visible change in the status bar or shade. Only that one
    before/after pair was exercised — not all four values individually.
