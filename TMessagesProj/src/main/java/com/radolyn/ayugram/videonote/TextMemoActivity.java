@@ -290,7 +290,6 @@ public class TextMemoActivity extends Activity {
         sendButton.setScaleType(ImageView.ScaleType.CENTER);
         sendButton.setImageResource(R.drawable.ic_send);
         sendButton.setContentDescription(LocaleController.getString(R.string.Send));
-        sendButton.setElevation(dp(4));
         sendButton.setOnClickListener(v -> send());
         inputRow.addView(sendButton, LayoutHelper.createLinear(44, 44, Gravity.BOTTOM, 8, 0, 0, 0));
 
