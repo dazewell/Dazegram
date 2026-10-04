@@ -43,6 +43,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SendMessagesHelper;
 import org.telegram.messenger.UserConfig;
@@ -139,13 +140,14 @@ public class TextMemoActivity extends Activity {
                 return false;
             }
         };
-        Drawable wallpaper = Theme.getCachedWallpaper();
-        if (wallpaper == null) {
-            Theme.loadWallpaper(false); // a cold start from the shortcut, before anything else loaded it
-            wallpaper = Theme.getCachedWallpaper();
-        }
+        // Non-blocking: getCachedWallpaper waits on an in-flight load. On a cold start nothing has loaded it yet, so it
+        // loads off the UI thread and arrives through didSetNewWallpapper; the window's gray shows until then.
+        Drawable wallpaper = Theme.getCachedWallpaperNonBlocking();
         if (wallpaper != null) {
             root.setBackgroundImage(wallpaper, Theme.isWallpaperMotion());
+        } else {
+            NotificationCenter.getGlobalInstance().addObserver(wallpaperObserver, NotificationCenter.didSetNewWallpapper);
+            Theme.loadWallpaper(true);
         }
         // A tap outside closes an empty card like any dialog, but never throws away typed text
         root.setOnClickListener(v -> {
@@ -621,6 +623,26 @@ public class TextMemoActivity extends Activity {
             finish();
         }
     }
+
+    @Override
+    protected void onDestroy() {
+        NotificationCenter.getGlobalInstance().removeObserver(wallpaperObserver, NotificationCenter.didSetNewWallpapper);
+        super.onDestroy();
+    }
+
+    // The wallpaper loaded after the screen opened. The service colours derive from it, so the plane disc and the hint
+    // pill are recoloured too.
+    private final NotificationCenter.NotificationCenterDelegate wallpaperObserver = (id, account, args) -> {
+        if (id != NotificationCenter.didSetNewWallpapper || root == null || isFinishing()) {
+            return;
+        }
+        NotificationCenter.getGlobalInstance().removeObserver(this.wallpaperObserver, NotificationCenter.didSetNewWallpapper);
+        Drawable loaded = Theme.getCachedWallpaperNonBlocking();
+        if (loaded != null) {
+            root.setBackgroundImage(loaded, Theme.isWallpaperMotion());
+            applyColors();
+        }
+    };
 
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
