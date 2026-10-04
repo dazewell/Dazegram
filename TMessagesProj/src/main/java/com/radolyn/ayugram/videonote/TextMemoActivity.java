@@ -67,6 +67,12 @@ public class TextMemoActivity extends Activity {
         ApplicationLoader.postInitApplication();
         Window window = getWindow();
         super.onCreate(savedInstanceState);
+        // ColorOS's launcher played its full app-open zoom for this, taking the home screen away for a couple of seconds
+        if (android.os.Build.VERSION.SDK_INT >= 34) {
+            overrideActivityTransition(OVERRIDE_TRANSITION_OPEN, 0, 0);
+            overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, 0, 0);
+        }
+        overridePendingTransition(0, 0);
 
         Intent intent = getIntent();
         // A restore after process death or a relaunch from history must not reopen it, and nothing replays the intent
