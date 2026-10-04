@@ -84,6 +84,11 @@ public class TextMemoActivity extends Activity {
             return;
         }
         account = selected;
+        // The translucent theme alone left the task opaque on a ColorOS launcher, so whatever was on screen wasn't drawn
+        // behind the card and a solid wall showed instead. Ask for it at runtime too.
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            setTranslucent(true);
+        }
         VideoNoteTarget.resolveAsync(account, false, id -> {
             dialogId = id;
             if (pendingText != null) {
