@@ -263,7 +263,7 @@ While a round video records hands-free or waits paused in its preview, tap the v
 
 ### Don't lose an unsent video message <!-- #video-draft-guard -->
 
-A round video message you've recorded but haven't sent survives backing out of the chat, switching apps mid-recording, or the chat locking behind a passcode — the clip waits in the preview, trimmed the way you left it, for up to a day. What comes back after the app or chat was torn down is the trim strip and send button rather than the round preview itself.
+A round video message you've recorded but haven't sent survives backing out of the chat, switching apps mid-recording, or the chat locking behind a passcode — the clip waits in the preview, trimmed the way you left it, for up to a day. After a teardown it returns as the trim strip and send button, not the round preview. A pause under two seconds (wireless Android Auto) won't stop recording.
 
 ### Video and text memo shortcuts <!-- #video-note-shortcut --> <!-- #text-memo-shortcut -->
 
