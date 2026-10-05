@@ -1088,3 +1088,16 @@ stays the first shortcut, and the see-through card is a second one beside it for
 other launchers (confirmed on Lawnchair).
 
 *(Established 2026-10-04, `#text-memo-shortcut`.)*
+
+## "More General rows belong on Interface Style"
+
+Audited after `#476`: nothing look-and-feel is left in
+`NekoGeneralSettingsActivity.java` (rows `:75-210`). The rest is behaviour, privacy,
+network, storage, chat-list grouping and menu composition (stickers row, hide Premium, hide
+Help). The three title rows (`customTitleRow`, `folderNameAsTitleRow`,
+`customTitleUserNameRow`, `:77`, `:81-82`) set the title's text rather than how it looks, so
+they stayed. Moving them would also mean porting `checkCustomTitleRows` (`:427`), which anchors
+`customTitleRow` to General's header (`:76`). The General "Appearance" header is now a misnomer
+over those three rows and the style link, left as is.
+
+*(Established 2026-10-04, `#interface-style`.)*

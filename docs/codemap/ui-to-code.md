@@ -281,6 +281,22 @@ blurred pill, flat MD3 a plain surface (`FolderTabsPreviewCell.java:122-130`;
 
 *(Established 2026-10-04, during `#interface-style`.)*
 
+## Interface Style rows with no real-view preview: action bar, chat decoration, Apply to, blur
+
+Four rows have no preview because the real surface cannot be hosted without a fragment.
+The action-bar decoration is painted in `ActionBar.drawChild` against the title view's text
+bounds (`ActionBar.java:462`, `:480-484`, `:495`), so only a look-alike is possible, and the
+page's own bar already shows it. The chat decoration is drawn on the chat's backdrop by
+`SizeNotifierFrameLayout.checkSnowflake` (`SizeNotifierFrameLayout.java:562-569`), again
+look-alike only. The "Apply to" group restyles five different surfaces with no single view, and
+the two that can be hosted already have previews. Blur strength is a live `SlideIntChooseView`
+(`InterfaceStyleActivity.java:79`, `SlideIntChooseView.java:48`), and a preview needs content
+scrolling behind a blurred surface. A switch or slider style preview duplicates the
+`ConfigCellTextCheck` switches and the blur seekbar the page already draws, since both read
+the style on every draw (`Switch.java:625-626`, `SeekBarView.java:458`).
+
+*(Established 2026-10-04, `#interface-style`; costed by recon, nothing built.)*
+
 ## MD3 Composer paints one island from ChatInputViewsContainer
 
 The Composer Apply to switch reaches the real chat through one draw hook.
