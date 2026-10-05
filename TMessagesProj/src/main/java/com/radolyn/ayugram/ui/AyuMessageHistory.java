@@ -501,13 +501,13 @@ public class AyuMessageHistory extends NekoDelegateFragment {
                         filteredMessages.remove(pos);
                         messages.remove(edited);
                         if (pos < messageObjects.size()) {
-                            messageObjects.remove(pos);
+                            diffedRows.remove(messageObjects.remove(pos));
                         }
                         rowCount--;
                         notifyMessageListItemRemoved(listView, pos);
                         // The row below was diffed against the deleted one; rebuild it against its new predecessor.
                         if (pos < messageObjects.size()) {
-                            messageObjects.set(pos, null);
+                            diffedRows.remove(messageObjects.set(pos, null));
                             notifyAdapterItemChanged(pos);
                         }
                         updateEmptyView(rowCount == 0);
