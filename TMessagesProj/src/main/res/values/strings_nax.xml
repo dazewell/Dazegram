@@ -206,11 +206,12 @@
     <string name="MapPreviewProviderYandexNax">Yandex</string>
     <string name="GhostMode">Ghost Mode</string>
     <string name="GhostEssentialsHeader">Ghost essentials</string>
-    <string name="EnableGhostMode">Enable Ghost</string>
-    <string name="DisableGhostMode">Disable Ghost</string>
+    <string name="EnableGhostMode">Enable Ayu Mode</string>
+    <string name="DisableGhostMode">Disable Ayu Mode</string>
     <string name="GhostModeEnabled">Ghost mode turned on</string>
     <string name="GhostModeDisabled">Ghost mode turned off</string>
-    <string name="GhostModeInDrawer">Shortcuts</string>
+    <string name="GhostModeInDrawer">Ghost Mode in menus</string>
+    <string name="GhostModeInDrawerNotice">An Ayu Mode switch in the main menu, and a per-chat exclusion in profiles.</string>
     <string name="AyuModeShortcut">Ayu Mode</string>
     <string name="GhostModeStatusIndicator">Ghost Mode Indicator</string>
     <string name="DontSendReadMessagePackets">Don\'t Read Messages</string>
@@ -469,6 +470,8 @@
     <string name="TextMemoShortcutLabelFull">Text memo · full</string>
     <string name="TextMemoHint">Goes straight to the chat, without opening it</string>
     <string name="LauncherShortcuts">Launcher shortcuts</string>
+    <string name="BuiltInShortcutsHeader">Built in</string>
+    <string name="NewConversationShortcutNotice">Telegram\'s own launcher shortcut for starting a new chat. Turn it off to free a slot on launchers that only show a few.</string>
     <string name="GhostModeShortcut">Ghost Mode shortcut</string>
     <string name="GhostModeShortcutNotice">Adds an “Ayu Mode” launcher shortcut that opens the app with Ghost Mode already on.</string>
     <string name="ContactNotes">Notes</string>
