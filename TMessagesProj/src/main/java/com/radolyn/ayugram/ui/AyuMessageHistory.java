@@ -43,6 +43,7 @@ import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
+import org.telegram.tgnet.SerializedData;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenu;
@@ -94,6 +95,11 @@ public class AyuMessageHistory extends NekoDelegateFragment {
     private ActionBarMenuItem searchItem;
     private String searchQuery = "";
     private final ArrayList<EditedMessage> filteredMessages = new ArrayList<>();
+    // The live version closes the list so the last edit can be compared; it is the row after
+    // filteredMessages and is never deleted. Dropped once the message is edited while this screen
+    // is open, because messageObject then holds the text that just became a revision.
+    private boolean showCurrentRow;
+    private boolean currentRowStale;
 
     public AyuMessageHistory(MessageObject messageObject) {
         this.messageObject = messageObject;
@@ -290,10 +296,20 @@ public class AyuMessageHistory extends NekoDelegateFragment {
                 }
             }
         }
-        rowCount = filteredMessages.size();
+        String currentText = messageObject.messageOwner.message;
+        showCurrentRow = !messages.isEmpty() && !currentRowStale && (TextUtils.isEmpty(searchQuery)
+                || !TextUtils.isEmpty(currentText) && currentText.toLowerCase().contains(searchQuery.toLowerCase()));
+        rowCount = filteredMessages.size() + (showCurrentRow ? 1 : 0);
         rebuildMessageObjects();
         notifyAdapterDataChanged();
         updateEmptyView();
+    }
+
+    private void notifyAdapterItemChanged(int position) {
+        var adapter = listView == null ? null : listView.getAdapter();
+        if (adapter != null) {
+            adapter.notifyItemChanged(position);
+        }
     }
 
     @SuppressLint("NotifyDataSetChanged")
@@ -357,6 +373,7 @@ public class AyuMessageHistory extends NekoDelegateFragment {
             var messageId = (int) args[1];
 
             if (dialogId == messageObject.messageOwner.dialog_id && messageId == messageObject.messageOwner.id) {
+                currentRowStale = true;
                 updateHistory();
                 if (listView != null && listView.getAdapter() != null) {
                     listView.getAdapter().notifyDataSetChanged();
@@ -401,7 +418,8 @@ public class AyuMessageHistory extends NekoDelegateFragment {
         ArrayList<Integer> options = new ArrayList<>();
         ArrayList<Integer> icons = new ArrayList<>();
 
-        String textToCopy = msg.messageOwner != null ? msg.messageOwner.message : null;
+        // The bubble shows the diff markup, so copy the version's own text.
+        String textToCopy = position < filteredMessages.size() ? filteredMessages.get(position).text : messageObject.messageOwner.message;
         if (textToCopy != null && !textToCopy.isEmpty()) {
             items.add(getString(R.string.Copy));
             icons.add(R.drawable.msg_copy);
@@ -445,9 +463,11 @@ public class AyuMessageHistory extends NekoDelegateFragment {
             options.add(OPTION_TRANSLATE);
         }
 
-        items.add(getString(R.string.Delete));
-        icons.add(R.drawable.msg_delete);
-        options.add(OPTION_DELETE);
+        if (position < filteredMessages.size()) {
+            items.add(getString(R.string.Delete));
+            icons.add(R.drawable.msg_delete);
+            options.add(OPTION_DELETE);
+        }
 
         items.add(getString(R.string.MessageDetails));
         icons.add(R.drawable.msg_info);
@@ -468,20 +488,28 @@ public class AyuMessageHistory extends NekoDelegateFragment {
                 if (option == OPTION_DELETE) {
                     EditedMessage edited = filteredMessages.get(pos);
                     Utilities.globalQueue.postRunnable(() -> AyuMessagesController.getInstance().deleteRevision(edited.fakeId));
-                    if (pos >= 0 && pos < filteredMessages.size()) {
+                    if (messages.size() == 1) {
+                        // Last revision gone: the live version has nothing left to be compared with.
+                        messages.remove(edited);
+                        applySearchFilter();
+                    } else if (pos >= 0 && pos < filteredMessages.size()) {
                         filteredMessages.remove(pos);
                         messages.remove(edited);
                         if (pos < messageObjects.size()) {
                             messageObjects.remove(pos);
                         }
-                        rowCount = filteredMessages.size();
+                        rowCount--;
                         notifyMessageListItemRemoved(listView, pos);
+                        // The row below was diffed against the deleted one; rebuild it against its new predecessor.
+                        if (pos < messageObjects.size()) {
+                            messageObjects.set(pos, null);
+                            notifyAdapterItemChanged(pos);
+                        }
                         updateEmptyView(rowCount == 0);
                     }
                 } else if (option == OPTION_COPY) {
-                    String text = msg.messageOwner != null ? msg.messageOwner.message : null;
-                    if (text != null && !text.isEmpty()) {
-                        AndroidUtilities.addToClipboard(text);
+                    if (textToCopy != null && !textToCopy.isEmpty()) {
+                        AndroidUtilities.addToClipboard(textToCopy);
                         BulletinFactory.of(this).createCopyBulletin(getString(R.string.MessageCopied)).show();
                     }
                 } else if (option == OPTION_COPY_PHOTO) {
@@ -672,16 +700,23 @@ public class AyuMessageHistory extends NekoDelegateFragment {
             if (holder.getItemViewType() == 1) {
                 var ayuMessageDetailCell = (NekoMessageCell) holder.itemView;
 
-                var editedMessage = filteredMessages.get(position);
+                EditedMessage editedMessage;
+                if (position < filteredMessages.size()) {
+                    editedMessage = filteredMessages.get(position);
+                } else {
+                    // Stand-in so a long-press on the live version copies its text, not the diff markup.
+                    editedMessage = new EditedMessage();
+                    editedMessage.text = messageObject.messageOwner.message;
+                }
                 MessageObject msg;
                 if (position >= 0 && position < messageObjects.size()) {
                     msg = messageObjects.get(position);
                     if (msg == null) {
-                        msg = createMessageObject(editedMessage);
+                        msg = createRowMessageObject(position);
                         messageObjects.set(position, msg);
                     }
                 } else {
-                    msg = createMessageObject(editedMessage);
+                    msg = createRowMessageObject(position);
                 }
 
                 ayuMessageDetailCell.setAyuDelegate(AyuMessageHistory.this);
@@ -693,7 +728,7 @@ public class AyuMessageHistory extends NekoDelegateFragment {
 
         @Override
         public int getItemViewType(int position) {
-            return position >= 0 && position < filteredMessages.size() ? 1 : 0;
+            return position >= 0 && position < rowCount ? 1 : 0;
         }
     }
 
@@ -702,6 +737,11 @@ public class AyuMessageHistory extends NekoDelegateFragment {
         var msg = new TLRPC.TL_message();
         AyuMessageUtils.map(editedMessage, msg, currentAccount);
         AyuMessageUtils.mapMedia(editedMessage, msg, currentAccount);
+        // Each revision is shown as the change from the one before it, across the unfiltered list.
+        int index = messages.indexOf(editedMessage);
+        if (index > 0) {
+            applyDiff(msg, messages.get(index - 1).text);
+        }
 
         msg.ayuDeleted = true;
         msg.date = editedMessage.entityCreateDate;
@@ -752,6 +792,49 @@ public class AyuMessageHistory extends NekoDelegateFragment {
             messageObj.attachPathExists = true;
         }
         return messageObj;
+    }
+
+    private MessageObject createRowMessageObject(int position) {
+        return position < filteredMessages.size() ? createMessageObject(filteredMessages.get(position)) : createCurrentMessageObject();
+    }
+
+    private MessageObject createCurrentMessageObject() {
+        TLRPC.Message source = messageObject.messageOwner;
+        TLRPC.Message msg = null;
+        // A private copy, so the diff markup never reaches the message the chat is showing.
+        SerializedData out = null;
+        SerializedData in = null;
+        try {
+            out = new SerializedData(source.getObjectSize());
+            source.serializeToStream(out);
+            in = new SerializedData(out.toByteArray());
+            msg = TLRPC.Message.TLdeserialize(in, in.readInt32(false), false);
+        } catch (Exception e) {
+            FileLog.e(e);
+        } finally {
+            if (out != null) {
+                out.cleanup();
+            }
+            if (in != null) {
+                in.cleanup();
+            }
+        }
+        if (msg == null) {
+            return new MessageObject(getCurrentAccount(), source, false, true);
+        }
+        msg.dialog_id = source.dialog_id;
+        msg.attachPath = source.attachPath;
+        msg.replyMessage = source.replyMessage;
+        applyDiff(msg, messages.get(messages.size() - 1).text);
+        return new MessageObject(getCurrentAccount(), msg, false, true);
+    }
+
+    private static void applyDiff(TLRPC.Message msg, String previousText) {
+        AyuEditDiff.Result diff = AyuEditDiff.build(previousText, msg.message, msg.entities);
+        if (diff != null) {
+            msg.message = diff.text;
+            msg.entities = diff.entities;
+        }
     }
 
     private File findSavedMedia(EditedMessage editedMessage) {
@@ -945,8 +1028,8 @@ public class AyuMessageHistory extends NekoDelegateFragment {
 
     private void rebuildMessageObjects() {
         messageObjects.clear();
-        for (int i = 0; i < filteredMessages.size(); i++) {
-            messageObjects.add(createMessageObject(filteredMessages.get(i)));
+        for (int i = 0; i < rowCount; i++) {
+            messageObjects.add(createRowMessageObject(i));
         }
     }
 
