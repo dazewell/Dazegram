@@ -750,6 +750,12 @@ public class ChatActivity extends BaseFragment implements
     // rebuild recreates the view (createView), and snapshotted into each finalize request, so a finalize that
     // completes after being superseded is dropped instead of overwriting the current draft. UI thread only.
     public int videoDraftToken;
+    // NagramX (#video-pause-grace): delayed finalize of a live round video after onPause; see onPause.
+    private final Runnable finalizeRoundVideoOnPauseRunnable = () -> {
+        if (paused && instantCameraView != null && instantCameraView.isRecording()) {
+            instantCameraView.send(3, true, 0, 0, 0, 0, 0);
+        }
+    };
     // NagramX (#video-draft-guard): the topic that owned the round-video recording at the moment it started.
     // A forum's topic can switch in place (topicsTabs) under an in-flight recording, so capturing it at record
     // start and stamping it onto the finished draft keeps persist / clear resolving the ORIGIN topic's slot, not
@@ -3818,6 +3824,7 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
+        AndroidUtilities.cancelRunOnUIThread(finalizeRoundVideoOnPauseRunnable); // NagramX (#video-pause-grace)
         // NagramX (#remember-send-action): only clears the slot if it still belongs to this chat, and only
         // when the user has "reset when you leave the chat" on -- otherwise it carries over to the next chat.
         // MODE_DEFAULT-only, matching onBecomeFullyVisible's guard below: every scheduled or send-when-online
@@ -32489,6 +32496,7 @@ public class ChatActivity extends BaseFragment implements
             scrollToMessage = null;
         }
 
+        AndroidUtilities.cancelRunOnUIThread(finalizeRoundVideoOnPauseRunnable); // NagramX (#video-pause-grace)
         paused = false;
         pausedOnLastMessage = false;
         checkScrollForLoad(false);
@@ -32674,7 +32682,11 @@ public class ChatActivity extends BaseFragment implements
         // the chat on unlock). Finalize it into the preview strip so its file survives. send(3)
         // only posts the stop request; the muxer close runs on the encoder thread, so this never blocks pause.
         if (instantCameraView != null && instantCameraView.isRecording()) {
-            instantCameraView.send(3, true, 0, 0, 0, 0, 0);
+            // NagramX (#video-pause-grace): a transient pause -- wireless Android Auto connecting flashes another
+            // activity over the app for ~1s -- must not end the recording. Finalize only if the app is still paused
+            // after the grace; onResume cancels it. A real background (home, screen off) still finalizes, just late.
+            AndroidUtilities.cancelRunOnUIThread(finalizeRoundVideoOnPauseRunnable);
+            AndroidUtilities.runOnUIThread(finalizeRoundVideoOnPauseRunnable, 2000);
         } else if (chatActivityEnterView != null) {
             // NagramX (#video-draft-guard): a finished-but-unsent round video is bound (not still capturing). If the
             // user was mid-trim when the app backgrounded, didStopDragging may not be delivered -- ACTION_CANCEL
