@@ -3795,6 +3795,7 @@ public class ChatActivity extends BaseFragment implements
             clearCoveredNotificationsIfVisible();
         });
         chatLockPasscodeView.onShow(true, false);
+        finalizeRoundVideoForLock(); // NagramX (#video-pause-grace): a lock raised over a live round video ends it; the pause grace must not outlive the cover
     }
 
     // NagramX: detach the chat-lock passcode cover from wherever it was attached
@@ -32680,7 +32681,7 @@ public class ChatActivity extends BaseFragment implements
         // NagramX: a round video that's still capturing -- live with the finger down, or hands-free/locked --
         // would be lost if the app backgrounds now (worst with passcode lock set to Immediately, which rebuilds
         // the chat on unlock). Finalize it into the preview strip so its file survives. send(3)
-        // only posts the stop request; the muxer close runs on the encoder thread, so this never blocks pause.
+        // only posts the stop request; the muxer close runs on the encoder thread, so this never blocks pause. Runs after a 2s grace (#video-pause-grace); a lock finalizes at once.
         if (instantCameraView != null && instantCameraView.isRecording()) {
             // NagramX (#video-pause-grace): a transient pause -- wireless Android Auto connecting flashes another
             // activity over the app for ~1s -- must not end the recording. Finalize only if the app is still paused
@@ -39270,7 +39271,7 @@ public class ChatActivity extends BaseFragment implements
         return videoDraftToken;
     }
 
-    // NagramX (#video-note-shortcut): the finalize onPause does, for a lock raised while the app stays in the foreground.
+    // NagramX (#video-note-shortcut): the finalize onPause does after its grace, for a lock raised while the app stays in the foreground.
     // True if a live recording was stopped into the preview.
     public boolean finalizeRoundVideoForLock() {
         if (instantCameraView != null && instantCameraView.isRecording()) {

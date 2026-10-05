@@ -310,6 +310,11 @@ public final class VideoNoteShortcut {
 
     /** First thing in LaunchActivity.showPasscodeActivity. */
     public static void onPasscodeShown() {
+        // #video-pause-grace: onPause defers finalizing a live round video, so a lock must stop it or the unlock rebuild drops it. A shortcut session finalizes below.
+        BaseFragment top = LaunchActivity.getLastFragment();
+        if (phase == IDLE && top instanceof ChatActivity) {
+            ((ChatActivity) top).finalizeRoundVideoForLock();
+        }
         if (phase == IDLE) {
             return;
         }
