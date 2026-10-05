@@ -57,6 +57,7 @@ public final class VideoNoteTarget {
             prefs(account).edit().clear().apply();
         } catch (Throwable ignore) {
         }
+        TextMemoActivity.clearAccountState(account);
     }
 
     /** A person you can pick at all: not a bot, yourself, or one of Telegram's own accounts. */
