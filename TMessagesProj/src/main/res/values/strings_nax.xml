@@ -463,10 +463,8 @@
     <string name="TextMemoShortcut">Text memo shortcut</string>
     <string name="TextMemoShortcutNotice">Adds two launcher shortcuts for typing a message to Saved Messages or a person you pick, even while the app is locked: one opens full screen, the other floats over what you were doing.</string>
     <string name="TextMemoShortcutLabel">Text memo</string>
-    <string name="TextMemoShortcutLabelCard">Floating memo</string>
-    <string name="TextMemoShortcutLabelFull">Full screen memo</string>
-    <string name="TextMemoShortcutLabelLong">Text memo · full screen</string>
-    <string name="TextMemoShortcutLabelCardLong">Text memo · floating</string>
+    <string name="TextMemoShortcutLabelCard">Text memo · floating</string>
+    <string name="TextMemoShortcutLabelFull">Text memo · full</string>
     <string name="TextMemoHint">Goes straight to the chat, without opening it</string>
     <string name="LauncherShortcuts">Launcher shortcuts</string>
     <string name="GhostModeShortcut">Ghost Mode shortcut</string>

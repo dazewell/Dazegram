@@ -412,8 +412,8 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
             labels[3].setText(VideoNoteShortcut.getLabel(true, true));
             videoNoteItem.setVisibility(VideoNoteShortcut.isEnabled() ? VISIBLE : GONE);
             videoNoteRearItem.setVisibility(VideoNoteShortcut.isEnabled() && both ? VISIBLE : GONE);
-            labels[4].setText(TextMemoShortcut.getLabel(false, true));
-            labels[5].setText(TextMemoShortcut.getLabel(true, true));
+            labels[4].setText(TextMemoShortcut.getLabel(false));
+            labels[5].setText(TextMemoShortcut.getLabel(true));
             textMemoItem.setVisibility(TextMemoShortcut.isEnabled() ? VISIBLE : GONE);
             textMemoCardItem.setVisibility(TextMemoShortcut.isEnabled() ? VISIBLE : GONE);
         }

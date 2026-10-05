@@ -39,11 +39,8 @@ public final class TextMemoShortcut {
         return NaConfig.INSTANCE.getTextMemoShortcut().Bool();
     }
 
-    /** The launcher label; the long one says what differs, as the video memo's camera labels do. */
-    public static String getLabel(boolean card, boolean longLabel) {
-        if (longLabel) {
-            return LocaleController.getString(card ? R.string.TextMemoShortcutLabelCardLong : R.string.TextMemoShortcutLabelLong);
-        }
+    /** One label for both lengths: a launcher picks by width, and two that differ read as two styles. */
+    public static String getLabel(boolean card) {
         return LocaleController.getString(card ? R.string.TextMemoShortcutLabelCard : R.string.TextMemoShortcutLabelFull);
     }
 
@@ -72,8 +69,8 @@ public final class TextMemoShortcut {
             intent.setAction(ACTION);
             intent.putExtra(EXTRA_HASH, SharedConfig.directShareHash);
             ShortcutInfoCompat shortcut = new ShortcutInfoCompat.Builder(ApplicationLoader.applicationContext, id)
-                    .setShortLabel(getLabel(card, false))
-                    .setLongLabel(getLabel(card, true))
+                    .setShortLabel(getLabel(card))
+                    .setLongLabel(getLabel(card))
                     .setIcon(IconCompat.createWithBitmap(createIcon()))
                     .setRank(rank)
                     .setIntent(intent)
