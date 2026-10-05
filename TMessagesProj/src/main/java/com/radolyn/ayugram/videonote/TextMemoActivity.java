@@ -15,6 +15,7 @@ import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.InsetDrawable;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.InputType;
@@ -23,9 +24,11 @@ import android.text.TextWatcher;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewTreeObserver;
 import android.view.Window;
+import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -60,14 +63,17 @@ import org.telegram.ui.Components.RLottieImageView;
 import org.telegram.ui.Components.SizeNotifierFrameLayout;
 
 /**
- * The text memo: a compose card over the chat wallpaper, in its own task. Neither the chat nor who it goes to is shown,
+ * The text memo: a compose card over the chat wallpaper (or, as TextMemoCardActivity, floating over the screen), in its own task. Neither the chat nor who it goes to is shown,
  * so it never touches the app lock: a locked app stays locked, and closing returns to the launcher. The text is never
  * stored; leaving the screen drops it.
  */
 public class TextMemoActivity extends Activity {
 
     private int account = -1;
-    private SizeNotifierFrameLayout root;
+    private FrameLayout root;
+    // Only with a backdrop; the wallpaper is set on it
+    private SizeNotifierFrameLayout wallpaperRoot;
+    private boolean backdrop;
     private View scrim;
     private LinearLayout content;
     private LinearLayout hero;
@@ -113,22 +119,48 @@ public class TextMemoActivity extends Activity {
             }
         });
 
-        // No white flash if the wallpaper takes a moment
-        window.setBackgroundDrawable(new ColorDrawable(Theme.getColor(Theme.key_windowBackgroundGray)));
-        WindowCompat.setDecorFitsSystemWindows(window, false);
-        window.setStatusBarColor(Color.TRANSPARENT);
-        window.setNavigationBarColor(Color.TRANSPARENT);
+        backdrop = hasBackdrop();
+        if (backdrop) {
+            // No white flash if the wallpaper takes a moment
+            window.setBackgroundDrawable(new ColorDrawable(Theme.getColor(Theme.key_windowBackgroundGray)));
+            WindowCompat.setDecorFitsSystemWindows(window, false);
+            window.setStatusBarColor(Color.TRANSPARENT);
+            window.setNavigationBarColor(Color.TRANSPARENT);
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // The translucent theme alone left the task opaque on a ColorOS launcher, so whatever was on screen wasn't
+            // drawn behind the card and a solid wall showed instead. Ask for it at runtime too.
+            setTranslucent(true);
+        }
         createView();
         setContentView(root);
+        if (!backdrop) {
+            // A floating window just the card's size, docked at the bottom; adjustResize keeps it above the keyboard
+            window.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT);
+            window.setGravity(Gravity.BOTTOM);
+        }
         applyColors();
         animateIn();
     }
 
+    /** The wallpaper, scrim and plane behind the card. TextMemoCardActivity has none: the card floats over the screen. */
+    protected boolean hasBackdrop() {
+        return true;
+    }
+
     private void createView() {
+        if (backdrop) {
+            createBackdrop();
+        } else {
+            root = new FrameLayout(this);
+        }
+        createCard();
+    }
+
+    private void createBackdrop() {
         // The chat wallpaper behind the card, as the video memo's shield shows: Telegram's own look, but no chat. A
         // see-through window was tried first; a launcher can drop its home screen for a second or two when it hands
         // over, and that showed through as black.
-        root = new SizeNotifierFrameLayout(this) {
+        wallpaperRoot = new SizeNotifierFrameLayout(this) {
             // There's no action bar here; left on, the wallpaper is clipped below where one would be
             @Override
             protected boolean isActionBarVisible() {
@@ -140,11 +172,12 @@ public class TextMemoActivity extends Activity {
                 return false;
             }
         };
+        root = wallpaperRoot;
         // Non-blocking: getCachedWallpaper waits on an in-flight load. On a cold start nothing has loaded it yet, so it
         // loads off the UI thread and arrives through didSetNewWallpapper; the window's gray shows until then.
         Drawable wallpaper = Theme.getCachedWallpaperNonBlocking();
         if (wallpaper != null) {
-            root.setBackgroundImage(wallpaper, Theme.isWallpaperMotion());
+            wallpaperRoot.setBackgroundImage(wallpaper, Theme.isWallpaperMotion());
         } else {
             NotificationCenter.getGlobalInstance().addObserver(wallpaperObserver, NotificationCenter.didSetNewWallpapper);
             Theme.loadWallpaper(true);
@@ -192,13 +225,20 @@ public class TextMemoActivity extends Activity {
         hint.setPadding(dp(12), dp(6), dp(12), dp(6));
         hint.setText(LocaleController.getString(R.string.TextMemoHint));
         hero.addView(hint, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 0, 10, 0, 0));
+    }
 
+    private void createCard() {
         card = new LinearLayout(this);
         card.setClickable(true);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setElevation(dp(8));
         card.setPadding(dp(16), dp(12), dp(16), dp(16));
-        content.addView(card, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 8, 8, 8, 8));
+        if (backdrop) {
+            content.addView(card, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 8, 8, 8, 8));
+        } else {
+            // The margin is room for the shadow inside a window that is only as big as the card
+            root.addView(card, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM, 16, 16, 16, 16));
+        }
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
@@ -301,6 +341,13 @@ public class TextMemoActivity extends Activity {
     }
 
     private void applyColors() {
+        if (backdrop) {
+            applyBackdropColors();
+        }
+        applyCardColors();
+    }
+
+    private void applyBackdropColors() {
         boolean dark = Theme.isCurrentThemeDark();
         WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
         controller.setAppearanceLightStatusBars(false); // the scrim keeps the top dark enough for light icons
@@ -317,7 +364,9 @@ public class TextMemoActivity extends Activity {
         pill.setColor(service);
         hint.setBackground(pill);
         hint.setTextColor(Theme.getColor(Theme.key_chat_serviceText));
+    }
 
+    private void applyCardColors() {
         GradientDrawable cardBackground = new GradientDrawable();
         cardBackground.setCornerRadius(dp(24));
         cardBackground.setColor(Theme.getColor(Theme.key_dialogBackground));
@@ -343,8 +392,9 @@ public class TextMemoActivity extends Activity {
     }
 
     private void animateIn() {
-        scrim.setAlpha(0f);
-        scrim.animate().alpha(1f).setDuration(250).setInterpolator(CubicBezierInterpolator.EASE_OUT).start();
+        if (backdrop) {
+            animateBackdropIn();
+        }
         card.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
             @Override
             public boolean onPreDraw() {
@@ -356,6 +406,19 @@ public class TextMemoActivity extends Activity {
                 return true;
             }
         });
+        // Not with the window: the card settles first, and an automation that swaps the keyboard per app (Tasker) gets
+        // to switch it before it comes up, rather than the wrong one opening and then reopening
+        field.requestFocus();
+        field.postDelayed(() -> {
+            if (!dismissing && !isFinishing()) {
+                AndroidUtilities.showKeyboard(field);
+            }
+        }, 500);
+    }
+
+    private void animateBackdropIn() {
+        scrim.setAlpha(0f);
+        scrim.animate().alpha(1f).setDuration(250).setInterpolator(CubicBezierInterpolator.EASE_OUT).start();
         plane.setAlpha(0f);
         plane.setTranslationY(dp(12));
         plane.setScaleX(.8f);
@@ -370,14 +433,6 @@ public class TextMemoActivity extends Activity {
             plane.getAnimatedDrawable().setAutoRepeat(1);
         }
         plane.postDelayed(plane::playAnimation, 220);
-        // Not with the window: the card settles first, and an automation that swaps the keyboard per app (Tasker) gets
-        // to switch it before it comes up, rather than the wrong one opening and then reopening
-        field.requestFocus();
-        field.postDelayed(() -> {
-            if (!dismissing && !isFinishing()) {
-                AndroidUtilities.showKeyboard(field);
-            }
-        }, 500);
     }
 
     private void playPlane() {
@@ -447,8 +502,10 @@ public class TextMemoActivity extends Activity {
         sendButton.animate().alpha(.5f).scaleX(.85f).scaleY(.85f).setDuration(150).setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT).start();
         flyToPlane(text);
         field.setAlpha(0f);
-        hint.animate().alpha(0f).setStartDelay(120).setDuration(150).start();
-        AndroidUtilities.runOnUIThread(this::takeOff, 200);
+        if (backdrop) {
+            hint.animate().alpha(0f).setStartDelay(120).setDuration(150).start();
+            AndroidUtilities.runOnUIThread(this::takeOff, 200);
+        }
         exitCard(280);
     }
 
@@ -471,16 +528,24 @@ public class TextMemoActivity extends Activity {
             // Same box as the input; the root has no padding, so window coordinates relative to it place it exactly
             int[] rootAt = new int[2];
             int[] inputAt = new int[2];
-            int[] planeAt = new int[2];
             root.getLocationInWindow(rootAt);
             inputBubble.getLocationInWindow(inputAt);
-            plane.getLocationInWindow(planeAt);
             root.addView(bubble, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.START));
             bubble.measure(View.MeasureSpec.makeMeasureSpec(inputBubble.getWidth(), View.MeasureSpec.AT_MOST), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
             float startX = inputAt[0] - rootAt[0];
             float startY = inputAt[1] - rootAt[1];
-            float endX = planeAt[0] - rootAt[0] + plane.getWidth() / 2f - bubble.getMeasuredWidth() / 2f;
-            float endY = planeAt[1] - rootAt[1] + plane.getHeight() / 2f - bubble.getMeasuredHeight() / 2f;
+            float endX;
+            float endY;
+            if (backdrop) {
+                int[] planeAt = new int[2];
+                plane.getLocationInWindow(planeAt);
+                endX = planeAt[0] - rootAt[0] + plane.getWidth() / 2f - bubble.getMeasuredWidth() / 2f;
+                endY = planeAt[1] - rootAt[1] + plane.getHeight() / 2f - bubble.getMeasuredHeight() / 2f;
+            } else {
+                // No plane, and a window as small as the card would clip anything leaving it: it shrinks into the input
+                endX = startX + (inputBubble.getWidth() - bubble.getMeasuredWidth()) / 2f;
+                endY = startY + (inputBubble.getHeight() - bubble.getMeasuredHeight()) / 2f;
+            }
             bubble.setTranslationX(startX);
             bubble.setTranslationY(startY);
             ValueAnimator flight = ValueAnimator.ofFloat(0f, 1f);
@@ -546,17 +611,23 @@ public class TextMemoActivity extends Activity {
         }
         beginExit();
         field.setText("");
-        hero.animate().alpha(0f).setDuration(120).start();
+        if (backdrop) {
+            hero.animate().alpha(0f).setDuration(120).start();
+        }
         exitCard(0);
     }
 
-    // Shared start of both exits: stop whatever the open or idle loop has running, freeze the insets, drop the keyboard
+    // Shared start of both exits: stop whatever the open or idle loop has running, freeze the insets, drop the keyboard (the card variant leaves both to finish())
     private void beginExit() {
         dismissing = true;
-        plane.animate().cancel();
-        hint.animate().cancel();
         sendButton.animate().cancel();
-        AndroidUtilities.hideKeyboard(field);
+        if (backdrop) {
+            plane.animate().cancel();
+            hint.animate().cancel();
+            AndroidUtilities.hideKeyboard(field);
+        }
+        // Without a backdrop the keyboard stays until finish(): the window sits on it, so hiding it now would drop the
+        // window while the card is still leaving
         // A fallback in case an end action never runs
         root.postDelayed(() -> {
             if (!isFinishing()) {
@@ -566,7 +637,9 @@ public class TextMemoActivity extends Activity {
     }
 
     private void exitCard(long delay) {
-        scrim.animate().alpha(0f).setStartDelay(delay + 20).setDuration(200).start();
+        if (backdrop) {
+            scrim.animate().alpha(0f).setStartDelay(delay + 20).setDuration(200).start();
+        }
         card.animate().translationY(root.getHeight() - card.getTop()).scaleX(1f).scaleY(1f)
                 .setStartDelay(delay).setDuration(220).setInterpolator(CubicBezierInterpolator.EmphasizedAccelerate)
                 .withEndAction(() -> {
@@ -574,6 +647,17 @@ public class TextMemoActivity extends Activity {
                         finish();
                     }
                 }).start();
+    }
+
+    // Without a backdrop there is no full-screen view to tap, so a touch outside the card lands here
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        if (!backdrop && root != null && event.getAction() == MotionEvent.ACTION_DOWN && field.length() == 0
+                && (event.getX() < card.getLeft() || event.getX() > card.getRight() || event.getY() < card.getTop() || event.getY() > card.getBottom())) {
+            dismiss();
+            return true;
+        }
+        return super.onTouchEvent(event);
     }
 
     @Override
@@ -633,13 +717,13 @@ public class TextMemoActivity extends Activity {
     // The wallpaper loaded after the screen opened. The service colours derive from it, so the plane disc and the hint
     // pill are recoloured too.
     private final NotificationCenter.NotificationCenterDelegate wallpaperObserver = (id, account, args) -> {
-        if (id != NotificationCenter.didSetNewWallpapper || root == null || isFinishing()) {
+        if (id != NotificationCenter.didSetNewWallpapper || wallpaperRoot == null || isFinishing()) {
             return;
         }
         NotificationCenter.getGlobalInstance().removeObserver(this.wallpaperObserver, NotificationCenter.didSetNewWallpapper);
         Drawable loaded = Theme.getCachedWallpaperNonBlocking();
         if (loaded != null) {
-            root.setBackgroundImage(loaded, Theme.isWallpaperMotion());
+            wallpaperRoot.setBackgroundImage(loaded, Theme.isWallpaperMotion());
             applyColors();
         }
     };

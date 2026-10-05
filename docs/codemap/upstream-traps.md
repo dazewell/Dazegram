@@ -2629,3 +2629,44 @@ invalidates and returns at `:3606-3610`, before the `buildLayout()` at `:3841`.
 Status-dependent text must set `continueUpdate = true` (`:3459-3461`).
 
 *(Established 2026-10-03, `#hide-last-message`.)*
+
+## A see-through window on ColorOS: what it takes, and what the launcher does anyway
+
+The text memo's second shortcut, "Text memo · floating" (`#text-memo-shortcut`, PR #472
+and its follow-up), floats just the card over whatever is on screen. On the OPPO/ColorOS
+test device that works only with all of these together:
+
+- A **floating** theme, not a merely translucent one. A translucent theme alone
+  opened a full-screen opaque task and showed black behind the card until a
+  runtime conversion landed a second or two later. The theme is a child of
+  `Theme.TMessages.Transparent` (`styles.xml:52-63`, `values-v21/styles.xml:116-127`,
+  the one that wins at minSdk 27), in `styles_nax.xml:14`.
+- `windowDisablePreview` in that theme (`styles_nax.xml:15`). ColorOS adds a
+  starting window even for a translucent activity and it draws black until the
+  first frame.
+- `Activity.setTranslucent(true)` at runtime on API 30+
+  (`TextMemoActivity.java:132`); the theme alone left `dumpsys` showing the task
+  `translucent=false` behind a transparent window.
+- `window.setLayout(MATCH_PARENT, WRAP_CONTENT)` plus `Gravity.BOTTOM` after
+  `setContentView` (`TextMemoActivity.java:138-139`) for a card-sized window;
+  `adjustResize` then lifts it above the keyboard.
+
+Translucency cannot be switched on an open activity, and an `<activity-alias>`
+does not take its own theme, so the two looks are two manifest activities
+(`AndroidManifest.xml:604-622`) and each has its own launcher shortcut, both
+always offered (`TextMemoShortcut.java:32`, `:71`). A setting that picked one
+would have to rewrite the published shortcut's intent, which
+`buildShortcuts()` doesn't do below API 30 (`MediaDataController.java:5070`)
+while the id set is unchanged (`:5101-5103`); two ids avoid that. A card-sized window clips
+anything leaving it, so the send animation shrinks into the input
+(`TextMemoActivity.java:545`), and the keyboard is left up until `finish()`
+(`:629-630`) because hiding it would move the window under a leaving card.
+
+What no window flag fixes: the ColorOS launcher stops drawing its home screen
+for about 1-2 s when it starts a shortcut, so anything see-through shows black
+there. Lawnchair shows no black behind the card (dazewell, 2026-10-04); other
+launchers and the lock screen are untested. That is why the wallpaper one stays
+the first shortcut and the floating card is offered beside it, not instead. Evidence
+is visual, from the device, not from logs.
+
+*(Established 2026-10-04, `#text-memo-shortcut`.)*

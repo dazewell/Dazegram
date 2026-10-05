@@ -317,7 +317,7 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
         private static final int POPUP_PADDING = 6;
         private static final int POPUP_TOP = 8;
         private static final int POPUP_BOTTOM = 16;
-        private static final int ITEM_COUNT = 5;
+        private static final int ITEM_COUNT = 6;
 
         private final LinearLayout popup;
         private final GradientDrawable popupBackground = new GradientDrawable();
@@ -326,6 +326,7 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
         private final View videoNoteItem;
         private final View videoNoteRearItem;
         private final View textMemoItem;
+        private final View textMemoCardItem;
 
         PreviewCell(Context context) {
             super(context);
@@ -347,6 +348,7 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
             videoNoteItem = addItem(context, 2, 0, VideoNoteShortcut.createIcon(), R.string.VideoNoteShortcutLabel);
             videoNoteRearItem = addItem(context, 3, 0, VideoNoteShortcut.createIcon(), R.string.VideoNoteShortcutLabel);
             textMemoItem = addItem(context, 4, 0, TextMemoShortcut.createIcon(), R.string.TextMemoShortcutLabel);
+            textMemoCardItem = addItem(context, 5, 0, TextMemoShortcut.createIcon(), R.string.TextMemoShortcutLabelCard);
 
             setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
             update();
@@ -410,7 +412,10 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
             labels[3].setText(VideoNoteShortcut.getLabel(true, true));
             videoNoteItem.setVisibility(VideoNoteShortcut.isEnabled() ? VISIBLE : GONE);
             videoNoteRearItem.setVisibility(VideoNoteShortcut.isEnabled() && both ? VISIBLE : GONE);
+            labels[4].setText(TextMemoShortcut.getLabel(false));
+            labels[5].setText(TextMemoShortcut.getLabel(true));
             textMemoItem.setVisibility(TextMemoShortcut.isEnabled() ? VISIBLE : GONE);
+            textMemoCardItem.setVisibility(TextMemoShortcut.isEnabled() ? VISIBLE : GONE);
         }
     }
 }
