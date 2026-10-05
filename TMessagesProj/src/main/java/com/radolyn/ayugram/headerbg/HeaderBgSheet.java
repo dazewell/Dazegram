@@ -111,6 +111,8 @@ public final class HeaderBgSheet {
         private final HeaderBgSettings s;
         private final boolean hasPhoto;
         private final ArrayList<Runnable> syncs = new ArrayList<>();
+        // One per section: opening a section runs the others', so at most one is open.
+        private final ArrayList<Runnable> closers = new ArrayList<>();
         private final ArrayList<GateLayout> bodies = new ArrayList<>();
         private BottomSheet sheet;
 
@@ -294,7 +296,22 @@ public final class HeaderBgSheet {
             boolean[] open = {expanded};
             frame.setExpanded(expanded, false);
             syncs.add(() -> header.bind(getString(title), summary.get(), open[0]));
+            Runnable close = () -> {
+                if (open[0]) {
+                    open[0] = false;
+                    frame.setExpanded(false, true);
+                    header.bind(getString(title), summary.get(), false);
+                }
+            };
+            closers.add(close);
             header.setOnClickListener(v -> {
+                if (!open[0]) {
+                    for (Runnable other : closers) {
+                        if (other != close) {
+                            other.run();
+                        }
+                    }
+                }
                 open[0] = !open[0];
                 frame.setExpanded(open[0], true);
                 header.bind(getString(title), summary.get(), open[0]);
