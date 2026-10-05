@@ -437,7 +437,7 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         return alpha() >= 1f && settings.extendPanel ? settings.text(true, isDark()) : HeaderBgForeground.THEME;
     }
 
-    // The theme the chat is showing, which picks the light or the dark half of the text settings.
+    // The app's current light or dark theme, which picks the light or the dark half of the text settings.
     private boolean isDark() {
         return resourcesProvider != null ? resourcesProvider.isDark() : Theme.isCurrentThemeDark();
     }

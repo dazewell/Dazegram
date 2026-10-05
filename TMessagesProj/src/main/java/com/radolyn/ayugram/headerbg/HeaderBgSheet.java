@@ -151,7 +151,7 @@ public final class HeaderBgSheet {
             AndroidUtilities.setLightStatusBar(sheet.getWindow(), light);
         }
 
-        // The theme the chat shows now, which picks the half of the text settings the two rows edit.
+        // The app's current light or dark theme, which picks the half of the text settings the two rows edit.
         private boolean isDark() {
             return rp != null ? rp.isDark() : Theme.isCurrentThemeDark();
         }

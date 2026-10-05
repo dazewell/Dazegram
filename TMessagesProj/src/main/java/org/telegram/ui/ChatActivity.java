@@ -13119,7 +13119,7 @@ public class ChatActivity extends BaseFragment implements
 
         // NagramX: lets the player row stand in for this strip while both are shown.
         xyz.nextalone.nagram.helpers.PinnedPlayerRow.attachPinned(fragmentContextViewWrapper, this, pinnedMessageView, pinnedListButton);
-        // NagramX: the strip is coloured once here, so a header photo's Alternate colour needs its views to recolour later.
+        // NagramX: the strip is coloured once here, so a header photo's text colour setting needs its views to recolour later.
         com.radolyn.ayugram.headerbg.HeaderBgForeground.attachPinned(this, pinnedCounterTextView, pinnedNameTextView, pinnedMessageTextView, pinnedListButton, closePinned, fragmentContextViewWrapper);
         updatePinnedListButton(false);
     }
