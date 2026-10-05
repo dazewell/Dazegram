@@ -149,6 +149,11 @@ public final class HeaderBgSheet {
             AndroidUtilities.setLightStatusBar(sheet.getWindow(), light);
         }
 
+        // The theme the chat shows now, which picks the half of the text settings the two rows edit.
+        private boolean isDark() {
+            return rp != null ? rp.isDark() : Theme.isCurrentThemeDark();
+        }
+
         private void save() {
             s.save(account, dialogId);
         }
@@ -216,8 +221,18 @@ public final class HeaderBgSheet {
             tintRow(look);
             View tintStrength = slider(look, R.string.HeaderBackgroundTintStrength, 0, 100, () -> s.tintStrength, v -> s.tintStrength = v, false);
             syncs.add(() -> setRowEnabled(tintStrength, s.tintHue != HeaderBgSettings.TINT_AUTO));
-            TextSettingsCell alternateCell = choice(look, () -> true, () -> s.alternate = (s.alternate + 1) % (HeaderBgSettings.ALT_PIN + 1));
-            syncs.add(() -> alternateCell.setTextAndValue(getString(R.string.HeaderBackgroundAlternate), alternateName(s.alternate), false));
+            // Both are remembered for the theme the chat shows now; the other theme keeps its own.
+            TextSettingsCell headerTextCell = choice(look, () -> true, () -> s.cycleText(false, isDark()));
+            TextSettingsCell pinTextCell = choice(look, () -> s.extendPanel, () -> s.cycleText(true, isDark()));
+            TextInfoPrivacyCell textInfo = new TextInfoPrivacyCell(context, 21, rp);
+            look.addView(textInfo, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            syncs.add(() -> {
+                boolean dark = isDark();
+                headerTextCell.setTextAndValue(getString(R.string.HeaderBackgroundTextHeader), textName(s.text(false, dark)), true);
+                pinTextCell.setTextAndValue(getString(R.string.HeaderBackgroundTextPin), textName(s.text(true, dark)), false);
+                setRowEnabled(pinTextCell, s.extendPanel);
+                textInfo.setText(getString(dark ? R.string.HeaderBackgroundTextInfoDark : R.string.HeaderBackgroundTextInfoLight));
+            });
             addSpacer(content, 8);
 
             // The choices sit together under the switch, where a tap target reads as one; the sliders follow.
@@ -548,17 +563,14 @@ public final class HeaderBgSheet {
         return getString(R.string.HeaderBackgroundFromTitle);
     }
 
-    private static String alternateName(int alternate) {
-        switch (alternate) {
-            case HeaderBgSettings.ALT_HEADER:
-                return getString(R.string.HeaderBackgroundAlternateHeader);
-            case HeaderBgSettings.ALT_BOTH:
-                return getString(R.string.HeaderBackgroundAlternateBoth);
-            case HeaderBgSettings.ALT_PIN:
-                return getString(R.string.HeaderBackgroundAlternatePin);
-            default:
-                return getString(R.string.HeaderBackgroundGradientOff);
+    private static String textName(int text) {
+        if (text == HeaderBgSettings.TEXT_LIGHT) {
+            return getString(R.string.HeaderBackgroundTextLight);
         }
+        if (text == HeaderBgSettings.TEXT_DARK) {
+            return getString(R.string.HeaderBackgroundTextDark);
+        }
+        return getString(R.string.HeaderBackgroundTintAuto);
     }
 
     private static String curveName(int curve) {

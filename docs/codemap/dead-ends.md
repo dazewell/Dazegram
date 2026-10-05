@@ -1064,6 +1064,7 @@ side (`HeaderBgSettings.java:51`, `HeaderBgDrawer.java:603-612`) at 70%
 (`HeaderBgSettings.java:40`), so the title sits on nearly plain surface while the
 menu icons sit on the photo. No single colour reads on both, and the band
 average landed on the light side. The status bar keeps its own probe of its
-rows, and the text colour became a manual per-chat setting instead.
+rows, and the text colour became a manual per-chat setting instead (since
+split per surface and per theme, still without any measuring).
 
 *(Established 2026-10-03, `#header-avatar-bg`, PR #470.)*
