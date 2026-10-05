@@ -321,7 +321,7 @@ public class GhostModeActivity extends BaseNekoSettingsActivity implements Notif
                     } else if (position == sendWithoutSoundRow) {
                         textCheckCell.setTextAndCheck(getString(R.string.SilentMessageByDefault), NaConfig.INSTANCE.getSilentMessageByDefault().Bool(), true);
                     } else if (position == showGhostInDrawerRow) {
-                        textCheckCell.setTextAndCheck(getString(R.string.GhostModeInDrawer), NekoConfig.showGhostInDrawer.Bool(), true);
+                        textCheckCell.setTextAndValueAndCheck(getString(R.string.GhostModeInDrawer), getString(R.string.GhostModeInDrawerNotice), NekoConfig.showGhostInDrawer.Bool(), true, true, true);
                     } else if (position == showGhostModeStatusRow) {
                         textCheckCell.setTextAndCheck(getString(R.string.GhostModeStatusIndicator), NekoConfig.showGhostModeStatus.Bool(), false);
                     }

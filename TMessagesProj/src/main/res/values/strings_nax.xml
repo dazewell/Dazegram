@@ -206,11 +206,12 @@
     <string name="MapPreviewProviderYandexNax">Yandex</string>
     <string name="GhostMode">Ghost Mode</string>
     <string name="GhostEssentialsHeader">Ghost essentials</string>
-    <string name="EnableGhostMode">Enable Ghost</string>
-    <string name="DisableGhostMode">Disable Ghost</string>
+    <string name="EnableGhostMode">Enable Ayu Mode</string>
+    <string name="DisableGhostMode">Disable Ayu Mode</string>
     <string name="GhostModeEnabled">Ghost mode turned on</string>
     <string name="GhostModeDisabled">Ghost mode turned off</string>
-    <string name="GhostModeInDrawer">Shortcuts</string>
+    <string name="GhostModeInDrawer">Ghost Mode in menus</string>
+    <string name="GhostModeInDrawerNotice">An Ayu Mode switch in the main menu, and a per-chat exclusion in profiles.</string>
     <string name="AyuModeShortcut">Ayu Mode</string>
     <string name="GhostModeStatusIndicator">Ghost Mode Indicator</string>
     <string name="DontSendReadMessagePackets">Don\'t Read Messages</string>
