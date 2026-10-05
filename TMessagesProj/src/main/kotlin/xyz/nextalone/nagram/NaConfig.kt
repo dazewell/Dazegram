@@ -643,6 +643,66 @@ object NaConfig {
             ConfigItem.configTypeBool,
             true
         )
+    val saveDeletedMessagesInPrivateChats =
+        addConfig(
+            "SaveDeletedMessagesInPrivateChats",
+            ConfigItem.configTypeBool,
+            true
+        )
+    val saveDeletedMessagesInPublicChannels =
+        addConfig(
+            "SaveDeletedMessagesInPublicChannels",
+            ConfigItem.configTypeBool,
+            true
+        )
+    val saveDeletedMessagesInPrivateChannels =
+        addConfig(
+            "SaveDeletedMessagesInPrivateChannels",
+            ConfigItem.configTypeBool,
+            true
+        )
+    val saveDeletedMessagesInPublicGroups =
+        addConfig(
+            "SaveDeletedMessagesInPublicGroups",
+            ConfigItem.configTypeBool,
+            true
+        )
+    val saveDeletedMessagesInPrivateGroups =
+        addConfig(
+            "SaveDeletedMessagesInPrivateGroups",
+            ConfigItem.configTypeBool,
+            true
+        )
+    val saveEditsHistoryInPrivateChats =
+        addConfig(
+            "SaveEditsHistoryInPrivateChats",
+            ConfigItem.configTypeBool,
+            true
+        )
+    val saveEditsHistoryInPublicChannels =
+        addConfig(
+            "SaveEditsHistoryInPublicChannels",
+            ConfigItem.configTypeBool,
+            true
+        )
+    val saveEditsHistoryInPrivateChannels =
+        addConfig(
+            "SaveEditsHistoryInPrivateChannels",
+            ConfigItem.configTypeBool,
+            true
+        )
+    val saveEditsHistoryInPublicGroups =
+        addConfig(
+            "SaveEditsHistoryInPublicGroups",
+            ConfigItem.configTypeBool,
+            true
+        )
+    val saveEditsHistoryInPrivateGroups =
+        addConfig(
+            "SaveEditsHistoryInPrivateGroups",
+            ConfigItem.configTypeBool,
+            true
+        )
     val saveDeletedMessageForBot =
         addConfig(
             "SaveDeletedMessageForBot", // save in bot chats
