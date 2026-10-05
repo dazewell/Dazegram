@@ -7,6 +7,7 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -38,6 +39,9 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
@@ -56,6 +60,7 @@ import org.telegram.messenger.SendMessagesHelper;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
+import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.BaseFragment;
@@ -76,11 +81,15 @@ import org.telegram.ui.LaunchActivity;
  * so it never touches the app lock: a locked app stays locked, and closing returns to the launcher. Text left unsent by
  * anything but Discard or Send stays as that chat's real draft, and the next memo opens with it. A send clears the chat's
  * draft, as any send does. The memo never writes over a draft it didn't open with, and shows one only when the app and
- * the chat would open without the passcode. It also keeps its hands off a chat open in the app, whose composer would write
- * its own text back over the memo's on its next pause. A chat open in a bubble isn't checked. When the recipient can't
- * receive the memo, the draft goes to Saved Messages, where the memo itself goes.
+ * the chat would open without the passcode, or when the memo itself left it in the last five minutes. It also keeps
+ * its hands off a chat open in the app, whose composer would write its own text back over the memo's on its next pause.
+ * A chat open in a bubble isn't checked. When the recipient can't receive the memo, the draft goes to Saved Messages, where the memo itself goes.
  */
 public class TextMemoActivity extends Activity {
+
+    private static final String KEY_MEMO_DRAFT_HASH = "draft_hash";
+    private static final String KEY_MEMO_DRAFT_AT = "draft_at";
+    private static final long MEMO_DRAFT_WINDOW_MS = 5 * 60 * 1000;
 
     private int account = -1;
     private FrameLayout root;
@@ -649,7 +658,7 @@ public class TextMemoActivity extends Activity {
         android.util.Log.i("NAX_SMOKE_text-memo-draft", "restore account=" + account + " hasDraft=" + (draft != null) + " fieldEmpty=" + (field.length() == 0)
                 + " plain=" + (draft != null && isPlainDraft(draft)) + " canShow=" + canShowDraft() + " chatOpen=" + isChatOpen());
         if (draft == null || field.length() != 0 || !isPlainDraft(draft) || drafts.getDraftVoice(dialogId, 0) != null
-                || !canShowDraft() || isChatOpen()) {
+                || !canShowDraft() && !isRecentMemoDraft(draft) || isChatOpen()) {
             return;
         }
         adoptedDraft = draft;
@@ -708,6 +717,54 @@ public class TextMemoActivity extends Activity {
                 && uptime + 5 >= SharedConfig.lastPauseTime;
     }
 
+    /**
+     * A draft the memo itself left in the last five minutes comes back even while the app or the chat is locked, so a
+     * memo closed by accident isn't lost behind the passcode. Drafts typed in the chat stay locked. Only a hash of the chat
+     * and the text is kept, with when it was left, never the text.
+     */
+    private boolean isRecentMemoDraft(TLRPC.DraftMessage draft) {
+        try {
+            SharedPreferences prefs = memoPrefs(account);
+            long age = System.currentTimeMillis() - prefs.getLong(KEY_MEMO_DRAFT_AT, 0);
+            String hash = prefs.getString(KEY_MEMO_DRAFT_HASH, null);
+            return hash != null && age >= 0 && age <= MEMO_DRAFT_WINDOW_MS && hash.equals(memoDraftHash(dialogId, draft.message));
+        } catch (Throwable e) {
+            return false;
+        }
+    }
+
+    // Empty text forgets it: a cleared draft has nothing to bring back
+    private void rememberMemoDraft(String text) {
+        String hash = text.isEmpty() ? null : memoDraftHash(dialogId, text);
+        SharedPreferences.Editor editor = memoPrefs(account).edit();
+        if (hash == null) {
+            editor.clear();
+        } else {
+            editor.putString(KEY_MEMO_DRAFT_HASH, hash).putLong(KEY_MEMO_DRAFT_AT, System.currentTimeMillis());
+        }
+        editor.apply();
+    }
+
+    private static String memoDraftHash(long dialogId, String text) {
+        try {
+            return Utilities.bytesToHex(MessageDigest.getInstance("SHA-256").digest((dialogId + "\n" + text).getBytes(StandardCharsets.UTF_8)));
+        } catch (Throwable e) {
+            return null;
+        }
+    }
+
+    private static SharedPreferences memoPrefs(int account) {
+        return ApplicationLoader.applicationContext.getSharedPreferences("textmemo_" + account, 0);
+    }
+
+    /** VideoNoteTarget.clearAccountState, on logout. */
+    static void clearAccountState(int account) {
+        try {
+            memoPrefs(account).edit().clear().apply();
+        } catch (Throwable ignore) {
+        }
+    }
+
     // The chat open anywhere in the app: its composer writes its own text back as the draft when it next pauses
     private boolean isChatOpen() {
         LaunchActivity launch = LaunchActivity.instance;
@@ -740,6 +797,7 @@ public class TextMemoActivity extends Activity {
                     + " unchanged=" + (drafts.getDraft(dialogId, 0) == adoptedDraft) + " chatOpen=" + isChatOpen());
             if (drafts.getDraft(dialogId, 0) == adoptedDraft && !isChatOpen()) {
                 drafts.saveDraft(dialogId, 0, text, null, null, adoptedDraft != null && adoptedDraft.no_webpage, 0);
+                rememberMemoDraft(text);
             }
         } catch (Throwable e) {
             FileLog.e(e);
