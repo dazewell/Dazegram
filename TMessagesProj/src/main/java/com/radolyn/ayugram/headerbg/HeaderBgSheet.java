@@ -198,7 +198,7 @@ public final class HeaderBgSheet {
                 addSpacer(content, 8);
             }
 
-            GateLayout position = section(content, R.string.HeaderBackgroundPosition, true,
+            GateLayout position = section(content, R.string.HeaderBackgroundPosition, false,
                     () -> signed(s.offsetX) + " · " + signed(s.offsetY) + " · " + s.zoom + "%");
             slider(position, R.string.HeaderBackgroundOffsetX, -100, 100, () -> s.offsetX, v -> s.offsetX = v, true);
             slider(position, R.string.HeaderBackgroundOffsetY, -100, 100, () -> s.offsetY, v -> s.offsetY = v, true);
