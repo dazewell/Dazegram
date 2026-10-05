@@ -220,6 +220,8 @@
     <string name="SendOfflinePacketAfterOnline">Go Offline Automatically</string>
     <string name="MarkReadAfterSend">Read on Interact</string>
     <string name="GhostModeNotice">Long tap on any option to prevent it from changing on toggling Ghost Mode.</string>
+    <string name="GhostPrivateChatsOnly">Private chats only</string>
+    <string name="GhostPrivateChatsOnlyNotice">Ghost Mode only applies in one-on-one chats. Groups and channels behave normally. Online status stays as set above.</string>
     <string name="MarkReadAfterSendNotice">Automatically reads message when you send a new one or tap a reaction.</string>
     <string name="SendWithoutSoundRowNotice">Automatically sends outgoing messages without sound.</string>
     <string name="GhostHoldSwitch">Hold Messages</string>

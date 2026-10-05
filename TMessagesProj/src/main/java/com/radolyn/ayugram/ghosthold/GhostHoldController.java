@@ -224,6 +224,16 @@ public final class GhostHoldController {
         if (DialogObject.isEncryptedDialog(peer)) {
             return false;
         }
+        // "Private chats only": groups and channels are not held. But a chat that already holds
+        // rows keeps holding, so a live send can never overtake an older held one. An unowned
+        // store cannot prove the chat is empty, so that case keeps holding too.
+        if (com.radolyn.ayugram.utils.AyuGhostPreferences.isOutOfGhostScope(peer)) {
+            initAccount(account);
+            if (GhostHoldStore.getInstance(account).ownsUser(UserConfig.getInstance(account).getClientUserId())
+                    && heldOrderView(account, peer).isEmpty()) {
+                return false;
+            }
+        }
         boolean text = p.message != null && p.location == null && p.user == null;
         boolean contact = p.message == null && p.location == null && p.user != null;
         boolean staticLocation = p.message == null && p.user == null && isStaticLocation(p.location);
@@ -1700,6 +1710,10 @@ public final class GhostHoldController {
 
         private HeldOrderView(java.util.HashMap<Integer, Integer> rankByMid) {
             this.rankByMid = rankByMid;
+        }
+
+        public boolean isEmpty() {
+            return rankByMid.isEmpty();
         }
 
         /** Flush-order rank of {@code mid} (0 == oldest held), or -1 if it is not a held member. */

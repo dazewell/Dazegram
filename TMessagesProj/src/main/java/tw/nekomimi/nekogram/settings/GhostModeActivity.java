@@ -41,6 +41,8 @@ public class GhostModeActivity extends BaseNekoSettingsActivity implements Notif
     private int sendUploadProgressRow;
     private int sendOfflinePacketAfterOnlineRow;
     private int ghostModeNoticeRow;
+    private int privateChatsOnlyRow;
+    private int privateChatsOnlyNoticeRow;
     private int markReadAfterSendRow;
     private int markReadAfterSendNoticeRow;
     private int holdMessagesRow;
@@ -74,6 +76,8 @@ public class GhostModeActivity extends BaseNekoSettingsActivity implements Notif
             sendOfflinePacketAfterOnlineRow = -1;
             ghostModeNoticeRow = -1;
         }
+        privateChatsOnlyRow = addRow();
+        privateChatsOnlyNoticeRow = addRow();
         markReadAfterSendRow = addRow();
         markReadAfterSendNoticeRow = addRow();
         holdMessagesRow = addRow();
@@ -199,6 +203,9 @@ public class GhostModeActivity extends BaseNekoSettingsActivity implements Notif
             NekoConfig.sendOfflinePacketAfterOnline.toggleConfigBool();
             ((CheckBoxCell) view).setChecked(NekoConfig.sendOfflinePacketAfterOnline.Bool(), true);
             updateGhostViews();
+        } else if (position == privateChatsOnlyRow) {
+            NekoConfig.ghostPrivateChatsOnly.toggleConfigBool();
+            ((TextCheckCell) view).setChecked(NekoConfig.ghostPrivateChatsOnly.Bool());
         } else if (position == markReadAfterSendRow) {
             NekoConfig.markReadAfterSend.toggleConfigBool();
             ((TextCheckCell) view).setChecked(NekoConfig.markReadAfterSend.Bool());
@@ -314,7 +321,9 @@ public class GhostModeActivity extends BaseNekoSettingsActivity implements Notif
                 case TYPE_CHECK:
                     TextCheckCell textCheckCell = (TextCheckCell) holder.itemView;
                     textCheckCell.setEnabled(true, null);
-                    if (position == markReadAfterSendRow) {
+                    if (position == privateChatsOnlyRow) {
+                        textCheckCell.setTextAndCheck(getString(R.string.GhostPrivateChatsOnly), NekoConfig.ghostPrivateChatsOnly.Bool(), true);
+                    } else if (position == markReadAfterSendRow) {
                         textCheckCell.setTextAndCheck(getString(R.string.MarkReadAfterSend), NekoConfig.markReadAfterSend.Bool(), true);
                     } else if (position == holdMessagesRow) {
                         textCheckCell.setTextAndCheck(getString(R.string.GhostHoldSwitch), NekoConfig.holdMessagesWhileGhost.Bool(), true);
@@ -345,6 +354,8 @@ public class GhostModeActivity extends BaseNekoSettingsActivity implements Notif
                         } else {
                             cell.setText(getString(R.string.GhostHoldSwitchNotice));
                         }
+                    } else if (position == privateChatsOnlyNoticeRow) {
+                        cell.setText(getString(R.string.GhostPrivateChatsOnlyNotice));
                     } else if (position == sendWithoutSoundNoticeRow) {
                         cell.setText(getString(R.string.SendWithoutSoundRowNotice));
                     }
@@ -415,7 +426,7 @@ public class GhostModeActivity extends BaseNekoSettingsActivity implements Notif
         public int getItemViewType(int position) {
             if (position == ghostEssentialsHeaderRow) {
                 return TYPE_HEADER;
-            } else if (position == ghostModeNoticeRow || position == markReadAfterSendNoticeRow || position == holdMessagesNoticeRow || position == sendWithoutSoundNoticeRow) {
+            } else if (position == ghostModeNoticeRow || position == markReadAfterSendNoticeRow || position == holdMessagesNoticeRow || position == sendWithoutSoundNoticeRow || position == privateChatsOnlyNoticeRow) {
                 return TYPE_INFO_PRIVACY;
             } else if (position == ghostModeToggleRow) {
                 return TYPE_CHECK2;

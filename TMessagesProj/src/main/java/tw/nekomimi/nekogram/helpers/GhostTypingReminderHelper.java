@@ -252,6 +252,10 @@ public class GhostTypingReminderHelper {
         if (NekoConfig.holdMessagesWhileGhost.Bool()) {
             return;
         }
+        // NagramX: Ghost Mode is not applied in groups and channels under "private chats only".
+        if (com.radolyn.ayugram.utils.AyuGhostPreferences.isOutOfGhostScope(dialogId)) {
+            return;
+        }
 
         HashSet<Long> reminded = remindedSetForEpoch(account, ghostSessionEpoch);
         if (reminded.contains(dialogId)) {

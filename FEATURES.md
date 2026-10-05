@@ -54,6 +54,10 @@ Turn on **Hold Messages** under Settings → Ghost Mode (off by default) and mos
 <img height="260" alt="the Send held messages? confirmation shown when Ghost Mode is switched off with messages still held" src="docs/images/features/ghost-hold-turn-off.png" />
 <img height="260" alt="a bulletin reading Held — won't send until Ghost Mode is off, shown above the composer straight after a send was held" src="docs/images/features/ghost-hold-bulletin.png" />
 
+### Ghost Mode for private chats only <!-- #ghost-private-only -->
+
+Settings → Ghost Mode → **Private chats only** limits Ghost Mode to one-on-one chats, including bots, secret chats and Saved Messages. In groups and channels, typing, read receipts and story views go out normally, Hold Messages sends immediately and no Ghost warnings appear. Online status is unaffected. Off by default, so Ghost Mode applies everywhere.
+
 ### Ghost icon stays put under stories <!-- #ghost-icon -->
 
 With Ghost Mode on, the ghost indicator next to the chat list title stays visible even when contacts' stories collapse the header.

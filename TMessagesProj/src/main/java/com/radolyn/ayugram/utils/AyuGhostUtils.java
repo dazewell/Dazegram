@@ -156,8 +156,13 @@ public class AyuGhostUtils {
 
     public static InterceptResult interceptRequest(TLObject object, RequestDelegate onCompleteOrig) {
         Long dialogId = extractDialogId(object);
-        boolean readExcluded = dialogId != null && AyuGhostPreferences.getGhostModeReadExclusion(dialogId);
-        boolean typingExcluded = dialogId != null && AyuGhostPreferences.getGhostModeTypingExclusion(dialogId);
+        // NagramX: encrypted requests carry the raw int chat id, which can be negative; never classify it by sign.
+        boolean outOfScope = dialogId != null
+                && !(object instanceof TLRPC.TL_messages_setEncryptedTyping)
+                && !(object instanceof TLRPC.TL_messages_readEncryptedHistory)
+                && AyuGhostPreferences.isOutOfGhostScope(dialogId);
+        boolean readExcluded = dialogId != null && (outOfScope || AyuGhostPreferences.getGhostModeReadExclusion(dialogId));
+        boolean typingExcluded = dialogId != null && (outOfScope || AyuGhostPreferences.getGhostModeTypingExclusion(dialogId));
 
         // Block typing if disabled
         if (!NekoConfig.sendUploadProgress.Bool() && (object instanceof TLRPC.TL_messages_setTyping || object instanceof TLRPC.TL_messages_setEncryptedTyping)) {
@@ -203,7 +208,7 @@ public class AyuGhostUtils {
 
             if (peer != null) {
                 var dialogId = AyuGhostUtils.getDialogId(peer);
-                if (AyuGhostPreferences.getGhostModeReadExclusion(dialogId)) {
+                if (AyuGhostPreferences.isOutOfGhostScope(dialogId) || AyuGhostPreferences.getGhostModeReadExclusion(dialogId)) {
                     return;
                 }
                 getMessagesStorage().getStorageQueue().postRunnable(() ->

@@ -192,6 +192,8 @@ public class NekoConfig {
     public static ConfigItem showGhostInDrawer = addConfig("showGhostInDrawer", configTypeBool, false);
     public static ConfigItem showGhostModeStatus = addConfig("showGhostModeStatus", configTypeBool, false);
     public static ConfigItem holdMessagesWhileGhost = addConfig("holdMessagesWhileGhost", configTypeBool, false);
+    // NagramX: deliberately not in ghostToggleItems -- the scope narrows where Ghost Mode applies, it is not a Ghost signal.
+    public static ConfigItem ghostPrivateChatsOnly = addConfig("ghostPrivateChatsOnly", configTypeBool, false);
 
     // --- Locked Status ---
     public static ConfigItem sendReadMessagePacketsLocked = addConfig("sendReadMessagePacketsLocked", configTypeBool, false);

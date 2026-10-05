@@ -12915,6 +12915,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         if (!NekoConfig.showGhostInDrawer.Bool() || ChatObject.isChannelAndNotMegaGroup(currentChat)) {
             return;
         }
+        // NagramX: with "private chats only" on, Ghost Mode does not apply to groups, so there is nothing to exclude.
+        if (NekoConfig.ghostPrivateChatsOnly.Bool() && currentChat != null) {
+            return;
+        }
         if (currentEncryptedChat instanceof TLRPC.TL_encryptedChat) {
             chatId = currentEncryptedChat.id;
         }

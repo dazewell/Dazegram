@@ -268,6 +268,13 @@ public class GhostSendWarningHelper {
         // something release NativeByteBuffers.
         final long dialogId = resolveDialogId(dispatchUserId, request);
 
+        // NagramX: with "private chats only" on, Ghost Mode is not applied to this
+        // group or channel, so there is nothing to warn about. An unresolved id (0)
+        // is not a chat dialog and still warns.
+        if (com.radolyn.ayugram.utils.AyuGhostPreferences.isOutOfGhostScope(dialogId)) {
+            return;
+        }
+
         // NagramX: resolve the fragment on the UI thread, which is not the thread
         // sendRequestInternal runs on, and decide + show against
         // that exact instance -- never test one fragment instance and show on a
