@@ -55,6 +55,8 @@ public final class VideoHoldToSend {
     private static final long ARM_MS = 250;
     private static final long CANCEL_MS = 150;
     private static final int SWIPE_DP = 48;
+    private static final long FILL_DELAY_MS = 120;
+    private static final int PRE_FILL_SLOP_DP = 14;
     public static final int SWIPE_UP = 0;
     public static final int SWIPE_DOWN = 1;
     public static final int SWIPE_LEFT = 2;
@@ -89,6 +91,15 @@ public final class VideoHoldToSend {
     private long labelLastDraw;
 
     private final Runnable armRunnable = this::arm;
+    private final Runnable fillRunnable = this::startFill;
+
+    private void startFill() {
+        if (!tracking) {
+            return;
+        }
+        buzz(10, 40, HapticFeedbackConstants.CLOCK_TICK);
+        animateTo(1f, ARM_MS - FILL_DELAY_MS);
+    }
 
     // previewPlayer is the paused preview's player, null while there's no preview. previewSends says whether the
     // host can send from its preview at all; story replies can't, and keep tap-to-toggle-sound. canToggle is
@@ -151,9 +162,9 @@ public final class VideoHoldToSend {
                 this.circle = circle;
                 tracking = true;
                 // a hold that can't send has nothing to arm, so only a tap is tracked, without the tick or the fill
+                // the tick and the fill wait out FILL_DELAY_MS, so a tap or a swipe, which moves off first, never flashes them
                 if (sendable) {
-                    buzz(10, 40, HapticFeedbackConstants.CLOCK_TICK);
-                    animateTo(1f, ARM_MS);
+                    AndroidUtilities.runOnUIThread(fillRunnable, FILL_DELAY_MS);
                     AndroidUtilities.runOnUIThread(armRunnable, ARM_MS);
                 }
                 break;
@@ -165,7 +176,11 @@ public final class VideoHoldToSend {
                 if (swipeTracking) {
                     final float dx = ev.getX() - swipeDownX;
                     final float dy = ev.getY() - swipeDownY;
-                    if (Math.max(Math.abs(dx), Math.abs(dy)) >= dp(SWIPE_DP)) {
+                    final float travel = Math.max(Math.abs(dx), Math.abs(dy));
+                    if (tracking && progress == 0f && !armed && travel >= dp(PRE_FILL_SLOP_DP)) {
+                        cancel(); // already a swipe before the fill began: no fill for it, and no hold either
+                    }
+                    if (travel >= dp(SWIPE_DP)) {
                         swipeTracking = false;
                         cancel(); // the swipe leaves the circle, which would cancel anyway; do it before it acts
                         if (canSwipe.run()) {
@@ -206,6 +221,7 @@ public final class VideoHoldToSend {
     // segment rollover.
     public void reset() {
         AndroidUtilities.cancelRunOnUIThread(armRunnable);
+        AndroidUtilities.cancelRunOnUIThread(fillRunnable);
         tracking = false;
         armed = false;
         swipeTracking = false;
@@ -304,6 +320,7 @@ public final class VideoHoldToSend {
 
     private void cancel() {
         AndroidUtilities.cancelRunOnUIThread(armRunnable);
+        AndroidUtilities.cancelRunOnUIThread(fillRunnable);
         if (!tracking && !armed) {
             return;
         }
