@@ -10,7 +10,7 @@ import org.telegram.messenger.Utilities
 import xyz.nextalone.nagram.NaConfig
 
 object ShortcutHelper {
-    // The id MediaDataController.buildShortcuts() gives the "New Message" shortcut.
+    // The id MediaDataController.buildShortcuts() gives the "New conversation" shortcut.
     private const val COMPOSE_SHORTCUT_ID = "compose"
 
     @JvmStatic
