@@ -52,10 +52,11 @@ import tw.nekomimi.nekogram.config.cell.ConfigCellTextCheck;
 import tw.nekomimi.nekogram.settings.BaseNekoXSettingsActivity;
 import tw.nekomimi.nekogram.ui.PopupBuilder;
 import xyz.nextalone.nagram.NaConfig;
+import xyz.nextalone.nagram.helper.ShortcutHelper;
 
 /**
- * N-Settings -> General -> Launcher shortcuts. One section per fork shortcut, under a mock of the launcher's long-press
- * popup that shows which of them are on.
+ * N-Settings -> General -> Launcher shortcuts. One section per shortcut, Telegram's own New conversation included, under
+ * a mock of the launcher's long-press popup that shows which of them are on.
  */
 public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
 
@@ -66,6 +67,10 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
     private final AbstractConfigCell headerPreview = cellGroup.appendCell(new ConfigCellHeader(getString(R.string.ComposerPreviewHeader)));
     private final AbstractConfigCell previewRow = cellGroup.appendCell(new ConfigCellCustom(null, ConfigCellCustom.CUSTOM_ITEM_LauncherShortcutsPreview, false));
     private final AbstractConfigCell dividerPreview = cellGroup.appendCell(new ConfigCellDivider());
+
+    private final AbstractConfigCell headerBuiltIn = cellGroup.appendCell(new ConfigCellHeader(getString(R.string.BuiltInShortcutsHeader)));
+    private final AbstractConfigCell newConversationRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getNewConversationShortcut(), getString(R.string.NewConversationShortcutNotice)));
+    private final AbstractConfigCell dividerBuiltIn = cellGroup.appendCell(new ConfigCellDivider());
 
     private final AbstractConfigCell headerGhostMode = cellGroup.appendCell(new ConfigCellHeader(getString(R.string.GhostMode)));
     private final AbstractConfigCell ghostModeRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getGhostModeShortcut(), getString(R.string.GhostModeShortcutNotice)));
@@ -145,7 +150,8 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
         boolean memo = key.equals(NaConfig.INSTANCE.getVideoNoteShortcut().getKey()) || key.equals(NaConfig.INSTANCE.getTextMemoShortcut().getKey());
         // The camera decides how many video memo shortcuts there are and what they are called
         boolean camera = key.equals(NaConfig.INSTANCE.getVideoNoteShortcutCamera().getKey());
-        if (!memo && !camera && !key.equals(NaConfig.INSTANCE.getGhostModeShortcut().getKey())) {
+        if (!memo && !camera && !key.equals(NaConfig.INSTANCE.getGhostModeShortcut().getKey())
+                && !key.equals(NaConfig.INSTANCE.getNewConversationShortcut().getKey())) {
             return;
         }
         MediaDataController.getInstance(currentAccount).buildShortcuts();
@@ -308,7 +314,7 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
     }
 
     /**
-     * The launcher's long-press popup as the user will see it: Telegram's own New message first, then each fork
+     * The launcher's long-press popup as the user will see it: Telegram's own New conversation first, then each fork
      * shortcut that is on, in the rank buildShortcuts gives them. Recent-chat shortcuts are left out, they come and go.
      */
     private static class PreviewCell extends FrameLayout {
@@ -322,6 +328,7 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
         private final LinearLayout popup;
         private final GradientDrawable popupBackground = new GradientDrawable();
         private final TextView[] labels = new TextView[ITEM_COUNT];
+        private final View newConversationItem;
         private final View ghostModeItem;
         private final View videoNoteItem;
         private final View videoNoteRearItem;
@@ -342,7 +349,7 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
             card.addView(popup, LayoutHelper.createFrame(240, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 0, POPUP_TOP, 0, 0));
             addView(card, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
-            addItem(context, 0, R.drawable.shortcut_compose, null, R.string.NewConversationShortcut);
+            newConversationItem = addItem(context, 0, R.drawable.shortcut_compose, null, R.string.NewConversationShortcut);
             // Built once, not per bind: both are fresh bitmaps, and the base page rebinds everything on resume.
             ghostModeItem = addItem(context, 1, 0, GhostModeShortcut.createIcon(), R.string.AyuModeShortcut);
             videoNoteItem = addItem(context, 2, 0, VideoNoteShortcut.createIcon(), R.string.VideoNoteShortcutLabel);
@@ -405,6 +412,7 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
             for (TextView label : labels) {
                 label.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
             }
+            newConversationItem.setVisibility(ShortcutHelper.isComposeShortcutEnabled() ? VISIBLE : GONE);
             ghostModeItem.setVisibility(GhostModeShortcut.isEnabled() ? VISIBLE : GONE);
             // With one shortcut the first item stands for whichever camera it opens, labelled plainly
             boolean both = VideoNoteShortcut.getCameraMode() == VideoNoteShortcut.CAMERA_BOTH;

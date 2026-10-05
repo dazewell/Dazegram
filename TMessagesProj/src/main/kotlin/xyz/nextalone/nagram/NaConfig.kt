@@ -1071,6 +1071,12 @@ object NaConfig {
             ConfigItem.configTypeBool,
             false
         )
+    val newConversationShortcut =
+        addConfig(
+            "NewConversationShortcut",
+            ConfigItem.configTypeBool,
+            true // Telegram's own shortcut, shipped always-on before it had a switch
+        )
     val ghostModeShortcut =
         addConfig(
             "GhostModeShortcut",
