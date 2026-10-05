@@ -41,6 +41,10 @@ Private chats now show a reply glyph and count next to a message's timestamp, br
 
 Bookmarks come from NagramX; this fork raises the per-chat cap from 30 to 300. Saving from the message menu, per-account storage, and inclusion in settings backup and restore all work as they did.
 
+### Save scope by chat type <!-- #save-scope -->
+
+Tap the *Save Deleted Messages* or *Save Edits History* row under N-Settings → Experimental (the switch end still toggles it) to pick which chats it covers: private chats, public or private channels, public or private groups. All five are on by default. Anything already saved stays viewable.
+
 ### Ayu Mode shortcut <!-- #ayu-mode -->
 
 A launcher shortcut (long-press the app icon, or pin it to your home screen) that opens the app with Ghost Mode already on. Tapping it flips every Ghost toggle you haven't locked and pushes you offline, then opens as normal. On by default; switch it off under N-Settings → General → Launcher shortcuts.
