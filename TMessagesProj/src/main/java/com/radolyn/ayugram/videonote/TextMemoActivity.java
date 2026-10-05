@@ -703,7 +703,9 @@ public class TextMemoActivity extends Activity {
      * call consumes.
      */
     private boolean canShowDraft() {
-        if (com.radolyn.ayugram.chatlock.ChatLockController.isLocked(account, dialogId)) {
+        // As ChatActivity has it: a locked chat already unlocked while the app stayed in the foreground is open
+        if (com.radolyn.ayugram.chatlock.ChatLockController.isLocked(account, dialogId)
+                && !com.radolyn.ayugram.chatlock.ChatLockController.isUnlocked(account, dialogId)) {
             return false;
         }
         if (SharedConfig.passcodeHash.length() == 0) {
