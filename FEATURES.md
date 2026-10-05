@@ -49,6 +49,10 @@ Tap the *Save Deleted Messages* or *Save Edits History* row under N-Settings →
 
 A launcher shortcut (long-press the app icon, or pin it to your home screen) that opens the app with Ghost Mode already on. Tapping it flips every Ghost toggle you haven't locked and pushes you offline, then opens as normal. On by default; switch it off under N-Settings → General → Launcher shortcuts.
 
+### New conversation shortcut switch <!-- #new-conversation-shortcut -->
+
+Telegram's *New conversation* launcher shortcut can be switched off under N-Settings → General → Launcher shortcuts → Built in, for launchers that only show a few shortcuts. On by default.
+
 ### Hold messages while Ghost Mode is on <!-- #ghost-hold -->
 
 Turn on **Hold Messages** under Settings → Ghost Mode (off by default) and most plain text messages, contacts and static locations stay on this device while Ghost Mode is active. They wait in the chat's Scheduled list marked "Held — not sent" and remain delete-only. Turning Ghost Mode off asks before releasing them; future-scheduled items keep their schedule. Unsupported sends use Telegram's normal send or schedule path.
