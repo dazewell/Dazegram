@@ -465,7 +465,7 @@
     <string name="TextMemoShortcutLabel">Text memo</string>
     <string name="TextMemoShortcutLabelCard">Text overlay</string>
     <string name="TextMemoShortcutLabelLong">Text memo · wallpaper</string>
-    <string name="TextMemoShortcutLabelCardLong">Text memo · no background</string>
+    <string name="TextMemoShortcutLabelCardLong">Text overlay · no background</string>
     <string name="TextMemoHint">Goes straight to the chat, without opening it</string>
     <string name="LauncherShortcuts">Launcher shortcuts</string>
     <string name="GhostModeShortcut">Ghost Mode shortcut</string>
