@@ -267,7 +267,7 @@ A round video message you've recorded but haven't sent survives backing out of t
 
 ### Video and text memo shortcuts <!-- #video-note-shortcut --> <!-- #text-memo-shortcut -->
 
-Turn on *Video memo shortcut* or *Text memo shortcut* under N-Settings → General → Launcher shortcuts (off by default) and long-pressing the app icon offers *Video memo*, a hands-free round video on the chosen *Camera* (*Both* gives two shortcuts), or *Text memo*, a box over the chat wallpaper to type a message, with no chat in sight. Both go to Saved Messages or your *Recipient*, even while the app is locked.
+Turn on *Video memo shortcut* or *Text memo shortcut* under N-Settings → General → Launcher shortcuts (off by default) and long-pressing the app icon offers *Video memo*, a hands-free round video on the chosen *Camera* (*Both* gives two shortcuts), or *Text memo*, a box to type a message. Both go to Saved Messages or your *Recipient*, even while the app is locked, where a video memo returns home once sent or discarded.
 
 ### Custom file names for saved media <!-- #custom-file-names -->
 
