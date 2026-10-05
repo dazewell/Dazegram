@@ -44,7 +44,7 @@ public final class TextMemoShortcut {
         if (longLabel) {
             return LocaleController.getString(card ? R.string.TextMemoShortcutLabelCardLong : R.string.TextMemoShortcutLabelLong);
         }
-        return LocaleController.getString(card ? R.string.TextMemoShortcutLabelCard : R.string.TextMemoShortcutLabel);
+        return LocaleController.getString(card ? R.string.TextMemoShortcutLabelCard : R.string.TextMemoShortcutLabelFull);
     }
 
     static void addShortcutId(List<String> wantedIds) {

@@ -2632,7 +2632,7 @@ Status-dependent text must set `continueUpdate = true` (`:3459-3461`).
 
 ## A see-through window on ColorOS: what it takes, and what the launcher does anyway
 
-The text memo's second shortcut, "Text overlay" (`#text-memo-shortcut`, PR #472
+The text memo's second shortcut, "Text memo · floating" (`#text-memo-shortcut`, PR #472
 and its follow-up), floats just the card over whatever is on screen. On the OPPO/ColorOS
 test device that works only with all of these together:
 
@@ -2666,7 +2666,7 @@ What no window flag fixes: the ColorOS launcher stops drawing its home screen
 for about 1-2 s when it starts a shortcut, so anything see-through shows black
 there. Lawnchair shows no black behind the card (dazewell, 2026-10-04); other
 launchers and the lock screen are untested. That is why the wallpaper one stays
-the first shortcut and the overlay is offered beside it, not instead. Evidence
+the first shortcut and the floating card is offered beside it, not instead. Evidence
 is visual, from the device, not from logs.
 
 *(Established 2026-10-04, `#text-memo-shortcut`.)*
