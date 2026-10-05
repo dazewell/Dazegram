@@ -8,7 +8,9 @@ import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.res.Configuration;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.drawable.ColorDrawable;
@@ -107,6 +109,8 @@ public class TextMemoActivity extends Activity {
     // The chat's draft the memo opened with, or null. A write goes ahead only while the chat still holds this very object,
     // so a draft replaced meanwhile (another device, the chat in the app) is never written over.
     private TLRPC.DraftMessage adoptedDraft;
+    // 0 to 1: the dot on the send button that says the chat holds a draft the memo didn't open with, which a send clears
+    private float draftDot;
     // Left before the recipient resolved: saved as the draft from the resolve callback
     private String pendingDraft;
 
@@ -160,6 +164,7 @@ public class TextMemoActivity extends Activity {
                 pendingDraft = null;
             } else if (!dismissing && !isFinishing()) {
                 restoreDraft();
+                showDraftDot();
             }
         });
     }
@@ -351,7 +356,24 @@ public class TextMemoActivity extends Activity {
         });
         inputBubble.addView(field, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL));
 
-        sendButton = new ImageView(this);
+        sendButton = new ImageView(this) {
+            private final Paint dotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+            // The draft dot on the circle's top end corner, ringed in the card colour to stand off the accent
+            @Override
+            protected void onDraw(Canvas canvas) {
+                super.onDraw(canvas);
+                if (draftDot <= 0f) {
+                    return;
+                }
+                float cx = LocaleController.isRTL ? dp(10) : getWidth() - dp(10);
+                float cy = dp(10);
+                dotPaint.setColor(Theme.getColor(Theme.key_dialogBackground));
+                canvas.drawCircle(cx, cy, dp(7) * draftDot, dotPaint);
+                dotPaint.setColor(Theme.getColor(Theme.key_chats_draft));
+                canvas.drawCircle(cx, cy, dp(5) * draftDot, dotPaint);
+            }
+        };
         sendButton.setScaleType(ImageView.ScaleType.CENTER);
         sendButton.setImageResource(R.drawable.ic_send);
         sendButton.setContentDescription(LocaleController.getString(R.string.Send));
@@ -633,6 +655,32 @@ public class TextMemoActivity extends Activity {
         adoptedDraft = draft;
         field.setText(draft.message);
         field.setSelection(field.length());
+    }
+
+    /**
+     * A send clears the chat's draft, so a draft the memo didn't open with (the app is locked, it isn't plain text, the
+     * chat is open in the app) gets a dot on the send button. It says only that one is waiting, never what or for whom.
+     * Leaving without sending keeps it: no write goes over a draft the memo didn't open with.
+     */
+    private void showDraftDot() {
+        TLRPC.DraftMessage draft = MediaDataController.getInstance(account).getDraft(dialogId, 0);
+        if (!(draft instanceof TLRPC.TL_draftMessage) || draft == adoptedDraft) {
+            return;
+        }
+        sendButton.setContentDescription(LocaleController.getString(R.string.Send) + ". " + LocaleController.getString(R.string.TextMemoDraftWaiting));
+        if (!sendButton.isLaidOut()) {
+            // Known as the card opens: there from the first frame
+            draftDot = 1f;
+            return;
+        }
+        ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
+        animator.setDuration(200);
+        animator.setInterpolator(CubicBezierInterpolator.EASE_OUT);
+        animator.addUpdateListener(a -> {
+            draftDot = (float) a.getAnimatedValue();
+            sendButton.invalidate();
+        });
+        animator.start();
     }
 
     // No reply, formatting, media, effect or anything else a plain text box would drop on its way back to the chat
