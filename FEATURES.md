@@ -257,9 +257,9 @@ The preview you get after recording a round video message has a playback cursor 
 
 The pause button and the view-once "(1)" toggle are larger and lifted slightly higher off the send button to prevent accidental sends.
 
-### Hold the video to send <!-- #video-hold-send -->
+### Video message gestures <!-- #video-hold-send -->
 
-While a round video records hands-free or waits paused in its preview, tap the video to pause or resume, or press and hold it to send: it ticks on touch, buzzes when ready, and sends when you let go. Slide off to back out. In the preview, sound moves to its own button above pause. N-Settings → Chat → Camera → *Hold the video to send*, on by default.
+While a round video records hands-free or waits paused in its preview, tap the video to pause or resume, or press and hold it to send: it ticks on touch, buzzes when ready, and sends when you let go. Slide off to back out. While recording, swipe up or down to step the zoom, left or right to flip cameras. N-Settings → Chat → Camera → *Video Message Gestures*, on by default.
 
 ### Don't lose an unsent video message <!-- #video-draft-guard -->
 

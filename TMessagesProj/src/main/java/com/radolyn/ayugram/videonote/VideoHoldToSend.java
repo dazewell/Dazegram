@@ -44,6 +44,8 @@ import xyz.nextalone.nagram.NaConfig;
  * composer's pause button would. Sliding off the circle or a second finger (pinch zoom) cancels and nothing
  * changes. The rim is left alone on purpose: it already carries the recording-time arc.
  * A small label above the circle says how it works whenever it's available.
+ * While recording, a swipe from the circle also steers the camera: up/down steps the zoom, left/right flips it.
+ * It is reported once per touch, once the finger has travelled SWIPE_DP.
  * The preview used to toggle its sound on any tap, which the hold now owns, so its sound moves to a chip in the
  * composer's record controls (VideoPreviewSoundChip) for as long as the preview is up.
  * UI thread only.
@@ -52,6 +54,11 @@ public final class VideoHoldToSend {
 
     private static final long ARM_MS = 250;
     private static final long CANCEL_MS = 150;
+    private static final int SWIPE_DP = 48;
+    public static final int SWIPE_UP = 0;
+    public static final int SWIPE_DOWN = 1;
+    public static final int SWIPE_LEFT = 2;
+    public static final int SWIPE_RIGHT = 3;
     private static final float LABEL_FADE_PER_MS = 1f / 150f;
 
     private final Utilities.Callback0Return<Boolean> canSend;
@@ -60,9 +67,14 @@ public final class VideoHoldToSend {
     private final Utilities.Callback0Return<Boolean> previewSends;
     private final Utilities.Callback0Return<Boolean> canToggle;
     private final Runnable toggle;
+    private final Utilities.Callback0Return<Boolean> canSwipe;
+    private final Utilities.Callback<Integer> swipe;
 
     private View circle;
     private View host;
+    private boolean swipeTracking;
+    private float swipeDownX;
+    private float swipeDownY;
     private boolean tracking;
     private boolean armed;
     private float progress;
@@ -83,13 +95,16 @@ public final class VideoHoldToSend {
     // separate from canSend because resuming sends nothing, so slow mode or a disabled send button mustn't block it.
     public VideoHoldToSend(Utilities.Callback0Return<Boolean> canSend, Runnable send,
                            Utilities.Callback0Return<VideoPlayer> previewPlayer, Utilities.Callback0Return<Boolean> previewSends,
-                           Utilities.Callback0Return<Boolean> canToggle, Runnable toggle) {
+                           Utilities.Callback0Return<Boolean> canToggle, Runnable toggle,
+                           Utilities.Callback0Return<Boolean> canSwipe, Utilities.Callback<Integer> swipe) {
         this.canSend = canSend;
         this.send = send;
         this.previewPlayer = previewPlayer;
         this.previewSends = previewSends;
         this.canToggle = canToggle;
         this.toggle = toggle;
+        this.canSwipe = canSwipe;
+        this.swipe = swipe;
     }
 
     // True when a tap on the preview belongs to the hold rather than toggling its sound.
@@ -125,6 +140,10 @@ public final class VideoHoldToSend {
                 if (!NaConfig.INSTANCE.getVideoMessagesHoldToSend().Bool() || !contains(circle, ev)) {
                     return;
                 }
+                // a swipe from the circle is tracked on its own: it works wherever the hold itself can't arm
+                swipeTracking = canSwipe.run();
+                swipeDownX = ev.getX();
+                swipeDownY = ev.getY();
                 final boolean sendable = canSend.run();
                 if (!sendable && !canToggle.run()) {
                     return;
@@ -139,9 +158,22 @@ public final class VideoHoldToSend {
                 }
                 break;
             case MotionEvent.ACTION_POINTER_DOWN:
+                swipeTracking = false; // a second finger is a pinch
                 cancel();
                 break;
             case MotionEvent.ACTION_MOVE:
+                if (swipeTracking) {
+                    final float dx = ev.getX() - swipeDownX;
+                    final float dy = ev.getY() - swipeDownY;
+                    if (Math.max(Math.abs(dx), Math.abs(dy)) >= dp(SWIPE_DP)) {
+                        swipeTracking = false;
+                        cancel(); // the swipe leaves the circle, which would cancel anyway; do it before it acts
+                        if (canSwipe.run()) {
+                            swipe.run(Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? SWIPE_LEFT : SWIPE_RIGHT) : (dy < 0 ? SWIPE_UP : SWIPE_DOWN));
+                        }
+                        break;
+                    }
+                }
                 if (tracking && !contains(circle, ev)) {
                     cancel();
                 }
@@ -176,6 +208,7 @@ public final class VideoHoldToSend {
         AndroidUtilities.cancelRunOnUIThread(armRunnable);
         tracking = false;
         armed = false;
+        swipeTracking = false;
         if (animator != null) {
             animator.cancel();
             animator = null;
@@ -243,7 +276,7 @@ public final class VideoHoldToSend {
             labelBackground = new Paint(Paint.ANTI_ALIAS_FLAG);
             labelBackground.setColor(0x4d000000);
         }
-        final String text = LocaleController.getString(armed ? R.string.VideoMessagesHoldToSendArmed : R.string.VideoMessagesHoldToSend);
+        final String text = LocaleController.getString(armed ? R.string.VideoMessagesHoldToSendArmed : R.string.VideoMessagesHoldToSendLabel);
         final float textWidth = labelPaint.measureText(text);
         final float cx = circle.getX() + circle.getWidth() / 2f;
         final float bottom = circle.getY() - dp(20);
