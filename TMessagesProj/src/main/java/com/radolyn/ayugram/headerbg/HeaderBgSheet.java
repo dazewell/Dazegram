@@ -111,6 +111,8 @@ public final class HeaderBgSheet {
         private final HeaderBgSettings s;
         private final boolean hasPhoto;
         private final ArrayList<Runnable> syncs = new ArrayList<>();
+        // One per section: opening a section runs the others', so at most one is open.
+        private final ArrayList<Runnable> closers = new ArrayList<>();
         private final ArrayList<GateLayout> bodies = new ArrayList<>();
         private BottomSheet sheet;
 
@@ -147,6 +149,11 @@ public final class HeaderBgSheet {
             boolean light = fragment.isLightStatusBar();
             AndroidUtilities.setLightStatusBar(sheet.getContainer(), light);
             AndroidUtilities.setLightStatusBar(sheet.getWindow(), light);
+        }
+
+        // The app's current light or dark theme, which picks the half of the text settings the two rows edit.
+        private boolean isDark() {
+            return rp != null ? rp.isDark() : Theme.isCurrentThemeDark();
         }
 
         private void save() {
@@ -193,7 +200,7 @@ public final class HeaderBgSheet {
                 addSpacer(content, 8);
             }
 
-            GateLayout position = section(content, R.string.HeaderBackgroundPosition, true,
+            GateLayout position = section(content, R.string.HeaderBackgroundPosition, false,
                     () -> signed(s.offsetX) + " · " + signed(s.offsetY) + " · " + s.zoom + "%");
             slider(position, R.string.HeaderBackgroundOffsetX, -100, 100, () -> s.offsetX, v -> s.offsetX = v, true);
             slider(position, R.string.HeaderBackgroundOffsetY, -100, 100, () -> s.offsetY, v -> s.offsetY = v, true);
@@ -216,8 +223,18 @@ public final class HeaderBgSheet {
             tintRow(look);
             View tintStrength = slider(look, R.string.HeaderBackgroundTintStrength, 0, 100, () -> s.tintStrength, v -> s.tintStrength = v, false);
             syncs.add(() -> setRowEnabled(tintStrength, s.tintHue != HeaderBgSettings.TINT_AUTO));
-            TextSettingsCell alternateCell = choice(look, () -> true, () -> s.alternate = (s.alternate + 1) % (HeaderBgSettings.ALT_PIN + 1));
-            syncs.add(() -> alternateCell.setTextAndValue(getString(R.string.HeaderBackgroundAlternate), alternateName(s.alternate), false));
+            // Both are remembered for the theme the chat shows now; the other theme keeps its own.
+            TextSettingsCell headerTextCell = choice(look, () -> true, () -> s.cycleText(false, isDark()));
+            TextSettingsCell pinTextCell = choice(look, () -> s.extendPanel, () -> s.cycleText(true, isDark()));
+            TextInfoPrivacyCell textInfo = new TextInfoPrivacyCell(context, 21, rp);
+            look.addView(textInfo, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            syncs.add(() -> {
+                boolean dark = isDark();
+                headerTextCell.setTextAndValue(getString(R.string.HeaderBackgroundTextHeader), textName(s.text(false, dark)), true);
+                pinTextCell.setTextAndValue(getString(R.string.HeaderBackgroundTextPin), textName(s.text(true, dark)), false);
+                setRowEnabled(pinTextCell, s.extendPanel);
+                textInfo.setText(getString(dark ? R.string.HeaderBackgroundTextInfoDark : R.string.HeaderBackgroundTextInfoLight));
+            });
             addSpacer(content, 8);
 
             // The choices sit together under the switch, where a tap target reads as one; the sliders follow.
@@ -279,7 +296,22 @@ public final class HeaderBgSheet {
             boolean[] open = {expanded};
             frame.setExpanded(expanded, false);
             syncs.add(() -> header.bind(getString(title), summary.get(), open[0]));
+            Runnable close = () -> {
+                if (open[0]) {
+                    open[0] = false;
+                    frame.setExpanded(false, true);
+                    header.bind(getString(title), summary.get(), false);
+                }
+            };
+            closers.add(close);
             header.setOnClickListener(v -> {
+                if (!open[0]) {
+                    for (Runnable other : closers) {
+                        if (other != close) {
+                            other.run();
+                        }
+                    }
+                }
                 open[0] = !open[0];
                 frame.setExpanded(open[0], true);
                 header.bind(getString(title), summary.get(), open[0]);
@@ -548,17 +580,14 @@ public final class HeaderBgSheet {
         return getString(R.string.HeaderBackgroundFromTitle);
     }
 
-    private static String alternateName(int alternate) {
-        switch (alternate) {
-            case HeaderBgSettings.ALT_HEADER:
-                return getString(R.string.HeaderBackgroundAlternateHeader);
-            case HeaderBgSettings.ALT_BOTH:
-                return getString(R.string.HeaderBackgroundAlternateBoth);
-            case HeaderBgSettings.ALT_PIN:
-                return getString(R.string.HeaderBackgroundAlternatePin);
-            default:
-                return getString(R.string.HeaderBackgroundGradientOff);
+    private static String textName(int text) {
+        if (text == HeaderBgSettings.TEXT_LIGHT) {
+            return getString(R.string.HeaderBackgroundTextLight);
         }
+        if (text == HeaderBgSettings.TEXT_DARK) {
+            return getString(R.string.HeaderBackgroundTextDark);
+        }
+        return getString(R.string.HeaderBackgroundTintTheme);
     }
 
     private static String curveName(int curve) {

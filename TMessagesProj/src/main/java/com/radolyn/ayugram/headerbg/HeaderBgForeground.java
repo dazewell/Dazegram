@@ -11,8 +11,6 @@ import android.util.SparseIntArray;
 import android.view.View;
 import android.widget.ImageView;
 
-import androidx.core.graphics.ColorUtils;
-
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
@@ -29,7 +27,7 @@ import java.util.WeakHashMap;
 
 /**
  * The chat header's and pinned bar's foreground colours over a header photo. The Classic solid header is
- * resolved first; the chat's Alternate colour setting then swaps the result for the opposite neutral set.
+ * resolved first; the chat's text colour setting for the current theme then swaps the result for a light or dark neutral set.
  * Readers go through the set the drawer last pushed ({@link HeaderBgDrawer#applied}), never its live wish,
  * so everything read between two pushes matches what is already on screen.
  */
@@ -78,12 +76,6 @@ public final class HeaderBgForeground {
     private HeaderBgForeground() {
     }
 
-    /** The set opposite the key's own colour (Classic-resolved): light when the theme's is dark, dark when it is light. */
-    static int opposite(int key, Theme.ResourcesProvider resourcesProvider) {
-        int color = ColorUtils.setAlphaComponent(InterfaceStyleSolidHeader.chatHeaderColor(key, Theme.getColor(key, resourcesProvider)), 255);
-        return ColorUtils.calculateLuminance(color) < 0.5 ? LIGHT : DARK;
-    }
-
     private static HeaderBgDrawer drawer(ChatActivity fragment) {
         ActionBar actionBar = fragment != null ? fragment.getActionBar() : null;
         return actionBar != null ? actionBar.naxHeaderBg : null;
@@ -95,13 +87,13 @@ public final class HeaderBgForeground {
         return index >= 0 ? table.valueAt(index) : color;
     }
 
-    /** A chat header colour: the Classic header's or the theme's, unless the chat alternates its header. */
+    /** A chat header colour: the Classic header's or the theme's, unless the chat sets its header text. */
     public static int color(ChatActivity fragment, int key, int themedColor) {
         HeaderBgDrawer drawer = drawer(fragment);
         return map(drawer != null ? drawer.applied : THEME, key, InterfaceStyleSolidHeader.chatHeaderColor(key, themedColor));
     }
 
-    /** A pinned bar colour: the theme's, unless the chat alternates its pinned bar. */
+    /** A pinned bar colour: the theme's, unless the chat sets its pinned bar text. */
     public static int pinColor(ChatActivity fragment, int key, int themedColor) {
         HeaderBgDrawer drawer = drawer(fragment);
         return map(drawer != null ? drawer.appliedPin : THEME, key, themedColor);

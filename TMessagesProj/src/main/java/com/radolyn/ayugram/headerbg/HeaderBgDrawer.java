@@ -429,14 +429,17 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
 
     /** The header's foreground set for now; selection mode holds the last one, since it covers the header. */
     int wanted() {
-        return shown && settings.enabled && hasPhoto && settings.alternateHeader()
-                ? HeaderBgForeground.opposite(Theme.key_actionBarDefaultTitle, resourcesProvider) : HeaderBgForeground.THEME;
+        return shown && settings.enabled && hasPhoto ? settings.text(false, isDark()) : HeaderBgForeground.THEME;
     }
 
     /** The pinned bar's, from the live fade: selection mode fades the photo under the panel too, not only the header's. */
     int wantedPin() {
-        return alpha() >= 1f && settings.extendPanel && settings.alternatePin()
-                ? HeaderBgForeground.opposite(Theme.key_chat_topPanelMessage, resourcesProvider) : HeaderBgForeground.THEME;
+        return alpha() >= 1f && settings.extendPanel ? settings.text(true, isDark()) : HeaderBgForeground.THEME;
+    }
+
+    // The app's current light or dark theme, which picks the light or the dark half of the text settings.
+    private boolean isDark() {
+        return resourcesProvider != null ? resourcesProvider.isDark() : Theme.isCurrentThemeDark();
     }
 
     // Paints the status bar rows small, as the header does, and judges their average the way the chat

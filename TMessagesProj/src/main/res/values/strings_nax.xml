@@ -850,10 +850,12 @@
     <string name="HeaderBackgroundCurveEaseIn">Ease in</string>
     <string name="HeaderBackgroundCurveEaseOut">Ease out</string>
     <string name="HeaderBackgroundCurveSmooth">Smooth</string>
-    <string name="HeaderBackgroundAlternate">Alternate color</string>
-    <string name="HeaderBackgroundAlternateHeader">Header</string>
-    <string name="HeaderBackgroundAlternateBoth">Header + Pin</string>
-    <string name="HeaderBackgroundAlternatePin">Pin</string>
+    <string name="HeaderBackgroundTextHeader">Header text</string>
+    <string name="HeaderBackgroundTextPin">Pinned bar text</string>
+    <string name="HeaderBackgroundTextLight">Light</string>
+    <string name="HeaderBackgroundTextDark">Dark</string>
+    <string name="HeaderBackgroundTextInfoLight">Remembered separately for the light and dark themes. You\'re editing the light one now.</string>
+    <string name="HeaderBackgroundTextInfoDark">Remembered separately for the light and dark themes. You\'re editing the dark one now.</string>
     <string name="HeaderBackgroundNoPhoto">This chat has no photo, so there\'s nothing to show behind the header.</string>
     <string name="HeaderBackgroundGlassInfo">Header backgrounds are part of Material Design 3. The Glass interface draws its own header, so switch the interface style to Material Design 3 to use this.</string>
     <string name="HeaderBackgroundApplyOffInfo">Material Design 3 isn\'t applied to the chat header yet. Turn on Apply to → Chat header to use this.</string>

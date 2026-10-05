@@ -1060,11 +1060,12 @@ An automatic flip of the header's text and icons, judged once from the average
 of the whole header band behind the photo (`#header-avatar-bg`, PR #470,
 commit `9e416cf530`), left everything dark on a light theme with a dark photo,
 status bar icons included. The default fade runs horizontally from the title
-side (`HeaderBgSettings.java:51`, `HeaderBgDrawer.java:603-612`) at 70%
-(`HeaderBgSettings.java:40`), so the title sits on nearly plain surface while the
+side (`HeaderBgSettings.java:50`, `HeaderBgDrawer.java:606-615`) at 70%
+(`HeaderBgSettings.java:39`), so the title sits on nearly plain surface while the
 menu icons sit on the photo. No single colour reads on both, and the band
 average landed on the light side. The status bar keeps its own probe of its
-rows, and the text colour became a manual per-chat setting instead.
+rows, and the text colour became a manual per-chat setting instead (since
+split per surface and per theme, still without any measuring).
 
 *(Established 2026-10-03, `#header-avatar-bg`, PR #470.)*
 

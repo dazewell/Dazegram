@@ -114,8 +114,8 @@ from `key_actionBarDefaultTitle` through its own provider (`TimerDrawable.java:1
 so it gets a scoped one (`ChatAvatarContainer.java:456-457`). A provider-level hook on `themeDelegate` is
 the wrong chokepoint: `MessagePreviewView` reads the same title keys through it.
 All of these route through `HeaderBgForeground` (`#header-avatar-bg`), which resolves
-Classic first and then, when the chat's header photo has *Alternate color* on, swaps
-in the opposite neutral set. Lookups read the set last pushed, never the drawer's
+Classic first and then, when the chat's header photo has a *Header text* or *Pinned bar text*
+set for the current theme (light or dark), swaps in that neutral set. Lookups read the set last pushed, never the drawer's
 live wish, so reads between pushes match the screen. The pinned strip's text and
 buttons are coloured once when the strip is built and then only by ThemeDescriptions,
 never as the pinned message changes, so the strip hands its views over at the end of

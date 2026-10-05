@@ -28,11 +28,10 @@ public final class HeaderBgSettings {
     public static final int TINT_AUTO = -1;
     public static final int TINT_THEME = -2;
 
-    /** Which foregrounds swap to the opposite of the theme's, light for dark and dark for light. */
-    public static final int ALT_OFF = 0;
-    public static final int ALT_HEADER = 1;
-    public static final int ALT_BOTH = 2;
-    public static final int ALT_PIN = 3;
+    /** A text colour set for one surface in one theme; the values match HeaderBgForeground's THEME, LIGHT and DARK. */
+    public static final int TEXT_AUTO = 0;
+    public static final int TEXT_LIGHT = 1;
+    public static final int TEXT_DARK = 2;
 
     private static final int DEF_ZOOM = 100;
     private static final int DEF_OPACITY = 55;
@@ -58,14 +57,17 @@ public final class HeaderBgSettings {
     /** Softens and drains the photo so text over it reads more easily; both 0 to 100. */
     public int blur;
     public int desaturate;
-    public int alternate = ALT_OFF;
+    // Header and pinned bar text, each remembered separately for the light and the dark theme.
+    // Index: 0 header light, 1 header dark, 2 pinned light, 3 pinned dark.
+    private final int[] text = new int[4];
 
-    public boolean alternateHeader() {
-        return alternate == ALT_HEADER || alternate == ALT_BOTH;
+    public int text(boolean pin, boolean dark) {
+        return text[(pin ? 2 : 0) + (dark ? 1 : 0)];
     }
 
-    public boolean alternatePin() {
-        return alternate == ALT_PIN || alternate == ALT_BOTH;
+    public void cycleText(boolean pin, boolean dark) {
+        int i = (pin ? 2 : 0) + (dark ? 1 : 0);
+        text[i] = (text[i] + 1) % (TEXT_DARK + 1);
     }
 
     /** Everything back to its default except {@link #enabled}. */
@@ -85,7 +87,7 @@ public final class HeaderBgSettings {
         gradientEnd = 100;
         blur = 0;
         desaturate = 0;
-        alternate = ALT_OFF;
+        java.util.Arrays.fill(text, TEXT_AUTO);
     }
 
     public void copyFrom(HeaderBgSettings o) {
@@ -105,7 +107,7 @@ public final class HeaderBgSettings {
         gradientEnd = o.gradientEnd;
         blur = o.blur;
         desaturate = o.desaturate;
-        alternate = o.alternate;
+        System.arraycopy(o.text, 0, text, 0, text.length);
     }
 
     /** Every field the drawer paints from, so a cache checked against it notices any change; keep in step with the fields. */
@@ -114,7 +116,8 @@ public final class HeaderBgSettings {
                 && tintHue == o.tintHue && tintStrength == o.tintStrength && gradient == o.gradient
                 && gradientStrength == o.gradientStrength && gradientFrom == o.gradientFrom && extendPanel == o.extendPanel
                 && gradientCurve == o.gradientCurve && gradientStart == o.gradientStart && gradientEnd == o.gradientEnd
-                && blur == o.blur && desaturate == o.desaturate && alternate == o.alternate;
+                && blur == o.blur && desaturate == o.desaturate
+                && java.util.Arrays.equals(text, o.text);
     }
 
     private boolean isDefaultLook() {
@@ -122,7 +125,8 @@ public final class HeaderBgSettings {
                 && tintHue == TINT_AUTO && tintStrength == DEF_TINT_STRENGTH && gradient
                 && gradientStrength == DEF_GRADIENT_STRENGTH && gradientFrom == FROM_TITLE && extendPanel
                 && gradientCurve == CURVE_LINEAR && gradientStart == 0 && gradientEnd == 100
-                && blur == 0 && desaturate == 0 && alternate == ALT_OFF;
+                && blur == 0 && desaturate == 0
+                && text[0] == TEXT_AUTO && text[1] == TEXT_AUTO && text[2] == TEXT_AUTO && text[3] == TEXT_AUTO;
     }
 
     private static SharedPreferences prefs(int account) {
@@ -158,7 +162,10 @@ public final class HeaderBgSettings {
         s.gradientEnd = Math.max(s.gradientEnd, s.gradientStart + MIN_FADE_SPAN);
         s.blur = parse(f, 14, 0, 100, 0);
         s.desaturate = parse(f, 15, 0, 100, 0);
-        s.alternate = parse(f, 16, ALT_OFF, ALT_PIN, ALT_OFF);
+        // Slot 16 held the retired Alternate color; it is never read, and the next new field goes on slot 21.
+        for (int i = 0; i < s.text.length; i++) {
+            s.text[i] = parse(f, 17 + i, TEXT_AUTO, TEXT_DARK, TEXT_AUTO);
+        }
         return s;
     }
 
@@ -171,7 +178,7 @@ public final class HeaderBgSettings {
             editor.putString(key, (enabled ? "1" : "0") + "|" + offsetX + "|" + offsetY + "|" + zoom + "|" + opacity + "|"
                     + tintHue + "|" + tintStrength + "|" + (gradient ? "1" : "0") + "|" + gradientStrength + "|" + gradientFrom
                     + "|" + (extendPanel ? "1" : "0") + "|" + gradientCurve + "|" + gradientStart + "|" + gradientEnd
-                    + "|" + blur + "|" + desaturate + "|" + alternate);
+                    + "|" + blur + "|" + desaturate + "|0|" + text[0] + "|" + text[1] + "|" + text[2] + "|" + text[3]);
         }
         editor.apply();
     }

@@ -334,7 +334,7 @@ public class PinnedPlayerRow extends FrameLayout {
         @Override
         protected void dispatchDraw(@NonNull Canvas canvas) {
             final Theme.ResourcesProvider resourcesProvider = chat != null ? chat.getResourceProvider() : null;
-            // Through the header photo's Alternate colour, like the pinned strip it copies.
+            // Through the header photo's text colour setting, like the pinned strip it copies.
             final int label = HeaderBgForeground.pinColor(chat, Theme.key_chat_topPanelTitle, Theme.getColor(Theme.key_chat_topPanelTitle, resourcesProvider));
             final int text = HeaderBgForeground.pinColor(chat, Theme.key_chat_topPanelMessage, Theme.getColor(Theme.key_chat_topPanelMessage, resourcesProvider));
             if (label != labelColor) {
