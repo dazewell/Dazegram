@@ -252,7 +252,9 @@ public final class VideoNoteShortcut {
     // The passcode is deferred for exactly one recording. It fails closed: before anything opens, appLocked is set and
     // saved, so a crash, a kill or a trip to the background still lands on the passcode, and isWaitingForPasscodeEnter
     // sends every other intent through the passcode gate, which ends the session. Any showPasscodeActivity, whoever
-    // calls it, ends the session too (onPasscodeShown). Everything else below only decides when to lock early.
+    // calls it, ends the session too (onPasscodeShown). Everything else below only decides when to lock early, and
+    // whether to also step back to the launcher: only a deliberate send or discard does (lockAndLeave). A stall, a back
+    // press or anything that tried to leave the memo stays on the passcode, which tells the user why it ended.
 
     private static final int IDLE = 0;
     private static final int STARTING = 1;   // gate passed, the memo's chat is opening
@@ -272,6 +274,8 @@ public final class VideoNoteShortcut {
     private static boolean stopRequested; // a stop into the preview (state 3) is under way or done: nothing left to cancel
     private static WeakReference<ChatActivity> sessionChat;
     private static final Runnable poll = VideoNoteShortcut::poll;
+    private static final Runnable leave = VideoNoteShortcut::lockAndLeave;
+    private static final long LEAVE_DELAY_MS = 220; // the fade below, plus a margin
 
     private static void setPhase(int newPhase) {
         phase = newPhase;
@@ -316,6 +320,7 @@ public final class VideoNoteShortcut {
         pendingAccount = -1;
         pendingDialogId = 0;
         AndroidUtilities.cancelRunOnUIThread(poll);
+        AndroidUtilities.cancelRunOnUIThread(leave);
         if (chat != null && !chat.finalizeRoundVideoForLock() && cameraMayBeOpening) {
             // A lock raised in the foreground gets no onPause, so a live recording is stopped into the preview above or
             // the unlock rebuild throws it away. A camera still opening has recorded nothing yet, and left alone it
@@ -333,6 +338,16 @@ public final class VideoNoteShortcut {
             activity.showPasscodeActivity(true, false, -1, -1, null, null);
         }
         onPasscodeShown(); // no-op if showPasscodeActivity got that far; appLocked is saved either way
+    }
+
+    // The passcode is up (and the lock saved) before the task goes back, so recents shows the passcode, not the chat.
+    // moveTaskToBack only stops the activity; the send or discard is already handed over by the time this is called.
+    private static void lockAndLeave() {
+        LaunchActivity activity = LaunchActivity.instance;
+        lockNow();
+        if (activity != null && !activity.isFinishing()) {
+            activity.moveTaskToBack(true);
+        }
     }
 
     // Back while the camera is live: stop into the preview first and lock once the clip is safely bound, so a quick
@@ -395,14 +410,23 @@ public final class VideoNoteShortcut {
         } else if ((state == 1 || state == 4) && (phase == RECORDING || phase == FINALIZING)) {
             setPhase(SENDING);
         } else if (state == 2 || state == 5) {
-            lockNow();
+            lockAndLeave(); // a lock's own cancel echoes here too, but onPasscodeShown has already ended the session
         }
     }
 
-    /** ChatActivity.sendMedia, once the clip has been handed to SendMessagesHelper. */
+    /** ChatActivity.sendMedia, once the clip has been handed to SendMessagesHelper. Ends the memo on the launcher. */
     public static void onMediaSent(ChatActivity chat) {
         if (isSessionChat(chat) && (phase == RECORDING || phase == FINALIZING || phase == SENDING)) {
-            lockNow();
+            // The round video fades first: the passcode would cover it. The lock is already saved,
+            // so the wait fails closed, and any other lock cancels the pending leave (onPasscodeShown).
+            if (chat.instantCameraView != null && org.telegram.messenger.SharedConfig.animationsEnabled() && AndroidUtilities.getAnimatorDurationScale() > 0 && AndroidUtilities.shouldEnableAnimation()) {
+                AndroidUtilities.cancelRunOnUIThread(poll); // the clip is handed off: a timeout firing now would lock and cancel the leave
+                chat.instantCameraView.animate().alpha(0f).setDuration(LEAVE_DELAY_MS - 20).start(); // a plain fade: the camera's own shrink glitches under the lock
+                AndroidUtilities.cancelRunOnUIThread(leave);
+                AndroidUtilities.runOnUIThread(leave, LEAVE_DELAY_MS);
+            } else {
+                lockAndLeave();
+            }
         }
     }
 

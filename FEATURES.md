@@ -110,7 +110,7 @@ The toolbar row can be scaled from 75% to 125% in 5% steps. A second slider sets
 
 ### Interface style <!-- #interface-style --> <!-- #composer-transparency --> <!-- #rounded-navigation -->
 
-NagramX Settings → General → Interface Style picks Liquid Glass or Material Design 3, which restyles chat headers, chat-list top bar, buttons, bottom navigation and composer, each with an Apply to toggle. Also blur, switch and slider styles, typeface, icons, tablet mode, notification icon, title centering, decorations, the bottom bar with a live preview, and folder tabs. Rounded navigation and Match Classic and Day header color are off by default.
+NagramX Settings → General → Interface Style picks Liquid Glass or Material Design 3, restyling chat headers, chat-list top bar, buttons, bottom navigation and composer, each with an Apply to toggle. Also blur, switch and slider styles, typeface, icons, tablet mode, notification icon, title centering, decorations, the bottom bar and folder tabs, each with a live preview. Rounded navigation and Match Classic and Day header color are off by default.
 
 ### Quick schedule button <!-- #quick-schedule -->
 
@@ -267,7 +267,7 @@ A round video message you've recorded but haven't sent survives backing out of t
 
 ### Video and text memo shortcuts <!-- #video-note-shortcut --> <!-- #text-memo-shortcut -->
 
-Turn on *Video memo shortcut* or *Text memo shortcut* under N-Settings → General → Launcher shortcuts (off by default) and long-pressing the app icon offers *Video memo*, a hands-free round video on the chosen *Camera* (*Both* gives two shortcuts), or *Text memo*, a box to type a message. Both go to Saved Messages or your *Recipient*, even while locked. Text memo's *Background*, on by default, shows the wallpaper behind it.
+Turn on *Video memo shortcut* or *Text memo shortcut* under N-Settings → General → Launcher shortcuts (off by default) and long-pressing the icon offers *Video memo*, a hands-free round video on the chosen *Camera* (*Both* gives two shortcuts), or *Text memo*, a message box with an optional *Background*. Both go to Saved Messages or your *Recipient*, even while locked, where a video memo returns home once sent or discarded.
 
 ### Custom file names for saved media <!-- #custom-file-names -->
 

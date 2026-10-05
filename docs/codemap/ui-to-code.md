@@ -12,26 +12,26 @@ style enum: `InterfaceStyleController.isMaterialDesign3()` derives MD3 from the
 existing Liquid Glass setting and support gate
 (`InterfaceStyleController.java:17-18`). The page writes Liquid Glass with
 `LiteMode.toggleFlag(...)` and reloads the interface
-(`InterfaceStyleActivity.java:474-480`).
+(`InterfaceStyleActivity.java:485-491`).
 
 The shared Blur strength row is visible in both styles because composer glass
-already consumes it (`InterfaceStyleActivity.java:336-340,506-509`;
+already consumes it (`InterfaceStyleActivity.java:337-341,517-520`;
 `ComposerGlassProvider.java:74-75`; `NaConfig.kt:1485-1489`). MD3-only rows are
 visible only after the Material Design 3 radio is selected
-(`InterfaceStyleActivity.java:340-359`). The Apply to rows expose Chat header,
+(`InterfaceStyleActivity.java:341-360`). The Apply to rows expose Chat header,
 Chat list top bar, Buttons, Composer, Bottom navigation, and Panel dividers;
 the Composer row is assigned only while `COMPOSER_STYLE_AVAILABLE` is true,
-which it now is (`InterfaceStyleActivity.java:345-347`;
+which it now is (`InterfaceStyleActivity.java:346-348`;
 `InterfaceStyleController.java:33-36`). Like every other Apply to row, its
 stored default is on (`NaConfig.kt:1467-1471`). The Panel colors row, Match
 Classic and Day header color, shows only on MD3 with Classic or Day selected as
-the day theme and defaults off (`InterfaceStyleActivity.java:354-358`;
+the day theme and defaults off (`InterfaceStyleActivity.java:355-359`;
 `NaConfig.kt:1491-1495`); its render path is the next entry.
 
 Panel dividers are a shipped MD3 row: `NaConfig` stores
 `interfaceStylePanelDividers`, and `InterfaceStyleController.panelDividers()`
 gates the render paths (`NaConfig.kt:1497-1501`;
-`InterfaceStyleController.java:48-50`; `InterfaceStyleActivity.java:352`).
+`InterfaceStyleController.java:48-50`; `InterfaceStyleActivity.java:353`).
 It draws hairlines coloured as MD3 outline-variant (the local surface blended 12% towards `key_windowBackgroundWhiteBlackText`, `InterfaceStyleController.java:62-70`, because Night/AMOLED `key_divider` is pure black) at
 Dialogs' captured top-surface bottom after `super.dispatchDraw(...)`, and under
 ChatActivity's header group after `super.dispatchDraw(...)`
@@ -214,7 +214,7 @@ list (`MainTabsActivity.java:438-448`). Liquid Glass keeps its stadium pill and
 tab geometry.
 
 Rounded navigation, an MD3 sub-toggle shown only while Bottom navigation is on
-(`InterfaceStyleActivity.java:349-351`; `InterfaceStyleController.java:43-46`),
+(`InterfaceStyleActivity.java:350-352`; `InterfaceStyleController.java:43-46`),
 keeps this slot, lift and provider and changes shape and labels. Its whole-tab
 highlight is a different stadium from the dropped one. The panel radius
 becomes half its height, tabs abut 4dp inside it at 80dp each within the same cap
@@ -256,12 +256,28 @@ Two traps shaped it. A Chats tab plays its fill animation whenever it is first
 selected, `animated` or not (`GlassTabView.java:430-442`), so the cell is built once and
 `update()` pushes settings through the bar's own setters; rebuilding per bind replays it
 on every toggle. `rebuildFragments(0)` skips the top fragment (`ActionBarLayout.java:3374-3376`),
-so Hide titles and Hide contacts rebind the page themselves (`InterfaceStyleActivity.java:432-434`).
+so Hide titles and Hide contacts rebind the page themselves (`InterfaceStyleActivity.java:434-436`).
 
 A matching hero (chat header, list row, composer) was rejected: `HeaderBgDrawer` is
 private and `ChatActivity`-bound (`HeaderBgDrawer.java:108`), `ChatActivityEnterView` needs a
 `ChatActivity` (`ChatActivityEnterView.java:2798`), and every surface provider reads the
 `InterfaceStyleController` statics, so showing the unselected style means duplicating them.
+
+*(Established 2026-10-04, during `#interface-style`.)*
+
+## Interface Style's Folder preview is the real FilterTabsView with made-up folders
+
+The row under Interface Style → Folder is `FolderTabsPreviewCell`, a real `FilterTabsView`
+built with the same scoped provider as the chat list (`FolderTabsPreviewCell.java:52`;
+`DialogsActivity.java:3749`). It needs no fragment or `DialogFilter`: `addTab` takes plain
+values (`FilterTabsView.java:1417`). Two traps. The delegate is dereferenced unchecked while a
+tab is added (`FilterTabsView.java:152`), so a stub goes in before the first `addTab`
+(`FolderTabsPreviewCell.java:57`). A `Tab` blanks its title for the Icon type when created
+(`FilterTabsView.java:140`), so a title type change rebuilds the tabs and only the stroke
+setting can be a redraw (`FolderTabsPreviewCell.java:106-136`). Never call `toggleAllTabs`: it
+reads the real folders of `UserConfig.selectedAccount` (`FilterTabsView.java:2219`). Glass gets the
+blurred pill, flat MD3 a plain surface (`FolderTabsPreviewCell.java:122-130`;
+`DialogsActivity.java:5417-5423`).
 
 *(Established 2026-10-04, during `#interface-style`.)*
 
