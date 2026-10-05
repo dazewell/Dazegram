@@ -752,8 +752,8 @@ public class ChatActivity extends BaseFragment implements
     public int videoDraftToken;
     // NagramX (#video-pause-grace): delayed finalize of a live round video after onPause; see onPause.
     private final Runnable finalizeRoundVideoOnPauseRunnable = () -> {
-        if (paused && instantCameraView != null && instantCameraView.isRecording()) {
-            instantCameraView.send(3, true, 0, 0, 0, 0, 0);
+        if (this.paused && this.instantCameraView != null && this.instantCameraView.isRecording()) {
+            this.instantCameraView.send(3, true, 0, 0, 0, 0, 0);
         }
     };
     // NagramX (#video-draft-guard): the topic that owned the round-video recording at the moment it started.

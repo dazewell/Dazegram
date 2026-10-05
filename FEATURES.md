@@ -261,7 +261,7 @@ The pause button and the view-once "(1)" toggle are larger and lifted slightly h
 
 While a round video records hands-free or waits paused in its preview, tap the video to pause or resume, or press and hold it to send: it ticks on touch, buzzes when ready, and sends when you let go. Slide off to back out. In the preview, sound moves to its own button above pause. N-Settings → Chat → Camera → *Hold the video to send*, on by default.
 
-### Don't lose an unsent video message <!-- #video-draft-guard -->
+### Don't lose an unsent video message <!-- #video-draft-guard --> <!-- #video-pause-grace -->
 
 A round video message you've recorded but haven't sent survives backing out of the chat, switching apps mid-recording, or the chat locking behind a passcode — the clip waits in the preview, trimmed the way you left it, for up to a day. After a teardown it returns as the trim strip and send button, not the round preview. A pause under two seconds (wireless Android Auto) won't stop recording.
 
