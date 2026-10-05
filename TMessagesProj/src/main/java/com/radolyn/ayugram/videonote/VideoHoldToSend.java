@@ -85,6 +85,7 @@ public final class VideoHoldToSend {
     private Drawable arrow;
 
     private TextPaint labelPaint;
+    private TextPaint hintPaint;
     private Paint labelBackground;
     private final RectF labelRect = new RectF();
     private float labelAlpha;
@@ -301,6 +302,33 @@ public final class VideoHoldToSend {
         labelPaint.setAlpha((int) (255 * alpha));
         canvas.drawRoundRect(labelRect, dp(12), dp(12), labelBackground);
         canvas.drawText(text, cx - textWidth / 2f, labelRect.centerY() - (labelPaint.descent() + labelPaint.ascent()) / 2f, labelPaint);
+        drawHint(canvas, host, circle, cx, labelRect.top, alpha);
+    }
+
+    // A static, dimmer pill above the how-to label that only says the swipes exist. It is the top of the 64dp the
+    // host keeps free above the circle (24 + 20 below it, 2 gap, 18 here), so it is skipped rather than clipped
+    // wherever that room or the width isn't there.
+    private void drawHint(Canvas canvas, View host, View circle, float cx, float top, float alpha) {
+        if (!canSwipe.run() || circle.getY() < dp(64)) {
+            return;
+        }
+        if (hintPaint == null) {
+            hintPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            hintPaint.setTextSize(dp(11));
+            hintPaint.setTypeface(AndroidUtilities.bold());
+            hintPaint.setColor(Color.WHITE);
+        }
+        final String text = LocaleController.getString(R.string.VideoMessagesGesturesHint);
+        final float textWidth = hintPaint.measureText(text);
+        if (textWidth + dp(36) > host.getWidth()) {
+            return;
+        }
+        final float bottom = top - dp(2);
+        labelRect.set(cx - textWidth / 2f - dp(8), bottom - dp(18), cx + textWidth / 2f + dp(8), bottom);
+        labelBackground.setAlpha((int) (0x4d * alpha * 0.7f));
+        hintPaint.setAlpha((int) (255 * alpha * 0.7f));
+        canvas.drawRoundRect(labelRect, dp(9), dp(9), labelBackground);
+        canvas.drawText(text, cx - textWidth / 2f, labelRect.centerY() - (hintPaint.descent() + hintPaint.ascent()) / 2f, hintPaint);
     }
 
     private void arm() {
