@@ -39,7 +39,7 @@ import xyz.nextalone.nagram.NaConfig;
 /**
  * Press and hold the round video circle to send a hands-free (locked) recording, or the paused preview it
  * stopped into, so the send doesn't need the small button in the corner. A disc fills the circle from its centre
- * while held; once full, letting go sends. A light tick marks the touch, a firm one the moment it arms, and a
+ * while held; once full, letting go sends. A light tick marks the hold beginning (shortly after the touch), a firm one the moment it arms, and a
  * short one when sliding off disarms it. Letting go before it arms is a tap, which pauses or resumes as the
  * composer's pause button would. Sliding off the circle or a second finger (pinch zoom) cancels and nothing
  * changes. The rim is left alone on purpose: it already carries the recording-time arc.
@@ -183,7 +183,7 @@ public final class VideoHoldToSend {
                     }
                     if (travel >= dp(SWIPE_DP)) {
                         swipeTracking = false;
-                        cancel(); // the swipe leaves the circle, which would cancel anyway; do it before it acts
+                        cancel(); // a swipe overrides the hold, even an armed one, so it can't also send on release
                         if (canSwipe.run()) {
                             swipe.run(Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? SWIPE_LEFT : SWIPE_RIGHT) : (dy < 0 ? SWIPE_UP : SWIPE_DOWN));
                         }

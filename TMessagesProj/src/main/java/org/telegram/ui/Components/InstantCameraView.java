@@ -5156,7 +5156,9 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             }
         } else if (cameraSession != null && cameraSession.getMaxZoomRatio() > 1f) {
             final float max = cameraSession.getMaxZoomRatio();
-            final float ratio = Utilities.clamp(Math.round(camera1FractionToRatio(lockedZoom)) + direction, max, 1f);
+            // the next whole zoom in the swipe's direction, so an off-integer start (pinch, rocker) skips none
+            final float current = camera1FractionToRatio(lockedZoom);
+            final float ratio = Utilities.clamp(direction > 0 ? (float) Math.floor(current * 1.02f) + 1f : (float) Math.ceil(current / 1.02f) - 1f, max, 1f);
             target = (float) (Math.log(ratio) / Math.log(max));
         }
         if (target < 0f) {
