@@ -587,7 +587,7 @@ public final class HeaderBgSheet {
         if (text == HeaderBgSettings.TEXT_DARK) {
             return getString(R.string.HeaderBackgroundTextDark);
         }
-        return getString(R.string.HeaderBackgroundTintAuto);
+        return getString(R.string.HeaderBackgroundTintTheme);
     }
 
     private static String curveName(int curve) {
