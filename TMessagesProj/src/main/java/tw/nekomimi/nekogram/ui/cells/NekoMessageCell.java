@@ -143,7 +143,8 @@ public class NekoMessageCell extends ChatMessageCell {
 
             @Override
             public void didLongPress(ChatMessageCell cell, float x, float y) {
-                boolean hasText = (editedMessage != null && !TextUtils.isEmpty(editedMessage.text)) || (getMessageObject() != null && getMessageObject().messageOwner != null && !TextUtils.isEmpty(getMessageObject().messageOwner.message));
+                // A history row's bubble may show diff markup; only the version's own text counts.
+                boolean hasText = editedMessage != null ? !TextUtils.isEmpty(editedMessage.text) : (getMessageObject() != null && getMessageObject().messageOwner != null && !TextUtils.isEmpty(getMessageObject().messageOwner.message));
                 if (hasText && isInMessageBubble(x, y) && !isInImageArea(x, y)) {
                     copyText();
                 }
@@ -211,7 +212,7 @@ public class NekoMessageCell extends ChatMessageCell {
 
     private void copyText() {
         String text = null;
-        if (editedMessage != null && !TextUtils.isEmpty(editedMessage.text)) {
+        if (editedMessage != null) {
             text = editedMessage.text;
         } else if (getMessageObject() != null && getMessageObject().messageOwner != null && !TextUtils.isEmpty(getMessageObject().messageOwner.message)) {
             text = getMessageObject().messageOwner.message;

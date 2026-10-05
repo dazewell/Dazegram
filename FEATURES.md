@@ -45,6 +45,10 @@ Bookmarks come from NagramX; this fork raises the per-chat cap from 30 to 300. S
 
 Tap the *Save Deleted Messages* or *Save Edits History* row under N-Settings → Experimental (the switch end still toggles it) to pick which chats it covers: private chats, public or private channels, public or private groups. All five are on by default. Anything already saved stays viewable.
 
+### Edits history shows what changed <!-- #edits-history-diff -->
+
+Edits History (message menu, with *Save Edits History* on under N-Settings → Experimental) comes from NagramX. Here it ends with the current version, and each version after the first shows its change from the one before: removed words struck through, added words bold and underlined. Copy still copies the version's own text.
+
 ### Ayu Mode shortcut <!-- #ayu-mode -->
 
 A launcher shortcut (long-press the app icon, or pin it to your home screen) that opens the app with Ghost Mode already on. Tapping it flips every Ghost toggle you haven't locked and pushes you offline, then opens as normal. On by default; switch it off under N-Settings → General → Launcher shortcuts.
