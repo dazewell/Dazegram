@@ -62,8 +62,11 @@ import org.telegram.ui.Components.inset.WindowInsetsStateHolder;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 import kotlin.Unit;
 import tw.nekomimi.nekogram.helpers.MessageHelper;
@@ -100,6 +103,8 @@ public class AyuMessageHistory extends NekoDelegateFragment {
     // is open, because messageObject then holds the text that just became a revision.
     private boolean showCurrentRow;
     private boolean currentRowStale;
+    // Rows whose text is diff markup rather than a real version; Translate would translate both sides.
+    private final Set<MessageObject> diffedRows = Collections.newSetFromMap(new IdentityHashMap<>());
 
     public AyuMessageHistory(MessageObject messageObject) {
         this.messageObject = messageObject;
@@ -456,7 +461,7 @@ public class AyuMessageHistory extends NekoDelegateFragment {
         }
 
         String textToTranslate = msg.messageOwner != null ? msg.messageOwner.message : null;
-        if (!TextUtils.isEmpty(textToTranslate) || msg.isPoll()) {
+        if ((!TextUtils.isEmpty(textToTranslate) || msg.isPoll()) && !diffedRows.contains(msg)) {
             boolean translated = msg.messageOwner != null && (msg.messageOwner.translated || msg.messageOwner.translatedPoll != null);
             items.add(getString(translated ? R.string.HideTranslation : R.string.Translate));
             icons.add(LlmConfig.llmIsDefaultProvider() ? R.drawable.magic_stick_solar : R.drawable.ic_translate);
@@ -739,9 +744,7 @@ public class AyuMessageHistory extends NekoDelegateFragment {
         AyuMessageUtils.mapMedia(editedMessage, msg, currentAccount);
         // Each revision is shown as the change from the one before it, across the unfiltered list.
         int index = messages.indexOf(editedMessage);
-        if (index > 0) {
-            applyDiff(msg, messages.get(index - 1).text);
-        }
+        boolean diffed = index > 0 && applyDiff(msg, messages.get(index - 1).text);
 
         msg.ayuDeleted = true;
         msg.date = editedMessage.entityCreateDate;
@@ -791,6 +794,9 @@ public class AyuMessageHistory extends NekoDelegateFragment {
         if (localFileFound && msg.attachPath != null) {
             messageObj.attachPathExists = true;
         }
+        if (diffed) {
+            diffedRows.add(messageObj);
+        }
         return messageObj;
     }
 
@@ -825,16 +831,26 @@ public class AyuMessageHistory extends NekoDelegateFragment {
         msg.dialog_id = source.dialog_id;
         msg.attachPath = source.attachPath;
         msg.replyMessage = source.replyMessage;
-        applyDiff(msg, messages.get(messages.size() - 1).text);
-        return new MessageObject(getCurrentAccount(), msg, false, true);
+        // Revision rows are stamped when they were replaced; stamp the live one with its last edit to keep the order.
+        if (msg.edit_date != 0) {
+            msg.date = msg.edit_date;
+        }
+        boolean diffed = applyDiff(msg, messages.get(messages.size() - 1).text);
+        MessageObject messageObj = new MessageObject(getCurrentAccount(), msg, false, true);
+        if (diffed) {
+            diffedRows.add(messageObj);
+        }
+        return messageObj;
     }
 
-    private static void applyDiff(TLRPC.Message msg, String previousText) {
+    private static boolean applyDiff(TLRPC.Message msg, String previousText) {
         AyuEditDiff.Result diff = AyuEditDiff.build(previousText, msg.message, msg.entities);
-        if (diff != null) {
-            msg.message = diff.text;
-            msg.entities = diff.entities;
+        if (diff == null) {
+            return false;
         }
+        msg.message = diff.text;
+        msg.entities = diff.entities;
+        return true;
     }
 
     private File findSavedMedia(EditedMessage editedMessage) {
@@ -1028,8 +1044,10 @@ public class AyuMessageHistory extends NekoDelegateFragment {
 
     private void rebuildMessageObjects() {
         messageObjects.clear();
+        diffedRows.clear();
+        // Built on bind, so a search keystroke does not diff every revision up front.
         for (int i = 0; i < rowCount; i++) {
-            messageObjects.add(createRowMessageObject(i));
+            messageObjects.add(null);
         }
     }
 

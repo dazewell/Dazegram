@@ -14,7 +14,7 @@ import tw.nekomimi.nekogram.helpers.MessageHelper;
 final class AyuEditDiff {
 
     // An edit this sprawling no longer reads as a diff, and the LCS table would cost megabytes.
-    private static final long MAX_CELLS = 2_000_000L;
+    private static final long MAX_CELLS = 250_000L;
 
     private static final int EQUAL = 0;
     private static final int DELETED = 1;
@@ -211,6 +211,9 @@ final class AyuEditDiff {
     }
 
     private static boolean isWordChar(int codePoint) {
+        if (codePoint >= 0xFE00 && codePoint <= 0xFE0F || codePoint >= 0xE0100 && codePoint <= 0xE01EF) {
+            return false; // variation selectors belong to the emoji before them
+        }
         if (Character.isLetterOrDigit(codePoint) || codePoint == '_') {
             return true;
         }
