@@ -7,12 +7,27 @@ import org.telegram.messenger.FileLog
 import org.telegram.messenger.MediaDataController
 import org.telegram.messenger.UserConfig
 import org.telegram.messenger.Utilities
+import xyz.nextalone.nagram.NaConfig
 
 object ShortcutHelper {
     // The id MediaDataController.buildShortcuts() gives the "New Message" shortcut. Everything it
     // builds goes out in one pass, so this one missing means the whole set is missing. Testing for
     // an empty list instead would miss it: NotificationsController pushes its own ndid_* shortcuts.
     private const val COMPOSE_SHORTCUT_ID = "compose"
+
+    // Off, it is no longer published, so the marker falls to the first fork shortcut that is on.
+    @JvmStatic
+    fun isComposeShortcutEnabled(): Boolean = NaConfig.newConversationShortcut.Bool()
+
+    private fun markerShortcutId(): String? {
+        val wanted = ArrayList<String>()
+        if (isComposeShortcutEnabled()) {
+            wanted.add(COMPOSE_SHORTCUT_ID)
+        }
+        com.radolyn.ayugram.shortcuts.GhostModeShortcut.addShortcutId(wanted)
+        com.radolyn.ayugram.videonote.VideoNoteShortcut.addShortcutId(wanted)
+        return wanted.firstOrNull()
+    }
 
     private var checking = false
 
@@ -24,12 +39,14 @@ object ShortcutHelper {
         if (checking || !UserConfig.getInstance(account).isClientActivated) {
             return
         }
+        // Nothing of ours is published, so there is nothing to bring back
+        val marker = markerShortcutId() ?: return
         checking = true
         Utilities.globalQueue.postRunnable {
             var missing = false
             try {
                 missing = ShortcutManagerCompat.getDynamicShortcuts(ApplicationLoader.applicationContext)
-                    .none { it.id == COMPOSE_SHORTCUT_ID }
+                    .none { it.id == marker }
             } catch (e: Exception) {
                 FileLog.e(e)
             }
