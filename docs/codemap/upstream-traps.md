@@ -2632,8 +2632,8 @@ Status-dependent text must set `continueUpdate = true` (`:3459-3461`).
 
 ## A see-through window on ColorOS: what it takes, and what the launcher does anyway
 
-The text memo's *Background* switch off (`#text-memo-shortcut`, PR #472 and its
-follow-up) floats just the card over whatever is on screen. On the OPPO/ColorOS
+The text memo's second shortcut, "Text overlay" (`#text-memo-shortcut`, PR #472
+and its follow-up), floats just the card over whatever is on screen. On the OPPO/ColorOS
 test device that works only with all of these together:
 
 - A **floating** theme, not a merely translucent one. A translucent theme alone
@@ -2653,21 +2653,20 @@ test device that works only with all of these together:
 
 Translucency cannot be switched on an open activity, and an `<activity-alias>`
 does not take its own theme, so the two looks are two manifest activities
-(`AndroidManifest.xml:604-622`) and the shortcut's intent names the one the
-switch picks (`TextMemoShortcut.java:65-66`). A card-sized window clips
+(`AndroidManifest.xml:604-622`) and each has its own launcher shortcut, both
+always offered (`TextMemoShortcut.java:32`, `:71`). A setting that picked one
+would have to rewrite the published shortcut's intent, which
+`buildShortcuts()` doesn't do below API 30 (`MediaDataController.java:5070`)
+while the id set is unchanged (`:5101-5103`); two ids avoid that. A card-sized window clips
 anything leaving it, so the send animation shrinks into the input
-(`TextMemoActivity.java:539-548`), and the keyboard is left up until `finish()`
+(`TextMemoActivity.java:545`), and the keyboard is left up until `finish()`
 (`:629-630`) because hiding it would move the window under a leaving card.
 
 What no window flag fixes: the ColorOS launcher stops drawing its home screen
 for about 1-2 s when it starts a shortcut, so anything see-through shows black
 there. Lawnchair shows no black behind the card (dazewell, 2026-10-04); other
-launchers and the lock screen are untested. That is why the switch defaults on (`NaConfig.kt`, `textMemoBackdrop`) and its notice says so.
-Evidence is visual, from the device, not from logs.
-
-A published shortcut's intent is baked in, so the switch calls
-`TextMemoShortcut.refresh()` (`TextMemoShortcut.java:84-97`) rather than
-`buildShortcuts()`, which below API 30 (`MediaDataController.java:5070`) returns
-early while the id set is unchanged (`:5101-5103`).
+launchers and the lock screen are untested. That is why the wallpaper one stays
+the first shortcut and the overlay is offered beside it, not instead. Evidence
+is visual, from the device, not from logs.
 
 *(Established 2026-10-04, `#text-memo-shortcut`.)*

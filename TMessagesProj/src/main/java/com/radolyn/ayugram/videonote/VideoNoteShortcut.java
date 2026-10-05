@@ -92,7 +92,7 @@ public final class VideoNoteShortcut {
 
     /** MediaDataController.buildShortcuts: ranks taken past the one it hands to publish, which recent chats skip. */
     public static int getExtraRanks() {
-        int count = (publishes(false) ? 1 : 0) + (publishes(true) ? 1 : 0) + (TextMemoShortcut.isEnabled() ? 1 : 0);
+        int count = (publishes(false) ? 1 : 0) + (publishes(true) ? 1 : 0) + (TextMemoShortcut.isEnabled() ? 2 : 0);
         return Math.max(0, count - 1);
     }
 

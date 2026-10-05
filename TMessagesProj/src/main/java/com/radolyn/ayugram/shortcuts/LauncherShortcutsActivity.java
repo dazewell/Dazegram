@@ -79,7 +79,6 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
             getString(R.string.VideoNoteShortcutCameraBoth)
     }, null));
     private final AbstractConfigCell textMemoRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getTextMemoShortcut(), getString(R.string.TextMemoShortcutNotice)));
-    private final AbstractConfigCell textMemoBackdropRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getTextMemoBackdrop(), getString(R.string.TextMemoBackdropNotice)));
     // Shared by both memos, so it sits last
     private final ConfigCellText videoNoteTargetRow = (ConfigCellText) cellGroup.appendCell(new ConfigCellText("VideoNoteShortcutTarget", null));
     private final AbstractConfigCell dividerVideoNote = cellGroup.appendCell(new ConfigCellDivider());
@@ -146,11 +145,6 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
         boolean memo = key.equals(NaConfig.INSTANCE.getVideoNoteShortcut().getKey()) || key.equals(NaConfig.INSTANCE.getTextMemoShortcut().getKey());
         // The camera decides how many video memo shortcuts there are and what they are called
         boolean camera = key.equals(NaConfig.INSTANCE.getVideoNoteShortcutCamera().getKey());
-        if (key.equals(NaConfig.INSTANCE.getTextMemoBackdrop().getKey())) {
-            // The activity is part of the shortcut's intent
-            TextMemoShortcut.refresh();
-            return;
-        }
         if (!memo && !camera && !key.equals(NaConfig.INSTANCE.getGhostModeShortcut().getKey())) {
             return;
         }
@@ -168,8 +162,7 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
     // still land on the right row.
     private void updateMemoRows(boolean animated) {
         setRowShown(videoNoteCameraRow, videoNoteRow, VideoNoteShortcut.isEnabled(), animated);
-        setRowShown(textMemoBackdropRow, textMemoRow, TextMemoShortcut.isEnabled(), animated);
-        setRowShown(videoNoteTargetRow, cellGroup.rows.contains(textMemoBackdropRow) ? textMemoBackdropRow : textMemoRow, VideoNoteShortcut.isEnabled() || TextMemoShortcut.isEnabled(), animated);
+        setRowShown(videoNoteTargetRow, textMemoRow, VideoNoteShortcut.isEnabled() || TextMemoShortcut.isEnabled(), animated);
         addRowsToMap(cellGroup);
     }
 
@@ -324,7 +317,7 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
         private static final int POPUP_PADDING = 6;
         private static final int POPUP_TOP = 8;
         private static final int POPUP_BOTTOM = 16;
-        private static final int ITEM_COUNT = 5;
+        private static final int ITEM_COUNT = 6;
 
         private final LinearLayout popup;
         private final GradientDrawable popupBackground = new GradientDrawable();
@@ -333,6 +326,7 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
         private final View videoNoteItem;
         private final View videoNoteRearItem;
         private final View textMemoItem;
+        private final View textMemoCardItem;
 
         PreviewCell(Context context) {
             super(context);
@@ -354,6 +348,7 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
             videoNoteItem = addItem(context, 2, 0, VideoNoteShortcut.createIcon(), R.string.VideoNoteShortcutLabel);
             videoNoteRearItem = addItem(context, 3, 0, VideoNoteShortcut.createIcon(), R.string.VideoNoteShortcutLabel);
             textMemoItem = addItem(context, 4, 0, TextMemoShortcut.createIcon(), R.string.TextMemoShortcutLabel);
+            textMemoCardItem = addItem(context, 5, 0, TextMemoShortcut.createIcon(), R.string.TextMemoShortcutLabelCard);
 
             setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
             update();
@@ -417,7 +412,10 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
             labels[3].setText(VideoNoteShortcut.getLabel(true, true));
             videoNoteItem.setVisibility(VideoNoteShortcut.isEnabled() ? VISIBLE : GONE);
             videoNoteRearItem.setVisibility(VideoNoteShortcut.isEnabled() && both ? VISIBLE : GONE);
+            labels[4].setText(TextMemoShortcut.getLabel(false, true));
+            labels[5].setText(TextMemoShortcut.getLabel(true, true));
             textMemoItem.setVisibility(TextMemoShortcut.isEnabled() ? VISIBLE : GONE);
+            textMemoCardItem.setVisibility(TextMemoShortcut.isEnabled() ? VISIBLE : GONE);
         }
     }
 }

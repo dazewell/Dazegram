@@ -7,7 +7,7 @@
         <item name="android:windowDisablePreview">true</item>
     </style>
 
-    <!-- The text memo with its Background off: a floating window just the card's size, as VoIPPermissionActivity's is.
+    <!-- The text memo without its wallpaper: a floating window just the card's size, as VoIPPermissionActivity's is.
          ColorOS opened a merely translucent one as a full-screen opaque task and showed black behind it until a runtime
          conversion landed a second or two later. Translucency can't change at runtime, so this is its own activity.
          No starting window either: ColorOS adds one even for a translucent activity, and it shows black. -->

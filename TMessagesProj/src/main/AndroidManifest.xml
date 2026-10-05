@@ -610,7 +610,7 @@
             android:taskAffinity=""
             android:theme="@style/Theme.TMessages.TextMemo"
             android:windowSoftInputMode="adjustResize|stateHidden" />
-        <!-- NagramX: the same memo with its Background off. Translucency can't be switched at runtime, so it is a second activity with a floating theme, picked by the shortcut's intent -->
+        <!-- NagramX: the text memo without its wallpaper. Translucency can't be switched at runtime, so it is a second activity with a floating theme, opened by its own launcher shortcut -->
         <activity
             android:name="com.radolyn.ayugram.videonote.TextMemoCardActivity"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize"

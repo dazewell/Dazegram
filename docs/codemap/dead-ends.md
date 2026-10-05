@@ -1084,7 +1084,7 @@ only make the task see-through; see "A see-through window on ColorOS" in
 The launcher's blank is its own behaviour, not the memo's window. The opaque
 wallpaper backdrop is the only thing that hides it, and the comment at
 `TextMemoActivity.java:160-162` records why it exists. The *Background* switch
-leaves it as the default and offers the see-through card for other launchers
-(confirmed on Lawnchair).
+stays one shortcut, and the see-through card is a second one beside it for other
+launchers (confirmed on Lawnchair).
 
 *(Established 2026-10-04, `#text-memo-shortcut`.)*

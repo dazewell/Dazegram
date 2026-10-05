@@ -1,6 +1,5 @@
 package com.radolyn.ayugram.videonote;
 
-import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
 
@@ -13,7 +12,6 @@ import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
-import org.telegram.messenger.Utilities;
 
 import java.util.Collections;
 import java.util.List;
@@ -21,13 +19,17 @@ import java.util.List;
 import xyz.nextalone.nagram.NaConfig;
 
 /**
- * Launcher shortcut that opens TextMemoActivity (TextMemoCardActivity with its Background off), a card to type a message to the video memo's recipient. Published
- * through VideoNoteShortcut's MediaDataController hooks, right after the video ones.
+ * Launcher shortcuts that open a card to type a message to the video memo's recipient: TextMemoActivity over the chat
+ * wallpaper, and TextMemoCardActivity floating over whatever is on screen. Both are always offered together, so which
+ * to use is the user's call at the moment. Published through VideoNoteShortcut's MediaDataController hooks, right after
+ * the video ones.
  */
 public final class TextMemoShortcut {
 
     static final String ACTION = "nax_text_memo";
+    // The wallpaper one keeps the id the single shortcut had, so a copy pinned before the second one existed stays put
     private static final String SHORTCUT_ID = "text_memo";
+    private static final String SHORTCUT_ID_CARD = "text_memo_card";
     private static final String EXTRA_HASH = "hash";
 
     private TextMemoShortcut() {
@@ -37,21 +39,48 @@ public final class TextMemoShortcut {
         return NaConfig.INSTANCE.getTextMemoShortcut().Bool();
     }
 
+    /** The launcher label; the long one says what differs, as the video memo's camera labels do. */
+    public static String getLabel(boolean card, boolean longLabel) {
+        if (longLabel) {
+            return LocaleController.getString(card ? R.string.TextMemoShortcutLabelCardLong : R.string.TextMemoShortcutLabelLong);
+        }
+        return LocaleController.getString(card ? R.string.TextMemoShortcutLabelCard : R.string.TextMemoShortcutLabel);
+    }
+
     static void addShortcutId(List<String> wantedIds) {
         if (isEnabled()) {
             wantedIds.add(SHORTCUT_ID);
+            wantedIds.add(SHORTCUT_ID_CARD);
         }
     }
 
+    // Two ranks, one per shortcut
     static void publish(boolean recreate, List<String> existingIds, int rank) {
         if (!isEnabled() || SharedConfig.directShareHash == null) {
             return;
         }
+        publish(false, recreate, existingIds, rank);
+        publish(true, recreate, existingIds, rank + 1);
+    }
+
+    // Own try so a launcher rejecting one can't abort the other
+    private static void publish(boolean card, boolean recreate, List<String> existingIds, int rank) {
+        String id = card ? SHORTCUT_ID_CARD : SHORTCUT_ID;
         try {
-            ShortcutInfoCompat shortcut = buildShortcut(rank);
+            // The window theme can't change once an activity is open, so the card is its own activity
+            Intent intent = new Intent(ApplicationLoader.applicationContext, card ? TextMemoCardActivity.class : TextMemoActivity.class);
+            intent.setAction(ACTION);
+            intent.putExtra(EXTRA_HASH, SharedConfig.directShareHash);
+            ShortcutInfoCompat shortcut = new ShortcutInfoCompat.Builder(ApplicationLoader.applicationContext, id)
+                    .setShortLabel(getLabel(card, false))
+                    .setLongLabel(getLabel(card, true))
+                    .setIcon(IconCompat.createWithBitmap(createIcon()))
+                    .setRank(rank)
+                    .setIntent(intent)
+                    .build();
             if (recreate) {
                 ShortcutManagerCompat.pushDynamicShortcut(ApplicationLoader.applicationContext, shortcut);
-            } else if (existingIds.contains(SHORTCUT_ID)) {
+            } else if (existingIds.contains(id)) {
                 ShortcutManagerCompat.updateShortcuts(ApplicationLoader.applicationContext, Collections.singletonList(shortcut));
             } else {
                 ShortcutManagerCompat.addDynamicShortcuts(ApplicationLoader.applicationContext, Collections.singletonList(shortcut));
@@ -59,46 +88,6 @@ public final class TextMemoShortcut {
         } catch (Throwable e) {
             FileLog.e(e);
         }
-    }
-
-    // The Background switch picks the activity, and so the window theme, which can't change once it is open
-    private static ShortcutInfoCompat buildShortcut(int rank) {
-        Class<?> target = NaConfig.INSTANCE.getTextMemoBackdrop().Bool() ? TextMemoActivity.class : TextMemoCardActivity.class;
-        Intent intent = new Intent(ApplicationLoader.applicationContext, target);
-        intent.setAction(ACTION);
-        intent.putExtra(EXTRA_HASH, SharedConfig.directShareHash);
-        String label = LocaleController.getString(R.string.TextMemoShortcutLabel);
-        return new ShortcutInfoCompat.Builder(ApplicationLoader.applicationContext, SHORTCUT_ID)
-                .setShortLabel(label)
-                .setLongLabel(label)
-                .setIcon(IconCompat.createWithBitmap(createIcon()))
-                .setRank(rank)
-                .setIntent(intent)
-                .build();
-    }
-
-    /**
-     * Points the published shortcut, and any pinned copy, at the activity the Background switch now picks.
-     * MediaDataController.buildShortcuts won't do: below API 30 it returns early while the set of ids is unchanged.
-     */
-    public static void refresh() {
-        if (!isEnabled() || SharedConfig.directShareHash == null) {
-            return;
-        }
-        Utilities.globalQueue.postRunnable(() -> {
-            try {
-                Context context = ApplicationLoader.applicationContext;
-                int rank = 0;
-                for (ShortcutInfoCompat existing : ShortcutManagerCompat.getDynamicShortcuts(context)) {
-                    if (SHORTCUT_ID.equals(existing.getId())) {
-                        rank = existing.getRank();
-                    }
-                }
-                ShortcutManagerCompat.updateShortcuts(context, Collections.singletonList(buildShortcut(rank)));
-            } catch (Throwable e) {
-                FileLog.e(e);
-            }
-        });
     }
 
     // The video memo's disc with a pencil, so the two read as a pair

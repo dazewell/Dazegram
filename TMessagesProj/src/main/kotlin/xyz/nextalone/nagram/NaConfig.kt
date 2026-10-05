@@ -1071,12 +1071,6 @@ object NaConfig {
             ConfigItem.configTypeBool,
             false
         )
-    val textMemoBackdrop =
-        addConfig(
-            "TextMemoBackdrop",
-            ConfigItem.configTypeBool,
-            true // off floats the card over the screen, which a ColorOS launcher shows as black
-        )
     val ghostModeShortcut =
         addConfig(
             "GhostModeShortcut",
