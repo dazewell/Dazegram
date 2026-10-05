@@ -354,16 +354,18 @@ public class TextMemoActivity extends Activity {
         controller.setAppearanceLightNavigationBars(!dark);
         scrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{dark ? 0x40000000 : 0x33000000, 0}));
 
-        int service = Theme.getColor(Theme.key_chat_serviceBackground);
+        // The send colour, as on the card's send button. The flat service colour is only the fallback for the chat's darkened
+        // wallpaper shader, and on a pale wallpaper it left the white plane barely visible.
         GradientDrawable disc = new GradientDrawable();
         disc.setShape(GradientDrawable.OVAL);
-        disc.setColor(service);
+        disc.setColor(Theme.getColor(Theme.key_chat_messagePanelSend));
         plane.setBackground(disc);
+        // A fixed dark pill for the same reason: the flat service colour washed out over a pale wallpaper
         GradientDrawable pill = new GradientDrawable();
         pill.setCornerRadius(dp(14));
-        pill.setColor(service);
+        pill.setColor(0x66000000);
         hint.setBackground(pill);
-        hint.setTextColor(Theme.getColor(Theme.key_chat_serviceText));
+        hint.setTextColor(Color.WHITE);
     }
 
     private void applyCardColors() {
@@ -714,8 +716,7 @@ public class TextMemoActivity extends Activity {
         super.onDestroy();
     }
 
-    // The wallpaper loaded after the screen opened. The service colours derive from it, so the plane disc and the hint
-    // pill are recoloured too.
+    // The wallpaper loaded after the screen opened. Nothing else needs recolouring: the disc and pill are fixed colours.
     private final NotificationCenter.NotificationCenterDelegate wallpaperObserver = (id, account, args) -> {
         if (id != NotificationCenter.didSetNewWallpapper || wallpaperRoot == null || isFinishing()) {
             return;
@@ -724,7 +725,6 @@ public class TextMemoActivity extends Activity {
         Drawable loaded = Theme.getCachedWallpaperNonBlocking();
         if (loaded != null) {
             wallpaperRoot.setBackgroundImage(loaded, Theme.isWallpaperMotion());
-            applyColors();
         }
     };
 
