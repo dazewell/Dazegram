@@ -47,7 +47,7 @@ A launcher shortcut (long-press the app icon, or pin it to your home screen) tha
 
 ### New conversation shortcut switch <!-- #new-conversation-shortcut -->
 
-Telegram's *New conversation* launcher shortcut can be switched off under N-Settings → General → Launcher shortcuts → Built in, for launchers that only show a few shortcuts. On by default; the preview there follows it.
+Telegram's *New conversation* launcher shortcut can be switched off under N-Settings → General → Launcher shortcuts → Built in, for launchers that only show a few shortcuts. On by default.
 
 ### Hold messages while Ghost Mode is on <!-- #ghost-hold -->
 

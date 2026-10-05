@@ -10,23 +10,25 @@ import org.telegram.messenger.Utilities
 import xyz.nextalone.nagram.NaConfig
 
 object ShortcutHelper {
-    // The id MediaDataController.buildShortcuts() gives the "New Message" shortcut. Everything it
-    // builds goes out in one pass, so this one missing means the whole set is missing. Testing for
-    // an empty list instead would miss it: NotificationsController pushes its own ndid_* shortcuts.
+    // The id MediaDataController.buildShortcuts() gives the "New Message" shortcut.
     private const val COMPOSE_SHORTCUT_ID = "compose"
 
-    // Off, it is no longer published, so the marker falls to the first fork shortcut that is on.
     @JvmStatic
     fun isComposeShortcutEnabled(): Boolean = NaConfig.newConversationShortcut.Bool()
 
-    private fun markerShortcutId(): String? {
+    // The static shortcuts buildShortcuts() publishes right now. A logout wipes them all at once, so none of them
+    // being there means they are missing. Testing for an empty list instead would miss it:
+    // NotificationsController pushes its own ndid_* shortcuts. Any one of them, not a single marker, because a
+    // launcher may reject one on its own and that must not read as a wipe. Recent chats are left out, they come and
+    // go, so their absence proves nothing.
+    private fun staticShortcutIds(): List<String> {
         val wanted = ArrayList<String>()
         if (isComposeShortcutEnabled()) {
             wanted.add(COMPOSE_SHORTCUT_ID)
         }
         com.radolyn.ayugram.shortcuts.GhostModeShortcut.addShortcutId(wanted)
         com.radolyn.ayugram.videonote.VideoNoteShortcut.addShortcutId(wanted)
-        return wanted.firstOrNull()
+        return wanted
     }
 
     private var checking = false
@@ -39,14 +41,16 @@ object ShortcutHelper {
         if (checking || !UserConfig.getInstance(account).isClientActivated) {
             return
         }
-        // Nothing of ours is published, so there is nothing to bring back
-        val marker = markerShortcutId() ?: return
+        val wanted = staticShortcutIds()
+        if (wanted.isEmpty()) {
+            return
+        }
         checking = true
         Utilities.globalQueue.postRunnable {
             var missing = false
             try {
                 missing = ShortcutManagerCompat.getDynamicShortcuts(ApplicationLoader.applicationContext)
-                    .none { it.id == marker }
+                    .none { it.id in wanted }
             } catch (e: Exception) {
                 FileLog.e(e)
             }
