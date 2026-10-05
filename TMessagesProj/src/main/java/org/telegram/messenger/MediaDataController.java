@@ -5084,7 +5084,9 @@ public class MediaDataController extends BaseController {
                 } else {
                     List<ShortcutInfoCompat> currentShortcuts = ShortcutManagerCompat.getDynamicShortcuts(ApplicationLoader.applicationContext);
                     if (currentShortcuts != null && !currentShortcuts.isEmpty()) {
-                        newShortcutsIds.add("compose");
+                        if (xyz.nextalone.nagram.helper.ShortcutHelper.isComposeShortcutEnabled()) { // NagramX: the switch also decides what the stale prune keeps
+                            newShortcutsIds.add("compose");
+                        }
                         com.radolyn.ayugram.shortcuts.GhostModeShortcut.addShortcutId(newShortcutsIds); // NagramX: keep the fork's launcher shortcuts from being pruned as stale, while their settings are on
                         com.radolyn.ayugram.videonote.VideoNoteShortcut.addShortcutId(newShortcutsIds);
                         for (int a = 0; a < hintsFinal.size(); a++) {
@@ -5118,7 +5120,9 @@ public class MediaDataController extends BaseController {
                         .setRank(0)
                         .setIntent(intent)
                         .build();
-                if (recreateShortcuts) {
+                if (!xyz.nextalone.nagram.helper.ShortcutHelper.isComposeShortcutEnabled()) {
+                    // NagramX: switched off, launchers with a short shortcut list give the slot to the next one
+                } else if (recreateShortcuts) {
                     ShortcutManagerCompat.pushDynamicShortcut(ApplicationLoader.applicationContext, shortcut);
                 } else {
                     arrayList.add(shortcut);
