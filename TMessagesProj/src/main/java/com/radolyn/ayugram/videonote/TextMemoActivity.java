@@ -7,8 +7,11 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.res.Configuration;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.drawable.ColorDrawable;
@@ -17,6 +20,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.InsetDrawable;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextUtils;
@@ -35,6 +39,9 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
@@ -46,13 +53,18 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.MediaDataController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SendMessagesHelper;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
+import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.ui.ActionBar.BaseFragment;
+import org.telegram.ui.ActionBar.INavigationLayout;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.BackupImageView;
@@ -61,13 +73,23 @@ import org.telegram.ui.Components.EditTextBoldCursor;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RLottieImageView;
 import org.telegram.ui.Components.SizeNotifierFrameLayout;
+import org.telegram.ui.ChatActivity;
+import org.telegram.ui.LaunchActivity;
 
 /**
  * The text memo: a compose card over the chat wallpaper (or, as TextMemoCardActivity, floating over the screen), in its own task. Neither the chat nor who it goes to is shown,
- * so it never touches the app lock: a locked app stays locked, and closing returns to the launcher. The text is never
- * stored; leaving the screen drops it.
+ * so it never touches the app lock: a locked app stays locked, and closing returns to the launcher. Text left unsent by
+ * anything but Discard or Send stays as that chat's real draft, and the next memo opens with it. A send clears the chat's
+ * draft, as any send does. The memo never writes over a draft it didn't open with, and shows one only when the app and
+ * the chat would open without the passcode, or when the memo itself left it in the last five minutes. It also keeps
+ * its hands off a chat open in the app, whose composer would write its own text back over the memo's on its next pause.
+ * A chat open in a bubble isn't checked. When the recipient can't receive the memo, the draft goes to Saved Messages, where the memo itself goes.
  */
 public class TextMemoActivity extends Activity {
+
+    private static final String KEY_MEMO_DRAFT_HASH = "draft_hash";
+    private static final String KEY_MEMO_DRAFT_AT = "draft_at";
+    private static final long MEMO_DRAFT_WINDOW_MS = 5 * 60 * 1000;
 
     private int account = -1;
     private FrameLayout root;
@@ -93,6 +115,13 @@ public class TextMemoActivity extends Activity {
     // 0 until the recipient is resolved; a send before that waits for it in pendingText
     private long dialogId;
     private String pendingText;
+    // The chat's draft the memo opened with, or null. A write goes ahead only while the chat still holds this very object,
+    // so a draft replaced meanwhile (another device, the chat in the app) is never written over.
+    private TLRPC.DraftMessage adoptedDraft;
+    // 0 to 1: the dot on the send button that says the chat holds a draft the memo didn't open with, which a send clears
+    private float draftDot;
+    // Left before the recipient resolved: saved as the draft from the resolve callback
+    private String pendingDraft;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -111,13 +140,6 @@ public class TextMemoActivity extends Activity {
             return;
         }
         account = selected;
-        VideoNoteTarget.resolveAsync(account, false, id -> {
-            dialogId = id;
-            if (pendingText != null) {
-                sendTo(pendingText, id);
-                pendingText = null;
-            }
-        });
 
         backdrop = hasBackdrop();
         if (backdrop) {
@@ -140,6 +162,20 @@ public class TextMemoActivity extends Activity {
         }
         applyColors();
         animateIn();
+        // After the views exist: the callback often runs right here, when the recipient is already in memory
+        VideoNoteTarget.resolveAsync(account, false, id -> {
+            dialogId = id;
+            if (pendingText != null) {
+                sendTo(pendingText, id);
+                pendingText = null;
+            } else if (pendingDraft != null) {
+                writeDraft(pendingDraft);
+                pendingDraft = null;
+            } else if (!dismissing && !isFinishing()) {
+                restoreDraft();
+                showDraftDot();
+            }
+        });
     }
 
     /** The wallpaper, scrim and plane behind the card. TextMemoCardActivity has none: the card floats over the screen. */
@@ -185,7 +221,7 @@ public class TextMemoActivity extends Activity {
         // A tap outside closes an empty card like any dialog, but never throws away typed text
         root.setOnClickListener(v -> {
             if (field.length() == 0) {
-                dismiss();
+                dismiss(false);
             }
         });
 
@@ -281,7 +317,7 @@ public class TextMemoActivity extends Activity {
         closeButton.setScaleType(ImageView.ScaleType.CENTER);
         closeButton.setImageResource(R.drawable.ic_close_white);
         closeButton.setContentDescription(LocaleController.getString(R.string.Discard));
-        closeButton.setOnClickListener(v -> dismiss());
+        closeButton.setOnClickListener(v -> dismiss(true));
         header.addView(closeButton, LayoutHelper.createLinear(40, 40, Gravity.CENTER_VERTICAL));
 
         LinearLayout inputRow = new LinearLayout(this);
@@ -329,7 +365,24 @@ public class TextMemoActivity extends Activity {
         });
         inputBubble.addView(field, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL));
 
-        sendButton = new ImageView(this);
+        sendButton = new ImageView(this) {
+            private final Paint dotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+            // The draft dot on the circle's top end corner, ringed in the card colour to stand off the accent
+            @Override
+            protected void onDraw(Canvas canvas) {
+                super.onDraw(canvas);
+                if (draftDot <= 0f) {
+                    return;
+                }
+                float cx = LocaleController.isRTL ? dp(10) : getWidth() - dp(10);
+                float cy = dp(10);
+                dotPaint.setColor(Theme.getColor(Theme.key_dialogBackground));
+                canvas.drawCircle(cx, cy, dp(7) * draftDot, dotPaint);
+                dotPaint.setColor(Theme.getColor(Theme.key_chats_draft));
+                canvas.drawCircle(cx, cy, dp(5) * draftDot, dotPaint);
+            }
+        };
         sendButton.setScaleType(ImageView.ScaleType.CENTER);
         sendButton.setImageResource(R.drawable.ic_send);
         sendButton.setContentDescription(LocaleController.getString(R.string.Send));
@@ -354,16 +407,18 @@ public class TextMemoActivity extends Activity {
         controller.setAppearanceLightNavigationBars(!dark);
         scrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{dark ? 0x40000000 : 0x33000000, 0}));
 
-        int service = Theme.getColor(Theme.key_chat_serviceBackground);
+        // The send colour, as on the card's send button. The flat service colour is only the fallback for the chat's darkened
+        // wallpaper shader, and on a pale wallpaper it left the white plane barely visible.
         GradientDrawable disc = new GradientDrawable();
         disc.setShape(GradientDrawable.OVAL);
-        disc.setColor(service);
+        disc.setColor(Theme.getColor(Theme.key_chat_messagePanelSend));
         plane.setBackground(disc);
+        // A fixed dark pill for the same reason: the flat service colour washed out over a pale wallpaper
         GradientDrawable pill = new GradientDrawable();
         pill.setCornerRadius(dp(14));
-        pill.setColor(service);
+        pill.setColor(0x66000000);
         hint.setBackground(pill);
-        hint.setTextColor(Theme.getColor(Theme.key_chat_serviceText));
+        hint.setTextColor(Color.WHITE);
     }
 
     private void applyCardColors() {
@@ -596,6 +651,159 @@ public class TextMemoActivity extends Activity {
         }).start();
     }
 
+    // Fills the field with the chat's draft when it's plain text the memo can show and send back unchanged
+    private void restoreDraft() {
+        MediaDataController drafts = MediaDataController.getInstance(account);
+        TLRPC.DraftMessage draft = drafts.getDraft(dialogId, 0);
+        if (draft == null || field.length() != 0 || !isPlainDraft(draft) || drafts.getDraftVoice(dialogId, 0) != null
+                || !canShowDraft() && !isRecentMemoDraft(draft) || isChatOpen()) {
+            return;
+        }
+        adoptedDraft = draft;
+        field.setText(draft.message);
+        field.setSelection(field.length());
+    }
+
+    /**
+     * A send clears the chat's draft, so a draft the memo didn't open with (the app is locked, it isn't plain text, the
+     * chat is open in the app) gets a dot on the send button. It says only that one is waiting, never what or for whom.
+     * Leaving without sending keeps it: no write goes over a draft the memo didn't open with.
+     */
+    private void showDraftDot() {
+        TLRPC.DraftMessage draft = MediaDataController.getInstance(account).getDraft(dialogId, 0);
+        if (!(draft instanceof TLRPC.TL_draftMessage) || draft == adoptedDraft) {
+            return;
+        }
+        sendButton.setContentDescription(LocaleController.getString(R.string.Send) + ". " + LocaleController.getString(R.string.TextMemoDraftWaiting));
+        if (!sendButton.isLaidOut()) {
+            // Known as the card opens: there from the first frame
+            draftDot = 1f;
+            return;
+        }
+        ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
+        animator.setDuration(200);
+        animator.setInterpolator(CubicBezierInterpolator.EASE_OUT);
+        animator.addUpdateListener(a -> {
+            draftDot = (float) a.getAnimatedValue();
+            sendButton.invalidate();
+        });
+        animator.start();
+    }
+
+    // No reply, formatting, media, effect or anything else a plain text box would drop on its way back to the chat
+    private static boolean isPlainDraft(TLRPC.DraftMessage draft) {
+        return draft instanceof TLRPC.TL_draftMessage && !TextUtils.isEmpty(draft.message) && draft.reply_to == null
+                && (draft.entities == null || draft.entities.isEmpty()) && draft.media == null && !draft.invert_media
+                && draft.rich_message == null && draft.effect == 0 && draft.suggested_post == null;
+    }
+
+    /**
+     * The memo opens over a locked app, so it shows a draft only when the app would open without the passcode right now,
+     * and the chat itself isn't locked. AndroidUtilities.needShowPasscode's test, without the wasInBackground flag that a
+     * call consumes.
+     */
+    private boolean canShowDraft() {
+        // As ChatActivity has it: a locked chat already unlocked while the app stayed in the foreground is open
+        if (com.radolyn.ayugram.chatlock.ChatLockController.isLocked(account, dialogId)
+                && !com.radolyn.ayugram.chatlock.ChatLockController.isUnlocked(account, dialogId)) {
+            return false;
+        }
+        if (SharedConfig.passcodeHash.length() == 0) {
+            return true;
+        }
+        int uptime = (int) (SystemClock.elapsedRealtime() / 1000);
+        return !SharedConfig.appLocked && SharedConfig.autoLockIn != 1
+                && !(SharedConfig.autoLockIn != 0 && SharedConfig.lastPauseTime != 0 && SharedConfig.lastPauseTime + SharedConfig.autoLockIn <= uptime)
+                && uptime + 5 >= SharedConfig.lastPauseTime;
+    }
+
+    /**
+     * A draft the memo itself left in the last five minutes comes back even while the app or the chat is locked, so a
+     * memo closed by accident isn't lost behind the passcode. Drafts typed in the chat stay locked. Only a hash of the chat
+     * and the text is kept, with when it was left, never the text.
+     */
+    private boolean isRecentMemoDraft(TLRPC.DraftMessage draft) {
+        try {
+            SharedPreferences prefs = memoPrefs(account);
+            long age = System.currentTimeMillis() - prefs.getLong(KEY_MEMO_DRAFT_AT, 0);
+            String hash = prefs.getString(KEY_MEMO_DRAFT_HASH, null);
+            return hash != null && age >= 0 && age <= MEMO_DRAFT_WINDOW_MS && hash.equals(memoDraftHash(dialogId, draft.message));
+        } catch (Throwable e) {
+            return false;
+        }
+    }
+
+    // Empty text forgets it: a cleared draft has nothing to bring back
+    private void rememberMemoDraft(String text) {
+        String hash = text.isEmpty() ? null : memoDraftHash(dialogId, text);
+        SharedPreferences.Editor editor = memoPrefs(account).edit();
+        if (hash == null) {
+            editor.clear();
+        } else {
+            editor.putString(KEY_MEMO_DRAFT_HASH, hash).putLong(KEY_MEMO_DRAFT_AT, System.currentTimeMillis());
+        }
+        editor.apply();
+    }
+
+    private static String memoDraftHash(long dialogId, String text) {
+        try {
+            return Utilities.bytesToHex(MessageDigest.getInstance("SHA-256").digest((dialogId + "\n" + text).getBytes(StandardCharsets.UTF_8)));
+        } catch (Throwable e) {
+            return null;
+        }
+    }
+
+    private static SharedPreferences memoPrefs(int account) {
+        return ApplicationLoader.applicationContext.getSharedPreferences("textmemo_" + account, 0);
+    }
+
+    /** VideoNoteTarget.clearAccountState, on logout. */
+    static void clearAccountState(int account) {
+        try {
+            memoPrefs(account).edit().clear().apply();
+        } catch (Throwable ignore) {
+        }
+    }
+
+    // The chat open anywhere in the app: its composer writes its own text back as the draft when it next pauses
+    private boolean isChatOpen() {
+        LaunchActivity launch = LaunchActivity.instance;
+        if (launch == null) {
+            return false;
+        }
+        for (INavigationLayout layout : new INavigationLayout[]{launch.actionBarLayout, launch.getActionBarLayout(), launch.getRightActionBarLayout(), launch.getLayersActionBarLayout()}) {
+            if (layout == null || layout.getFragmentStack() == null) {
+                continue;
+            }
+            for (BaseFragment fragment : layout.getFragmentStack()) {
+                if (fragment instanceof ChatActivity && fragment.getCurrentAccount() == account && ((ChatActivity) fragment).getDialogId() == dialogId) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // Saves the text as the chat's draft, empty clearing it, unless the chat's draft changed since the memo opened
+    private void writeDraft(String text) {
+        if (dialogId == 0) {
+            pendingDraft = text;
+            return;
+        }
+        try {
+            MediaDataController drafts = MediaDataController.getInstance(account);
+            if (drafts.getDraft(dialogId, 0) == adoptedDraft && !isChatOpen()) {
+                drafts.saveDraft(dialogId, 0, text, null, null, adoptedDraft != null && adoptedDraft.no_webpage, 0);
+                // Only text the memo wrote: a chat's own draft reopened and left as it was stays behind the lock
+                if (adoptedDraft == null || !text.equals(adoptedDraft.message)) {
+                    rememberMemoDraft(text);
+                }
+            }
+        } catch (Throwable e) {
+            FileLog.e(e);
+        }
+    }
+
     private void sendTo(String text, long dialogId) {
         try {
             SendMessagesHelper.prepareSendingText(AccountInstance.getInstance(account), text, dialogId, true, 0, 0, 0);
@@ -604,10 +812,20 @@ public class TextMemoActivity extends Activity {
         }
     }
 
-    // Close, back, or a tap outside an empty card: nothing flies, so it never looks sent
-    private void dismiss() {
+    /**
+     * Every way out but Send, where nothing flies, so it never looks sent. Discard (the close button) drops the text and
+     * clears a draft the memo opened with; anything else keeps the text as the chat's draft.
+     */
+    private void dismiss(boolean discard) {
         if (dismissing) {
             return;
+        }
+        if (discard) {
+            if (adoptedDraft != null) {
+                writeDraft("");
+            }
+        } else {
+            writeDraft(getText());
         }
         beginExit();
         field.setText("");
@@ -654,7 +872,7 @@ public class TextMemoActivity extends Activity {
     public boolean onTouchEvent(MotionEvent event) {
         if (!backdrop && root != null && event.getAction() == MotionEvent.ACTION_DOWN && field.length() == 0
                 && (event.getX() < card.getLeft() || event.getX() > card.getRight() || event.getY() < card.getTop() || event.getY() > card.getBottom())) {
-            dismiss();
+            dismiss(false);
             return true;
         }
         return super.onTouchEvent(event);
@@ -666,7 +884,7 @@ public class TextMemoActivity extends Activity {
             super.onBackPressed();
             return;
         }
-        dismiss();
+        dismiss(false);
     }
 
     @Override
@@ -676,7 +894,7 @@ public class TextMemoActivity extends Activity {
         boolean genuine = TextMemoShortcut.isGenuine(intent);
         TextMemoShortcut.consume(intent);
         if (!genuine && root != null) {
-            dismiss();
+            dismiss(false);
         }
     }
 
@@ -696,12 +914,13 @@ public class TextMemoActivity extends Activity {
         }
     }
 
-    // Leaving the screen drops the text: it is never kept anywhere, so nobody finds it waiting later
+    // Home, or anything else that hides the screen, closes it and keeps the text as the chat's draft
     @Override
     protected void onStop() {
         super.onStop();
-        if (field != null) {
-            field.setText("");
+        if (field != null && !dismissing) {
+            dismissing = true;
+            writeDraft(getText());
         }
         if (!isFinishing()) {
             finish();
@@ -714,8 +933,7 @@ public class TextMemoActivity extends Activity {
         super.onDestroy();
     }
 
-    // The wallpaper loaded after the screen opened. The service colours derive from it, so the plane disc and the hint
-    // pill are recoloured too.
+    // The wallpaper loaded after the screen opened. Nothing else needs recolouring: the disc and pill are fixed colours.
     private final NotificationCenter.NotificationCenterDelegate wallpaperObserver = (id, account, args) -> {
         if (id != NotificationCenter.didSetNewWallpapper || wallpaperRoot == null || isFinishing()) {
             return;
@@ -724,7 +942,6 @@ public class TextMemoActivity extends Activity {
         Drawable loaded = Theme.getCachedWallpaperNonBlocking();
         if (loaded != null) {
             wallpaperRoot.setBackgroundImage(loaded, Theme.isWallpaperMotion());
-            applyColors();
         }
     };
 

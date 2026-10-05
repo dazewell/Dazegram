@@ -2645,10 +2645,10 @@ test device that works only with all of these together:
   starting window even for a translucent activity and it draws black until the
   first frame.
 - `Activity.setTranslucent(true)` at runtime on API 30+
-  (`TextMemoActivity.java:132`); the theme alone left `dumpsys` showing the task
+  (`TextMemoActivity.java:154`); the theme alone left `dumpsys` showing the task
   `translucent=false` behind a transparent window.
 - `window.setLayout(MATCH_PARENT, WRAP_CONTENT)` plus `Gravity.BOTTOM` after
-  `setContentView` (`TextMemoActivity.java:138-139`) for a card-sized window;
+  `setContentView` (`TextMemoActivity.java:160-161`) for a card-sized window;
   `adjustResize` then lifts it above the keyboard.
 
 Translucency cannot be switched on an open activity, and an `<activity-alias>`
@@ -2659,8 +2659,8 @@ would have to rewrite the published shortcut's intent, which
 `buildShortcuts()` doesn't do below API 30 (`MediaDataController.java:5070`)
 while the id set is unchanged (`:5101-5103`); two ids avoid that. A card-sized window clips
 anything leaving it, so the send animation shrinks into the input
-(`TextMemoActivity.java:545`), and the keyboard is left up until `finish()`
-(`:629-630`) because hiding it would move the window under a leaving card.
+(`TextMemoActivity.java:600`), and the keyboard is left up until `finish()`
+(`:847-848`) because hiding it would move the window under a leaving card.
 
 What no window flag fixes: the ColorOS launcher stops drawing its home screen
 for about 1-2 s when it starts a shortcut, so anything see-through shows black

@@ -83,6 +83,10 @@ public class AyuSavePreferences {
             return false;
         }
 
+        if (!SaveScope.allowsDeleted(accountId, dialogId)) {
+            return false;
+        }
+
         if (userId != 0) {
             if (getSaveDeletedExclusion(userId)) {
                 return false;

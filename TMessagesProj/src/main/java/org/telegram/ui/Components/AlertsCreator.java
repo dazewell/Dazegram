@@ -8444,7 +8444,8 @@ public class AlertsCreator {
 
         // --- AyuGram hook
         final boolean[] keepLocally = {false};
-        if (NaConfig.INSTANCE.getEnableSaveDeletedMessages().Bool() && (selectedMessage == null || !selectedMessage.isEphemeral())) {
+        // NagramX: no "keep locally" in a chat type the Save Deleted sheet has unchecked; the save would be refused and the message lost
+        if (NaConfig.INSTANCE.getEnableSaveDeletedMessages().Bool() && com.radolyn.ayugram.messages.SaveScope.allowsDeleted(currentAccount, dialogId) && (selectedMessage == null || !selectedMessage.isEphemeral())) {
             if (ayuFrameLayout == null) {
                 ayuFrameLayout = new FrameLayout(activity);
                 builder.setView(ayuFrameLayout);

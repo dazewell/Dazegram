@@ -9,6 +9,7 @@ import com.radolyn.ayugram.AyuUtils;
 import com.radolyn.ayugram.database.entities.AyuMessageBase;
 import com.radolyn.ayugram.messages.AyuMessagesController;
 import com.radolyn.ayugram.messages.AyuSavePreferences;
+import com.radolyn.ayugram.messages.SaveScope;
 import com.radolyn.ayugram.utils.AyuFileLocation;
 
 import org.telegram.messenger.ChatObject;
@@ -707,51 +708,25 @@ public abstract class AyuMessageUtils {
 
     private static boolean shouldSaveMedia(AyuSavePreferences prefs) {
         if (NaConfig.INSTANCE.getMessageSavingSaveMedia().Bool() && prefs.getMessage().media != null) {
-            if (DialogObject.isUserDialog(prefs.getDialogId())) {
-                return NaConfig.INSTANCE.getSaveMediaInPrivateChats().Bool();
-            }
-            TLRPC.Chat chat = MessagesController.getInstance(prefs.getAccountId()).getChat(Math.abs(prefs.getDialogId()));
-            if (chat == null) {
-                FileLog.d("chat is null so saving media just in case");
-                return true;
-            }
-            boolean isPublic = ChatObject.isPublic(chat);
-            if (ChatObject.isChannelAndNotMegaGroup(chat)) {
-                if (isPublic && NaConfig.INSTANCE.getSaveMediaInPublicChannels().Bool()) {
-                    return true;
-                }
-                return !isPublic && NaConfig.INSTANCE.getSaveMediaInPrivateChannels().Bool();
-            } else if (isPublic && NaConfig.INSTANCE.getSaveMediaInPublicGroups().Bool()) {
-                return true;
-            } else {
-                return !isPublic && NaConfig.INSTANCE.getSaveMediaInPrivateGroups().Bool();
-            }
+            return shouldSaveMediaIn(prefs.getAccountId(), prefs.getDialogId());
         }
         return false;
     }
 
     public static boolean shouldSaveMedia(int accountId, long dialogId) {
         if (NaConfig.INSTANCE.getEnableSaveDeletedMessages().Bool() && NaConfig.INSTANCE.getMessageSavingSaveMedia().Bool()) {
-            if (DialogObject.isUserDialog(dialogId)) {
-                return NaConfig.INSTANCE.getSaveMediaInPrivateChats().Bool();
-            }
-            TLRPC.Chat chat = MessagesController.getInstance(accountId).getChat(Math.abs(dialogId));
-            if (chat == null) {
-                return true;
-            }
-            boolean isPublic = ChatObject.isPublic(chat);
-            if (ChatObject.isChannelAndNotMegaGroup(chat)) {
-                if (isPublic && NaConfig.INSTANCE.getSaveMediaInPublicChannels().Bool()) {
-                    return true;
-                }
-                return !isPublic && NaConfig.INSTANCE.getSaveMediaInPrivateChannels().Bool();
-            } else if (isPublic && NaConfig.INSTANCE.getSaveMediaInPublicGroups().Bool()) {
-                return true;
-            } else {
-                return !isPublic && NaConfig.INSTANCE.getSaveMediaInPrivateGroups().Bool();
-            }
+            // keeps the cached files of a deleted message only when the deleted saver will take it
+            return SaveScope.allowsDeleted(accountId, dialogId) && shouldSaveMediaIn(accountId, dialogId);
         }
         return false;
+    }
+
+    private static boolean shouldSaveMediaIn(int accountId, long dialogId) {
+        // secret chats have always been saved here, whatever the Save Media sheet says
+        if (DialogObject.isEncryptedDialog(dialogId)) {
+            return true;
+        }
+        return SaveScope.allows(accountId, dialogId, SaveScope.MEDIA);
     }
 
     public static File decryptAndSaveMedia(String fileName, File encryptedFile, MessageObject messageObject) {

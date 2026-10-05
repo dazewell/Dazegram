@@ -41,6 +41,10 @@ Private chats now show a reply glyph and count next to a message's timestamp, br
 
 Bookmarks come from NagramX; this fork raises the per-chat cap from 30 to 300. Saving from the message menu, per-account storage, and inclusion in settings backup and restore all work as they did.
 
+### Save scope by chat type <!-- #save-scope -->
+
+Tap the *Save Deleted Messages* or *Save Edits History* row under N-Settings → Experimental (the switch end still toggles it) to pick which chats it covers: private chats, public or private channels, public or private groups. All five are on by default. Anything already saved stays viewable.
+
 ### Edits history shows what changed <!-- #edits-history-diff -->
 
 Edits History (message menu, with *Save Edits History* on under N-Settings → Experimental) comes from NagramX. Here it ends with the current version, and each version after the first shows its change from the one before: removed words struck through, added words bold and underlined. Copy still copies the version's own text.
@@ -275,7 +279,7 @@ A round video message you've recorded but haven't sent survives backing out of t
 
 ### Video and text memo shortcuts <!-- #video-note-shortcut --> <!-- #text-memo-shortcut -->
 
-Turn on *Video memo shortcut* or *Text memo shortcut* under N-Settings → General → Launcher shortcuts (off by default) and long-pressing the icon offers *Video memo*, a hands-free round video on the chosen *Camera*, or *Text memo*, a message box, full screen or floating. Both go to Saved Messages or your *Recipient*, even while locked, where a video memo returns home once sent or discarded.
+Turn on *Video memo shortcut* or *Text memo shortcut* under N-Settings → General → Launcher shortcuts (off by default) and long-pressing the icon offers *Video memo*, a hands-free round video on the chosen *Camera*, or *Text memo*, a message box, full screen or floating, that keeps unsent text as the chat's draft. Both go to Saved Messages or your *Recipient*, even while locked; a video memo then returns home.
 
 ### Custom file names for saved media <!-- #custom-file-names -->
 
