@@ -655,8 +655,6 @@ public class TextMemoActivity extends Activity {
     private void restoreDraft() {
         MediaDataController drafts = MediaDataController.getInstance(account);
         TLRPC.DraftMessage draft = drafts.getDraft(dialogId, 0);
-        android.util.Log.i("NAX_SMOKE_text-memo-draft", "restore account=" + account + " hasDraft=" + (draft != null) + " fieldEmpty=" + (field.length() == 0)
-                + " plain=" + (draft != null && isPlainDraft(draft)) + " canShow=" + canShowDraft() + " chatOpen=" + isChatOpen());
         if (draft == null || field.length() != 0 || !isPlainDraft(draft) || drafts.getDraftVoice(dialogId, 0) != null
                 || !canShowDraft() && !isRecentMemoDraft(draft) || isChatOpen()) {
             return;
@@ -787,14 +785,11 @@ public class TextMemoActivity extends Activity {
     // Saves the text as the chat's draft, empty clearing it, unless the chat's draft changed since the memo opened
     private void writeDraft(String text) {
         if (dialogId == 0) {
-            android.util.Log.i("NAX_SMOKE_text-memo-draft", "write pending account=" + account);
             pendingDraft = text;
             return;
         }
         try {
             MediaDataController drafts = MediaDataController.getInstance(account);
-            android.util.Log.i("NAX_SMOKE_text-memo-draft", "write account=" + account + " empty=" + text.isEmpty() + " adopted=" + (adoptedDraft != null)
-                    + " unchanged=" + (drafts.getDraft(dialogId, 0) == adoptedDraft) + " chatOpen=" + isChatOpen());
             if (drafts.getDraft(dialogId, 0) == adoptedDraft && !isChatOpen()) {
                 drafts.saveDraft(dialogId, 0, text, null, null, adoptedDraft != null && adoptedDraft.no_webpage, 0);
                 rememberMemoDraft(text);
