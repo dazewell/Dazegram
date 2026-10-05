@@ -1071,18 +1071,20 @@ rows, and the text colour became a manual per-chat setting instead.
 ## "Stop the ColorOS launcher blanking home behind a see-through memo with a window flag"
 
 Tried on the text memo during #472 (`#text-memo-shortcut`). dazewell saw none of
-it help on the OPPO/ColorOS device (visual, no logs), so none of it is in the tree:
+it help on the OPPO/ColorOS device (visual, no logs), so none of it is in the tree.
 
 - `FLAG_ACTIVITY_NO_ANIMATION` on the shortcut intent, plus
   `overrideActivityTransition` / `overridePendingTransition(0, 0)` (`680eb0ddea`).
 - `windowShowWallpaper` on the floating theme (`f6ae88d849`).
-- A runtime `setTranslucent(true)` alone, or a translucent theme alone: the
-  task stayed opaque (`d376aeff86`); the floating theme in the entry above is
-  what worked.
+
+What does ship is the floating theme and runtime `setTranslucent(true)`, which
+only make the task see-through; see "A see-through window on ColorOS" in
+`upstream-traps.md`.
 
 The launcher's blank is its own behaviour, not the memo's window. The opaque
 wallpaper backdrop is the only thing that hides it, and the comment at
 `TextMemoActivity.java:160-162` records why it exists. The *Background* switch
-leaves it as the default and offers the see-through card for other launchers.
+leaves it as the default and offers the see-through card for other launchers
+(confirmed on Lawnchair).
 
 *(Established 2026-10-04, `#text-memo-shortcut`.)*

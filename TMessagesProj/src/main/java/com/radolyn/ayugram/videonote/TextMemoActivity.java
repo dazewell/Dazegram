@@ -63,7 +63,7 @@ import org.telegram.ui.Components.RLottieImageView;
 import org.telegram.ui.Components.SizeNotifierFrameLayout;
 
 /**
- * The text memo: a compose card over the chat wallpaper, in its own task. Neither the chat nor who it goes to is shown,
+ * The text memo: a compose card over the chat wallpaper (or, as TextMemoCardActivity, floating over the screen), in its own task. Neither the chat nor who it goes to is shown,
  * so it never touches the app lock: a locked app stays locked, and closing returns to the launcher. The text is never
  * stored; leaving the screen drops it.
  */
@@ -617,7 +617,7 @@ public class TextMemoActivity extends Activity {
         exitCard(0);
     }
 
-    // Shared start of both exits: stop whatever the open or idle loop has running, freeze the insets, drop the keyboard
+    // Shared start of both exits: stop whatever the open or idle loop has running, freeze the insets, drop the keyboard (the card variant leaves both to finish())
     private void beginExit() {
         dismissing = true;
         sendButton.animate().cancel();

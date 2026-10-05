@@ -2661,8 +2661,8 @@ anything leaving it, so the send animation shrinks into the input
 
 What no window flag fixes: the ColorOS launcher stops drawing its home screen
 for about 1-2 s when it starts a shortcut, so anything see-through shows black
-there. Other launchers and the lock screen show no black. That is why the
-switch defaults on (`NaConfig.kt`, `textMemoBackdrop`) and its notice says so.
+there. Lawnchair shows no black behind the card (dazewell, 2026-10-04); other
+launchers and the lock screen are untested. That is why the switch defaults on (`NaConfig.kt`, `textMemoBackdrop`) and its notice says so.
 Evidence is visual, from the device, not from logs.
 
 A published shortcut's intent is baked in, so the switch calls

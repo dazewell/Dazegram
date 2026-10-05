@@ -21,7 +21,7 @@ import java.util.List;
 import xyz.nextalone.nagram.NaConfig;
 
 /**
- * Launcher shortcut that opens TextMemoActivity, a card to type a message to the video memo's recipient. Published
+ * Launcher shortcut that opens TextMemoActivity (TextMemoCardActivity with its Background off), a card to type a message to the video memo's recipient. Published
  * through VideoNoteShortcut's MediaDataController hooks, right after the video ones.
  */
 public final class TextMemoShortcut {
