@@ -792,7 +792,10 @@ public class TextMemoActivity extends Activity {
             MediaDataController drafts = MediaDataController.getInstance(account);
             if (drafts.getDraft(dialogId, 0) == adoptedDraft && !isChatOpen()) {
                 drafts.saveDraft(dialogId, 0, text, null, null, adoptedDraft != null && adoptedDraft.no_webpage, 0);
-                rememberMemoDraft(text);
+                // Only text the memo wrote: a chat's own draft reopened and left as it was stays behind the lock
+                if (adoptedDraft == null || !text.equals(adoptedDraft.message)) {
+                    rememberMemoDraft(text);
+                }
             }
         } catch (Throwable e) {
             FileLog.e(e);

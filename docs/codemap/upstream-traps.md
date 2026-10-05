@@ -2660,7 +2660,7 @@ would have to rewrite the published shortcut's intent, which
 while the id set is unchanged (`:5101-5103`); two ids avoid that. A card-sized window clips
 anything leaving it, so the send animation shrinks into the input
 (`TextMemoActivity.java:600`), and the keyboard is left up until `finish()`
-(`:842-843`) because hiding it would move the window under a leaving card.
+(`:845-846`) because hiding it would move the window under a leaving card.
 
 What no window flag fixes: the ColorOS launcher stops drawing its home screen
 for about 1-2 s when it starts a shortcut, so anything see-through shows black
