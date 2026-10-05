@@ -224,7 +224,10 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             () -> delegate != null && delegate.hasVideoPreviewSend(),
             // a tap pauses or resumes through the composer's pause button, so it needs the host's send path too
             () -> !cameraFileHandedOff && delegate != null && (recording ? !encoderTeardownPending && delegate.isRecordLocked() : videoPlayer != null && delegate.hasVideoPreviewSend()),
-            () -> delegate.toggleRecordingPause());
+            () -> delegate.toggleRecordingPause(),
+            // swipes steer a live recording only, locked or not, never the paused preview
+            () -> recording && !encoderTeardownPending && !cameraFileHandedOff,
+            this::onHoldSwipe);
     private long recordedTime;
     private boolean cancelled;
 
@@ -5112,6 +5115,58 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         }
         zoomHaptic(HapticFeedbackConstants.KEYBOARD_TAP);
         animateZoom(lockedZoom, target, zoomStepDuration(target - lockedZoom), CubicBezierInterpolator.EASE_OUT);
+    }
+
+    // NagramX (#video-hold-send): left/right flips the camera, up/down steps the zoom. Camera2 hops between the
+    // lens stops (RoundLensPresets) when the camera has them, camera1 moves by a whole 1x; anything else falls back
+    // to the zoom control's own step.
+    private void onHoldSwipe(int swipe) {
+        if (swipe == com.radolyn.ayugram.videonote.VideoHoldToSend.SWIPE_LEFT || swipe == com.radolyn.ayugram.videonote.VideoHoldToSend.SWIPE_RIGHT) {
+            flipCamera();
+            return;
+        }
+        final int direction = swipe == com.radolyn.ayugram.videonote.VideoHoldToSend.SWIPE_UP ? 1 : -1;
+        if (isInPinchToZoomTouchMode) {
+            return;
+        }
+        float target = -1f;
+        if (useCamera2) {
+            final Camera2Session session = camera2SessionCurrent;
+            if (session == null) {
+                return;
+            }
+            final float[] stops = session.isZoomRatioMode() ? xyz.nextalone.nagram.helper.RoundLensPresets.get(session.cameraId) : null;
+            if (stops != null && stops.length >= 2) {
+                final float current = zoomFractionToRatio(session, lockedZoom);
+                float stop = -1f;
+                for (float s : stops) { // ascending
+                    if (direction > 0 ? s > current * 1.02f : s < current / 1.02f) {
+                        stop = s;
+                        if (direction > 0) {
+                            break;
+                        }
+                    }
+                }
+                if (stop > 0f) {
+                    target = getZoomControlValueFromCamera2(stop);
+                } else {
+                    zoomHaptic(HapticFeedbackConstants.CLOCK_TICK);
+                    return;
+                }
+            }
+        } else if (cameraSession != null && cameraSession.getMaxZoomRatio() > 1f) {
+            final float max = cameraSession.getMaxZoomRatio();
+            final float ratio = Utilities.clamp(Math.round(camera1FractionToRatio(lockedZoom)) + direction, max, 1f);
+            target = (float) (Math.log(ratio) / Math.log(max));
+        }
+        if (target < 0f) {
+            zoomStep(direction);
+        } else if (Math.abs(target - lockedZoom) <= 0.0001f) {
+            zoomHaptic(HapticFeedbackConstants.CLOCK_TICK);
+        } else {
+            zoomHaptic(HapticFeedbackConstants.KEYBOARD_TAP);
+            animateZoom(lockedZoom, target, zoomStepDuration(target - lockedZoom), CubicBezierInterpolator.EASE_OUT);
+        }
     }
 
     private long zoomStepDuration(float delta) {
