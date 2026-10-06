@@ -302,10 +302,11 @@ function Test-Gitmodules([string]$candGitmodulesBlob, [hashtable]$observed, [has
 }
 
 # Guard 11: fork layers did not lose files/entries in the merge.
-function Test-LayerFloors([int]$nekomimi, [int]$radolyn, [int]$strings, [int]$addConfig, [hashtable]$pins) {
+function Test-LayerFloors([int]$nekomimi, [int]$radolyn, [int]$dazewell, [int]$strings, [int]$addConfig, [hashtable]$pins) {
     $f = @()
     if ($nekomimi  -lt [int]$pins['NEKOMIMI_MIN'])         { $f += "tw/nekomimi files $nekomimi < $($pins['NEKOMIMI_MIN'])" }
     if ($radolyn   -ne [int]$pins['RADOLYN_EXACT'])        { $f += "com/radolyn files $radolyn != $($pins['RADOLYN_EXACT'])" }
+    if ($dazewell  -ne [int]$pins['DAZEWELL_EXACT'])      { $f += "com/dazewell/gram files $dazewell != $($pins['DAZEWELL_EXACT'])" }
     if ($strings   -lt [int]$pins['STRINGS_NAX_MIN'])      { $f += "strings_nax entries $strings < $($pins['STRINGS_NAX_MIN'])" }
     if ($addConfig -lt [int]$pins['NACONFIG_ADDCONFIG_MIN']) { $f += "NaConfig addConfig $addConfig < $($pins['NACONFIG_ADDCONFIG_MIN'])" }
     return $f
@@ -674,11 +675,13 @@ function Invoke-SelfTest([hashtable]$pins) {
     # same as RADOLYN_EXACT already does via $radExact, can't desync the self-test's
     # own "good" fixture from the pin it's supposed to match.
     $radExact = [int]$pins['RADOLYN_EXACT']
+    $dazExact = [int]$pins['DAZEWELL_EXACT']
     $stringsMin = [int]$pins['STRINGS_NAX_MIN']
     $addConfigMin = [int]$pins['NACONFIG_ADDCONFIG_MIN']
-    $ok = (Assert-Fails  'Test-LayerFloors(low)'  (Test-LayerFloors 171 $radExact $stringsMin $addConfigMin $pins) ([ref]$log)) -and $ok
-    $ok = (Assert-Fails  'Test-LayerFloors(rad)'  (Test-LayerFloors 172 ($radExact - 1) $stringsMin $addConfigMin $pins) ([ref]$log)) -and $ok
-    $ok = (Assert-Passes 'Test-LayerFloors'       (Test-LayerFloors 172 $radExact $stringsMin $addConfigMin $pins) ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-LayerFloors(low)'  (Test-LayerFloors 160 $radExact $dazExact $stringsMin $addConfigMin $pins) ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-LayerFloors(rad)'  (Test-LayerFloors 172 ($radExact - 1) $dazExact $stringsMin $addConfigMin $pins) ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-LayerFloors(daz)'  (Test-LayerFloors 172 $radExact ($dazExact - 1) $stringsMin $addConfigMin $pins) ([ref]$log)) -and $ok
+    $ok = (Assert-Passes 'Test-LayerFloors'       (Test-LayerFloors 172 $radExact $dazExact $stringsMin $addConfigMin $pins) ([ref]$log)) -and $ok
 
     # Guard 12 Ayu schema
     $ok = (Assert-Fails  'Test-AyuSchema(ver)'  (Test-AyuSchema 4 26 21 $true  $pins) ([ref]$log)) -and $ok
@@ -832,9 +835,10 @@ function Invoke-RealGuard([hashtable]$pins, $protectedRows, $manifestRows) {
     # Guard 11 layer floors
     $nek = @(git ls-tree -r --name-only $NewDev -- $pins['NEKOMIMI_PATH']).Count
     $rad = @(git ls-tree -r --name-only $NewDev -- $pins['RADOLYN_PATH']).Count
+    $daz = @(git ls-tree -r --name-only $NewDev -- $pins['DAZEWELL_PATH']).Count
     $str = ([regex]::Matches((Show-Blob $NewDev $pins['STRINGS_NAX_PATH'] | Out-String), '<string')).Count
     $adc = ([regex]::Matches((Show-Blob $NewDev $pins['NACONFIG_PATH'] | Out-String), 'addConfig\(')).Count
-    $failures += Test-LayerFloors $nek $rad $str $adc $pins
+    $failures += Test-LayerFloors $nek $rad $daz $str $adc $pins
 
     # Guard 12 Ayu schema
     $ayu = Get-AyuFacts $NewDev $pins
@@ -898,13 +902,13 @@ $requiredPins = @(
     'KEYSTORE_PATH', 'KEYSTORE_BLOB', 'KEYSTORE_CERT_SHA256',
     'SIGNING_GRADLE_PATH', 'SIGNING_GRADLE_BLOB',
     'GITMODULES_BLOB', 'VENDORED_NATIVES',
-    'NEKOMIMI_PATH', 'NEKOMIMI_MIN', 'RADOLYN_PATH', 'RADOLYN_EXACT',
+    'NEKOMIMI_PATH', 'NEKOMIMI_MIN', 'RADOLYN_PATH', 'RADOLYN_EXACT', 'DAZEWELL_PATH', 'DAZEWELL_EXACT',
     'STRINGS_NAX_PATH', 'STRINGS_NAX_MIN', 'NACONFIG_PATH', 'NACONFIG_ADDCONFIG_MIN',
     'AYU_DB_PATH', 'AYU_DATA_PATH', 'AYU_VERSION', 'AYU_MIN_VERSION', 'AYU_ENTITIES',
     'KEYSTORE_SUBJECT_CN', 'GRADLE_SURFACE', 'SELF_PROTECT',
     'SYNC_IDENTITY_NAME', 'SYNC_IDENTITY_EMAIL'
 )
-$numericPins = @('NEKOMIMI_MIN', 'RADOLYN_EXACT', 'STRINGS_NAX_MIN', 'NACONFIG_ADDCONFIG_MIN',
+$numericPins = @('NEKOMIMI_MIN', 'RADOLYN_EXACT', 'DAZEWELL_EXACT', 'STRINGS_NAX_MIN', 'NACONFIG_ADDCONFIG_MIN',
     'AYU_VERSION', 'AYU_MIN_VERSION', 'AYU_ENTITIES')
 $pinProblems = @()
 foreach ($k in $requiredPins) {

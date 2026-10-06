@@ -13,7 +13,7 @@ touching `sync-upstream.yml`, `sync-guard.ps1`, or any pin.
 - **Original base fork:** `risin42/NagramX` — now **archived**. The app's About
   screen keeps that historical attribution, and the frozen `base` branch on
   `origin` preserves its history.
-- **This repo:** `dazewell/Dazegram` (renamed from `dazewell/NagramX`; the old
+- **This repo:** `dazewell/DwellGram` (renamed from `dazewell/NagramX`; the old
   name redirects but is not relied on).
 
 The pin names `NAGRAM_REPO` / `NAGRAM_BRANCH` and the internal remote name
@@ -40,7 +40,7 @@ tree `b406defb637ed56d392f1b934507221b8243822c` is byte-identical to
 `DrKLO/Telegram` master
 `62b56a07ca7e30e39f7fd00a6728d6bbd716ca1c` (12.10.1 / 7038). Anchor merge
 `100c3e1142a3a6681e139bfd73a1e7d05e87a249` records that snapshot as the
-second parent of `dev` while keeping the reviewed Dazegram tree from first
+second parent of `dev` while keeping the reviewed DwellGram tree from first
 parent `f47b9da651580811a70f82ee13e5d8da97568db2`.
 
 `-s ours` is permitted only for that bootstrap re-anchor: it records the
@@ -248,7 +248,7 @@ the workflow that holds this credential.
 
 Both `sync-upstream.yml` and `sync-land.yml` push refs and open PRs as one identity: a
 GitHub fine-grained personal access token, stored as the `SYNC_TOKEN` repository
-secret, scoped to `dazewell/Dazegram` only. To recreate it from scratch, grant exactly
+secret, scoped to `dazewell/DwellGram` only. To recreate it from scratch, grant exactly
 these three repository permissions:
 
 | Permission | Why |
@@ -362,8 +362,9 @@ The human-attended remainder is fail-closed:
   tlottie gitlink keeps its pinned `160000 commit`. The table is data in `pins.env`
   (`VENDORED_NATIVES`), so a `040000 tree` silently turning into a `160000 commit`
   submodule (as the 12.10.1 default merge did to libyuv and openh264) blocks.
-- Layer floors: `tw/nekomimi` ≥ 172 files, `com/radolyn` = 74, `strings_nax` ≥
-  726 entries, `NaConfig` ≥ 262 `addConfig`.
+- Layer floors: `tw/nekomimi` ≥ 161 files, `com/radolyn` = 27 (inherited AyuGram
+  only), `com/dazewell/gram` = 96 (fork-written code), `strings_nax` ≥ 850
+  entries, `NaConfig` ≥ 262 `addConfig`.
 - Ayu schema: 4 entities, `VERSION=27`, `MIN_SUPPORTED_VERSION=21`, migrations
   wired to the current version.
 - Signing: keystore + signing-config blobs pinned, **and** the alias resolves to a
