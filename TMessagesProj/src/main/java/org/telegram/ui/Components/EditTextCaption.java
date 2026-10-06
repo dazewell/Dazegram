@@ -1304,7 +1304,7 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
     // NagramX: physical keyboard hotkeys
     @Override
     public boolean onKeyShortcut(int keyCode, KeyEvent event) {
-        if (com.radolyn.ayugram.hotkeys.HotkeyController.handleTextStyleShortcut(this, keyCode, event)) {
+        if (com.dazewell.gram.hotkeys.HotkeyController.handleTextStyleShortcut(this, keyCode, event)) {
             return true;
         }
         return super.onKeyShortcut(keyCode, event);

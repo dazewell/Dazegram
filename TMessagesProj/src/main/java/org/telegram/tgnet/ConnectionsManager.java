@@ -516,7 +516,7 @@ public class ConnectionsManager extends BaseController {
             // recovery path is empty so it cannot itself throw and undo the guarantee. native_sendRequest always
             // runs next regardless of what happens above it.
             try {
-                tw.nekomimi.nekogram.helpers.GhostSendWarningHelper.onMessageRequestReady(currentAccount, object);
+                com.dazewell.gram.helpers.GhostSendWarningHelper.onMessageRequestReady(currentAccount, object);
             } catch (Throwable ignored) {
             }
             native_sendRequest(currentAccount, buffer.address, flags, datacenterId, connectionType, immediate, requestToken);

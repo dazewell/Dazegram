@@ -2608,7 +2608,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             // wasDownloadingCurrentMessage was true for; onPlaybackStarting re-checks the same key
             // when that restart calls playMessage again, so nothing is left stale either way.
             if (!wasDownloadingCurrentMessage) {
-                tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.disarmMessage(lastFile);
+                com.dazewell.gram.helpers.VideoCaptionsHelper.disarmMessage(lastFile);
             }
             if (notify) {
                 NotificationsController.audioManager.abandonAudioFocus(this);
@@ -3258,7 +3258,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         if (NaConfig.INSTANCE.getVideoMessagesMuted().Bool()) {
             return true;
         }
-        return tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.isQuiet(messageObject.currentAccount, messageObject);
+        return com.dazewell.gram.helpers.VideoCaptionsHelper.isQuiet(messageObject.currentAccount, messageObject);
     }
 
     // NagramX: the ordinary entry points into a fresh/resumed play (playMessage's tail, and
@@ -3514,7 +3514,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                         // This is CC-quiet's rule alone, not Mute mode's - FEATURES.md promises Mute
                         // mode keeps looping with the sound off, so this stays isQuiet, never
                         // isSilentPlayback (which would also catch Mute mode and stop its loop too).
-                        if (tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.isQuiet(playingMessageObject.currentAccount, playingMessageObject)) {
+                        if (com.dazewell.gram.helpers.VideoCaptionsHelper.isQuiet(playingMessageObject.currentAccount, playingMessageObject)) {
                             cleanupPlayer(true, true, false, false);
                         } else {
                             playingMessageObject.audioProgress = 0;
@@ -3831,7 +3831,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         }
         // NagramX: a different message is taking the player, so drop any captions (and any pending
         // CC transcription) still attached to the one it's replacing.
-        tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.onPlaybackStarting(messageObject);
+        com.dazewell.gram.helpers.VideoCaptionsHelper.onPlaybackStarting(messageObject);
         boolean saved = false;
         boolean notify = !playMusicAgain;
         MessageObject oldMessageObject = playingMessageObject;
@@ -5353,7 +5353,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                             }
                             String name = FileLoader.getDocumentFileName(document);
                             // NagramX: feature-off keeps upstream's compute-and-create-here behaviour byte-for-byte; feature-on defers to an atomic claim after the source is resolved (below)
-                            boolean renameBulk = tw.nekomimi.nekogram.helpers.SaveFileNameHelper.shouldRename(message);
+                            boolean renameBulk = com.dazewell.gram.helpers.SaveFileNameHelper.shouldRename(message);
                             File destFile = null;
                             if (!renameBulk) {
                                 destFile = new File(dir, name);
@@ -5403,7 +5403,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                             if (sourceFile.exists()) {
                                 if (renameBulk) {
                                     // NagramX: claim from the resolved source so the extension matches the real saved format; null = every atomic claim failed, so skip this item instead of overwriting an earlier save (and don't count it as copied)
-                                    String claimed = tw.nekomimi.nekogram.helpers.SaveFileNameHelper.legacyClaimName(dir, message, sourceFile, name, message.getMimeType());
+                                    String claimed = com.dazewell.gram.helpers.SaveFileNameHelper.legacyClaimName(dir, message, sourceFile, name, message.getMimeType());
                                     if (claimed == null) {
                                         continue;
                                     }
@@ -5748,13 +5748,13 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                             File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), folderName);
                             dir.mkdirs();
                             // NagramX: rename saved voice/round here (photos excluded by the guard); null = every atomic claim failed, so abort rather than overwrite
-                            String claimedName = tw.nekomimi.nekogram.helpers.SaveFileNameHelper.legacyName(dir, namingObject, sourceFile, name, mime, 0);
+                            String claimedName = com.dazewell.gram.helpers.SaveFileNameHelper.legacyName(dir, namingObject, sourceFile, name, mime, 0);
                             destFile = claimedName == null ? null : new File(dir, claimedName);
                         } else if (type == 1) {
                             File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), folderName);
                             dir.mkdirs();
                             // NagramX: rename saved video here; null = every atomic claim failed, so abort rather than overwrite the earlier save
-                            String claimedName = tw.nekomimi.nekogram.helpers.SaveFileNameHelper.legacyName(dir, namingObject, sourceFile, name, mime, 1);
+                            String claimedName = com.dazewell.gram.helpers.SaveFileNameHelper.legacyName(dir, namingObject, sourceFile, name, mime, 1);
                             destFile = claimedName == null ? null : new File(dir, claimedName);
                         } else {
                             File dir;
@@ -6052,7 +6052,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                 folderName = folderName + File.separator + chatFolderName;
             }
             // NagramX: rename saved video/voice/round messages to the configured pattern before the type branches; photos, documents and music keep the incoming name
-            filename = tw.nekomimi.nekogram.helpers.SaveFileNameHelper.apply(filename, sourceFile, mimeType, namingObject);
+            filename = com.dazewell.gram.helpers.SaveFileNameHelper.apply(filename, sourceFile, mimeType, namingObject);
             if (selectedType == 0) {
                 if (filename == null) {
                     filename = AndroidUtilities.generateFileName(0, extension);

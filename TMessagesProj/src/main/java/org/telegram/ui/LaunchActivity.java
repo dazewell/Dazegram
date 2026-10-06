@@ -1455,7 +1455,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     }
 
     public void showPasscodeActivity(boolean fingerprint, boolean animated, int x, int y, Runnable onShow, Runnable onStart) {
-        com.radolyn.ayugram.videonote.VideoNoteShortcut.onPasscodeShown(); // NagramX: any lock ends a video memo recorded under the lock; above the early return so none slips past
+        com.dazewell.gram.videonote.VideoNoteShortcut.onPasscodeShown(); // NagramX: any lock ends a video memo recorded under the lock; above the early return so none slips past
         if (drawerLayoutContainer == null || isFinishing()) {
             return;
         }
@@ -1589,7 +1589,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             voipLaunchedInBackground = true;
         }
         if (!fromPassword && (AndroidUtilities.needShowPasscode(true) || SharedConfig.isWaitingForPasscodeEnter)
-                && !com.radolyn.ayugram.videonote.VideoNoteShortcut.bypassLock(this, intent, restore)) { // NagramX: the video memo shortcut records first and locks after
+                && !com.dazewell.gram.videonote.VideoNoteShortcut.bypassLock(this, intent, restore)) { // NagramX: the video memo shortcut records first and locks after
             showPasscodeActivity(true, false, -1, -1, null, null);
             UserConfig.getInstance(currentAccount).saveConfig(false);
             if (!isVoipIntent && !isVoipAnswerIntent) {
@@ -1602,16 +1602,16 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         // NagramX: pinned "Add to home screen" privacy-profile shortcut. Activates the profile
         // (token-checked so a forged intent from another app can't switch the auto-lock timeout)
         // then falls through to open the app normally, same as any other launch.
-        if (com.radolyn.ayugram.privacyprofiles.PrivacyProfileShortcuts.ACTION_ACTIVATE.equals(action)) {
-            long profileId = intent.getLongExtra(com.radolyn.ayugram.privacyprofiles.PrivacyProfileShortcuts.EXTRA_PROFILE_ID, 0);
-            String token = intent.getStringExtra(com.radolyn.ayugram.privacyprofiles.PrivacyProfileShortcuts.EXTRA_TOKEN);
+        if (com.dazewell.gram.privacyprofiles.PrivacyProfileShortcuts.ACTION_ACTIVATE.equals(action)) {
+            long profileId = intent.getLongExtra(com.dazewell.gram.privacyprofiles.PrivacyProfileShortcuts.EXTRA_PROFILE_ID, 0);
+            String token = intent.getStringExtra(com.dazewell.gram.privacyprofiles.PrivacyProfileShortcuts.EXTRA_TOKEN);
             // NagramX: consume the action so a later recreate (rotation, process death restore)
             // can't replay it and silently re-activate this profile over whatever the user picked
             // since. getIntent() keeps returning the same Intent object until this is cleared.
             intent.setAction(null);
-            intent.removeExtra(com.radolyn.ayugram.privacyprofiles.PrivacyProfileShortcuts.EXTRA_PROFILE_ID);
-            intent.removeExtra(com.radolyn.ayugram.privacyprofiles.PrivacyProfileShortcuts.EXTRA_TOKEN);
-            if (!com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.activateFromShortcut(profileId, token)) {
+            intent.removeExtra(com.dazewell.gram.privacyprofiles.PrivacyProfileShortcuts.EXTRA_PROFILE_ID);
+            intent.removeExtra(com.dazewell.gram.privacyprofiles.PrivacyProfileShortcuts.EXTRA_TOKEN);
+            if (!com.dazewell.gram.privacyprofiles.PrivacyProfilesController.activateFromShortcut(profileId, token)) {
                 try {
                     BulletinFactory.of(Bulletin.BulletinWindow.make(LaunchActivity.this), null)
                             .createErrorBulletin(LocaleController.getString(R.string.PrivacyProfileNotFound)).show();
@@ -3020,20 +3020,20 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                     open_settings = 1;
                 } else if (intent.getAction().equals("new_dialog")) {
                     open_new_dialog = 1;
-                } else if (intent.getAction().equals(com.radolyn.ayugram.shortcuts.GhostModeShortcut.ACTION)) {
+                } else if (intent.getAction().equals(com.dazewell.gram.shortcuts.GhostModeShortcut.ACTION)) {
                     // NagramX: "Ayu Mode" launcher shortcut flips Ghost Mode on (and pushes us offline now), then the app opens as usual.
                     // A pinned copy outlives its setting, so it only works while that is on.
-                    if (com.radolyn.ayugram.shortcuts.GhostModeShortcut.isEnabled() && !NekoConfig.isGhostModeActive()) {
+                    if (com.dazewell.gram.shortcuts.GhostModeShortcut.isEnabled() && !NekoConfig.isGhostModeActive()) {
                         NekoConfig.toggleGhostMode();
                         BaseFragment lastFragment = getSafeLastFragment();
                         if (lastFragment != null) {
                             BulletinFactory.of(lastFragment).createSuccessBulletin(LocaleController.getString(R.string.GhostModeEnabled)).show();
                         }
                     }
-                } else if (intent.getAction().equals(com.radolyn.ayugram.videonote.VideoNoteShortcut.ACTION)) {
+                } else if (intent.getAction().equals(com.dazewell.gram.videonote.VideoNoteShortcut.ACTION)) {
                     // NagramX: "Video memo" launcher shortcut opens Saved Messages or the chosen person through the
                     // normal chat push below, and that chat starts the round video once it has opened
-                    long userId = com.radolyn.ayugram.videonote.VideoNoteShortcut.accept(intent, intentAccount[0]);
+                    long userId = com.dazewell.gram.videonote.VideoNoteShortcut.accept(intent, intentAccount[0]);
                     if (userId != 0) {
                         NotificationCenter.getInstance(intentAccount[0]).postNotificationName(NotificationCenter.closeChats);
                         push_user_id = userId;
@@ -7253,7 +7253,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         // NagramX: logging out of any account clears the launcher shortcuts for the whole app, and
         // nothing rebuilds them on a path that reliably runs (with "Suggest frequent contacts" off,
         // loadHints returns before it gets there), so they stay gone. Put them back on resume.
-        xyz.nextalone.nagram.helper.ShortcutHelper.restoreLauncherShortcuts();
+        com.dazewell.gram.helpers.ShortcutHelper.restoreLauncherShortcuts();
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             ApplicationLoader.canDrawOverlays = Settings.canDrawOverlays(this);
@@ -8348,9 +8348,9 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         // NagramX: settle privacy-profile activation/expiry before stamping lastPauseTime and
         // reading autoLockIn below -- an expired profile's timeout would otherwise schedule the
         // background lock on a value that's already dead.
-        com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.reconcile();
+        com.dazewell.gram.privacyprofiles.PrivacyProfilesController.reconcile();
         // NagramX: a "require password" chat re-locks once the app leaves the foreground
-        com.radolyn.ayugram.chatlock.ChatLockController.clearUnlocked();
+        com.dazewell.gram.chatlock.ChatLockController.clearUnlocked();
         if (lockRunnable != null) {
             if (BuildVars.LOGS_ENABLED) {
                 FileLog.d("cancel lockRunnable onPasscodePause");
@@ -8367,7 +8367,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                         // NagramX: needShowPasscode(true) consumes the shared foreground flag even when
                         // it returns false, so a single lost race here would skip the lock permanently
                         // (this runnable only fires once); back it up with the pause-timestamp check.
-                        if (AndroidUtilities.needShowPasscode(true) || com.radolyn.ayugram.applock.PasscodeLockGuard.missedLock()) {
+                        if (AndroidUtilities.needShowPasscode(true) || com.dazewell.gram.applock.PasscodeLockGuard.missedLock()) {
                             if (BuildVars.LOGS_ENABLED) {
                                 FileLog.d("lock app");
                             }
@@ -8662,7 +8662,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     public boolean dispatchKeyEvent(KeyEvent event) {
         int keyCode = event.getKeyCode();
         // NagramX: physical keyboard hotkeys
-        if (com.radolyn.ayugram.hotkeys.HotkeyController.handleGlobalKey(this, event)) {
+        if (com.dazewell.gram.hotkeys.HotkeyController.handleGlobalKey(this, event)) {
             return true;
         }
         if (event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_UP || event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_DOWN) {
@@ -8734,7 +8734,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
     @Override
     public boolean needPresentFragment(INavigationLayout layout, INavigationLayout.NavigationParams params) {
-        com.radolyn.ayugram.videonote.VideoNoteShortcut.onNavigation(params.fragment); // NagramX: leaving the video memo recorder while locked brings the passcode
+        com.dazewell.gram.videonote.VideoNoteShortcut.onNavigation(params.fragment); // NagramX: leaving the video memo recorder while locked brings the passcode
         BaseFragment fragment = params.fragment;
         boolean removeLast = params.removeLast;
         boolean forceWithoutAnimation = params.noAnimation;
@@ -8859,7 +8859,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
     @Override
     public boolean needAddFragmentToStack(BaseFragment fragment, INavigationLayout layout) {
-        com.radolyn.ayugram.videonote.VideoNoteShortcut.onNavigation(fragment); // NagramX: same as needPresentFragment
+        com.dazewell.gram.videonote.VideoNoteShortcut.onNavigation(fragment); // NagramX: same as needPresentFragment
         if (AndroidUtilities.isTablet()) {
             if (fragment instanceof DialogsActivity || fragment instanceof MainTabsActivity) {
                 boolean needReplace = layout != actionBarLayout;

@@ -402,7 +402,7 @@ public class MessagesStorage extends BaseController {
             // NagramX: private reply counts read messages_v2(uid, thread_reply_id), which upstream never indexes.
             // Asserting it here instead of in a migration keeps existing installs and rebuilt databases covered
             // without touching LAST_DB_VERSION.
-            com.radolyn.ayugram.personalreplies.PersonalRepliesStorage.ensureIndex(database);
+            com.dazewell.gram.personalreplies.PersonalRepliesStorage.ensureIndex(database);
         } catch (Exception e) {
             FileLog.e(e);
             if (openTries < 3 && e.getMessage() != null && e.getMessage().contains("malformed")) {

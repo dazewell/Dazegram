@@ -39,7 +39,7 @@ public final class MainTabsHelper {
     }
 
     private static boolean isRoundedNavigation() {
-        return xyz.nextalone.nagram.helpers.InterfaceStyleController.roundedBottomNavigation();
+        return com.dazewell.gram.helpers.InterfaceStyleController.roundedBottomNavigation();
     }
 
     /** The rounded navigation highlight: the panel's height less one inset top and bottom. */
@@ -101,14 +101,14 @@ public final class MainTabsHelper {
     }
 
     public static int getMainTabsHeight() {
-        if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyBottomNavigation()) {
+        if (com.dazewell.gram.helpers.InterfaceStyleController.applyBottomNavigation()) {
             return isMainTabsHideTitleStyle() ? MD3_NAVIGATION_HEIGHT_COMPACT : MD3_NAVIGATION_HEIGHT;
         }
         return isMainTabsHideTitleStyle() ? FILTER_TABS_HEIGHT : MAIN_TABS_HEIGHT;
     }
 
     public static int getMainTabsMargin() {
-        if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyBottomNavigation()) {
+        if (com.dazewell.gram.helpers.InterfaceStyleController.applyBottomNavigation()) {
             return MD3_NAVIGATION_LIFT;
         }
         return isMainTabsHideTitleStyle() ? MAIN_TABS_MARGIN_COMPACT : MAIN_TABS_MARGIN;
@@ -143,7 +143,7 @@ public final class MainTabsHelper {
     }
 
     public static int getTabsViewWidth() {
-        if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyBottomNavigation()) {
+        if (com.dazewell.gram.helpers.InterfaceStyleController.applyBottomNavigation()) {
             return -1;
         }
         return TAB_WIDTH * getFragmentsCount() + (getMainTabsMargin() + TAB_PADDING) * 2;

@@ -131,9 +131,9 @@ import javax.microedition.khronos.egl.EGLDisplay;
 import javax.microedition.khronos.egl.EGLSurface;
 
 import tw.nekomimi.nekogram.NekoConfig;
-import tw.nekomimi.nekogram.ui.InstantZoomControlView;
+import com.dazewell.gram.ui.InstantZoomControlView;
 import xyz.nextalone.nagram.NaConfig;
-import xyz.nextalone.nagram.helper.RecordingLimitVibration;
+import com.dazewell.gram.helpers.RecordingLimitVibration;
 
 @SuppressLint("ViewConstructor")
 public class InstantCameraView extends InstantCameraViewBase implements NotificationCenter.NotificationCenterDelegate {
@@ -211,7 +211,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     // NagramX (#video-hold-send): hold the circle to send a locked recording, or its paused preview through the
     // composer's send button. Never a handed-off file: the preview's send wind-down dismisses it even when send()
     // refuses. A recording also needs the teardown flag, since that wind-down doesn't guard against a stopped camera
-    private final com.radolyn.ayugram.videonote.VideoHoldToSend holdToSend = new com.radolyn.ayugram.videonote.VideoHoldToSend(
+    private final com.dazewell.gram.videonote.VideoHoldToSend holdToSend = new com.dazewell.gram.videonote.VideoHoldToSend(
             () -> !cameraFileHandedOff && delegate != null && (recording ? !encoderTeardownPending && delegate.isRecordLocked() : videoPlayer != null && delegate.canSendVideoPreview()),
             () -> {
                 if (recording) {
@@ -705,7 +705,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
     private int glyphColor(boolean dark) {
         final int stock = dark ? Color.WHITE : ColorUtils.blendARGB(Color.WHITE, Color.BLACK, 0.6f);
-        return isNewDesign ? xyz.nextalone.nagram.ui.Md3ButtonColorProvider.glyphColor(resourcesProvider, stock) : stock; // NagramX: MD3 Buttons share one glyph tint; the story recorder's legacy flash can't follow it
+        return isNewDesign ? com.dazewell.gram.ui.Md3ButtonColorProvider.glyphColor(resourcesProvider, stock) : stock; // NagramX: MD3 Buttons share one glyph tint; the story recorder's legacy flash can't follow it
     }
 
     // NagramX: the flash glyphs are single-channel lotties, so RLottieDrawable draws them as a bare alpha
@@ -1635,7 +1635,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     }
 
     // NagramX (#video-hold-send): the composer's sound chip reads and flips the preview's sound through it
-    public com.radolyn.ayugram.videonote.VideoHoldToSend getHoldToSend() {
+    public com.dazewell.gram.videonote.VideoHoldToSend getHoldToSend() {
         return holdToSend;
     }
 
@@ -3617,7 +3617,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 // NagramX (#video-draft-guard): same draft-identity stamp as the stop producer, so a paused-then-
                 // previewed clip persists and restores by id like a fully-stopped one. Only when finalize succeeded;
                 // a 0 id leaves the clip previewable but unpersisted (save()'s reject sentinel), superseding nothing.
-                videoEditedInfo.naxDraftId = finalizeOk ? xyz.nextalone.nagram.helper.VideoDraftStore.newId() : 0;
+                videoEditedInfo.naxDraftId = finalizeOk ? com.dazewell.gram.helpers.VideoDraftStore.newId() : 0;
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, videoEditedInfo, previewFile.getAbsolutePath(), keyframeThumbs, capturedFinalizeGeneration);
             });
         }
@@ -4160,7 +4160,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                             // draft by id across a process boundary, never by chat slot. Only when finalize succeeded --
                             // a 0 id leaves save() a no-op (its reject sentinel), so a broken clip still previews but is
                             // never persisted, superseding nothing.
-                            info.naxDraftId = finalizeOk ? xyz.nextalone.nagram.helper.VideoDraftStore.newId() : 0;
+                            info.naxDraftId = finalizeOk ? com.dazewell.gram.helpers.VideoDraftStore.newId() : 0;
                             NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, info, videoFile.getAbsolutePath(), keyframeThumbs, capturedFinalizeGeneration);
                         }
                     });
@@ -5121,11 +5121,11 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     // lens stops (RoundLensPresets) when the camera has them, camera1 moves by a whole 1x; anything else falls back
     // to the zoom control's own step.
     private void onHoldSwipe(int swipe) {
-        if (swipe == com.radolyn.ayugram.videonote.VideoHoldToSend.SWIPE_LEFT || swipe == com.radolyn.ayugram.videonote.VideoHoldToSend.SWIPE_RIGHT) {
+        if (swipe == com.dazewell.gram.videonote.VideoHoldToSend.SWIPE_LEFT || swipe == com.dazewell.gram.videonote.VideoHoldToSend.SWIPE_RIGHT) {
             flipCamera();
             return;
         }
-        final int direction = swipe == com.radolyn.ayugram.videonote.VideoHoldToSend.SWIPE_UP ? 1 : -1;
+        final int direction = swipe == com.dazewell.gram.videonote.VideoHoldToSend.SWIPE_UP ? 1 : -1;
         if (isInPinchToZoomTouchMode) {
             return;
         }
@@ -5135,7 +5135,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             if (session == null) {
                 return;
             }
-            final float[] stops = session.isZoomRatioMode() ? xyz.nextalone.nagram.helper.RoundLensPresets.get(session.cameraId) : null;
+            final float[] stops = session.isZoomRatioMode() ? com.dazewell.gram.helpers.RoundLensPresets.get(session.cameraId) : null;
             if (stops != null && stops.length >= 2) {
                 final float current = zoomFractionToRatio(session, lockedZoom);
                 float stop = -1f;
@@ -5289,7 +5289,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     }
 
     private void applyZoomPresets(Camera2Session session, boolean hasZoom) {
-        final float[] stops = hasZoom && session.isZoomRatioMode() ? xyz.nextalone.nagram.helper.RoundLensPresets.get(session.cameraId) : null;
+        final float[] stops = hasZoom && session.isZoomRatioMode() ? com.dazewell.gram.helpers.RoundLensPresets.get(session.cameraId) : null;
         if (stops == null || stops.length < 2) {
             zoomControlView.setPresets(null, null);
             return;
@@ -5298,7 +5298,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         final String[] labels = new String[stops.length];
         for (int i = 0; i < stops.length; i++) {
             fractions[i] = getZoomControlValueFromCamera2(stops[i]);
-            labels[i] = xyz.nextalone.nagram.helper.RoundLensPresets.label(stops[i]);
+            labels[i] = com.dazewell.gram.helpers.RoundLensPresets.label(stops[i]);
         }
         zoomControlView.setPresets(fractions, labels);
     }

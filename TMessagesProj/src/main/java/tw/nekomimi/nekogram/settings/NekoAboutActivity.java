@@ -41,7 +41,7 @@ public class NekoAboutActivity extends BaseNekoSettingsActivity {
         if (position == translationRow) {
             Browser.openUrl(getParentActivity(), "https://crowdin.com/project/NagramX");
         } else if (position == sourceCodeRow) {
-            Browser.openUrl(getParentActivity(), "https://github.com/dazewell/Dazegram");
+            Browser.openUrl(getParentActivity(), "https://github.com/dazewell/DwellGram");
         } else if (position == datacenterStatusRow) {
             presentFragment(new DatacenterActivity(0));
         } else if (position == acknowledgmentsRow) {

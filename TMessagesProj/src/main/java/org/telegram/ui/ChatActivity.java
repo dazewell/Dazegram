@@ -421,7 +421,7 @@ import xyz.nextalone.nagram.NaConfig;
 import xyz.nextalone.nagram.ToggleResult;
 import xyz.nextalone.nagram.helper.BookmarksHelper;
 import xyz.nextalone.nagram.helper.DoubleTap;
-import xyz.nextalone.nagram.helper.VideoDraftStore;
+import com.dazewell.gram.helpers.VideoDraftStore;
 
 @SuppressWarnings("unchecked")
 public class ChatActivity extends BaseFragment implements
@@ -1184,7 +1184,7 @@ public class ChatActivity extends BaseFragment implements
     private String startVideoEdit;
 
     private FrameLayout videoPlayerContainer;
-    private tw.nekomimi.nekogram.ui.components.VideoMessageCaptionView videoCaptionView; // NagramX: closed captions strip under a playing video message
+    private com.dazewell.gram.ui.components.VideoMessageCaptionView videoCaptionView; // NagramX: closed captions strip under a playing video message
     private ChatMessageCell drawLaterRoundProgressCell;
     private AspectRatioFrameLayout aspectRatioFrameLayout;
     private TextureView videoTextureView;
@@ -1992,7 +1992,7 @@ public class ChatActivity extends BaseFragment implements
                     // NagramX: #ghost-hold. Drag/range select decides its span from here, so
                     // refusing held rows keeps them out of the range before addToSelectedMessages
                     // is ever reached -- the range route stays clean visually, not just in-model.
-                    if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(messageObject)) {
+                    if (com.dazewell.gram.ghosthold.GhostHoldController.isHeld(messageObject)) {
                         return false;
                     }
                     if (messageObject.contentType == 0) {
@@ -2804,7 +2804,7 @@ public class ChatActivity extends BaseFragment implements
                     instantCameraView.rollOverSegment(notify, scheduleDate, ttl, effectId, stars);
                 }
             }
-            com.radolyn.ayugram.videonote.VideoNoteShortcut.onRecordVideoState(ChatActivity.this, state); // NagramX: tracks a video memo recorded under the lock
+            com.dazewell.gram.videonote.VideoNoteShortcut.onRecordVideoState(ChatActivity.this, state); // NagramX: tracks a video memo recorded under the lock
         }
 
         @Override
@@ -3774,8 +3774,8 @@ public class ChatActivity extends BaseFragment implements
         if (chatLockPasscodeView != null) {
             return;
         }
-        if (!com.radolyn.ayugram.chatlock.ChatLockController.isLocked(currentAccount, dialog_id)
-                || com.radolyn.ayugram.chatlock.ChatLockController.isUnlocked(currentAccount, dialog_id)) {
+        if (!com.dazewell.gram.chatlock.ChatLockController.isLocked(currentAccount, dialog_id)
+                || com.dazewell.gram.chatlock.ChatLockController.isUnlocked(currentAccount, dialog_id)) {
             return;
         }
         Context context = getContext();
@@ -3790,7 +3790,7 @@ public class ChatActivity extends BaseFragment implements
                 ? LaunchActivity.instance.drawerLayoutContainer : contentView;
         lockParent.addView(chatLockPasscodeView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
         chatLockPasscodeView.setDelegate(view -> {
-            com.radolyn.ayugram.chatlock.ChatLockController.markUnlocked(currentAccount, dialog_id);
+            com.dazewell.gram.chatlock.ChatLockController.markUnlocked(currentAccount, dialog_id);
             removeChatLockPasscodeView();
             clearCoveredNotificationsIfVisible();
         });
@@ -3833,7 +3833,7 @@ public class ChatActivity extends BaseFragment implements
         // further down), and backing out of that subview destroys it -- without this guard that read as
         // leaving the chat and disarmed the action the send itself had just armed.
         if (chatMode == MODE_DEFAULT && xyz.nextalone.nagram.NaConfig.INSTANCE.getRememberSendActionResetOnLeave().Bool()) {
-            xyz.nextalone.nagram.RememberedSendAction.clearIfDialog(currentAccount, getDialogId());
+            com.dazewell.gram.helpers.RememberedSendAction.clearIfDialog(currentAccount, getDialogId());
         }
         repostCopyDeleteBatch = null;
         repostCopyDeletePendingOffer = null;
@@ -4030,7 +4030,7 @@ public class ChatActivity extends BaseFragment implements
         // user did not realise it carried, which the clipboard is not.
         private boolean naxSelectedHeld() {
             return selectedView != null
-                && com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(selectedView.getMessageObject());
+                && com.dazewell.gram.ghosthold.GhostHoldController.isHeld(selectedView.getMessageObject());
         }
 
         @Override
@@ -4213,8 +4213,8 @@ public class ChatActivity extends BaseFragment implements
 
         // NagramX: named class (not anonymous) so it can carry role-specific Interface Style gates through
         // BlurredBackgroundProvider's shadow/stroke hooks - see ComposerGlassProvider.
-        blurredBackgroundColorProvider = new xyz.nextalone.nagram.ui.composer.ComposerGlassProvider(currentAccount, themeDelegate, true, xyz.nextalone.nagram.ui.composer.ComposerGlassProvider.ROLE_BUTTON);
-        composerGlassColorProvider = new xyz.nextalone.nagram.ui.composer.ComposerGlassProvider(currentAccount, themeDelegate, true, xyz.nextalone.nagram.ui.composer.ComposerGlassProvider.ROLE_COMPOSER);
+        blurredBackgroundColorProvider = new com.dazewell.gram.composer.ComposerGlassProvider(currentAccount, themeDelegate, true, com.dazewell.gram.composer.ComposerGlassProvider.ROLE_BUTTON);
+        composerGlassColorProvider = new com.dazewell.gram.composer.ComposerGlassProvider(currentAccount, themeDelegate, true, com.dazewell.gram.composer.ComposerGlassProvider.ROLE_COMPOSER);
         blurredBackgroundColorProviderWhite = new BlurredBackgroundColorProviderThemed(themeDelegate, Theme.key_windowBackgroundWhite) {
             @Override
             public int getBackgroundColor() {
@@ -4281,7 +4281,7 @@ public class ChatActivity extends BaseFragment implements
         timerHintView = null;
         videoPlayerContainer = null;
         videoCaptionView = null; // NagramX
-        tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.cancelPlayback(currentAccount, dialog_id); // NagramX
+        com.dazewell.gram.helpers.VideoCaptionsHelper.cancelPlayback(currentAccount, dialog_id); // NagramX
         voiceHintTextView = null;
         blurredView = null;
         dummyMessageCell = null;
@@ -5270,7 +5270,7 @@ public class ChatActivity extends BaseFragment implements
             // NagramX: one per-chat privacy entry that owns both hide-last-message and require-password.
             headerItem.lazilyAddSubItem(nkheaderbtn_chat_privacy, R.drawable.outline_header_lock_24, getString(R.string.ChatPrivacy));
             // NagramX: shown in Glass too; the sheet then explains it needs MD3 and links to the switch.
-            if (com.radolyn.ayugram.headerbg.HeaderBgDrawer.eligible(this)) headerItem.lazilyAddSubItem(nkheaderbtn_header_bg, R.drawable.menu_feature_cover_24, getString(R.string.HeaderBackground));
+            if (com.dazewell.gram.headerbg.HeaderBgDrawer.eligible(this)) headerItem.lazilyAddSubItem(nkheaderbtn_header_bg, R.drawable.menu_feature_cover_24, getString(R.string.HeaderBackground));
             boolean addedSettings = false;
             if (NaConfig.INSTANCE.getChatMenuItemToBeginning().Bool()) headerItem.lazilyAddSubItem(to_the_beginning, R.drawable.ic_upward, getString(R.string.ToTheBeginning));
             if (NaConfig.INSTANCE.getChatMenuItemGoToMessage().Bool()) headerItem.lazilyAddSubItem(to_the_message, R.drawable.msg_go_up, getString(R.string.ToTheMessage));
@@ -5411,13 +5411,13 @@ public class ChatActivity extends BaseFragment implements
         contentView.setOccupyStatusBar(!inBubbleMode && !isInsideContainer && !inPreviewMode);
 
         // NagramX: chat-only provider can flatten MD3 header chrome without changing other topPanelChatActivity consumers.
-        actionBar.setupGlass(glassBackgroundDrawableFactory, isReport() ? BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null) : BlurredBackgroundProviderImpl.chatHeaderSurface(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null, actionBar), ChatObject.isForum(currentChat), xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader());
+        actionBar.setupGlass(glassBackgroundDrawableFactory, isReport() ? BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null) : BlurredBackgroundProviderImpl.chatHeaderSurface(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null, actionBar), ChatObject.isForum(currentChat), com.dazewell.gram.helpers.InterfaceStyleController.applyChatHeader());
         actionBar.setChatAvatarContainer(avatarContainer);
         avatarContainer.setActionBar(actionBar);
         // NagramX: the Classic solid header needs light foregrounds the 12.4.0 palette no longer has.
-        if (!isReport()) xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.applyChatHeader(actionBar, avatarContainer);
+        if (!isReport()) com.dazewell.gram.helpers.InterfaceStyleSolidHeader.applyChatHeader(actionBar, avatarContainer);
         // NagramX: attaches to this ActionBar, so a theme rebuild gets a fresh one with the new bar.
-        if (!isReport()) com.radolyn.ayugram.headerbg.HeaderBgDrawer.install(this);
+        if (!isReport()) com.dazewell.gram.headerbg.HeaderBgDrawer.install(this);
 
         if (chatMode == MODE_PINNED) {
             actionBar.setForcedMenuMinWidth(dp(46));
@@ -5430,7 +5430,7 @@ public class ChatActivity extends BaseFragment implements
 
         chatInputViewsContainer = new ChatInputViewsContainer(context, true);
         // NagramX: the MD3 Composer replaces the island and under-keyboard glass with its own floating island.
-        chatInputViewsContainer.md3Surface = xyz.nextalone.nagram.ui.composer.ComposerMd3Surface.createIfEnabled(themeDelegate);
+        chatInputViewsContainer.md3Surface = com.dazewell.gram.composer.ComposerMd3Surface.createIfEnabled(themeDelegate);
         if (chatInputViewsContainer.md3Surface != null) {
             chatInputViewsContainer.md3Surface.attachFrost(glassBackgroundSourceFrostedRenderNode, viewPositionWatcher, parentView, glassAttachedViews, glassAttachedDrawables, chatInputViewsContainer, currentAccount);
         }
@@ -5446,7 +5446,7 @@ public class ChatActivity extends BaseFragment implements
         // NagramX: this panel's own clip optimisation (enableInAppKeyboardOptimization, applied right
         // below by setUnderKeyboardBackgroundDrawable) cuts the glass shadow at the shape's own top
         // edge. Keep the old shadow only when the MD3 Composer is not drawing its own island instead.
-        if (!xyz.nextalone.nagram.helpers.InterfaceStyleController.applyComposer()) {
+        if (!com.dazewell.gram.helpers.InterfaceStyleController.applyComposer()) {
             underKeyboardBackgroundDrawable.setShadowParams(AndroidUtilities.dpf2(1), 0, AndroidUtilities.dpf2(1 / 3f));
         }
         chatInputViewsContainer.setUnderKeyboardBackgroundDrawable(underKeyboardBackgroundDrawable);
@@ -8408,7 +8408,7 @@ public class ChatActivity extends BaseFragment implements
                 }
             };
             // NagramX: the player row can also carry a compact pinned message (CombinePinnedWithPlayer).
-            fragmentContextViewWrapper = new xyz.nextalone.nagram.helpers.PinnedPlayerRow(context);
+            fragmentContextViewWrapper = new com.dazewell.gram.helpers.PinnedPlayerRow(context);
             topPanelLayout.addView(fragmentContextViewWrapper);
             topPanelLayout.setPriority(fragmentContextViewWrapper, 5);
             topPanelLayout.setDebugName(fragmentContextViewWrapper, "fragment context");
@@ -8661,7 +8661,7 @@ public class ChatActivity extends BaseFragment implements
             hashtagSearchTabs.setTabs(searchViewPager.createTabsView(true, ViewPagerFixed.SELECTOR_TYPE_BUBBLE_STYLE));
             hashtagSearchTabs.setPadding(0, dp(7.66f), 0, dp(7.66f));
             // NagramX: the tag strip follows the MD3 chat-header surface geometry.
-            final boolean naxFlatChatHeader = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader();
+            final boolean naxFlatChatHeader = com.dazewell.gram.helpers.InterfaceStyleController.applyChatHeader();
             hashtagSearchTabs.setBackground(glassBackgroundDrawableFactory.create(hashtagSearchTabs)
                 .setColorProvider(BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, resourceProvider, glassBackgroundSourceFrostedRenderNode != null))
                 .setRadius(naxFlatChatHeader ? 0 : dp(18)).setPadding(naxFlatChatHeader ? 0 : dp(7f)));
@@ -9002,7 +9002,7 @@ public class ChatActivity extends BaseFragment implements
         contentView.addView(roundVideoRecordBackground, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
         animatorRoundMessageCameraVisibility.setValue(false, false); // NagramX: the animator outlives a view rebuild; start it in step with this fresh, hidden scrim
         contentView.addView(chatInputViewsContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
-        com.radolyn.ayugram.videonote.VideoNoteShortcut.onChatViewCreated(this, contentView, chatInputViewsContainer, roundVideoBackgroundDrawableFactory); // NagramX: hides the history while a video memo records under the lock
+        com.dazewell.gram.videonote.VideoNoteShortcut.onChatViewCreated(this, contentView, chatInputViewsContainer, roundVideoBackgroundDrawableFactory); // NagramX: hides the history while a video memo records under the lock
 
         if (chatMode != MODE_EDIT_BUSINESS_LINK) {
             chatActivityEnterView.checkChannelRights();
@@ -9938,10 +9938,10 @@ public class ChatActivity extends BaseFragment implements
         checkUi_topPanelLayoutWidth();
         topPanelLayout.setBlurredBackground(glassBackgroundDrawableFactory.create(topPanelLayout)
             .setColorProvider(BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null))
-            .setRadius(xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : dp(18))
-            .setPadding(xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : dp(7)));
+            .setRadius(com.dazewell.gram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : dp(18))
+            .setPadding(com.dazewell.gram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : dp(7)));
         // NagramX: MD3 top panels are full-width bars rather than inset Liquid Glass cards.
-        topPanelLayout.setFlatBackground(xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader());
+        topPanelLayout.setFlatBackground(com.dazewell.gram.helpers.InterfaceStyleController.applyChatHeader());
 
         if (chatMode == MODE_SEARCH) {
             animatorSearchResultAsListVisibility.setValue(true, false);
@@ -10678,7 +10678,7 @@ public class ChatActivity extends BaseFragment implements
         }
         final int focusId = message.getId();
         final long dialogId = dialog_id;
-        com.radolyn.ayugram.personalreplies.PersonalRepliesController.loadThread(currentAccount, dialogId, focusId, loaded -> {
+        com.dazewell.gram.personalreplies.PersonalRepliesController.loadThread(currentAccount, dialogId, focusId, loaded -> {
             // the load is async: the chat may have closed, or a tag search taken over the filtered list, before it lands
             if (getParentActivity() == null || fragmentView == null || isFinishing() || isFinished || chatAdapter == null || chatAdapter.isFiltered
                     || dialogId != dialog_id || personalRepliesTopId != 0) {
@@ -11217,7 +11217,7 @@ public class ChatActivity extends BaseFragment implements
         });
 
         // NagramX: topic tab chrome is part of the chat-header surface for Interface Style.
-        final boolean naxFlatChatHeader = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader();
+        final boolean naxFlatChatHeader = com.dazewell.gram.helpers.InterfaceStyleController.applyChatHeader();
         topicsTabs.setSideMenuBackgroundDrawable(glassBackgroundDrawableFactory.create(topicsTabs, BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null)), naxFlatChatHeader);
         topicsTabs.setTopMenuBackgroundDrawable(glassBackgroundDrawableFactory.create(topicsTabs, BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null)), naxFlatChatHeader);
 
@@ -12504,7 +12504,7 @@ public class ChatActivity extends BaseFragment implements
                             // NagramX: #ghost-hold. The second put into the selection model, this
                             // one the reply/quote payload channel. Keep held rows out of it too so
                             // the entrance stays sealed on every route, not just direct selection.
-                            if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(messageObject)) {
+                            if (com.dazewell.gram.ghosthold.GhostHoldController.isHeld(messageObject)) {
                                 continue;
                             }
                             forwardCount++;
@@ -12806,7 +12806,7 @@ public class ChatActivity extends BaseFragment implements
 
     // NagramX: MD3 uses a chosen 16dp pinned-content keyline; it does not track the dynamic title layout.
     private int naxPinnedContentLeftDp(int defaultDp) {
-        return xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader()
+        return com.dazewell.gram.helpers.InterfaceStyleController.applyChatHeader()
             ? defaultDp - 7
             : defaultDp;
     }
@@ -12953,7 +12953,7 @@ public class ChatActivity extends BaseFragment implements
 
             pinnedMessageButton[a] = new PinnedMessageButton(getContext());
             pinnedMessageView.addView(pinnedMessageButton[a], LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 28, Gravity.TOP | Gravity.RIGHT, 0, 10,
-                xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? NAX_MD3_PINNED_TRAILING_KEYLINE_DP : 14, 0));
+                com.dazewell.gram.helpers.InterfaceStyleController.applyChatHeader() ? NAX_MD3_PINNED_TRAILING_KEYLINE_DP : 14, 0));
 
             pinnedMessageImageView[a] = new BackupImageView(getContext()) {
                 private SpoilerEffect spoilerEffect = new SpoilerEffect();
@@ -13009,13 +13009,13 @@ public class ChatActivity extends BaseFragment implements
         pinnedListButton.setScaleX(0.4f);
         pinnedListButton.setScaleY(0.4f);
         pinnedListButton.setBackgroundDrawable(Theme.createSelectorDrawable(getThemedColor(Theme.key_inappPlayerClose) & 0x19ffffff));
-        if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader()) {
+        if (com.dazewell.gram.helpers.InterfaceStyleController.applyChatHeader()) {
             // NagramX: keep the touch target while aligning the drawn icon with the header avatar.
             // Padding is 2 * keyline - (view width - glyph width); this asset is 24dp.
             pinnedListButton.setPadding(0, 0, dp(2 * NAX_MD3_PINNED_TRAILING_KEYLINE_DP - (36 - 24)), 0);
         }
         pinnedMessageView.addView(pinnedListButton, LayoutHelper.createFrame(36, 48, Gravity.RIGHT | Gravity.TOP, 0, 0,
-            xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : 7, 0));
+            com.dazewell.gram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : 7, 0));
         pinnedListButton.setOnClickListener(v -> openPinnedMessagesList(false));
 
         closePinned = new ImageView(getContext());
@@ -13031,15 +13031,15 @@ public class ChatActivity extends BaseFragment implements
         pinnedProgress.setStrokeWidth(2f);
         pinnedProgress.setProgressColor(getThemedColor(Theme.key_chat_topPanelLine));
         pinnedMessageView.addView(pinnedProgress, LayoutHelper.createFrame(36, 48, Gravity.RIGHT | Gravity.TOP, 0, 0,
-            xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : 2, 0));
+            com.dazewell.gram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : 2, 0));
 
         closePinned.setBackgroundDrawable(Theme.createSelectorDrawable(getThemedColor(Theme.key_inappPlayerClose) & 0x19ffffff, 1, AndroidUtilities.dp(14)));
-        if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader()) {
+        if (com.dazewell.gram.helpers.InterfaceStyleController.applyChatHeader()) {
             // This asset is 12dp; start padding moves its centered drawing toward the trailing edge.
             closePinned.setPadding(dp(36 - 12 - 2 * NAX_MD3_PINNED_TRAILING_KEYLINE_DP), 0, 0, 0);
         }
         pinnedMessageView.addView(closePinned, LayoutHelper.createFrame(36, 48, Gravity.RIGHT | Gravity.TOP, 0, 0,
-            xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : 2, 0));
+            com.dazewell.gram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : 2, 0));
         closePinned.setOnClickListener(v -> {
             if (getParentActivity() == null) {
                 return;
@@ -13126,9 +13126,9 @@ public class ChatActivity extends BaseFragment implements
         });
 
         // NagramX: lets the player row stand in for this strip while both are shown.
-        xyz.nextalone.nagram.helpers.PinnedPlayerRow.attachPinned(fragmentContextViewWrapper, this, pinnedMessageView, pinnedListButton);
+        com.dazewell.gram.helpers.PinnedPlayerRow.attachPinned(fragmentContextViewWrapper, this, pinnedMessageView, pinnedListButton);
         // NagramX: the strip is coloured once here, so a header photo's text colour setting needs its views to recolour later.
-        com.radolyn.ayugram.headerbg.HeaderBgForeground.attachPinned(this, pinnedCounterTextView, pinnedNameTextView, pinnedMessageTextView, pinnedListButton, closePinned, fragmentContextViewWrapper);
+        com.dazewell.gram.headerbg.HeaderBgForeground.attachPinned(this, pinnedCounterTextView, pinnedNameTextView, pinnedMessageTextView, pinnedListButton, closePinned, fragmentContextViewWrapper);
         updatePinnedListButton(false);
     }
 
@@ -13686,7 +13686,7 @@ public class ChatActivity extends BaseFragment implements
 
         if (topPanelLayout != null) {
             // NagramX: the stock 5dp tuck hides the panel's top under the header, which a solid header shows as a clipped strip
-            final int naxTopPanelTuck = xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeader() ? 0 : dp(5);
+            final int naxTopPanelTuck = com.dazewell.gram.helpers.InterfaceStyleSolidHeader.chatHeader() ? 0 : dp(5);
             topPanelLayout.setTranslationY(ty - naxTopPanelTuck - getTopicTabsSideSize(TopicsTabsView.Position.TOP) * getHashtagTabsShownT());
         }
     }
@@ -13745,7 +13745,7 @@ public class ChatActivity extends BaseFragment implements
         // NagramX: captions ride along with the player, kept above the composer so the input's
         // blur and the toolbar under it can't paint over the strip
         if (videoCaptionView == null) {
-            videoCaptionView = new tw.nekomimi.nekogram.ui.components.VideoMessageCaptionView(getParentActivity());
+            videoCaptionView = new com.dazewell.gram.ui.components.VideoMessageCaptionView(getParentActivity());
             // Walking back into a chat mid-playback doesn't fire a "started" notification, so take
             // the message off the player rather than waiting for one that already happened.
             MessageObject playingCaptioned = MediaController.getInstance().getPlayingMessageObject();
@@ -19170,7 +19170,7 @@ public class ChatActivity extends BaseFragment implements
             final BlurredBackgroundSource source = wallpaperBitmapProvider.updateSourceFromBackgroundViewDrawable(drawable);
             int statusBarColor = wallpaperBitmapProvider.getStatusBarColor(source);
             // NagramX: an MD3 header paints its own mostly opaque surface over the wallpaper, so icon contrast must follow that composite.
-            if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader()) {
+            if (com.dazewell.gram.helpers.InterfaceStyleController.applyChatHeader()) {
                 statusBarColor = ColorUtils.compositeColors((isReport() ? BlurredBackgroundProviderImpl.chatHeaderPanel(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null) : BlurredBackgroundProviderImpl.chatHeaderSurface(currentAccount, themeDelegate, glassBackgroundSourceFrostedRenderNode != null, actionBar)).getBackgroundColor(), ColorUtils.setAlphaComponent(statusBarColor, 255));
             }
             // NagramX: the header photo's status bar probe paints over this same composite, which a frosted header makes translucent.
@@ -19677,7 +19677,7 @@ public class ChatActivity extends BaseFragment implements
         // NagramX: MD3 hairline under the whole header group, following the pinned panel as it grows and collapses.
         // The preview header does not occupy the status bar, so its real bottom is read off the bar, not padded.
         private void naxDrawHeaderDivider(Canvas canvas) {
-            if (actionBar != null && actionBar.getVisibility() == VISIBLE && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() && xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividers()) {
+            if (actionBar != null && actionBar.getVisibility() == VISIBLE && com.dazewell.gram.helpers.InterfaceStyleController.applyChatHeader() && com.dazewell.gram.helpers.InterfaceStyleController.panelDividers()) {
                 float naxHeaderBottom = actionBar.getY() + actionBar.getMeasuredHeight() + (actionBarSearchTags != null ? actionBarSearchTags.getCurrentHeight() : 0) + (hashtagSearchTabs != null ? hashtagSearchTabs.getCurrentHeight() : 0);
                 if (topPanelLayout != null && topPanelLayout.getMetadata().getTotalVisibility() > 0) {
                     // An expanded input hides the pinned bar and grows into its rows, so a shrinking panel's line keeps to
@@ -19688,7 +19688,7 @@ public class ChatActivity extends BaseFragment implements
                         ? Math.min(animatedHeight, topPanelLayout.getSumHeightOfAllVisibleChild()) : animatedHeight;
                     naxHeaderBottom = Math.max(naxHeaderBottom, topPanelLayout.getY() + panelHeight);
                 }
-                canvas.drawRect(0, naxHeaderBottom, getMeasuredWidth(), naxHeaderBottom + Math.max(1, AndroidUtilities.dp(0.66f)), xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividerPaint(xyz.nextalone.nagram.helpers.InterfaceStyleController.chatHeaderSurfaceColor(themeDelegate), themeDelegate));
+                canvas.drawRect(0, naxHeaderBottom, getMeasuredWidth(), naxHeaderBottom + Math.max(1, AndroidUtilities.dp(0.66f)), com.dazewell.gram.helpers.InterfaceStyleController.panelDividerPaint(com.dazewell.gram.helpers.InterfaceStyleController.chatHeaderSurfaceColor(themeDelegate), themeDelegate));
             }
         }
 
@@ -20595,7 +20595,7 @@ public class ChatActivity extends BaseFragment implements
                 } else if (child == actionBar) {
                     childTop -= getPaddingTop();
                     // NagramX: the 1dp drop suits the floating glass pill; a flat MD3 bar would bare a strip of wallpaper above it
-                    if (isInPreviewMode() && !xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader()) {
+                    if (isInPreviewMode() && !com.dazewell.gram.helpers.InterfaceStyleController.applyChatHeader()) {
                         childTop += dp(1);
                     }
                 } else if (child == videoPlayerContainer) {
@@ -21092,7 +21092,7 @@ public class ChatActivity extends BaseFragment implements
         // repopulation) keeps held content out of all of them by construction instead
         // of filtering each consumer one at a time. A held row's only action is delete,
         // which runs through the single-row cancel menu, not the selection model.
-        if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(messageObject)) {
+        if (com.dazewell.gram.ghosthold.GhostHoldController.isHeld(messageObject)) {
             return;
         }
         int prevCantForwardCount = cantForwardMessagesCount;
@@ -21786,11 +21786,11 @@ public class ChatActivity extends BaseFragment implements
             rightIcon.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_windowBackgroundWhiteHintText), PorterDuff.Mode.SRC_IN));
         } else if (!UserObject.isReplyUser(currentUser) && (!isThreadChat() || isTopic) && isMuted) {
             // NagramX: a private copy that colours itself as it draws, since the shared drawable is tinted by the global palette.
-            rightIcon = com.radolyn.ayugram.headerbg.HeaderBgForeground.titleIcon(this, getThemedDrawable(Theme.key_drawable_muteIconDrawable), Theme.key_chat_muteIcon);
+            rightIcon = com.dazewell.gram.headerbg.HeaderBgForeground.titleIcon(this, getThemedDrawable(Theme.key_drawable_muteIconDrawable), Theme.key_chat_muteIcon);
         }
         Drawable leftIcon = null;
         if (currentEncryptedChat != null) {
-            leftIcon = com.radolyn.ayugram.headerbg.HeaderBgForeground.titleIcon(this, getThemedDrawable(Theme.key_drawable_lockIconDrawable), Theme.key_chat_lockIcon);
+            leftIcon = com.dazewell.gram.headerbg.HeaderBgForeground.titleIcon(this, getThemedDrawable(Theme.key_drawable_lockIconDrawable), Theme.key_chat_lockIcon);
         } else if (currentChat != null) {
             leftIcon = avatarContainer.getBotVerificationDrawable(DialogObject.getBotVerificationIcon(currentChat), false);
         } else if (currentUser != null && !UserObject.isUserSelf(currentUser)) {
@@ -25623,17 +25623,17 @@ public class ChatActivity extends BaseFragment implements
                     // is where it finally gets to play. Waits for the request to settle, since this
                     // notification also fires the moment it starts.
                     if (!TranscribeButton.isTranscribing(messageObject)
-                            && tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.consumePlayback(currentAccount, messageObject)) {
-                        if (tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.hasFinalText(messageObject)) {
+                            && com.dazewell.gram.helpers.VideoCaptionsHelper.consumePlayback(currentAccount, messageObject)) {
+                        if (com.dazewell.gram.helpers.VideoCaptionsHelper.hasFinalText(messageObject)) {
                             // NagramX: consumePlayback already marked this message quiet - if the play
                             // never actually starts, that mark has to come back off or it sits there
                             // matching the next, ordinary attempt on this same message.
                             if (!MediaController.getInstance().playMessage(messageObject)) {
-                                tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.disarmMessage(messageObject);
+                                com.dazewell.gram.helpers.VideoCaptionsHelper.disarmMessage(messageObject);
                             }
                         } else {
                             // Nothing came back, so don't leave it armed to caption some later play.
-                            tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.disarmMessage(messageObject);
+                            com.dazewell.gram.helpers.VideoCaptionsHelper.disarmMessage(messageObject);
                         }
                     }
 
@@ -28294,7 +28294,7 @@ public class ChatActivity extends BaseFragment implements
                 // on MODE_SCHEDULED and on this row being a held member, and returns placeToPaste
                 // untouched for everything else, so genuine scheduled rows and other timelines are
                 // unaffected. See GhostHoldController.placeLiveHeldRow / HeldOrderView.
-                placeToPaste = com.radolyn.ayugram.ghosthold.GhostHoldController.placeLiveHeldRow(
+                placeToPaste = com.dazewell.gram.ghosthold.GhostHoldController.placeLiveHeldRow(
                         currentAccount, chatMode, dialog_id, messages, obj, placeToPaste);
                 if (isAd && sponsoredMessagesPostsBetween > 0) {
                     placeToPaste = findAdPlace();
@@ -29527,7 +29527,7 @@ public class ChatActivity extends BaseFragment implements
         // topic switch) never trips this.
         if (chatMode == MODE_DEFAULT && getDialogId() != 0
                 && xyz.nextalone.nagram.NaConfig.INSTANCE.getRememberSendActionResetOnLeave().Bool()) {
-            xyz.nextalone.nagram.RememberedSendAction.clearIfDifferentDialog(currentAccount, getDialogId());
+            com.dazewell.gram.helpers.RememberedSendAction.clearIfDifferentDialog(currentAccount, getDialogId());
         }
         // NagramX: #repost-spread. A repost-as-copy batch that finished acking during the forward-picker
         // close animation couldn't show its delete offer yet; now the chat is fully visible, resolve it
@@ -29794,7 +29794,7 @@ public class ChatActivity extends BaseFragment implements
 //            }
             checkGroupCallJoin(lastCallCheckFromServer);
             if (!backward) {
-                com.radolyn.ayugram.videonote.VideoNoteShortcut.onChatOpened(this); // NagramX: video memo shortcut autostarts here, after the chat is on screen
+                com.dazewell.gram.videonote.VideoNoteShortcut.onChatOpened(this); // NagramX: video memo shortcut autostarts here, after the chat is on screen
             }
 
             boolean hintShown = false;
@@ -31294,7 +31294,7 @@ public class ChatActivity extends BaseFragment implements
                     messageTextView.setText(AnimatedEmojiSpan.cloneSpans(pinnedText));
                 }
                 // NagramX: mirror the new pin into the compact copy on the player row.
-                xyz.nextalone.nagram.helpers.PinnedPlayerRow.setPinnedContent(fragmentContextViewWrapper, nameTextView.getText(),
+                com.dazewell.gram.helpers.PinnedPlayerRow.setPinnedContent(fragmentContextViewWrapper, nameTextView.getText(),
                     showCounter && currentPinnedMessageIndex[0] != 0 ? pinnedCounterTextView.getNumber() : 0, messageTextView.getText(), pinnedMessageButtonShown);
                 if (animateToNext != 0) {
                     pinnedNextAnimation[0] = new AnimatorSet();
@@ -37212,7 +37212,7 @@ public class ChatActivity extends BaseFragment implements
                     // commit that a positive-id lookup would miss, so it can't arm a second trigger on the
                     // same message. All snapshots here are read once and never written again.
                     // NagramX: re-measure (not just repaint) the affected rows so the bolt marker's width change lands immediately.
-                    com.radolyn.ayugram.eventschedule.EventScheduleHelper.armEdit(currentAccount, dialog_id, naxEventIds, naxEventLocalIds, () -> updateVisibleRows(msg -> msg != null && org.telegram.messenger.support.ArrayUtils.contains(naxEventIds, msg.getId())));
+                    com.dazewell.gram.eventschedule.EventScheduleHelper.armEdit(currentAccount, dialog_id, naxEventIds, naxEventLocalIds, () -> updateVisibleRows(msg -> msg != null && org.telegram.messenger.support.ArrayUtils.contains(naxEventIds, msg.getId())));
                 }
                 AlertsCreator.createEditScheduleDatePickerDialog(getParentActivity(), dialog_id, message.messageOwner.date, message.messageOwner.schedule_repeat_period, (notify, scheduleDate, scheduleRepeatPeriod) -> {
                     if (group != null && !group.messages.isEmpty()) {
@@ -37457,7 +37457,7 @@ public class ChatActivity extends BaseFragment implements
         ArrayList<MessageObject> out = new ArrayList<>(messages.size());
         for (int i = 0; i < messages.size(); i++) {
             MessageObject m = messages.get(i);
-            if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(m)) {
+            if (com.dazewell.gram.ghosthold.GhostHoldController.isHeld(m)) {
                 continue;
             }
             out.add(m);
@@ -37802,7 +37802,7 @@ public class ChatActivity extends BaseFragment implements
 
     @Override
     public boolean onBackPressed(boolean invoked) {
-        if (com.radolyn.ayugram.videonote.VideoNoteShortcut.onBackPressed(this, invoked)) {
+        if (com.dazewell.gram.videonote.VideoNoteShortcut.onBackPressed(this, invoked)) {
             return false; // NagramX: back from a video memo recorded under the lock goes to the passcode, not the app
         }
         final Bulletin bulletin = Bulletin.getVisibleBulletin();
@@ -38013,7 +38013,7 @@ public class ChatActivity extends BaseFragment implements
             // NagramX: a held Ghost Hold row has a negative local id the server has no
             // record of, so never put it in a sendScheduledMessages request -- it stays
             // held and drains only when Ghost Mode turns off.
-            if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(m)) continue;
+            if (com.dazewell.gram.ghosthold.GhostHoldController.isHeld(m)) continue;
             long gid = m.getGroupId();
             if (gid != 0 && gid == lastGroupId) continue;
             lastGroupId = gid;
@@ -38067,25 +38067,25 @@ public class ChatActivity extends BaseFragment implements
         // here, over the album-expanded server/local identity of the whole selection. Both policies live in
         // the fork-owned armer API; the base file only captures raw ids. Any still-in-flight (non-positive)
         // member refuses the chip for the whole selection.
-        java.util.List<com.radolyn.ayugram.eventschedule.EventScheduleBulkArmer.AlbumIdentity> previewIdentity = new ArrayList<>(preview.size());
+        java.util.List<com.dazewell.gram.eventschedule.EventScheduleBulkArmer.AlbumIdentity> previewIdentity = new ArrayList<>(preview.size());
         for (int i = 0; i < preview.size(); i++) previewIdentity.add(albumIdentity(preview.get(i)));
-        final boolean triggerReady = com.radolyn.ayugram.eventschedule.EventScheduleBulkArmer.selectionReady(previewIdentity);
-        final int armedCount = com.radolyn.ayugram.eventschedule.EventScheduleBulkArmer.armedCount(currentAccount, dialog_id, previewIdentity);
+        final boolean triggerReady = com.dazewell.gram.eventschedule.EventScheduleBulkArmer.selectionReady(previewIdentity);
+        final int armedCount = com.dazewell.gram.eventschedule.EventScheduleBulkArmer.armedCount(currentAccount, dialog_id, previewIdentity);
         AlertsCreator.createRescheduleDatePickerDialog(getParentActivity(), dialog_id, currentDate, count, armedCount, triggerReady, (baseScheduleDate, intervalSeconds, triggerConfig) -> {
             final Runnable apply = () -> {
                 // Dates can move while the sheet is open (an earlier pass still landing, a message
                 // getting sent), so re-resolve and re-sort now instead of trusting the preview snapshot.
                 ArrayList<MessageObject> items = resolveRescheduleItems(selectedIds);
-                ArrayList<com.radolyn.ayugram.reschedule.RescheduleSpreadExecutor.Target> targets = new ArrayList<>(items.size());
+                ArrayList<com.dazewell.gram.reschedule.RescheduleSpreadExecutor.Target> targets = new ArrayList<>(items.size());
                 // NagramX: capture each item's album identity (server + local ids) once here and reuse it
                 // for both the executor Target (server ids) and the armer (both id spaces), so the group is
                 // expanded a single time on fresh apply-time items.
-                java.util.List<com.radolyn.ayugram.eventschedule.EventScheduleBulkArmer.AlbumIdentity> selectionIdentity = new ArrayList<>(items.size());
+                java.util.List<com.dazewell.gram.eventschedule.EventScheduleBulkArmer.AlbumIdentity> selectionIdentity = new ArrayList<>(items.size());
                 for (int i = 0; i < items.size(); i++) {
                     MessageObject m = items.get(i);
-                    com.radolyn.ayugram.eventschedule.EventScheduleBulkArmer.AlbumIdentity identity = albumIdentity(m);
+                    com.dazewell.gram.eventschedule.EventScheduleBulkArmer.AlbumIdentity identity = albumIdentity(m);
                     selectionIdentity.add(identity);
-                    targets.add(new com.radolyn.ayugram.reschedule.RescheduleSpreadExecutor.Target(
+                    targets.add(new com.dazewell.gram.reschedule.RescheduleSpreadExecutor.Target(
                             m.getId(), baseScheduleDate + i * intervalSeconds, m.messageOwner.schedule_repeat_period,
                             identity.serverIds));
                 }
@@ -38096,15 +38096,15 @@ public class ChatActivity extends BaseFragment implements
                 // as the executor's arming hooks. The bolt is revealed only at finalization, on exactly the
                 // rows that armed, through the private condition overload of updateVisibleRows (which forces
                 // a re-measure); the predicate null-guards because getMessageObject() can be null for a cell.
-                com.radolyn.ayugram.reschedule.RescheduleSpreadExecutor.TriggerArmingHooks hooks = null;
+                com.dazewell.gram.reschedule.RescheduleSpreadExecutor.TriggerArmingHooks hooks = null;
                 if (triggerConfig != null) {
-                    hooks = new com.radolyn.ayugram.eventschedule.EventScheduleBulkArmer(
+                    hooks = new com.dazewell.gram.eventschedule.EventScheduleBulkArmer(
                             currentAccount, dialog_id, triggerConfig.storeGeneration, triggerConfig.config, selectionIdentity,
                             armedIds -> updateVisibleRows(msg -> msg != null && armedIds.contains(msg.getId())));
                 }
                 final boolean started = hooks != null
-                        ? com.radolyn.ayugram.reschedule.RescheduleSpreadExecutor.run(currentAccount, dialog_id, targets, ChatActivity.this, hooks)
-                        : com.radolyn.ayugram.reschedule.RescheduleSpreadExecutor.run(currentAccount, dialog_id, targets, ChatActivity.this);
+                        ? com.dazewell.gram.reschedule.RescheduleSpreadExecutor.run(currentAccount, dialog_id, targets, ChatActivity.this, hooks)
+                        : com.dazewell.gram.reschedule.RescheduleSpreadExecutor.run(currentAccount, dialog_id, targets, ChatActivity.this);
                 if (!started) {
                     BulletinFactory.of(ChatActivity.this).createSimpleBulletin(R.raw.error, LocaleController.getString(R.string.RescheduleBusy)).show();
                     return;
@@ -38138,7 +38138,7 @@ public class ChatActivity extends BaseFragment implements
             // one chokepoint both the preview and the apply-time spread resolve through,
             // so a co-selected held row never occupies a spread slot and every real
             // message lands exactly where it would with the held row unselected.
-            if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(m)) continue;
+            if (com.dazewell.gram.ghosthold.GhostHoldController.isHeld(m)) continue;
             long gid = m.getGroupId();
             if (gid != 0) {
                 if (!seenGroups.add(gid)) continue;
@@ -38163,10 +38163,10 @@ public class ChatActivity extends BaseFragment implements
     // lookup is forced onto the base file here; the array capture across both id spaces lives in the
     // fork-owned armer factory. Trigger policy (readiness, armed count, ownership) lives in the armer, not
     // here.
-    private com.radolyn.ayugram.eventschedule.EventScheduleBulkArmer.AlbumIdentity albumIdentity(MessageObject m) {
+    private com.dazewell.gram.eventschedule.EventScheduleBulkArmer.AlbumIdentity albumIdentity(MessageObject m) {
         long gid = m.getGroupId();
         MessageObject.GroupedMessages group = gid != 0 ? groupedMessagesMap.get(gid) : null;
-        return com.radolyn.ayugram.eventschedule.EventScheduleBulkArmer.AlbumIdentity.of(m, group);
+        return com.dazewell.gram.eventschedule.EventScheduleBulkArmer.AlbumIdentity.of(m, group);
     }
 
     public void clearSelectionMode() {
@@ -38869,7 +38869,7 @@ public class ChatActivity extends BaseFragment implements
         return currentEncryptedChat == null && (bottomChannelButtonsLayout == null || bottomChannelButtonsLayout.getVisibility() != View.VISIBLE);
     }
 
-    // NagramX: physical keyboard hotkeys (com.radolyn.ayugram.hotkeys.HotkeyController)
+    // NagramX: physical keyboard hotkeys (com.dazewell.gram.hotkeys.HotkeyController)
     public boolean hotkeyOpenSearch() {
         if (actionBar == null || actionBar.isSearchFieldVisible() || searchItem == null) {
             return false;
@@ -38899,7 +38899,7 @@ public class ChatActivity extends BaseFragment implements
         if (chatMode != 0 || chatActivityEnterView == null || chatActivityEnterView.isEditingMessage() || chatActivityEnterView.hasAudioToSend()) {
             return false;
         }
-        MessageObject message = com.radolyn.ayugram.hotkeys.HotkeyController.findLastEditableOutgoingMessage(messages, currentChat, mergeDialogId);
+        MessageObject message = com.dazewell.gram.hotkeys.HotkeyController.findLastEditableOutgoingMessage(messages, currentChat, mergeDialogId);
         if (message == null) {
             return false;
         }
@@ -38920,7 +38920,7 @@ public class ChatActivity extends BaseFragment implements
             return false;
         }
         MessageObject current = fieldPanelShown == 2 && replyingMessageObject != threadMessageObject ? replyingMessageObject : null;
-        MessageObject target = com.radolyn.ayugram.hotkeys.HotkeyController.findAdjacentReplyTarget(messages, current, older, threadMessageObjects, currentEncryptedChat != null);
+        MessageObject target = com.dazewell.gram.hotkeys.HotkeyController.findAdjacentReplyTarget(messages, current, older, threadMessageObjects, currentEncryptedChat != null);
         if (target == null) {
             // stepping below the newest message clears the reply selection
             return !older && current != null && hotkeyCancelFieldPanel();
@@ -39195,7 +39195,7 @@ public class ChatActivity extends BaseFragment implements
                 }
             }
             afterMessageSend();
-            com.radolyn.ayugram.videonote.VideoNoteShortcut.onMediaSent(this); // NagramX: a video memo recorded under the lock locks only once its clip is queued
+            com.dazewell.gram.videonote.VideoNoteShortcut.onMediaSent(this); // NagramX: a video memo recorded under the lock locks only once its clip is queued
         }, stars);
     }
 
@@ -40602,7 +40602,7 @@ public class ChatActivity extends BaseFragment implements
 
     @Override
     public boolean isSwipeBackEnabled(MotionEvent event) {
-        if (com.radolyn.ayugram.videonote.VideoNoteShortcut.blocksSwipeBack(this)) {
+        if (com.dazewell.gram.videonote.VideoNoteShortcut.blocksSwipeBack(this)) {
             return false; // NagramX: a swipe back would reveal the locked app under a video memo
         }
         if (chatMode == MODE_QUICK_REPLIES && (messages.isEmpty() || threadMessageId == 0)) {
@@ -46510,8 +46510,8 @@ public class ChatActivity extends BaseFragment implements
         }
         ThemeDescription.ThemeDescriptionDelegate selectedBackgroundDelegate = () -> {
             // NagramX: the key-only header descriptions below have just pushed the shared palette back in.
-            if ((xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeaderOptedIn() || actionBar != null && actionBar.naxHeaderBg != null) && !isReport()) {
-                com.radolyn.ayugram.headerbg.HeaderBgForeground.applyChatHeader(this);
+            if ((com.dazewell.gram.helpers.InterfaceStyleSolidHeader.chatHeaderOptedIn() || actionBar != null && actionBar.naxHeaderBg != null) && !isReport()) {
+                com.dazewell.gram.headerbg.HeaderBgForeground.applyChatHeader(this);
             }
             if (blurredBackgroundColorProvider != null) {
                 blurredBackgroundColorProvider.updateColors();
@@ -48439,9 +48439,9 @@ public class ChatActivity extends BaseFragment implements
             return !Theme.isCurrentThemeDark();
         }
         // NagramX: selection mode drops the Classic solid header, so the icons follow the theme's own header there.
-        if (xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeaderSelectionShowing(actionBar)) return ColorUtils.calculateLuminance(xyz.nextalone.nagram.helpers.InterfaceStyleController.chatHeaderSurfaceColor(themeDelegate)) > 0.7f;
+        if (com.dazewell.gram.helpers.InterfaceStyleSolidHeader.chatHeaderSelectionShowing(actionBar)) return ColorUtils.calculateLuminance(com.dazewell.gram.helpers.InterfaceStyleController.chatHeaderSurfaceColor(themeDelegate)) > 0.7f;
         // NagramX: a header photo decides the icons from the pixels it draws behind the status bar.
-        Boolean naxIcons = com.radolyn.ayugram.headerbg.HeaderBgDrawer.lightStatusBar(actionBar); if (naxIcons != null) return naxIcons;
+        Boolean naxIcons = com.dazewell.gram.headerbg.HeaderBgDrawer.lightStatusBar(actionBar); if (naxIcons != null) return naxIcons;
         return !shouldHaveLightStatusBarIcons;
     }
 
@@ -48548,9 +48548,9 @@ public class ChatActivity extends BaseFragment implements
         } else if (id == nkbtn_viewDeleted) {
             presentFragment(new AyuViewDeleted(dialog_id));
         } else if (id == nkheaderbtn_chat_privacy) {
-            com.radolyn.ayugram.chatprivacy.ChatPrivacySheet.show(ChatActivity.this, dialog_id);
+            com.dazewell.gram.chatprivacy.ChatPrivacySheet.show(ChatActivity.this, dialog_id);
         } else if (id == nkheaderbtn_header_bg) {
-            com.radolyn.ayugram.headerbg.HeaderBgSheet.show(ChatActivity.this);
+            com.dazewell.gram.headerbg.HeaderBgSheet.show(ChatActivity.this);
         } else if (id == nkbtn_bookmarks_manager) {
             presentFragment(new BookmarksActivity(dialog_id));
         } else if (id == nkheaderbtn_upgrade) {
@@ -48709,7 +48709,7 @@ public class ChatActivity extends BaseFragment implements
                     startNumber = Integer.parseInt(s);
                 }
             } catch (NumberFormatException ignored) {}
-            if (com.radolyn.ayugram.bulk.BulkMessageActions.runNumberedReply(this, currentAccount, dialog_id, getThreadMessage(), targets, startNumber)) {
+            if (com.dazewell.gram.bulk.BulkMessageActions.runNumberedReply(this, currentAccount, dialog_id, getThreadMessage(), targets, startNumber)) {
                 clearSelectionMode();
             } else {
                 BulletinFactory.of(this).createSimpleBulletin(R.raw.error, getString(R.string.BulkActionBusy)).show();
@@ -48805,7 +48805,7 @@ public class ChatActivity extends BaseFragment implements
                 }, 550);
                 started = true;
             } else {
-                started = com.radolyn.ayugram.bulk.BulkMessageActions.runPin(this, currentAccount, currentChat, currentUser, dialog_id, mids, oneSide, notify);
+                started = com.dazewell.gram.bulk.BulkMessageActions.runPin(this, currentAccount, currentChat, currentUser, dialog_id, mids, oneSide, notify);
                 if (!started) {
                     BulletinFactory.of(this).createSimpleBulletin(R.raw.error, getString(R.string.BulkActionBusy)).show();
                 }
@@ -49022,7 +49022,7 @@ public class ChatActivity extends BaseFragment implements
             case nkbtn_personal_replies: {
                 // NagramX: the group is looked up here rather than taken from selectedObjectGroup, which the cell's
                 // own long-press leaves null even on an album
-                openPersonalReplies(selectedObject == null ? null : com.radolyn.ayugram.personalreplies.PersonalRepliesController.threadAnchor(
+                openPersonalReplies(selectedObject == null ? null : com.dazewell.gram.personalreplies.PersonalRepliesController.threadAnchor(
                         currentAccount, selectedObject, getValidGroupedMessage(selectedObject)));
                 break;
             }
@@ -49418,7 +49418,7 @@ public class ChatActivity extends BaseFragment implements
         if (hasSelectedMessages()) {
             messages.addAll(naxExcludeHeldFromSend(getSelectedMessages1()));
             selectedObject = null;
-        } else if (selectedObject != null && !com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(selectedObject)) {
+        } else if (selectedObject != null && !com.dazewell.gram.ghosthold.GhostHoldController.isHeld(selectedObject)) {
             messages.add(selectedObject);
         }
         if (messages.isEmpty()) {
@@ -51223,7 +51223,7 @@ public class ChatActivity extends BaseFragment implements
             }
         } else {
             if (currentEncryptedChat == null) {
-                if (!selectedObject.isPaidSuggestedPostProtected() && chatMode == MODE_SCHEDULED && !com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(selectedObject)) {
+                if (!selectedObject.isPaidSuggestedPostProtected() && chatMode == MODE_SCHEDULED && !com.dazewell.gram.ghosthold.GhostHoldController.isHeld(selectedObject)) {
                     items.add(LocaleController.getString(R.string.MessageScheduleSend));
                     options.add(OPTION_SEND_NOW);
                     icons.add(R.drawable.msg_send);
@@ -51279,8 +51279,8 @@ public class ChatActivity extends BaseFragment implements
                 // NagramX: same entry for one-to-one chats, from the history stored on this device. It opens the
                 // whole thread the message sits in, so it also shows on a reply that has no replies of its own
                 if (!isThreadChat() && chatMode == MODE_DEFAULT && !isInsideContainer && personalRepliesTopId == 0 && primaryMessage != null
-                        && com.radolyn.ayugram.personalreplies.PersonalRepliesController.canViewThread(currentAccount,
-                                com.radolyn.ayugram.personalreplies.PersonalRepliesController.threadAnchor(currentAccount, primaryMessage, getValidGroupedMessage(primaryMessage)))) {
+                        && com.dazewell.gram.personalreplies.PersonalRepliesController.canViewThread(currentAccount,
+                                com.dazewell.gram.personalreplies.PersonalRepliesController.threadAnchor(currentAccount, primaryMessage, getValidGroupedMessage(primaryMessage)))) {
                     items.add(LocaleController.getString(R.string.ViewThread));
                     options.add(nkbtn_personal_replies);
                     icons.add(R.drawable.msg_viewreplies);
@@ -51777,7 +51777,7 @@ public class ChatActivity extends BaseFragment implements
                     options.add(OPTION_SUGGESTION_ADD_OFFER);
                     icons.add(R.drawable.menu_edit_price);
                 }
-                if (!selectedObject.isPaidSuggestedPostProtected() && chatMode == MODE_SCHEDULED && selectedObject.canEditMessageScheduleTime(currentChat) && !com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(selectedObject)) {
+                if (!selectedObject.isPaidSuggestedPostProtected() && chatMode == MODE_SCHEDULED && selectedObject.canEditMessageScheduleTime(currentChat) && !com.dazewell.gram.ghosthold.GhostHoldController.isHeld(selectedObject)) {
                     // NagramX: a held Ghost Hold row has a negative local id the server has never seen.
                     // canEditMessageScheduleTime (unlike canEditMessage) does not reject id < 0, so without
                     // this guard the row would offer "Edit schedule time" and fire TL_messages_editMessage
@@ -52397,7 +52397,7 @@ public class ChatActivity extends BaseFragment implements
                 * (1f - getHashtagTabsShownT());
 
             // NagramX: MD3 panels are full-width bars; keep only the forum side offset.
-            final boolean naxFlatChatHeader = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader();
+            final boolean naxFlatChatHeader = com.dazewell.gram.helpers.InterfaceStyleController.applyChatHeader();
             topPanelLayout.setPadding((naxFlatChatHeader ? 0 : dp(7)) + (int) sideMenu, naxFlatChatHeader ? 0 : dp(7), naxFlatChatHeader ? 0 : dp(7), naxFlatChatHeader ? 0 : dp(7));
         }
     }

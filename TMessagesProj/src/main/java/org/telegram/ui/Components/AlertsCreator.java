@@ -4309,7 +4309,7 @@ public class AlertsCreator {
     // per-message interval, and the shared "Send on event" trigger the chip captured (null when Off),
     // so the caller can spread the selected messages out from the base and arm them on the same trigger.
     public interface RescheduleDatePickerDelegate {
-        void didSelectReschedule(int baseScheduleDate, int intervalSeconds, com.radolyn.ayugram.eventschedule.EventScheduleHelper.TriggerArmIntent trigger);
+        void didSelectReschedule(int baseScheduleDate, int intervalSeconds, com.dazewell.gram.eventschedule.EventScheduleHelper.TriggerArmIntent trigger);
     }
 
     // NagramX: marks the schedule sheet as a bulk-reschedule sheet (carries how many messages are
@@ -4493,7 +4493,7 @@ public class AlertsCreator {
         // The +1min bump at confirm then only has to cover time drifting on while the sheet sits open.
         // NagramX: minLeadSeconds (scheduled infinite video passes 180) overrides both when set.
         final long minScheduleSeconds = minLeadSeconds > 0 ? minLeadSeconds : (isReschedule ? 120 : 0);
-        final com.radolyn.ayugram.reschedule.RescheduleSpreadHelper.IntervalControls[] intervalControls = new com.radolyn.ayugram.reschedule.RescheduleSpreadHelper.IntervalControls[1];
+        final com.dazewell.gram.reschedule.RescheduleSpreadHelper.IntervalControls[] intervalControls = new com.dazewell.gram.reschedule.RescheduleSpreadHelper.IntervalControls[1];
 
         long selfUserId = UserConfig.getInstance(UserConfig.selectedAccount).getClientUserId();
 
@@ -4680,7 +4680,7 @@ public class AlertsCreator {
         });
         // NagramX: chat-time-zone tab + readout under the pickers (null when no differing zone is
         // configured). Holder because the controls are built only after the pickers are populated, below.
-        final com.radolyn.ayugram.chattimezone.ChatTimeZoneScheduleHelper.Controls[] tz = new com.radolyn.ayugram.chattimezone.ChatTimeZoneScheduleHelper.Controls[1];
+        final com.dazewell.gram.chattimezone.ChatTimeZoneScheduleHelper.Controls[] tz = new com.dazewell.gram.chattimezone.ChatTimeZoneScheduleHelper.Controls[1];
         // NagramX: the moment the wheels get seeded (a few statements below), so the Remember toggle
         // can measure its offset from the same minute and an untouched sheet stores back exactly what
         // it opened with. Declared up here because the wheel listener reports changes to the toggle.
@@ -4729,14 +4729,14 @@ public class AlertsCreator {
         ScheduleTimeHelper.setPickersFromTargetTime(ScheduleTimeHelper.getInitialTargetTime(currentDate), calendar, dayPicker, hourPicker, minutePicker);
 
         // Chat-time-zone tab (above the wheels) + peer/local readout (below), null when no differing zone.
-        tz[0] = com.radolyn.ayugram.chattimezone.ChatTimeZoneScheduleHelper.install(
+        tz[0] = com.dazewell.gram.chattimezone.ChatTimeZoneScheduleHelper.install(
                 context, container, linearLayout, UserConfig.selectedAccount, dialogId, isReschedule, scheduleType,
                 datePickerColors.textColor, datePickerColors.buttonBackgroundColor,
                 dayPicker, hourPicker, minutePicker, isReschedule ? null : buttonTextView);
 
         // NagramX: interval [value][unit] row + live preview for bulk reschedule (>= 2 messages).
         if (isReschedule && reschedule.messageCount >= 2) {
-            intervalControls[0] = com.radolyn.ayugram.reschedule.RescheduleSpreadHelper.addIntervalControls(
+            intervalControls[0] = com.dazewell.gram.reschedule.RescheduleSpreadHelper.addIntervalControls(
                     context, container, reschedule.messageCount, datePickerColors.textColor,
                     dayPicker, hourPicker, minutePicker, buttonTextView, resourcesProvider);
         }
@@ -4744,14 +4744,14 @@ public class AlertsCreator {
         // NagramX: #repost-spread reuses the same interval row. The span is slot count (an album is
         // one send); the preview label counts messages behind those slots.
         if (forwardSpread != null && forwardSpread.slotCount >= 2) {
-            intervalControls[0] = com.radolyn.ayugram.reschedule.RescheduleSpreadHelper.addIntervalControls(
+            intervalControls[0] = com.dazewell.gram.reschedule.RescheduleSpreadHelper.addIntervalControls(
                     context, container, forwardSpread.slotCount, forwardSpread.messageCount, datePickerColors.textColor,
                     dayPicker, hourPicker, minutePicker, buttonTextView, resourcesProvider);
         }
 
         // NagramX: on the scheduled-infinite sheet, explain the +2min spacing and the best-effort ordering caveat.
         if (minLeadSeconds > 0) {
-            com.radolyn.ayugram.reschedule.InfiniteVideoScheduleHelper.installHints(context, container, datePickerColors.textColor, resourcesProvider);
+            com.dazewell.gram.reschedule.InfiniteVideoScheduleHelper.installHints(context, container, datePickerColors.textColor, resourcesProvider);
         }
 
         // NagramX: reschedule/edit sheets get the same slider as a new message, but dragging it only
@@ -4791,12 +4791,12 @@ public class AlertsCreator {
         // #repost-spread: whenever forward-spread controls are active the trigger row is explicitly
         // impossible - a per-slot spread and a single shared trigger can't both own the send times.
         // This does not lean on dialogId == -1: the row is suppressed outright.
-        final com.radolyn.ayugram.eventschedule.EventScheduleHelper.TriggerRow naxEventRow =
+        final com.dazewell.gram.eventschedule.EventScheduleHelper.TriggerRow naxEventRow =
                 forwardSpread != null ? null :
-                com.radolyn.ayugram.eventschedule.EventScheduleHelper.addTriggerRow(
+                com.dazewell.gram.eventschedule.EventScheduleHelper.addTriggerRow(
                         context, container, UserConfig.selectedAccount, dialogId, selfUserId,
                         isReschedule, forcedTitle != null,
-                        isReschedule ? new com.radolyn.ayugram.eventschedule.EventScheduleHelper.BulkTriggerContext(reschedule.triggerReady, reschedule.armedCount) : null,
+                        isReschedule ? new com.dazewell.gram.eventschedule.EventScheduleHelper.BulkTriggerContext(reschedule.triggerReady, reschedule.armedCount) : null,
                         datePickerColors.textColor, datePickerColors.backgroundColor);
 
         checkScheduleDate(isReschedule ? null : buttonTextView, null, minScheduleSeconds, 0, scheduleType, dayPicker, hourPicker, minutePicker);
@@ -4997,7 +4997,7 @@ public class AlertsCreator {
         builder.setCustomView(frameLayout);
         BottomSheet bottomSheet = builder.show();
         // NagramX: physical keyboard hotkeys — Enter confirms the schedule
-        com.radolyn.ayugram.hotkeys.HotkeyController.confirmOnEnter(bottomSheet, buttonTextView);
+        com.dazewell.gram.hotkeys.HotkeyController.confirmOnEnter(bottomSheet, buttonTextView);
         bottomSheet.setOnDismissListener(dialog -> {
             if (cancelRunnable != null && canceled[0]) {
                 cancelRunnable.run();
@@ -8445,7 +8445,7 @@ public class AlertsCreator {
         // --- AyuGram hook
         final boolean[] keepLocally = {false};
         // NagramX: no "keep locally" in a chat type the Save Deleted sheet has unchecked; the save would be refused and the message lost
-        if (NaConfig.INSTANCE.getEnableSaveDeletedMessages().Bool() && com.radolyn.ayugram.messages.SaveScope.allowsDeleted(currentAccount, dialogId) && (selectedMessage == null || !selectedMessage.isEphemeral())) {
+        if (NaConfig.INSTANCE.getEnableSaveDeletedMessages().Bool() && com.dazewell.gram.messages.SaveScope.allowsDeleted(currentAccount, dialogId) && (selectedMessage == null || !selectedMessage.isEphemeral())) {
             if (ayuFrameLayout == null) {
                 ayuFrameLayout = new FrameLayout(activity);
                 builder.setView(ayuFrameLayout);

@@ -4782,7 +4782,7 @@ public class EmojiView extends FrameLayout implements
     }
 
     // NagramX: physical keyboard hotkeys — Alt+; emoji search with arrow-key navigation
-    // (com.radolyn.ayugram.hotkeys.HotkeyController). Keys are routed here from the global
+    // (com.dazewell.gram.hotkeys.HotkeyController). Keys are routed here from the global
     // dispatch in HotkeyController.handleGlobalKey, so they work regardless of focus; the
     // "selection" is a grid cell highlighted by an item decoration and moved with arrow keys.
     // Enter inserts and keeps the panel open, Esc closes it, Ctrl+Enter sends the message.

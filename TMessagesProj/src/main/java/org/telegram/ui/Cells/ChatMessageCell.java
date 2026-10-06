@@ -6317,7 +6317,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             MessageObject messageObject = currentMessagesGroup.messages.get(0);
             // NagramX: a private reply to an album can target any of its members, so the stored count covers them all
             int count = messageObject.getRepliesCount();
-            return count != 0 ? count : com.radolyn.ayugram.personalreplies.PersonalRepliesController.getCount(currentAccount, currentMessagesGroup);
+            return count != 0 ? count : com.dazewell.gram.personalreplies.PersonalRepliesController.getCount(currentAccount, currentMessagesGroup);
         }
         return getRepliesCount(currentMessageObject);
     }
@@ -6326,7 +6326,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         int count = messageObject.getRepliesCount();
         if (count == 0) {
             // NagramX: private chats get no server reply counter, so fall back to the one derived from stored history
-            count = com.radolyn.ayugram.personalreplies.PersonalRepliesController.getCount(currentAccount, messageObject);
+            count = com.dazewell.gram.personalreplies.PersonalRepliesController.getCount(currentAccount, messageObject);
         }
         return count;
     }
@@ -15482,7 +15482,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         invalidate();
     }
 
-    private tw.nekomimi.nekogram.ui.components.VideoCaptionsButton videoCaptionsButton; // NagramX
+    private com.dazewell.gram.ui.components.VideoCaptionsButton videoCaptionsButton; // NagramX
 
     // NagramX: CC rides one slot above the transcribe button, in the same corner and drawn the same
     // way, so the transcribe button gets to keep doing only what it always did.
@@ -15494,16 +15494,16 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             return;
         }
         if (videoCaptionsButton == null) {
-            videoCaptionsButton = new tw.nekomimi.nekogram.ui.components.VideoCaptionsButton(this) {
+            videoCaptionsButton = new com.dazewell.gram.ui.components.VideoCaptionsButton(this) {
                 @Override
                 public void onTap() {
-                    tw.nekomimi.nekogram.ui.components.VideoCaptionsButton.press(currentAccount, currentMessageObject, delegate);
+                    com.dazewell.gram.ui.components.VideoCaptionsButton.press(currentAccount, currentMessageObject, delegate);
                     invalidate();
                 }
             };
         }
         videoCaptionsButton.setBounds((int) transcribeX, (int) transcribeY - dp(40), dp(32));
-        videoCaptionsButton.draw(canvas, alpha, currentMessageObject, tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.isTranscribingForCaptions(currentAccount, currentMessageObject));
+        videoCaptionsButton.draw(canvas, alpha, currentMessageObject, com.dazewell.gram.helpers.VideoCaptionsHelper.isTranscribingForCaptions(currentAccount, currentMessageObject));
     }
 
     // NagramX
@@ -15513,7 +15513,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         // of just while the transcript row is open.
         return documentAttachType == DOCUMENT_ATTACH_TYPE_ROUND
                 && getVideoTranscriptionProgress() <= 0
-                && tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.canCaption(currentAccount, currentMessageObject);
+                && com.dazewell.gram.helpers.VideoCaptionsHelper.canCaption(currentAccount, currentMessageObject);
     }
 
     private float getUseTranscribeButtonProgress() {
@@ -18764,14 +18764,14 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             timeString = ""; // Long.toString(currentMessageObject.getId());
         } else if (currentMessageObject.notime || currentMessageObject.isSponsored() || currentMessageObject.isQuickReply() || currentMessageObject.isWelcomeMessage()) {
             timeString = "";
-        } else if (currentMessageObject.scheduled && com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(currentMessageObject)) {
+        } else if (currentMessageObject.scheduled && com.dazewell.gram.ghosthold.GhostHoldController.isHeld(currentMessageObject)) {
             // NagramX: a Ghost Hold row shows its held state in place of a send time.
             // Checked before the 0x7FFFFFFE "send when online" branch below, because a
             // held row scheduled that way carries that date too and would otherwise
             // render a blank time instead of the held caption. Both that sentinel and
             // our own undated sentinel display as undated; the value is kept for flush.
             int heldDate = currentMessageObject.messageOwner.date;
-            if (heldDate == com.radolyn.ayugram.ghosthold.GhostHoldController.GHOST_HELD_DATE_SENTINEL || heldDate == 0x7FFFFFFE) {
+            if (heldDate == com.dazewell.gram.ghosthold.GhostHoldController.GHOST_HELD_DATE_SENTINEL || heldDate == 0x7FFFFFFE) {
                 timeString = getString(R.string.GhostHoldCaption);
             } else {
                 timeString = formatString(R.string.GhostHoldCaptionDated, LocaleController.getInstance().getFormatterDay().format((long) heldDate * 1000));
@@ -18811,12 +18811,12 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             ((SpannableStringBuilder) timeString).append(" | ").append(String.valueOf(messageObject.messageOwner.id));
         }
         // NagramX: mark scheduled messages that carry a live event trigger with a small bolt.
-        timeString = com.radolyn.ayugram.eventschedule.EventScheduleHelper.decorateTimeString(currentAccount, messageObject, timeString);
+        timeString = com.dazewell.gram.eventschedule.EventScheduleHelper.decorateTimeString(currentAccount, messageObject, timeString);
         // Append peer's local time when a chat time-zone is configured for this dialog (no-op otherwise).
         // Use messageObject (the method parameter) -- not currentMessageObject (the field) -- so that
         // callers that pass a different MessageObject instance (e.g. pinned messages) get the right
         // dialog id and timestamp.
-        timeString = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.augmentMessageTime(
+        timeString = com.dazewell.gram.chattimezone.ChatTimeZoneRenderer.augmentMessageTime(
                 timeString, currentAccount, messageObject.getDialogId(),
                 messageObject.messageOwner != null ? messageObject.messageOwner.date : 0);
         currentTimeString = new SpannableStringBuilder(timeString);
@@ -18868,10 +18868,10 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         timeTextWidth = timeWidth = (int) Math.ceil(Theme.chat_timePaint.measureText(currentTimeString, 0, currentTimeString == null ? 0 : currentTimeString.length()));
         // NagramX: measureText ignores the peer-time globe (rides a zero-width char), so reserve
         // its width or the status ticks collide with it and the time overflows a tick-less bubble.
-        timeTextWidth = timeWidth += com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.peerTimeGlyphReserve(currentAccount, messageObject.getDialogId());
+        timeTextWidth = timeWidth += com.dazewell.gram.chattimezone.ChatTimeZoneRenderer.peerTimeGlyphReserve(currentAccount, messageObject.getDialogId());
         // NagramX: same reason as the peer-time globe -- measureText ignores the armed-trigger bolt, so
         // reserve its width or it overlaps the status ticks.
-        timeTextWidth = timeWidth += com.radolyn.ayugram.eventschedule.EventScheduleHelper.timeGlyphReserve(currentAccount, messageObject);
+        timeTextWidth = timeWidth += com.dazewell.gram.eventschedule.EventScheduleHelper.timeGlyphReserve(currentAccount, messageObject);
         if (timeString instanceof SpannableStringBuilder) {
             if (edited && NaConfig.INSTANCE.getUseEditedIcon().Bool() && TimeStringHelper.editedDrawable != null) {
                 timeTextWidth = timeWidth += TimeStringHelper.editedDrawable.getIntrinsicWidth();
@@ -18917,7 +18917,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         if ((isChat && isMegagroup && (!isThreadChat || isMonoForum) && hasReplies)
                 // NagramX: same glyph for the locally derived count in one-to-one chats, where none of the above holds
                 || (!isThreadChat && !messageObject.scheduled && messageObject.searchType == 0 && getRepliesCount() > 0
-                    && com.radolyn.ayugram.personalreplies.PersonalRepliesController.isEligibleDialog(currentAccount, messageObject.getDialogId()))) {
+                    && com.dazewell.gram.personalreplies.PersonalRepliesController.isEligibleDialog(currentAccount, messageObject.getDialogId()))) {
             currentRepliesString = String.format("%s", LocaleController.formatShortNumber(getRepliesCount(), null));
             repliesTextWidth = (int) Math.ceil(Theme.chat_timePaint.measureText(currentRepliesString));
             float drawableWidth = Theme.chat_msgInRepliesDrawable.getIntrinsicWidth() * (Theme.chat_timePaint.getTextSize() - dp(2)) / Theme.chat_msgInRepliesDrawable.getIntrinsicHeight();
@@ -27779,7 +27779,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                         }
                     }
                     if (currentMessageObject.isOut()) {
-                        if (currentMessageObject.scheduled && com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(currentMessageObject)) {
+                        if (currentMessageObject.scheduled && com.dazewell.gram.ghosthold.GhostHoldController.isHeld(currentMessageObject)) {
                             // NagramX: a Ghost Hold row carries send_state = SENDING so it
                             // slots into the send pipeline, but it is not sending -- it is
                             // held on-device until Ghost Mode ends. Announce that held state

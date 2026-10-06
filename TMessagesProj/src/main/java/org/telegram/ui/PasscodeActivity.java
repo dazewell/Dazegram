@@ -326,13 +326,13 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
                         // the privacy-profiles feature validates against the same list, so the list lives
                         // in AutoLockHelper now and the chains are index lookups into it.
                         numberPicker.setMinValue(0);
-                        numberPicker.setMaxValue(tw.nekomimi.nekogram.helpers.AutoLockHelper.count() - 1);
-                        numberPicker.setValue(tw.nekomimi.nekogram.helpers.AutoLockHelper.index(SharedConfig.autoLockIn));
-                        numberPicker.setFormatter(value -> tw.nekomimi.nekogram.helpers.AutoLockHelper.label(tw.nekomimi.nekogram.helpers.AutoLockHelper.valueAt(value)));
+                        numberPicker.setMaxValue(com.dazewell.gram.helpers.AutoLockHelper.count() - 1);
+                        numberPicker.setValue(com.dazewell.gram.helpers.AutoLockHelper.index(SharedConfig.autoLockIn));
+                        numberPicker.setFormatter(value -> com.dazewell.gram.helpers.AutoLockHelper.label(com.dazewell.gram.helpers.AutoLockHelper.valueAt(value)));
                         builder.setView(numberPicker);
                         builder.setNegativeButton(LocaleController.getString(R.string.Done), (dialog, which) -> {
                             which = numberPicker.getValue();
-                            SharedConfig.autoLockIn = tw.nekomimi.nekogram.helpers.AutoLockHelper.valueAt(which);
+                            SharedConfig.autoLockIn = com.dazewell.gram.helpers.AutoLockHelper.valueAt(which);
                             listAdapter.notifyItemChanged(position);
                             UserConfig.getInstance(currentAccount).saveConfig(false);
                         });
@@ -1255,7 +1255,7 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
                         // NagramX: the sub-minute values the fork adds rendered as "0 minutes" through
                         // upstream's integer-division branch, so the whole summary goes through the
                         // same formatter the picker wheel uses.
-                        String val = tw.nekomimi.nekogram.helpers.AutoLockHelper.label(SharedConfig.autoLockIn);
+                        String val = com.dazewell.gram.helpers.AutoLockHelper.label(SharedConfig.autoLockIn);
                         textCell.setTextAndValue(LocaleController.getString(R.string.AutoLock), val, true);
                         textCell.setTag(Theme.key_windowBackgroundWhiteBlackText);
                         textCell.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));

@@ -207,22 +207,22 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
                         // back to the persisted cache when UserFull is not yet loaded so the
                         // marker isn't silently dropped on save.
                         String existingPayload = userInfo != null && userInfo.note != null
-                                ? com.radolyn.ayugram.chattimezone.ChatTimeZoneController.extractPayload(userInfo.note.text)
+                                ? com.dazewell.gram.chattimezone.ChatTimeZoneController.extractPayload(userInfo.note.text)
                                 : null;
                         if (existingPayload == null) {
-                            existingPayload = com.radolyn.ayugram.chattimezone.ChatTimeZoneController
+                            existingPayload = com.dazewell.gram.chattimezone.ChatTimeZoneController
                                     .getCachedPayload(currentAccount, user_id);
                         }
                         if (existingPayload != null) {
                             // Normalize through encodePayload so the appended marker matches
                             // the length that adjustedNoteLimit budgeted (e.g. "Asia/Kolkata"
                             // becomes "+0530" to avoid exceeding the server character limit).
-                            java.util.TimeZone parsedTz = com.radolyn.ayugram.chattimezone.ChatTimeZoneController.parsePayload(existingPayload);
+                            java.util.TimeZone parsedTz = com.dazewell.gram.chattimezone.ChatTimeZoneController.parsePayload(existingPayload);
                             String normalizedPayload = parsedTz != null
-                                    ? com.radolyn.ayugram.chattimezone.ChatTimeZoneController.encodePayload(parsedTz)
+                                    ? com.dazewell.gram.chattimezone.ChatTimeZoneController.encodePayload(parsedTz)
                                     : existingPayload;
                             String suffix = (note.text != null && note.text.length() > 0 ? "\n" : "")
-                                    + com.radolyn.ayugram.chattimezone.ChatTimeZoneController.MARKER + normalizedPayload;
+                                    + com.dazewell.gram.chattimezone.ChatTimeZoneController.MARKER + normalizedPayload;
                             note.text = (note.text != null ? note.text : "") + suffix;
                         }
                         getMessagesController().putUser(user, false);
@@ -350,7 +350,7 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
         lastNameField.setText(lastNameFromCard);
 
         noteField = new EditTextCell(context, getString(R.string.AddNotes), true, true,
-                com.radolyn.ayugram.chattimezone.ChatTimeZoneController.adjustedNoteLimit(
+                com.dazewell.gram.chattimezone.ChatTimeZoneController.adjustedNoteLimit(
                         currentAccount, user_id,
                         getMessagesController().config.contactNoteLengthLimit.get()),
                 resourcesProvider);
@@ -612,9 +612,9 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
                     if (userInfo.note != null) {
                         // Strip the chat-time-zone marker before showing the note for editing.
                         TLRPC.TL_textWithEntities clean = userInfo.note;
-                        if (userInfo.note.text != null && userInfo.note.text.indexOf(com.radolyn.ayugram.chattimezone.ChatTimeZoneController.MARKER) >= 0) {
+                        if (userInfo.note.text != null && userInfo.note.text.indexOf(com.dazewell.gram.chattimezone.ChatTimeZoneController.MARKER) >= 0) {
                             clean = new TLRPC.TL_textWithEntities();
-                            clean.text = com.radolyn.ayugram.chattimezone.ChatTimeZoneController.stripMarker(userInfo.note.text).toString();
+                            clean.text = com.dazewell.gram.chattimezone.ChatTimeZoneController.stripMarker(userInfo.note.text).toString();
                             clean.entities = userInfo.note.entities;
                         }
                         noteField.setText(clean);

@@ -40,7 +40,7 @@ public class ChatInputViewsContainer extends FrameLayout {
     // NagramX: only ChatActivity's composer opts in, so other hosts of this container keep the glass radii under MD3.
     private final boolean flatComposer;
     // NagramX: set only by ChatActivity when the MD3 Composer is on; it then paints this container's island.
-    public xyz.nextalone.nagram.ui.composer.ComposerMd3Surface md3Surface;
+    public com.dazewell.gram.composer.ComposerMd3Surface md3Surface;
 
     public ChatInputViewsContainer(@NonNull Context context) {
         this(context, false);
@@ -145,7 +145,7 @@ public class ChatInputViewsContainer extends FrameLayout {
 
     private int currentBlurredHeight;
     private int composerRadius(int radius) {
-        return flatComposer && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyComposer() ? 0 : dp(radius);
+        return flatComposer && com.dazewell.gram.helpers.InterfaceStyleController.applyComposer() ? 0 : dp(radius);
     }
 
     private void checkBlurredHeight(boolean force) {

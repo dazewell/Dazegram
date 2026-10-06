@@ -131,8 +131,8 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager.widget.PagerAdapter;
 import androidx.viewpager.widget.ViewPager;
 
-import com.radolyn.ayugram.chattimezone.ChatTimeZoneController;
-import com.radolyn.ayugram.chattimezone.ChatTimeZonePickerSheet;
+import com.dazewell.gram.chattimezone.ChatTimeZoneController;
+import com.dazewell.gram.chattimezone.ChatTimeZonePickerSheet;
 
 import org.telegram.PhoneFormat.PhoneFormat;
 import org.telegram.messenger.AccountInstance;
@@ -14050,7 +14050,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         TimeZone tz = ChatTimeZoneController.getForDialog(currentAccount, getChatTimeZoneDialogId());
                         CharSequence value;
                         if (tz != null) {
-                            value = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.formatNow(tz)
+                            value = com.dazewell.gram.chattimezone.ChatTimeZoneRenderer.formatNow(tz)
                                     + "  \u00B7  " + tz.getID();
                         } else {
                             value = getString(R.string.ChatTimeZoneNotSet);

@@ -953,7 +953,7 @@ public class WallpapersListActivity extends BaseFragment implements Notification
                 // NagramX: tile 0 is the live Monet colour — open the pattern-only preview seeded from the shared record. dialogId==0 keeps the per-chat tile 0 out of the global record.
                 ColorWallpaper colorWallpaper = new ColorWallpaper(Theme.THEME_BACKGROUND_SLUG, Theme.getMonetWallpaperColor(), 0, 0, 0, 45, 1.0f, false, null);
                 colorWallpaper.monetPattern = true;
-                xyz.nextalone.nagram.helper.MonetPatternHelper.Record record = xyz.nextalone.nagram.helper.MonetPatternHelper.getRecord();
+                com.dazewell.gram.helpers.MonetPatternHelper.Record record = com.dazewell.gram.helpers.MonetPatternHelper.getRecord();
                 if (record != null) {
                     colorWallpaper.patternId = record.patternId;
                     colorWallpaper.intensity = record.intensity;

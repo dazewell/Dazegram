@@ -427,7 +427,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         // Tapping the pill opens the hour-comparison sheet (local vs peer time zone).
         tzClockPill.setOnClickListener(v -> {
             if (parentFragment == null) return;
-            org.telegram.ui.ActionBar.BottomSheet sheet = com.radolyn.ayugram.chattimezone.ChatTimeZoneHoursSheet.show(
+            org.telegram.ui.ActionBar.BottomSheet sheet = com.dazewell.gram.chattimezone.ChatTimeZoneHoursSheet.show(
                     getContext(), currentAccount, parentFragment.getDialogId(), parentFragment.getResourceProvider(),
                     text -> {
                         ChatActivityEnterView enterView = parentFragment.getChatActivityEnterView();
@@ -454,7 +454,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             timeItem.setScaleType(ImageView.ScaleType.CENTER);
             timeItem.setVisibility(GONE);
             // NagramX: the timer draws from its own provider, not getThemedColor, so the Classic header and the header photo need a scoped one.
-            timeItem.setImageDrawable(timerDrawable = new TimerDrawable(context, parentFragment.isReport() ? resourcesProvider : com.radolyn.ayugram.headerbg.HeaderBgForeground.wrapChatHeader(resourcesProvider, parentFragment)));
+            timeItem.setImageDrawable(timerDrawable = new TimerDrawable(context, parentFragment.isReport() ? resourcesProvider : com.dazewell.gram.headerbg.HeaderBgForeground.wrapChatHeader(resourcesProvider, parentFragment)));
             timerDrawable.setBackgroundColor(0);
             addView(timeItem);
             secretChatTimer = needTime;
@@ -647,10 +647,10 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             // Messages / notes-to-self, where a peer time zone is meaningless.
             show = false;
         } else {
-            java.util.TimeZone tz = com.radolyn.ayugram.chattimezone.ChatTimeZoneController.getForDialog(currentAccount, dialogId);
-            show = tz != null && !com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.sameAsLocal(tz);
+            java.util.TimeZone tz = com.dazewell.gram.chattimezone.ChatTimeZoneController.getForDialog(currentAccount, dialogId);
+            show = tz != null && !com.dazewell.gram.chattimezone.ChatTimeZoneRenderer.sameAsLocal(tz);
             if (show) {
-                String text = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.formatNow(tz);
+                String text = com.dazewell.gram.chattimezone.ChatTimeZoneRenderer.formatNow(tz);
                 if (!text.contentEquals(tzClockPill.getText())) {
                     tzClockPill.setText(text);
                     tzClockPill.setContentDescription(getString(R.string.ChatTimeZone) + ", " + text);
@@ -1252,7 +1252,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
                 && titleTextView.getRightDrawable2() == mutedTitleIcon
                 && titleTextView.getRightDrawable() == emojiStatusDrawable) {
             offset = Math.max(0, emojiStatusDrawable.getIntrinsicWidth()
-                    - com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.emojiStatusGlyphWidth(emojiStatusDrawable));
+                    - com.dazewell.gram.chattimezone.ChatTimeZoneRenderer.emojiStatusGlyphWidth(emojiStatusDrawable));
         }
         boolean changed = titleRightDrawable2Offset != offset;
         titleRightDrawable2Offset = offset;
@@ -1595,7 +1595,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
                     useOnlineColor = isOnline[0];
                     // Append the peer's local time of their last-seen moment (no-op when not configured
                     // or when the status has no concrete timestamp, e.g. online/recently/week/month).
-                    newStatus = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.augmentLastSeen(newStatus, currentAccount, user);
+                    newStatus = com.dazewell.gram.chattimezone.ChatTimeZoneRenderer.augmentLastSeen(newStatus, currentAccount, user);
                 }
                 newSubtitle = newStatus;
             } else {
@@ -2039,7 +2039,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
 
     private int getThemedColor(int key) {
         // NagramX: only a chat's own header (parentFragment is set only for ChatActivity) takes the Classic header and header photo colours.
-        return parentFragment != null && !parentFragment.isReport() ? com.radolyn.ayugram.headerbg.HeaderBgForeground.color(parentFragment, key, Theme.getColor(key, resourcesProvider)) : Theme.getColor(key, resourcesProvider);
+        return parentFragment != null && !parentFragment.isReport() ? com.dazewell.gram.headerbg.HeaderBgForeground.color(parentFragment, key, Theme.getColor(key, resourcesProvider)) : Theme.getColor(key, resourcesProvider);
     }
 
     public void updateColors() {
@@ -2098,7 +2098,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
     private int trailingDecorationSlack() {
         if (titleTextView.getRightDrawable2() == null && titleTextView.getRightDrawable() == emojiStatusDrawable) {
             return emojiStatusDrawable.getIntrinsicWidth()
-                    - com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.emojiStatusGlyphWidth(emojiStatusDrawable);
+                    - com.dazewell.gram.chattimezone.ChatTimeZoneRenderer.emojiStatusGlyphWidth(emojiStatusDrawable);
         }
         return 0;
     }
@@ -2175,7 +2175,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         android.graphics.drawable.Drawable rd2 = titleTextView.getRightDrawable2();
         if (rd != null) {
             int rdw = (rd2 == null && rd instanceof org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable)
-                    ? com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.emojiStatusGlyphWidth((org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable) rd)
+                    ? com.dazewell.gram.chattimezone.ChatTimeZoneRenderer.emojiStatusGlyphWidth((org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable) rd)
                     : rd.getIntrinsicWidth();
             end += dp(4) + rdw;
         }

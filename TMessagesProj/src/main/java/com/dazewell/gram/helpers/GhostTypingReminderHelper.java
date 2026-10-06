@@ -1,0 +1,380 @@
+package com.dazewell.gram.helpers;
+
+import static org.telegram.messenger.LocaleController.getString;
+
+import android.util.SparseArray;
+
+import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.FileLog;
+import org.telegram.messenger.R;
+import org.telegram.messenger.UserConfig;
+import org.telegram.ui.ActionBar.BaseFragment;
+import org.telegram.ui.ActionBar.BottomSheet;
+import org.telegram.ui.Components.Bulletin;
+import org.telegram.ui.Components.BulletinFactory;
+
+import java.util.HashSet;
+
+import tw.nekomimi.nekogram.NekoConfig;
+
+/**
+ * Reminds the user, once per chat per Ghost Mode session, the first time they
+ * start typing into an empty composer while Ghost Mode is on -- ahead of the
+ * send, unlike {@link GhostSendWarningHelper} which fires at the last moment
+ * before a message-producing request is actually dispatched to tgnet.
+ * <p>
+ * This is the primary signal of the two, and the send-time warning defers to
+ * it: once this has reminded a chat during the current Ghost session, the
+ * send-time warning stays quiet in that chat (it asks via
+ * {@link #wasRemindedThisGhostSession}). Sending after being reminded is a
+ * deliberate act, and announcing it a second time is noise.
+ * <p>
+ * The send-time warning still fires in a chat this has never reminded, for
+ * everything this reminder structurally cannot see. It only watches
+ * ChatActivity's own composer, so forwards, media picked from the gallery,
+ * text shared in from another app, bot keyboard buttons, story and
+ * popup-notification replies, and the automatic retry of an unsent message all
+ * reach the network without ever passing through here. In a chat that *has*
+ * been reminded this Ghost session, the suppression is by destination chat and
+ * so covers those sends too, for the rest of that session -- the user was told
+ * in that chat and the second bulletin would repeat it. That holds only where
+ * the send names a destination the helper can resolve; one that doesn't, such
+ * as a bot WebView data submission, fails open and warns anyway. Narrowing by
+ * request type instead, to keep them warning, was reviewed and rejected: it
+ * goes wrong in both directions at once -- see GhostSendWarningHelper for why.
+ * <p>
+ * The deferral is keyed on a reminder that reached {@code show()} against an
+ * eligible, non-paused host for the right account, not on one that was merely
+ * due -- a reminder skipped because there was no host to show it on leaves the
+ * send-time warning as the only signal, and it fires. That check is an
+ * eligibility test, not proof the user's eyes were on it: the two known cases
+ * where a bulletin is attempted but covered (the passcode screen's INVISIBLE
+ * navigation layout, a PhotoViewer window) would suppress the later warning
+ * too. Both need the chat to be off-screen, which cannot be true at the moment
+ * a keystroke in that chat's own composer posts the reminder, so this is a
+ * narrower residual than it is for the send-time warning -- whose own trigger
+ * can arrive long after the fact, on a completing upload. Verifying real
+ * on-screen delivery would mean this feature owning presentation, which is out
+ * of proportion for a warning.
+ * <p>
+ * NagramX: Ghost Hold (PR #347) added a Hold Messages setting. This reminder
+ * goes silent whenever Hold Messages is on, regardless of whether the message
+ * the user is about to type will actually be one Hold holds. Most plain text,
+ * contacts and static locations are diverted upstream in SendMessagesHelper
+ * before they reach a request, with the Scheduled list's "Held" caption as
+ * feedback. Hold's allowlist excludes file-backed and unsupported attachments,
+ * paid and disappearing-message chats and a few other cases (see
+ * {@code GhostHoldSwitchNotice}); those reach the send-time warning below
+ * unaffected by this reminder's silence. No bulletin, and no reminded-state
+ * recorded for that chat, either way. That means a chat's
+ * reminder is still owed once Hold is later turned off again in the same
+ * Ghost session; see the live read of {@code holdMessagesWhileGhost} in
+ * {@link #onComposerTypingObservedUnsafe} for why this cannot be decided once
+ * at session start. With Hold off, the bulletin also grew a second line
+ * ({@code GhostTypingReminderHoldHint}) pointing the user at the setting.
+ */
+public class GhostTypingReminderHelper {
+
+    private GhostTypingReminderHelper() {
+    }
+
+    // NagramX: bumped whenever an observation of NekoConfig#isGhostModeActive()
+    // sees it go false->true. It lives here rather than in NekoConfig because
+    // isGhostModeActive() must stay a pure, side-effect-free predicate: Ghost
+    // Hold (PR #347) also calls it, from multiple threads, and relies on
+    // exactly that purity. See the docs/codemap/dead-ends.md entry for the two
+    // earlier shapes this went through.
+    private static int ghostSessionEpoch;
+
+    // NagramX: last value of the derived Ghost predicate this has seen, or null
+    // before the first observation. Null is deliberately not treated as false:
+    // the first observation in a process must not count as an activating edge,
+    // or opening Ghost settings while Ghost is already on would wipe reminders
+    // earned earlier in the same session.
+    private static Boolean lastObservedGhostActive;
+
+    // NagramX: the two-line bulletin has more to read than DURATION_PROLONG
+    // (5000ms) was set for -- one second longer, on device feedback. No stock
+    // constant sits above DURATION_PROLONG, so this is a plain literal named
+    // here rather than left inline at the call site.
+    private static final int TYPING_REMINDER_DURATION_MS = 6000;
+
+    // NagramX: call after anything that may have changed the config the Ghost
+    // predicate is derived from. It is deliberately an *observer* rather than a
+    // "Ghost was just switched on" notification, because the predicate has no
+    // single writer: NekoConfig#setGhostMode drives it from the master switch,
+    // but GhostModeActivity's individual signal rows and their long-press lock
+    // rows each move one input and can flip the derived value without going
+    // near setGhostMode. Asking the predicate here and comparing means every
+    // such path reports a real edge without each one having to know it caused
+    // one, and an extra call that changed nothing is a no-op.
+    // Callers are all UI-thread click/action handlers (every caller of
+    // setGhostMode/toggleGhostMode -- GhostModeActivity's menu action,
+    // DialogsActivity, MainTabsActivity, LaunchActivity's launcher-shortcut
+    // handler -- plus GhostModeActivity's own row callbacks), so no
+    // synchronization is needed here.
+    public static void onGhostSignalsChanged() {
+        boolean active = NekoConfig.isGhostModeActive();
+        Boolean previous = lastObservedGhostActive;
+        lastObservedGhostActive = active;
+        if (active && previous != null && !previous) {
+            ghostSessionEpoch++;
+        }
+    }
+
+    // NagramX: account -> this account's reminded-dialogs state for whichever
+    // Ghost session epoch it was last touched under. remindedSetForEpoch below
+    // is the single accessor all three call sites (the synchronous check, the
+    // posted runnable, and the send helper's read-only query) must go through -- it replaces a stale entry with a
+    // fresh one for the current epoch on the spot, so staleness is corrected
+    // wherever/whenever it's noticed rather than needing a separate reset step
+    // someone else must already have run first. That matters because Ghost
+    // Mode can cycle off->on more than once between this being queued and the
+    // posted runnable actually getting to run, with no composer callback ever
+    // observing the intermediate cycle -- a plain "did the epoch move since I
+    // queued this" check would still read a set some earlier, now-stale entry
+    // left behind; going through this accessor on every access instead means
+    // there is no separate stale set left lying around to read by mistake.
+    // See docs/codemap/dead-ends.md for why a previous, differently-shaped
+    // version of per-chat Ghost state was deleted, and why this one is not the
+    // same mistake. There are three access paths and every one of them is on
+    // the UI thread: ChatActivityEnterView's TextWatcher (itself only ever
+    // invoked on the main looper), the UI-thread runnable it posts below, and
+    // -- read-only -- GhostSendWarningHelper asking wasRemindedThisGhostSession
+    // from inside its own runOnUIThread block, never from the stage queue its
+    // hook runs on. Only the posted runnable ever adds a dialog id -- the
+    // TextWatcher path just reads membership and posts, and the send helper
+    // never records at all. So
+    // there is still no background-thread access and no synchronization is
+    // needed, unlike the deleted state that raced against the send path on
+    // Utilities.stageQueue.
+    private static final SparseArray<PerAccountState> stateByAccount = new SparseArray<>();
+
+    // NagramX: epoch is the ghostSessionEpoch value this account's reminded
+    // set is valid for, and userId is the account slot's logged-in user at the
+    // time it was created -- see remindedSetForEpoch, the only place that
+    // creates or replaces one of these.
+    private static final class PerAccountState {
+        final int epoch;
+        final long userId;
+        final HashSet<Long> reminded = new HashSet<>();
+
+        PerAccountState(int epoch, long userId) {
+            this.epoch = epoch;
+            this.userId = userId;
+        }
+    }
+
+    // NagramX: returns this account's reminded-dialogs set for the given Ghost
+    // session epoch, replacing it with a fresh empty one first if the stored
+    // entry belongs to an older epoch (including "no entry yet", epoch 0's
+    // initial default). Every caller -- the synchronous check and the posted
+    // runnable alike -- must read the current epoch and call this rather than
+    // caching a set reference across a Ghost Mode toggle, so a set that turns
+    // out to belong to an already-ended session is never mistaken for the
+    // current one.
+    // The stored user id is checked for the same reason: stateByAccount is keyed
+    // by the account *slot*, which is reused across a logout and a fresh login,
+    // while Ghost Mode is global and nothing about logging out advances the
+    // epoch. Dialog ids are peer ids and two users in one slot can genuinely
+    // share them (any group or channel both are in), so without this a chat the
+    // previous user was reminded about would read as reminded for the new one --
+    // and since the send-time warning now suppresses on exactly this answer,
+    // that would cost the new user a warning they never had. Treating a changed
+    // user id like a stale epoch keeps the fix inside this accessor, where
+    // staleness is already corrected on the spot, rather than needing a teardown
+    // hook to have run first.
+    // This check alone is not the whole mitigation, because it answers for
+    // whoever is logged in at the moment it is called. Both callers that cross a
+    // main-loop turn -- the posted reminder runnable and the send-time query --
+    // additionally carry the user id they started with and bail if the slot has
+    // changed hands since, so a write cannot land in the wrong user's set and a
+    // read cannot answer for a send that was not theirs.
+    private static HashSet<Long> remindedSetForEpoch(int account, int epoch) {
+        long userId = UserConfig.getInstance(account).getClientUserId();
+        PerAccountState state = stateByAccount.get(account);
+        if (state == null || state.epoch != epoch || state.userId != userId) {
+            state = new PerAccountState(epoch, userId);
+            stateByAccount.put(account, state);
+        }
+        return state.reminded;
+    }
+
+    // NagramX: the query GhostSendWarningHelper uses to stay quiet in a chat this
+    // Ghost session has already reminded about. UI thread only, exactly like every
+    // other access to this state -- that caller reads it from inside its own
+    // runOnUIThread block, never from the stage queue its hook runs on. It goes
+    // through remindedSetForEpoch with a freshly-read ghostSessionEpoch for the
+    // same reason the posted runnable below does: a set that belongs to an
+    // already-ended Ghost session must never answer for the current one, and
+    // reading through the accessor is what guarantees there is no stale set left
+    // lying around to read by mistake.
+    // Returns true only for a chat where a bulletin reached show() against an
+    // eligible, non-paused host -- that is the only thing added to the set -- so
+    // a reminder that was due but had nowhere to show leaves this false and the
+    // send-time warning still fires. See the class javadoc for why that is an
+    // eligibility test rather than proof of delivery, and why the residual is
+    // narrow on this path specifically.
+    static boolean wasRemindedThisGhostSession(int account, long dialogId) {
+        return remindedSetForEpoch(account, ghostSessionEpoch).contains(dialogId);
+    }
+
+    /**
+     * Call from the composer's own text-change callback, on the UI thread, on the
+     * true empty-to-non-empty transition of the composer text. fragment is the
+     * chat fragment hosting the composer -- callers must already have confirmed
+     * it is non-null (i.e. this is the real chat composer, not one of the other
+     * surfaces sharing the same enter-view widget) before calling this.
+     */
+    public static void onComposerTypingObserved(int account, long dialogId, BaseFragment fragment) {
+        try {
+            onComposerTypingObservedUnsafe(account, dialogId, fragment);
+        } catch (Throwable t) {
+            FileLog.e("GhostTypingReminderHelper: swallowed unexpected failure", t);
+        }
+    }
+
+    private static void onComposerTypingObservedUnsafe(int account, long dialogId, BaseFragment fragment) {
+        if (!NekoConfig.isGhostModeActive()) {
+            return;
+        }
+        // NagramX: read live, not cached at Ghost session start -- Hold Messages
+        // can be toggled at any point during a Ghost session, and a chat must be
+        // reminded (and recorded reminded) the first time it's typed into after
+        // Hold goes back off, exactly as if that were the first qualifying
+        // keystroke of a fresh session. While Hold is on, supported sends are
+        // diverted upstream in SendMessagesHelper before reaching a request, so
+        // there is usually nothing to remind about here.
+        // The ones GhostHoldController.maybeHold still lets through -- a chat
+        // isHoldableSend rejects, or a persistHeld failure -- get the
+        // send-time warning instead, and recording a reminder that was never
+        // shown here would wrongly suppress that warning too.
+        if (NekoConfig.holdMessagesWhileGhost.Bool()) {
+            return;
+        }
+
+        HashSet<Long> reminded = remindedSetForEpoch(account, ghostSessionEpoch);
+        if (reminded.contains(dialogId)) {
+            return;
+        }
+
+        // NagramX: captured before posting. remindedSetForEpoch resolves the set
+        // against whoever is logged into this slot at the moment it is called, and
+        // it is called again inside the runnable a main-loop turn later -- so if
+        // the slot is logged out and reused in between, the runnable would record
+        // this chat into the *new* user's set. That is the one direction that
+        // actually costs something: the send-time warning suppresses on exactly
+        // this answer, so the new user would silently lose a warning in a chat
+        // they were never reminded about (two users in one slot can share a dialog
+        // id through any group both are in). Binding the state to a user id is no
+        // use if the write can arrive after the user changed, so the write is
+        // dropped instead.
+        final long dispatchUserId = UserConfig.getInstance(account).getClientUserId();
+
+        // NagramX: post rather than show inline -- this runs from inside the
+        // TextWatcher's own call stack (checkSendButton, delegate callbacks and
+        // layout updates all happen around it), and showing a bulletin there would
+        // interleave a view-hierarchy change with the composer's own in-flight
+        // update. Posting lets that unwind first, mirroring how
+        // GhostSendWarningHelper hops onto the UI thread from its own caller.
+        AndroidUtilities.runOnUIThread(() -> {
+            try {
+                // NagramX: re-check here, not just above -- Ghost Mode can be toggled
+                // off in the moment between posting this and it actually running.
+                if (!NekoConfig.isGhostModeActive()) {
+                    return;
+                }
+                // NagramX: re-read here too, for the same reason as the outer check
+                // above -- Hold Messages can be switched on in the gap between
+                // posting this and it running, and if so this chat must not be
+                // recorded reminded, or a later Hold-off keystroke in it would be
+                // wrongly suppressed.
+                if (NekoConfig.holdMessagesWhileGhost.Bool()) {
+                    return;
+                }
+                // NagramX: the slot changed hands while this was queued, so the
+                // chat this was about is not this user's chat and the reminder is
+                // neither theirs to see nor theirs to have recorded against them.
+                if (UserConfig.getInstance(account).getClientUserId() != dispatchUserId) {
+                    return;
+                }
+                // NagramX: re-read the epoch and go through remindedSetForEpoch again
+                // rather than reusing the outer scope's `reminded` reference -- Ghost
+                // Mode can cycle off->on any number of times, including more than
+                // once, in the window between posting this and it running, with no
+                // composer callback ever observing an intermediate cycle to have
+                // reset anything. Re-deriving the set from the live epoch here means
+                // it is always the right one for whatever session is current right
+                // now, never a stale one left over from whichever session queued this.
+                HashSet<Long> currentReminded = remindedSetForEpoch(account, ghostSessionEpoch);
+                // NagramX: two qualifying transitions in the same chat (e.g. a fast
+                // type-delete-retype) can each post one of these before either runs,
+                // and both would have passed the membership check above against the
+                // same not-yet-updated set. Recheck immediately before showing so at
+                // most one of them actually spends the budget and displays a bulletin.
+                if (currentReminded.contains(dialogId)) {
+                    return;
+                }
+                if (tryShowBulletin(fragment, account)) {
+                    currentReminded.add(dialogId);
+                }
+            } catch (Throwable t) {
+                try {
+                    FileLog.e("GhostTypingReminderHelper: swallowed unexpected failure showing bulletin", t);
+                } catch (Throwable ignored) {
+                }
+            }
+        });
+    }
+
+    // NagramX: mirrors GhostSendWarningHelper#tryShowBulletin's eligibility
+    // checks (canShowBulletin, paused fragment, wrong account, empty-bulletin
+    // outcome) -- kept as a separate copy rather than a shared call so each
+    // helper stays self-contained and owns its own private bulletin plumbing.
+    // Returns whether a bulletin was actually attempted; the caller only spends
+    // this chat's one-time reminder budget when this returns true.
+    private static boolean tryShowBulletin(BaseFragment fragment, int account) {
+        if (fragment == null || !BulletinFactory.canShowBulletin(fragment)) {
+            return false;
+        }
+        if (fragment.isPaused()) {
+            return false;
+        }
+        if (fragment.getCurrentAccount() != account) {
+            return false;
+        }
+
+        // NagramX: createErrorBulletinSubtitle builds at Bulletin.DURATION_SHORT
+        // (1.5s), which is too short to read two lines and still have a moment to
+        // act on them. TYPING_REMINDER_DURATION_MS (6s) is one second past
+        // DURATION_PROLONG (5s, the codebase's existing long-form value, set the
+        // same way at e.g. DialogsActivity.java:6303) -- on-device feedback found
+        // 5s tight for two lines of reading. No custom timer either way. Note
+        // this is an upper bound, not a guarantee: the bulletin slot is global,
+        // so anything shown after this replaces it.
+        // Two-line rather than createErrorBulletin's single line: the honest
+        // combined sentence runs 104 characters, needing the full duration just
+        // to read; the two-line layout (title = GhostTypingReminder, subtitle =
+        // GhostTypingReminderHoldHint) is the same stock surface already used at
+        // e.g. ChatAttachAlertDocumentLayout.java:870 for a short label plus a
+        // detail line, and backs Bulletin.TwoLineLottieLayout with the same
+        // chats_infotip icon createErrorBulletin used.
+        Bulletin bulletin = resolveBulletinFactory(fragment)
+                .createErrorBulletinSubtitle(getString(R.string.GhostTypingReminder), getString(R.string.GhostTypingReminderHoldHint), fragment.getResourceProvider())
+                .setDuration(TYPING_REMINDER_DURATION_MS);
+        if (bulletin instanceof Bulletin.EmptyBulletin) {
+            return false;
+        }
+        bulletin.show();
+        return true;
+    }
+
+    // NagramX: mirrors GhostSendWarningHelper#resolveBulletinFactory -- see that
+    // method for why global() itself isn't used here.
+    private static BulletinFactory resolveBulletinFactory(BaseFragment fragment) {
+        if (fragment.visibleDialog instanceof BottomSheet) {
+            return BulletinFactory.of(((BottomSheet) fragment.visibleDialog).container, fragment.getResourceProvider());
+        }
+        return BulletinFactory.of(fragment);
+    }
+}

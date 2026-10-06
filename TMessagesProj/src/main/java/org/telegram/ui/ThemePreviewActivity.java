@@ -2498,7 +2498,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
             // day/night flip or a theme switch, so clearing Theme.getActiveTheme() in the callback could wipe the
             // override of an unrelated (possibly standard) theme. We only ever clear this captured Monet theme.
             final Theme.ThemeInfo initiatingTheme = Theme.getActiveTheme();
-            xyz.nextalone.nagram.helper.MonetPatternHelper.applyAsync(currentAccount, selectedPattern, currentIntensity, isMotion, success -> {
+            com.dazewell.gram.helpers.MonetPatternHelper.applyAsync(currentAccount, selectedPattern, currentIntensity, isMotion, success -> {
                 applyingMonetPattern = false;
                 if (!success) {
                     if (getParentActivity() != null) {

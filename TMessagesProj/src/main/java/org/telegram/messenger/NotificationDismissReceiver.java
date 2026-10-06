@@ -24,11 +24,11 @@ public class NotificationDismissReceiver extends BroadcastReceiver {
         if (!UserConfig.isValidAccount(currentAccount)) {
             return;
         }
-        String coverToken = intent.getStringExtra(com.radolyn.ayugram.chatprivacy.NotificationCoverController.EXTRA_COVER_TOKEN);
+        String coverToken = intent.getStringExtra(com.dazewell.gram.chatprivacy.NotificationCoverController.EXTRA_COVER_TOKEN);
         if (!TextUtils.isEmpty(coverToken)) {
             ApplicationLoader.postInitApplication();
-            int event = intent.getIntExtra(com.radolyn.ayugram.chatprivacy.NotificationCoverController.EXTRA_COVER_EVENT, 0);
-            com.radolyn.ayugram.chatprivacy.NotificationCoverController.handleInteraction(currentAccount, coverToken, event);
+            int event = intent.getIntExtra(com.dazewell.gram.chatprivacy.NotificationCoverController.EXTRA_COVER_EVENT, 0);
+            com.dazewell.gram.chatprivacy.NotificationCoverController.handleInteraction(currentAccount, coverToken, event);
             return;
         }
         long dialogId = intent.getLongExtra("dialogId", 0);
