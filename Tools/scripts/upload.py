@@ -56,9 +56,9 @@ def get_commit_info():
     # Fall back to the specific commit when we know its id, so the "commit details"
     # link opens the commit the caption names rather than the whole commits list.
     default_commit_url = (
-        f"https://github.com/dazewell/Dazegram/commit/{commit_id_raw}"
+        f"https://github.com/dazewell/DwellGram/commit/{commit_id_raw}"
         if commit_id_raw != "unknown"
-        else "https://github.com/dazewell/Dazegram/commits"
+        else "https://github.com/dazewell/DwellGram/commits"
     )
     commit_url = os.environ.get("COMMIT_URL") or default_commit_url
     commit_message = os.environ.get("COMMIT_MESSAGE") or "unknown"
@@ -70,14 +70,14 @@ def get_commit_info():
     # "feature/x"); the workflow no longer builds this URL itself so encoding
     # always happens exactly once, here.
     default_branch_url = (
-        f"https://github.com/dazewell/Dazegram/tree/{urlquote(branch, safe='/')}"
+        f"https://github.com/dazewell/DwellGram/tree/{urlquote(branch, safe='/')}"
         if branch != "unknown"
-        else "https://github.com/dazewell/Dazegram"
+        else "https://github.com/dazewell/DwellGram"
     )
     branch_url = os.environ.get("BRANCH_URL") or default_branch_url
     pr_number = (os.environ.get("PR_NUMBER") or "").strip()
     pr_title = os.environ.get("PR_TITLE") or ""
-    default_pr_url = f"https://github.com/dazewell/Dazegram/pull/{pr_number}" if pr_number else ""
+    default_pr_url = f"https://github.com/dazewell/DwellGram/pull/{pr_number}" if pr_number else ""
     pr_url = os.environ.get("PR_URL") or default_pr_url
     return commit_id, commit_url, commit_message, branch, branch_url, pr_number, pr_title, pr_url
 
