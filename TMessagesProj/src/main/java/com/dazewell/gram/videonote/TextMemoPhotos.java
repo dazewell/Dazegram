@@ -13,6 +13,7 @@ import android.webkit.MimeTypeMap;
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
+import org.telegram.messenger.DispatchQueue;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.MediaController;
@@ -44,6 +45,8 @@ final class TextMemoPhotos {
     // A video is copied whole before it is sent, so a very large one is refused rather than filling the cache
     private static final long MAX_VIDEO_BYTES = 1024L * 1024 * 1024;
     private static final long PROGRESS_INTERVAL_MS = 100;
+    // Its own queue: a gigabyte pulled from a cloud provider would hold the app-wide Utilities.globalQueue for minutes
+    private static final DispatchQueue copyQueue = new DispatchQueue("textMemoCopy");
 
     /** One picked item, from the picker's result until its copy resolves. Touched from the UI thread and the copy thread. */
     static final class Pick {
@@ -63,7 +66,7 @@ final class TextMemoPhotos {
         /** On the UI thread, throttled. */
         void onProgress(Pick pick, float progress);
 
-        /** On the UI thread, once per pick that wasn't cancelled; null when it was refused or failed. */
+        /** On the UI thread, once per pick that started copying; null when it was cancelled, refused or failed. */
         void onDone(Pick pick, String path);
     }
 
@@ -109,7 +112,7 @@ final class TextMemoPhotos {
 
     /** Copies the picks to the cache one after another, in order, off the UI thread. A cancelled pick is skipped or stopped at its next chunk. */
     static void copyAsync(List<Pick> picks, Listener listener) {
-        Utilities.globalQueue.postRunnable(() -> {
+        copyQueue.postRunnable(() -> {
             for (Pick pick : picks) {
                 if (pick.cancelled) {
                     continue;
@@ -135,8 +138,11 @@ final class TextMemoPhotos {
             return null;
         }
         String name = FileLoader.fixFileName(MediaController.getFileName(pick.uri));
-        if (name == null) {
+        if (TextUtils.isEmpty(name)) {
             name = "memo_" + System.currentTimeMillis() + (video ? ".mp4" : ".jpg");
+        } else if (video && !isVideo(name)) {
+            // The video flag is re-derived from the extension when sending; named before the collision check so nothing is renamed over
+            name += ".mp4";
         }
         File dir = AndroidUtilities.getSharingDirectory();
         dir.mkdirs();
@@ -189,13 +195,6 @@ final class TextMemoPhotos {
         }
         if (!finished) {
             return null;
-        }
-        if (video && !isVideo(out.getAbsolutePath())) {
-            // The copy keeps the provider's file name, and the flag is re-derived from its extension when sending
-            File renamed = new File(out.getAbsolutePath() + ".mp4");
-            if (out.renameTo(renamed)) {
-                return renamed.getAbsolutePath();
-            }
         }
         return out.getAbsolutePath();
     }

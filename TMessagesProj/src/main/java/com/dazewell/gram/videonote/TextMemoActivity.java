@@ -934,6 +934,8 @@ public class TextMemoActivity extends Activity {
 
     // Send and the photo button wait while any copy runs
     private void updatePending() {
+        // A long copy is watched, not touched: a screen timeout would stop the memo and cancel it
+        root.setKeepScreenOn(!pending.isEmpty());
         attachButton.setAlpha(pending.isEmpty() ? 1f : .5f);
         updateSendButton(true);
     }
