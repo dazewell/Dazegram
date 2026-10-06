@@ -476,7 +476,7 @@ and `:8780-8782`. Because of the alias, those writes land on the **original
 forwarded message's media too**, not just the copy's.
 
 This is upstream code, not a fork addition. Filed as
-[#267](https://github.com/dazewell/Dazegram/issues/267). The copy-send route
+[#267](https://github.com/dazewell/DwellGram/issues/267). The copy-send route
 avoids it because it builds fresh media from a local path instead of aliasing
 (`tw/nekomimi/nekogram/helpers/MessageHelper.createSendingMediaInfo`).
 
@@ -672,7 +672,7 @@ to flag it.
 Cost the `#repost-spread` instrumentation a full device test cycle: the
 `NAX_SPREAD_DIAG` logging was written with `Log.d`, produced zero logcat output
 on the installed staging APK, and had to be reissued at `Log.e`. Referenced by
-[PR #270](https://github.com/dazewell/Dazegram/pull/270).
+[PR #270](https://github.com/dazewell/DwellGram/pull/270).
 
 *(Established 2026-09-02.)*
 
@@ -1340,9 +1340,9 @@ and the formatting gone, pointing at the wrong half.
 
 `process-rules.yml` declares its tag job as `name: Every commit carries a #tag`, unquoted (`.github/workflows/process-rules.yml:28`). In YAML a space-preceded `#` starts a comment, so everything from `#tag` on is discarded and the job's real name — and therefore the **GitHub status-check context** it reports under — is the truncated literal `Every commit carries a` (22 chars, trailing space trimmed). Verified live with `gh pr view 334 --json statusCheckRollup --jq '.statusCheckRollup[].name'`, which returns exactly `Every commit carries a` (2026-09-10).
 
-The no-bypass ruleset that gates merges into `dev` requires **that exact truncated string** as its one status check: ruleset `22861936` (`dev required checks (no bypass)`), `rule=required_status_checks`, context `Every commit carries a`, `strict=false`, `bypass_actors: []` — all confirmed via `gh api repos/dazewell/Dazegram/rulesets/22861936` (2026-09-10). **Quoting the job name to "fix" the YAML would rename the check context to `Every commit carries a #tag`; the required context `Every commit carries a` would then never report, and every PR into `dev` would sit forever waiting on a check that no longer runs — a hard deadlock against the live ruleset.** If the name is ever corrected, the ruleset's required context must be updated **first**, in a separate step, or in lockstep. This is why the tag job is deliberately out of scope for any "tidy the workflow YAML" change.
+The no-bypass ruleset that gates merges into `dev` requires **that exact truncated string** as its one status check: ruleset `22861936` (`dev required checks (no bypass)`), `rule=required_status_checks`, context `Every commit carries a`, `strict=false`, `bypass_actors: []` — all confirmed via `gh api repos/dazewell/DwellGram/rulesets/22861936` (2026-09-10). **Quoting the job name to "fix" the YAML would rename the check context to `Every commit carries a #tag`; the required context `Every commit carries a` would then never report, and every PR into `dev` would sit forever waiting on a check that no longer runs — a hard deadlock against the live ruleset.** If the name is ever corrected, the ruleset's required context must be updated **first**, in a separate step, or in lockstep. This is why the tag job is deliberately out of scope for any "tidy the workflow YAML" change.
 
-The reason this ruleset is *separate* from the pre-existing `dev` ruleset rather than a rule added to it: ruleset `18550420` (`dev no-force no-delete`; until 2026-09-25 named `… + Copilot review` and carrying a `copilot_code_review` rule, removed so reviews are only ever requested by hand) carries `bypass_actors` including `RepositoryRole 5` (admin) at `bypass_mode: always` (plus a DeployKey and an Integration, same mode) — confirmed via `gh api repos/dazewell/Dazegram/rulesets/18550420` (2026-09-10). An agent runs under dazewell's admin token, so any required check added to `18550420` would be bypassed for exactly the actor it is meant to bind. Ruleset `22861936` has an **empty** `bypass_actors` list, which is why it is a *separate* ruleset: the required `Every commit carries a` context therefore applies to every actor, the admin token included, so no merge an agent can issue lands a commit that fails the tag check. That — tag integrity — is the **only** property this ruleset enforces. It does **not** enforce root-session identity, the named in-chat approval, gate freshness at merge time, or the `.github/sync/**` exclusion; each of those rests entirely on the agent-process prose, with no platform control behind it. So do not read `22861936` as the safety net for conditional agent merge authority as a whole — it is the safety net for exactly one property, and the rest of the authority is only as strong as the prose that describes it. (What `gh pr merge --admin` would do against an empty-`bypass_actors` ruleset has not been tested here, so this file makes no claim either way; the `--admin`/`--auto` prohibition is a rule the agent process imposes on itself, not an assertion about platform behaviour.)
+The reason this ruleset is *separate* from the pre-existing `dev` ruleset rather than a rule added to it: ruleset `18550420` (`dev no-force no-delete`; until 2026-09-25 named `… + Copilot review` and carrying a `copilot_code_review` rule, removed so reviews are only ever requested by hand) carries `bypass_actors` including `RepositoryRole 5` (admin) at `bypass_mode: always` (plus a DeployKey and an Integration, same mode) — confirmed via `gh api repos/dazewell/DwellGram/rulesets/18550420` (2026-09-10). An agent runs under dazewell's admin token, so any required check added to `18550420` would be bypassed for exactly the actor it is meant to bind. Ruleset `22861936` has an **empty** `bypass_actors` list, which is why it is a *separate* ruleset: the required `Every commit carries a` context therefore applies to every actor, the admin token included, so no merge an agent can issue lands a commit that fails the tag check. That — tag integrity — is the **only** property this ruleset enforces. It does **not** enforce root-session identity, the named in-chat approval, gate freshness at merge time, or the `.github/sync/**` exclusion; each of those rests entirely on the agent-process prose, with no platform control behind it. So do not read `22861936` as the safety net for conditional agent merge authority as a whole — it is the safety net for exactly one property, and the rest of the authority is only as strong as the prose that describes it. (What `gh pr merge --admin` would do against an empty-`bypass_actors` ruleset has not been tested here, so this file makes no claim either way; the `--admin`/`--auto` prohibition is a rule the agent process imposes on itself, not an assertion about platform behaviour.)
 
 One live behaviour to expect around all this: GitHub computes `mergeable` and `mergeStateStatus` **asynchronously**, and they are distinct fields — `mergeable` settles to `MERGEABLE`/`CONFLICTING`, while `CLEAN` is a value of `mergeStateStatus`. After ruleset `22861936` was created, open PRs read `mergeable: UNKNOWN` (and `mergeStateStatus: UNKNOWN`) for minutes before `mergeable` settled to `MERGEABLE` and `mergeStateStatus` to `CLEAN`, and a PR that had already MERGED read `UNKNOWN` indefinitely (2026-09-10). So `mergeable: MERGEABLE` is never a freshness guarantee — it answers "does this textually merge", not "is this green" — and the instant any merge moves `dev`, every other open PR's `mergeStateStatus` drops back to `UNKNOWN` until a background job recomputes it. Gate on `mergeStateStatus == CLEAN` plus a head-pinned green head check, re-read each time by polling `mergeStateStatus` itself, never on a cached or just-observed `mergeable`.
 
@@ -1351,7 +1351,7 @@ One live behaviour to expect around all this: GitHub computes `mergeable` and `m
 ## Event-schedule per-account state survives logout unless explicitly torn down, and a BottomSheet picker can straddle the logout
 
 Account slot indices are reused: logging out of an account and logging into a
-new one reuses the same numeric slot. Every `com.radolyn.ayugram.eventschedule`
+new one reuses the same numeric slot. Every `com.dazewell.gram.eventschedule`
 store keys off that slot, not a stable identity, so nothing is cleared for free
 on logout. `MessagesController.performLogout` is the single teardown chokepoint
 (`MessagesController.java:16388-16402`, beside the `PasscodeHelper`/preset
@@ -2249,7 +2249,7 @@ instead.
 
 ## A second manifest-enabled `<activity-alias>` gives existing users two launcher entries
 
-Confirmed on-device 2026-09-20 on DazegramX: after an update that shipped a new
+Confirmed on-device 2026-09-20 on DwellGramX: after an update that shipped a new
 launcher alias with `android:enabled="true"`, the launcher showed **two** entries
 for the app, the previously chosen icon and the new one.
 

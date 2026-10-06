@@ -322,12 +322,12 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
     // is built from the tab's own context and handed over, so nothing static pins an Activity.
     private void checkPrivacyProfileBadge() {
         if (tabsView != null && tabs[INDEX_SETTINGS] != null) {
-            com.radolyn.ayugram.privacyprofiles.PrivacyProfile active =
-                com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.showActiveOnSettingsTab()
-                    ? com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveProfile()
+            com.dazewell.gram.privacyprofiles.PrivacyProfile active =
+                com.dazewell.gram.privacyprofiles.PrivacyProfilesController.showActiveOnSettingsTab()
+                    ? com.dazewell.gram.privacyprofiles.PrivacyProfilesController.getActiveProfile()
                     : null;
             android.graphics.drawable.Drawable icon = active != null
-                ? com.radolyn.ayugram.privacyprofiles.PrivacyProfileIcons.circleDrawable(tabs[INDEX_SETTINGS].getContext(), active, 16)
+                ? com.dazewell.gram.privacyprofiles.PrivacyProfileIcons.circleDrawable(tabs[INDEX_SETTINGS].getContext(), active, 16)
                 : null;
             tabs[INDEX_SETTINGS].setActiveProfileBadge(icon,
                 active != null ? LocaleController.formatString(R.string.PrivacyProfileIsOn, active.name) : null, true);
@@ -349,8 +349,8 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         tabletLayout = false;
 
         // NagramX: snapshot the setting for this rebuilt navigation view; the toggle rebuilds the activity.
-        md3BottomNavigation = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyBottomNavigation();
-        roundedBottomNavigation = xyz.nextalone.nagram.helpers.InterfaceStyleController.roundedBottomNavigation();
+        md3BottomNavigation = com.dazewell.gram.helpers.InterfaceStyleController.applyBottomNavigation();
+        roundedBottomNavigation = com.dazewell.gram.helpers.InterfaceStyleController.roundedBottomNavigation();
         final boolean compact = MainTabsHelper.isMainTabsHideTitleStyle();
         final int mainTabsMargin = MainTabsHelper.getMainTabsMargin();
         final boolean hideContacts = MainTabsHelper.isContactsTabHidden();
@@ -1448,8 +1448,8 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                 o.addGap();
             }
             // NagramX: privacy-profile quick switch, built by its own feature class
-            if (SharedConfig.passcodeHash.length() > 0 && !com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getProfiles().isEmpty()) {
-                com.radolyn.ayugram.privacyprofiles.PrivacyProfileQuickSwitch.addTo(o, this);
+            if (SharedConfig.passcodeHash.length() > 0 && !com.dazewell.gram.privacyprofiles.PrivacyProfilesController.getProfiles().isEmpty()) {
+                com.dazewell.gram.privacyprofiles.PrivacyProfileQuickSwitch.addTo(o, this);
             }
             o.add(R.drawable.msg_settings, getString(R.string.NekoSettings), () -> presentFragment(new NekoSettingsActivity()));
             o.add(R.drawable.web_browser, getString(R.string.InappBrowser), () -> presentFragment(new WebBrowserSettings(null)), () -> BrowserUtils.openBrowserHome(currentAccount, null, true));
@@ -1499,7 +1499,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         }
         // NagramX: self-hiding Message Triggers row -- see MessageTriggersMenu, which enumerates
         // live entries itself rather than trusting hasAny() (store membership isn't liveness).
-        com.radolyn.ayugram.eventschedule.MessageTriggersMenu.addTo(o, this);
+        com.dazewell.gram.eventschedule.MessageTriggersMenu.addTo(o, this);
     }
 
     // NagramX: under MD3 each tab is centred in the panel's height, so ItemOptions, which centres the card on the

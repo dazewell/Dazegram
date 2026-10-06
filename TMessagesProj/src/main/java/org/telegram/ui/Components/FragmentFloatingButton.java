@@ -78,17 +78,17 @@ public class FragmentFloatingButton extends FrameLayout implements FactorAnimato
             iBlur3ColorProviderTabs = new BlurredBackgroundColorProviderThemed(null, Theme.key_dialogBackground) {
                 @Override
                 public int getStrokeColorTop() {
-                    return xyz.nextalone.nagram.helpers.InterfaceStyleController.applyButtons() ? 0 : isDark() ? 0x06FFFFFF : 0x11000000; // NagramX: flat under MD3 Buttons
+                    return com.dazewell.gram.helpers.InterfaceStyleController.applyButtons() ? 0 : isDark() ? 0x06FFFFFF : 0x11000000; // NagramX: flat under MD3 Buttons
                 }
 
                 @Override
                 public int getStrokeColorBottom() {
-                    return xyz.nextalone.nagram.helpers.InterfaceStyleController.applyButtons() ? 0 : isDark() ? 0x11FFFFFF : 0x20000000; // NagramX: flat under MD3 Buttons
+                    return com.dazewell.gram.helpers.InterfaceStyleController.applyButtons() ? 0 : isDark() ? 0x11FFFFFF : 0x20000000; // NagramX: flat under MD3 Buttons
                 }
 
                 @Override
                 public int getShadowColor() {
-                    return xyz.nextalone.nagram.helpers.InterfaceStyleController.applyButtons() ? 0 : isDark() ? 0x04FFFFFF : 0x20000000; // NagramX: flat under MD3 Buttons
+                    return com.dazewell.gram.helpers.InterfaceStyleController.applyButtons() ? 0 : isDark() ? 0x04FFFFFF : 0x20000000; // NagramX: flat under MD3 Buttons
                 }
             };
             iBlur3SourceColor = new BlurredBackgroundSourceColor();
@@ -97,7 +97,7 @@ public class FragmentFloatingButton extends FrameLayout implements FactorAnimato
             iBlur3Background.setStrokeWidth(dpf2(0.4f), dpf2(0.4f));
             iBlur3Background.setRadius(dp(18));
             iBlur3Background.setPadding(dp(5.66f));
-            xyz.nextalone.nagram.ui.Md3ButtonColorProvider.elevate(this, iBlur3Background); // NagramX: the flat sub-FAB needs the main FAB's lift to stay visible
+            com.dazewell.gram.ui.Md3ButtonColorProvider.elevate(this, iBlur3Background); // NagramX: the flat sub-FAB needs the main FAB's lift to stay visible
         }
 
         updateColors();

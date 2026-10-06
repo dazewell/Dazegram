@@ -495,7 +495,7 @@ jobs:
           if [ "$PUSHED" = "1" ]; then
             # The atomic push already succeeded; this failure is post-push (e.g. the
             # verify step). Never say "nothing pushed" — the refs have moved.
-            TEXT="⚠️ Dazegram sync: the atomic push SUCCEEDED but a post-push step failed. The refs have ALREADY advanced — do NOT re-run as if nothing happened.
+            TEXT="⚠️ DwellGram sync: the atomic push SUCCEEDED but a post-push step failed. The refs have ALREADY advanced — do NOT re-run as if nothing happened.
           dev  is now: ${NEW_DEV:-unknown}
           nbase is now: ${NEW_SNAP:-unknown}
           Verify with: git fetch origin dev nbase && git rev-parse origin/dev origin/nbase
@@ -541,7 +541,7 @@ jobs:
             # already capped to ~10 entries but not to a character count) is
             # truncated, to whatever budget is left under Telegram's 4096-char
             # sendMessage limit.
-            HEAD="⚠️ Dazegram sync blocked (${REASON}). dev/nbase not pushed.
+            HEAD="⚠️ DwellGram sync blocked (${REASON}). dev/nbase not pushed.
           PRE: ${PRE:-unknown}
           anchor: ${ANCHOR:-unknown}
           source: ${NEW_SRC:-unresolved}${SNAP_DETAIL}"

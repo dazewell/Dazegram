@@ -5084,11 +5084,11 @@ public class MediaDataController extends BaseController {
                 } else {
                     List<ShortcutInfoCompat> currentShortcuts = ShortcutManagerCompat.getDynamicShortcuts(ApplicationLoader.applicationContext);
                     if (currentShortcuts != null && !currentShortcuts.isEmpty()) {
-                        if (xyz.nextalone.nagram.helper.ShortcutHelper.isComposeShortcutEnabled()) { // NagramX: the switch also decides what the stale prune keeps
+                        if (com.dazewell.gram.helpers.ShortcutHelper.isComposeShortcutEnabled()) { // NagramX: the switch also decides what the stale prune keeps
                             newShortcutsIds.add("compose");
                         }
-                        com.radolyn.ayugram.shortcuts.GhostModeShortcut.addShortcutId(newShortcutsIds); // NagramX: keep the fork's launcher shortcuts from being pruned as stale, while their settings are on
-                        com.radolyn.ayugram.videonote.VideoNoteShortcut.addShortcutId(newShortcutsIds);
+                        com.dazewell.gram.shortcuts.GhostModeShortcut.addShortcutId(newShortcutsIds); // NagramX: keep the fork's launcher shortcuts from being pruned as stale, while their settings are on
+                        com.dazewell.gram.videonote.VideoNoteShortcut.addShortcutId(newShortcutsIds);
                         for (int a = 0; a < hintsFinal.size(); a++) {
                             TLRPC.TL_topPeer hint = hintsFinal.get(a);
                             newShortcutsIds.add("did3_" + MessageObject.getPeerId(hint.peer));
@@ -5120,7 +5120,7 @@ public class MediaDataController extends BaseController {
                         .setRank(0)
                         .setIntent(intent)
                         .build();
-                if (!xyz.nextalone.nagram.helper.ShortcutHelper.isComposeShortcutEnabled()) {
+                if (!com.dazewell.gram.helpers.ShortcutHelper.isComposeShortcutEnabled()) {
                     // NagramX: switched off, launchers with a short shortcut list give the slot to the next one
                 } else if (recreateShortcuts) {
                     ShortcutManagerCompat.pushDynamicShortcut(ApplicationLoader.applicationContext, shortcut);
@@ -5134,8 +5134,8 @@ public class MediaDataController extends BaseController {
                     arrayList.clear();
                 }
 
-                com.radolyn.ayugram.shortcuts.GhostModeShortcut.publish(recreateShortcuts, shortcutsToUpdate, 1); // NagramX: fork launcher shortcuts, each gated on its setting
-                com.radolyn.ayugram.videonote.VideoNoteShortcut.publish(recreateShortcuts, shortcutsToUpdate, 2);
+                com.dazewell.gram.shortcuts.GhostModeShortcut.publish(recreateShortcuts, shortcutsToUpdate, 1); // NagramX: fork launcher shortcuts, each gated on its setting
+                com.dazewell.gram.videonote.VideoNoteShortcut.publish(recreateShortcuts, shortcutsToUpdate, 2);
 
 
                 HashSet<String> category = new HashSet<>(1);
@@ -5220,7 +5220,7 @@ public class MediaDataController extends BaseController {
                     ShortcutInfoCompat.Builder builder = new ShortcutInfoCompat.Builder(ApplicationLoader.applicationContext, id)
                             .setShortLabel(name)
                             .setLongLabel(name)
-                            .setRank(3 + a + com.radolyn.ayugram.videonote.VideoNoteShortcut.getExtraRanks()) // NagramX: memo shortcuts past the first take ranks from 3, keep recent chats after them
+                            .setRank(3 + a + com.dazewell.gram.videonote.VideoNoteShortcut.getExtraRanks()) // NagramX: memo shortcuts past the first take ranks from 3, keep recent chats after them
                             .setIntent(shortcutIntent);
                     if (SharedConfig.directShare) {
                         builder.setCategories(category);

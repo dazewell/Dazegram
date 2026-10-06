@@ -44,7 +44,7 @@ import org.telegram.ui.PrivacySettingsActivity;
 import java.util.ArrayList;
 import java.util.Locale;
 
-import tw.nekomimi.nekogram.helpers.AutoLockHelper;
+import com.dazewell.gram.helpers.AutoLockHelper;
 import tw.nekomimi.nekogram.helpers.PasscodeHelper;
 import tw.nekomimi.nekogram.ui.cells.AccountCell;
 import tw.nekomimi.nekogram.ui.cells.HeaderCell;
@@ -79,7 +79,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
     private int showNotificationContentWhenLocked2Row;
 
     private final ArrayList<Integer> accounts = new ArrayList<>();
-    private java.util.List<com.radolyn.ayugram.privacyprofiles.PrivacyProfile> profiles = new ArrayList<>();
+    private java.util.List<com.dazewell.gram.privacyprofiles.PrivacyProfile> profiles = new ArrayList<>();
 
     @Override
     public boolean onFragmentCreate() {
@@ -120,7 +120,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
             return;
         }
         if (position == profilesAddRow) {
-            if (com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getProfileCount() >= com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.MAX_PROFILES) {
+            if (com.dazewell.gram.privacyprofiles.PrivacyProfilesController.getProfileCount() >= com.dazewell.gram.privacyprofiles.PrivacyProfilesController.MAX_PROFILES) {
                 BulletinFactory.of(this).createErrorBulletin(getString(R.string.PrivacyProfileMaxCount)).show();
                 return;
             }
@@ -218,8 +218,8 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
             showDialog(alertDialog);
             ((TextView) alertDialog.getButton(Dialog.BUTTON_POSITIVE)).setTextColor(Theme.getColor(Theme.key_dialogTextRed));
         } else if (position == profilesShowOnTabRow) {
-            boolean value = !com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.showActiveOnSettingsTab();
-            com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.setShowActiveOnSettingsTab(value);
+            boolean value = !com.dazewell.gram.privacyprofiles.PrivacyProfilesController.showActiveOnSettingsTab();
+            com.dazewell.gram.privacyprofiles.PrivacyProfilesController.setShowActiveOnSettingsTab(value);
             if (view instanceof TextCheckCell) {
                 ((TextCheckCell) view).setChecked(value);
             }
@@ -265,7 +265,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
     protected void updateRows() {
         super.updateRows();
 
-        profiles = com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getProfiles();
+        profiles = com.dazewell.gram.privacyprofiles.PrivacyProfilesController.getProfiles();
         profilesHeaderRow = rowCount++;
         // Add sits above the list it fills, matching how "Add Chats"/"Add Member" behave
         // elsewhere; the hairline under it is the same one drawn between profile rows.
@@ -348,7 +348,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
                     if (position == showInSettingsRow) {
                         textCell.setTextAndCheck(getString(R.string.PasscodeShowInSettings), !PasscodeHelper.isSettingsHidden(), false);
                     } else if (position == profilesShowOnTabRow) {
-                        textCell.setTextAndCheck(getString(R.string.PrivacyProfileShowOnSettingsTab), com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.showActiveOnSettingsTab(), false);
+                        textCell.setTextAndCheck(getString(R.string.PrivacyProfileShowOnSettingsTab), com.dazewell.gram.privacyprofiles.PrivacyProfilesController.showActiveOnSettingsTab(), false);
                     } else if (position == showNotificationContentWhenLockedRow) {
                         textCell.setTextAndCheck(getString(R.string.PasscodeShowMessagePreviewWhenLocked), NaConfig.INSTANCE.getShowNotificationPreviewWhenLocked().Bool(), false);
                     }
@@ -416,15 +416,15 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
                 case 20: {
                     TextDetailCell cell = (TextDetailCell) holder.itemView;
                     cell.setAlpha(passcodeSet ? 1f : 0.5f);
-                    com.radolyn.ayugram.privacyprofiles.PrivacyProfile profile = profiles.get(position - profilesStartRow);
-                    com.radolyn.ayugram.privacyprofiles.PrivacyProfile active = com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveProfile();
+                    com.dazewell.gram.privacyprofiles.PrivacyProfile profile = profiles.get(position - profilesStartRow);
+                    com.dazewell.gram.privacyprofiles.PrivacyProfile active = com.dazewell.gram.privacyprofiles.PrivacyProfilesController.getActiveProfile();
                     // Configured auto-lock value is always shown, on its own line -- the active/timed
                     // status (when this profile happens to be the active one) is a second line below
                     // it rather than replacing it, so the two never blend into one ambiguous string.
                     String configured = autoLockValueVerbose(profile.timeout);
                     CharSequence value;
                     if (active != null && active.id == profile.id) {
-                        Long deadline = com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveDeadline();
+                        Long deadline = com.dazewell.gram.privacyprofiles.PrivacyProfilesController.getActiveDeadline();
                         String status = deadline != null
                                 ? LocaleController.formatString(R.string.PrivacyProfileActiveUntil, LocaleController.formatDateTime(deadline / 1000, true))
                                 : getString(R.string.PrivacyProfileActive);
@@ -433,7 +433,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
                         value = configured;
                     }
                     cell.setTextAndValue(profile.name, value, position + 1 != profilesEndRow);
-                    cell.setImage(com.radolyn.ayugram.privacyprofiles.PrivacyProfileIcons.circleDrawable(mContext, profile, 36), getString(R.string.PrivacyProfileIconContentDescription));
+                    cell.setImage(com.dazewell.gram.privacyprofiles.PrivacyProfileIcons.circleDrawable(mContext, profile, 36), getString(R.string.PrivacyProfileIconContentDescription));
                     break;
                 }
             }
@@ -507,7 +507,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
      * Add/edit dialog: a leading round icon button (tap opens the existing folder-icon-grid
      * picker), the name field, then an "Auto-lock" label over the stock short-form picker.
      */
-    private void showAddEditProfileDialog(@Nullable com.radolyn.ayugram.privacyprofiles.PrivacyProfile existing) {
+    private void showAddEditProfileDialog(@Nullable com.dazewell.gram.privacyprofiles.PrivacyProfile existing) {
         if (getParentActivity() == null) return;
         Context context = getParentActivity();
         LinearLayout linearLayout = new LinearLayout(context);
@@ -515,23 +515,23 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
         int pad = AndroidUtilities.dp(17);
         linearLayout.setPadding(pad, AndroidUtilities.dp(20), pad, 0);
 
-        final String[] selectedIcon = {existing != null ? existing.icon : com.radolyn.ayugram.privacyprofiles.PrivacyProfile.DEFAULT_ICON};
+        final String[] selectedIcon = {existing != null ? existing.icon : com.dazewell.gram.privacyprofiles.PrivacyProfile.DEFAULT_ICON};
         // A new profile opens on a random swatch rather than always defaulting to the first one.
         // Palette index, not a raw seed: an existing profile's seed is a random long, so it has to
         // be reduced the way AvatarDrawable does rather than with a bare modulo, which would hand
         // back a negative index for roughly half of them.
         final int[] selectedColor = {existing != null
-                ? com.radolyn.ayugram.privacyprofiles.PrivacyProfileColorRow.indexOf(existing.colorSeed)
-                : com.radolyn.ayugram.privacyprofiles.PrivacyProfileColorRow.randomIndex()};
+                ? com.dazewell.gram.privacyprofiles.PrivacyProfileColorRow.indexOf(existing.colorSeed)
+                : com.dazewell.gram.privacyprofiles.PrivacyProfileColorRow.randomIndex()};
         // A new profile starts on the light row; an existing one opens on the tone it is actually
         // being drawn as (PrivacyProfileColorRow.create clamps it if this theme can't show deep).
         final int[] selectedTone = {existing != null
                 ? existing.tone
-                : com.radolyn.ayugram.privacyprofiles.PrivacyProfileColorRow.TONE_LIGHT};
+                : com.dazewell.gram.privacyprofiles.PrivacyProfileColorRow.TONE_LIGHT};
         // Only used to render the live icon-preview button; the profile itself (existing or new)
         // is never mutated directly here -- addProfile/editProfile take the final values explicitly.
-        final com.radolyn.ayugram.privacyprofiles.PrivacyProfile previewSeed = existing != null ? existing
-                : new com.radolyn.ayugram.privacyprofiles.PrivacyProfile(0, "", 0, selectedColor[0], 0, selectedIcon[0]);
+        final com.dazewell.gram.privacyprofiles.PrivacyProfile previewSeed = existing != null ? existing
+                : new com.dazewell.gram.privacyprofiles.PrivacyProfile(0, "", 0, selectedColor[0], 0, selectedIcon[0]);
 
         LinearLayout nameRow = new LinearLayout(context);
         nameRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -544,7 +544,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
         // One render path for both selections: rendering icon and colour from separate callbacks
         // would let picking a colour and then an icon silently revert the colour.
         final Runnable updatePreview = () -> iconButton.setImageDrawable(
-                com.radolyn.ayugram.privacyprofiles.PrivacyProfileIcons.circleDrawable(context,
+                com.dazewell.gram.privacyprofiles.PrivacyProfileIcons.circleDrawable(context,
                         previewSeed.withIcon(selectedIcon[0]).withColorSeed(selectedColor[0]).withTone(selectedTone[0]), 40));
         updatePreview.run();
 
@@ -570,16 +570,16 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
         // close it too, if the form goes away for some other reason while the grid is still open.
         final Dialog[] iconPickerDialog = {null};
         iconButton.setOnClickListener(v -> iconPickerDialog[0] = tw.nekomimi.nekogram.folder.IconSelectorAlert.show(context,
-                com.radolyn.ayugram.privacyprofiles.PrivacyProfileIcons.pickerKeys(),
+                com.dazewell.gram.privacyprofiles.PrivacyProfileIcons.pickerKeys(),
                 new tw.nekomimi.nekogram.folder.IconSelectorAlert.IconResolver() {
                     @Override
                     public int drawableFor(String key) {
-                        return com.radolyn.ayugram.privacyprofiles.PrivacyProfileIcons.drawableFor(key);
+                        return com.dazewell.gram.privacyprofiles.PrivacyProfileIcons.drawableFor(key);
                     }
 
                     @Override
                     public CharSequence nameFor(String key) {
-                        return com.radolyn.ayugram.privacyprofiles.PrivacyProfileIcons.nameFor(key);
+                        return com.dazewell.gram.privacyprofiles.PrivacyProfileIcons.nameFor(key);
                     }
                 }, emoticon -> {
                     selectedIcon[0] = emoticon;
@@ -591,7 +591,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
         colorLabel.setTextColor(Theme.getColor(Theme.key_dialogTextGray2));
         colorLabel.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 14);
         linearLayout.addView(colorLabel, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 28, 0, 0));
-        linearLayout.addView(com.radolyn.ayugram.privacyprofiles.PrivacyProfileColorRow.create(context, selectedColor, selectedTone, updatePreview),
+        linearLayout.addView(com.dazewell.gram.privacyprofiles.PrivacyProfileColorRow.create(context, selectedColor, selectedTone, updatePreview),
                 LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 4, 0, 0));
 
         TextView autoLockLabel = new TextView(context);
@@ -635,12 +635,12 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
             String name = editText.getText() != null ? editText.getText().toString() : "";
             int timeout = AutoLockHelper.valueAt(numberPicker.getValue());
             if (existing == null) {
-                if (com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getProfileCount() >= com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.MAX_PROFILES) {
+                if (com.dazewell.gram.privacyprofiles.PrivacyProfilesController.getProfileCount() >= com.dazewell.gram.privacyprofiles.PrivacyProfilesController.MAX_PROFILES) {
                     BulletinFactory.of(this).createErrorBulletin(getString(R.string.PrivacyProfileMaxCount)).show();
                     return;
                 }
-                com.radolyn.ayugram.privacyprofiles.PrivacyProfile created =
-                        com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.addProfile(name, timeout, selectedIcon[0], selectedColor[0], selectedTone[0]);
+                com.dazewell.gram.privacyprofiles.PrivacyProfile created =
+                        com.dazewell.gram.privacyprofiles.PrivacyProfilesController.addProfile(name, timeout, selectedIcon[0], selectedColor[0], selectedTone[0]);
                 if (created != null) {
                     showProfileSavedBulletin(created);
                 }
@@ -649,8 +649,8 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
                 // rejects e.g. an empty trimmed name) -- otherwise the shortcut would drift from the
                 // persisted profile. withColorSeed matters here: the shortcut bitmap is re-rendered
                 // from this object, so dropping it would leave a pinned shortcut on the old colour.
-                if (com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.editProfile(existing.id, name, timeout, selectedIcon[0], selectedColor[0], selectedTone[0])) {
-                    com.radolyn.ayugram.privacyprofiles.PrivacyProfileShortcuts.updateLabel(
+                if (com.dazewell.gram.privacyprofiles.PrivacyProfilesController.editProfile(existing.id, name, timeout, selectedIcon[0], selectedColor[0], selectedTone[0])) {
+                    com.dazewell.gram.privacyprofiles.PrivacyProfileShortcuts.updateLabel(
                             existing.withName(name.trim()).withTimeout(timeout).withIcon(selectedIcon[0]).withColorSeed(selectedColor[0]).withTone(selectedTone[0]));
                 }
             }
@@ -691,14 +691,14 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
     /** First successful profile CREATE: an inline shortcut nudge, not shown on edits. Uses
      * DURATION_LONG explicitly (not the 4-arg overload's text-length heuristic, which would pick
      * DURATION_SHORT for a string this short) since this bulletin's only purpose is its action button. */
-    private void showProfileSavedBulletin(com.radolyn.ayugram.privacyprofiles.PrivacyProfile profile) {
+    private void showProfileSavedBulletin(com.dazewell.gram.privacyprofiles.PrivacyProfile profile) {
         BulletinFactory.of(this).createSimpleBulletin(R.raw.contact_check, getString(R.string.PrivacyProfileSavedBulletin), getString(R.string.PrivacyProfileAddToHomeScreen), org.telegram.ui.Components.Bulletin.DURATION_LONG, () -> requestPinWithFallback(profile)).show();
     }
 
     /** Shared by both "Add to home screen" entry points (the saved-bulletin action and the
      * per-profile action menu) so an unsupported launcher is never a silent no-op in either place. */
-    private void requestPinWithFallback(com.radolyn.ayugram.privacyprofiles.PrivacyProfile profile) {
-        if (!com.radolyn.ayugram.privacyprofiles.PrivacyProfileShortcuts.requestPin(profile)) {
+    private void requestPinWithFallback(com.dazewell.gram.privacyprofiles.PrivacyProfile profile) {
+        if (!com.dazewell.gram.privacyprofiles.PrivacyProfileShortcuts.requestPin(profile)) {
             BulletinFactory.of(this).createErrorBulletin(getString(R.string.PrivacyProfileShortcutsUnsupported)).show();
         }
     }
@@ -710,26 +710,26 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
         }
     }
 
-    private void showProfileActions(com.radolyn.ayugram.privacyprofiles.PrivacyProfile profile, View anchor) {
+    private void showProfileActions(com.dazewell.gram.privacyprofiles.PrivacyProfile profile, View anchor) {
         if (getParentActivity() == null) return;
-        com.radolyn.ayugram.privacyprofiles.PrivacyProfile active = com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveProfile();
+        com.dazewell.gram.privacyprofiles.PrivacyProfile active = com.dazewell.gram.privacyprofiles.PrivacyProfilesController.getActiveProfile();
         boolean isActive = active != null && active.id == profile.id;
-        boolean isTimed = isActive && com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveDeadline() != null;
+        boolean isTimed = isActive && com.dazewell.gram.privacyprofiles.PrivacyProfilesController.getActiveDeadline() != null;
 
         ItemOptions o = ItemOptions.makeOptions(this, anchor);
         if (!isActive) {
             o.add(R.drawable.msg_permissions, getString(R.string.PrivacyProfileTurnOn), () -> {
-                com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.activate(profile.id, com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.ActivationMode.NOW, 0);
+                com.dazewell.gram.privacyprofiles.PrivacyProfilesController.activate(profile.id, com.dazewell.gram.privacyprofiles.PrivacyProfilesController.ActivationMode.NOW, 0);
                 refreshProfileRows();
             });
         } else {
             o.add(R.drawable.msg_permissions, getString(R.string.PrivacyProfileTurnOff), () -> {
-                com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.deactivate();
+                com.dazewell.gram.privacyprofiles.PrivacyProfilesController.deactivate();
                 refreshProfileRows();
             });
             if (isTimed) {
                 o.add(R.drawable.msg_mute_period, getString(R.string.PrivacyProfileCancelTimer), () -> {
-                    com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.cancelTimer();
+                    com.dazewell.gram.privacyprofiles.PrivacyProfilesController.cancelTimer();
                     refreshProfileRows();
                 });
             }
@@ -738,7 +738,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
         // single row replaces the preset/custom/until rows that used to sit here. Reachable on an
         // active profile too, matching what the quick-switch row's clock already allowed.
         o.add(R.drawable.msg_mute_period, getString(R.string.PrivacyProfileSetTimer), () ->
-            com.radolyn.ayugram.privacyprofiles.PrivacyProfileDurationSheet.show(this, profile, this::refreshProfileRows));
+            com.dazewell.gram.privacyprofiles.PrivacyProfileDurationSheet.show(this, profile, this::refreshProfileRows));
         o.addGap();
         o.add(R.drawable.msg_edit, getString(R.string.Edit), () -> showAddEditProfileDialog(profile));
         o.add(R.drawable.msg_home, getString(R.string.PrivacyProfileAddToHomeScreen), () -> requestPinWithFallback(profile));
@@ -748,7 +748,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
                     .setMessage(getString(R.string.PrivacyProfileDeleteConfirmMessage))
                     .setNegativeButton(getString(R.string.Cancel), null)
                     .setPositiveButton(getString(R.string.PrivacyProfileDelete), (dialog, which) -> {
-                        com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.deleteProfile(profile.id);
+                        com.dazewell.gram.privacyprofiles.PrivacyProfilesController.deleteProfile(profile.id);
                         refreshProfileRows();
                     }).create();
             showDialog(alertDialog);

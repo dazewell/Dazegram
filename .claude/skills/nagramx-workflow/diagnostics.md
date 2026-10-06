@@ -72,7 +72,7 @@ Prefer timestamp-bounded reads over `logcat -c`, which destroys the device's
 buffer for every other consumer. Detect a truncated capture by the END marker's
 absence, not by a byte-count guess.
 
-**Collateral scope is Dazegram, not the phone.** The host-side filter may add a
+**Collateral scope is DwellGram, not the phone.** The host-side filter may add a
 narrow allowlist of system tags naming the package (`AndroidRuntime`,
 `ActivityManager`, `ActivityTaskManager`, ANR and tombstone lines) — nothing
 broader, because raw ambient logcat carries other apps' PII-adjacent lines that

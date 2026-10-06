@@ -10,6 +10,7 @@
 package com.radolyn.ayugram.messages;
 
 
+import com.dazewell.gram.messages.SaveScope;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.MessagesStorage;

@@ -419,7 +419,7 @@ public class Camera2Session {
         if (Build.VERSION.SDK_INT < 30 || cameraCharacteristics == null) return;
         final Range<Float> range = cameraCharacteristics.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE);
         if (range == null || range.getUpper() <= 1f) return;
-        zoomRatioMin = xyz.nextalone.nagram.helper.RoundLensPresets.ultrawideAllowed() ? Math.min(1f, range.getLower()) : 1f;
+        zoomRatioMin = com.dazewell.gram.helpers.RoundLensPresets.ultrawideAllowed() ? Math.min(1f, range.getLower()) : 1f;
         maxZoom = range.getUpper();
         zoomRatioMode = true;
     }

@@ -1,5 +1,5 @@
 ---
-applyTo: "TMessagesProj/src/main/java/{com/radolyn,tw/nekomimi,xyz/nextalone}/**"
+applyTo: "TMessagesProj/src/main/java/{com/dazewell,com/radolyn,tw/nekomimi,xyz/nextalone}/**"
 ---
 
 # You are editing fork-owned code
@@ -8,7 +8,7 @@ These packages belong to the fork, so the upstream-merge pressure that
 constrains `org.telegram.**` does not apply. This is where new logic belongs.
 
 - **Self-contained feature classes.** A feature gets its own package — e.g.
-  `com.radolyn.ayugram.<feature>` — exposing a small surface the base file can
+  `com.dazewell.gram.<feature>` — exposing a small surface the base file can
   call in one line. `hidelastmessage` and `chatlock` are the reference shapes;
   mirror the nearest existing feature rather than inventing a new layout.
 - **Reuse before you build.** Grep for an existing controller, helper, dialog or

@@ -404,8 +404,8 @@ public class NekoSettingsActivity extends BaseNekoSettingsActivity {
                         // only indication when the bottom tab bar isn't present. Always pass a
                         // value (null when nothing is active) so a recycled cell can't keep a
                         // stale name.
-                        com.radolyn.ayugram.privacyprofiles.PrivacyProfile activeProfile =
-                                com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveProfile();
+                        com.dazewell.gram.privacyprofiles.PrivacyProfile activeProfile =
+                                com.dazewell.gram.privacyprofiles.PrivacyProfilesController.getActiveProfile();
                         textCell.setTextAndValueAndIcon(getString(R.string.PasscodeNeko),
                                 activeProfile != null ? activeProfile.name : null, R.drawable.msg_permissions, true);
                     } else if (position == experimentRow) {

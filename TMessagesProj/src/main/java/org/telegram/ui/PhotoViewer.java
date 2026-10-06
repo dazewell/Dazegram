@@ -10343,7 +10343,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         } else {
             return false;
         }
-        return xyz.nextalone.nagram.helper.AttachCaptionHelper.hasUnappliedCaption(
+        return com.dazewell.gram.helpers.AttachCaptionHelper.hasUnappliedCaption(
                 currentAccount, view.getText(), supportsSendingNewEntities(), stored, storedEntities);
     }
 

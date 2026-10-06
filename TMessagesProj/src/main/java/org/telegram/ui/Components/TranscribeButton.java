@@ -789,7 +789,7 @@ public class TranscribeButton {
                             messageObject.messageOwner.voiceTranscriptionId = id;
 
                             final long duration = SystemClock.elapsedRealtime() - start;
-                            tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.put(account, messageObject, result); // NagramX
+                            com.dazewell.gram.helpers.VideoCaptionsHelper.put(account, messageObject, result); // NagramX
                             if (!captions) { // NagramX
                                 AndroidUtilities.runOnUIThread(() -> {
                                     if (isActiveRequest(messageObject, id)) {
@@ -942,7 +942,7 @@ public class TranscribeButton {
                 messageObject.messageOwner.voiceTranscriptionId = id;
 
                 final long duration = SystemClock.elapsedRealtime() - start;
-                tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.put(account, messageObject, result); // NagramX
+                com.dazewell.gram.helpers.VideoCaptionsHelper.put(account, messageObject, result); // NagramX
                 AndroidUtilities.runOnUIThread(() -> {
                     if (isActiveRequest(messageObject, id)) {
                         TranscribeButton.openVideoTranscription(messageObject);

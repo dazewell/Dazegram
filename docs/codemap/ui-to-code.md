@@ -710,17 +710,17 @@ Inside that sheet, `Hide last message` toggles
 `HideLastMessageController.setHidden(...)`, and the `Placeholder text` value row
 opens a mode picker — custom text, chat status, unread count, message type —
 whose `Custom text` choice then opens `HideLastMessageDialog.showPlaceholderEditor(...)`
-(`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:175`, `:181-185`, `:272`).
+(`com/dazewell/gram/chatprivacy/ChatPrivacySheet.java:175`, `:181-185`, `:272`).
 The mode lives beside the custom text in `hidelastmessage_<account>` under
 `m<dialogId>`, and `HideLastMessagePreview.resolve(...)` renders it for the row
-(`com/radolyn/ayugram/hidelastmessage/HideLastMessageController.java:124-153`;
+(`com/dazewell/gram/hidelastmessage/HideLastMessageController.java:124-153`;
 `HideLastMessagePreview.java:59`).
 
 `Require password` state is read from the persisted lock flag via
 `ChatLockController.isFlagged(...)` (not `isLocked(...)`), so a stored flag is
 still shown when the global app passcode is absent
-(`com/radolyn/ayugram/chatlock/ChatLockController.java:70-80`;
-`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:123-151`, `:186-194`).
+(`com/dazewell/gram/chatlock/ChatLockController.java:70-80`;
+`com/dazewell/gram/chatprivacy/ChatPrivacySheet.java:123-151`, `:186-194`).
 When turned on with a passcode present, the sheet keeps the existing one-way
 coupling: it auto-enables hide only when hide was off, preserving a custom
 placeholder, and shows the existing enabled bulletin (`ChatPrivacySheet.java:197-204`).
@@ -786,7 +786,7 @@ Cover config is stored in the account's notifications `SharedPreferences`
 `nax_cover_v1_enabled_<dialogId>` / `nax_cover_v1_persona_<dialogId>`, with lazy
 generic channels under `nax_cover_v1_channel_<personaId>` /
 `nax_cover_v1_summary_channel`
-(`com/radolyn/ayugram/chatprivacy/NotificationCoverController.java:57-68`,
+(`com/dazewell/gram/chatprivacy/NotificationCoverController.java:57-68`,
 `:201-229`, `:654-671`).
 
 *(Updated 2026-09-07.)*
@@ -823,7 +823,7 @@ calling `NotificationsController.suppressVisibleCoveredDialog(dialog_id)`
 `suppressVisibleCoveredDialog(...)` posts onto `notificationsQueue`; the cover
 controller suppression path runs there and then triggers notification rebuild
 (`org/telegram/messenger/NotificationsController.java:3313-3318`;
-`com/radolyn/ayugram/chatprivacy/NotificationCoverController.java:560-593`).
+`com/dazewell/gram/chatprivacy/NotificationCoverController.java:560-593`).
 
 Accepted on-device behavior: attempting to open a protected covered chat may
 consume the current cover before successful visibility (including cancelled or

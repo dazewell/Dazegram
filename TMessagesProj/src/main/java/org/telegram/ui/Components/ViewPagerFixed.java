@@ -2079,7 +2079,7 @@ public class ViewPagerFixed extends FrameLayout {
                                 (int) (indicatorX + indicatorWidth + dp(TAB_INTERNAL_PADDING) + add),
                                 y + dp(28));
                             // NagramX: Dialogs marks its search tabs so this shared selector does not alter hashtag or bookmark tabs.
-                            selectorDrawable.setAlpha(interfaceStyleChatListTabSelector ? xyz.nextalone.nagram.helpers.InterfaceStyleController.filterTabSelectorAlpha(NaConfig.INSTANCE.getTabStyleStroke().Bool()) : NaConfig.INSTANCE.getTabStyleStroke().Bool() ? 255 : 31);
+                            selectorDrawable.setAlpha(interfaceStyleChatListTabSelector ? com.dazewell.gram.helpers.InterfaceStyleController.filterTabSelectorAlpha(NaConfig.INSTANCE.getTabStyleStroke().Bool()) : NaConfig.INSTANCE.getTabStyleStroke().Bool() ? 255 : 31);
                             selectorDrawable.draw(canvas);
                         } else {
                             selectorDrawable.setBounds(indicatorX, (int) (height - AndroidUtilities.dpr(4) + hideProgress * AndroidUtilities.dpr(4)), indicatorX + indicatorWidth, (int) (height + hideProgress * AndroidUtilities.dpr(4)));

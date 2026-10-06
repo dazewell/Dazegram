@@ -14,7 +14,7 @@ cost.
   method, you are in the wrong file — put the logic in a fork-owned feature
   class and call into it.
 - **Prefer a fully-qualified call over a new import.** A new import line is one
-  more conflict hunk; `com.radolyn.ayugram.chatlock.ChatLockController.isLocked(id)`
+  more conflict hunk; `com.dazewell.gram.chatlock.ChatLockController.isLocked(id)`
   inline is zero.
 - **Mark every injection `// NagramX:`** with the non-obvious *why*, not the
   what. The next person reading it is resolving a conflict and needs to know

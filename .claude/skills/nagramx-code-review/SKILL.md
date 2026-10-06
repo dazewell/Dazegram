@@ -1,6 +1,6 @@
 ---
 name: nagramx-code-review
-description: "Chief Architect reviewer for NagramX (dazewell/Dazegram; live source parent DrKLO/Telegram; NextAlone/Nagram retained as compatibility/reference and proposal target; risin42/NagramX as archived historical base). Trigger whenever a NagramX change needs review: round 1 plan/design before coding, round 2 real diff after compile or CI, final whole-feature/craftsmanship passes, dispatching the nagramx-architect subagent, or dazewell saying review this / take it through the architect. Owns Android-and-fork checks: upstream-merge survivability, minimal-footprint hooks, reuse-first, legacy-Java constraints, lifecycle/threading/leak traps, multi-account keying, config surfaces, fork-owned resources, severity calibration, output format, and the no-AI-in-source line. Companion to nagramx-workflow and nagramx-branch-flow. Edit this file when dazewell corrects review."
+description: "Chief Architect reviewer for NagramX (dazewell/DwellGram; live source parent DrKLO/Telegram; NextAlone/Nagram retained as compatibility/reference and proposal target; risin42/NagramX as archived historical base). Trigger whenever a NagramX change needs review: round 1 plan/design before coding, round 2 real diff after compile or CI, final whole-feature/craftsmanship passes, dispatching the nagramx-architect subagent, or dazewell saying review this / take it through the architect. Owns Android-and-fork checks: upstream-merge survivability, minimal-footprint hooks, reuse-first, legacy-Java constraints, lifecycle/threading/leak traps, multi-account keying, config surfaces, fork-owned resources, severity calibration, output format, and the no-AI-in-source line. Companion to nagramx-workflow and nagramx-branch-flow. Edit this file when dazewell corrects review."
 ---
 
 # NagramX code review: Chief Architect
@@ -64,8 +64,8 @@ hard-line policy, docs.
 ### Fork fit and upstream survivability
 
 - **Minimal footprint.** Base-fork files move as little as possible. New logic
-  belongs in feature classes such as `com.radolyn.ayugram.<feature>`,
-  `tw.nekomimi.nekogram.helpers.*`, or `xyz.nextalone.nagram.*`; base files get
+  belongs in feature classes such as `com.dazewell.gram.<feature>`
+  (never `tw.nekomimi` or `xyz.nextalone`, which hold inherited code only); base files get
   only injected hooks.
 - **Right chokepoint.** Core flows should hook the single funnel, not many call
   sites. Chat open funnels through `ChatActivity.onFragmentCreate()`; chat-list

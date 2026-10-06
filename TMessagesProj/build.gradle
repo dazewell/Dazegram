@@ -113,10 +113,10 @@ android {
 
         // app display name per package variant
         // NagramX: kept in sync by hand with the customTitle default in NaConfig.kt (search that file for "NagramX:")
-        resValue 'string', 'NagramX', APP_PACKAGE.endsWith('.beta') ? 'Dazegram' : 'DazegramX'
+        resValue 'string', 'NagramX', APP_PACKAGE.endsWith('.beta') ? 'DwellGram' : 'DwellGramX'
 
-        // NagramX: fixed <application> icon differs per package variant - Official (Dazegram) keeps its
-        // existing blue icon, Unofficial (DazegramX) uses the Ribbon Amber art it also starts on
+        // NagramX: fixed <application> icon differs per package variant - Official (DwellGram) keeps its
+        // existing blue icon, Unofficial (DwellGramX) uses the Ribbon Amber art it also starts on
         // (#app-icon-fallback, #ribbon-icons). This is the icon Android shows in the app switcher,
         // permission dialogs and the notification header; it is baked at build time and cannot follow the
         // picker, so it tracks the variant's default rather than the user's choice. += because AGP already
@@ -249,7 +249,7 @@ android {
 androidComponents {
     onVariants(selector().all()) { variant ->
         variant.outputs.forEach { output ->
-            String gramName = APP_PACKAGE.endsWith('.beta') ? 'Dazegram-Official' : 'DazegramX-Unofficial'
+            String gramName = APP_PACKAGE.endsWith('.beta') ? 'DwellGram-Official' : 'DwellGramX-Unofficial'
             // commit hash goes right after the package label so it's easy to spot in the filename
             String prefix = commitId?.take(7) ? "${gramName}-${commitId.take(7)}" : gramName
             // version part uses the bare APP_VERSION_NAME (not verName) so the hash isn't repeated

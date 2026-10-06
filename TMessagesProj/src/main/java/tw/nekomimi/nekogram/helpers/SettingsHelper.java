@@ -71,15 +71,15 @@ public class SettingsHelper {
                     var general = new NekoGeneralSettingsActivity();
                     // NagramX: the look-and-feel rows moved to Interface Style, and a link made before that still says general
                     var interfaceStyle = TextUtils.isEmpty(row) || general.getRowMapReverse().containsValue(row)
-                            ? null : new xyz.nextalone.nagram.ui.InterfaceStyleActivity();
+                            ? null : new com.dazewell.gram.ui.InterfaceStyleActivity();
                     fragment = nekox_fragment = interfaceStyle != null && interfaceStyle.ownsRow(row)
                             ? interfaceStyle : general;
                     break;
-                case xyz.nextalone.nagram.ui.InterfaceStyleActivity.SETTINGS_KEY:
-                    fragment = nekox_fragment = new xyz.nextalone.nagram.ui.InterfaceStyleActivity();
+                case com.dazewell.gram.ui.InterfaceStyleActivity.SETTINGS_KEY:
+                    fragment = nekox_fragment = new com.dazewell.gram.ui.InterfaceStyleActivity();
                     break;
-                case com.radolyn.ayugram.shortcuts.LauncherShortcutsActivity.SETTINGS_KEY:
-                    fragment = nekox_fragment = new com.radolyn.ayugram.shortcuts.LauncherShortcutsActivity();
+                case com.dazewell.gram.shortcuts.LauncherShortcutsActivity.SETTINGS_KEY:
+                    fragment = nekox_fragment = new com.dazewell.gram.shortcuts.LauncherShortcutsActivity();
                     break;
                 case "translator":
                 case "translate":
@@ -124,11 +124,11 @@ public class SettingsHelper {
         ArrayList<SettingsSearchResult> items = new ArrayList<>();
         ArrayList<BaseNekoXSettingsActivity> fragments = new ArrayList<>();
         fragments.add(new NekoGeneralSettingsActivity());
-        fragments.add(new xyz.nextalone.nagram.ui.InterfaceStyleActivity());
+        fragments.add(new com.dazewell.gram.ui.InterfaceStyleActivity());
         fragments.add(new NekoChatSettingsActivity());
         fragments.add(new NekoExperimentalSettingsActivity());
         fragments.add(new NekoTranslatorSettingsActivity());
-        fragments.add(new com.radolyn.ayugram.shortcuts.LauncherShortcutsActivity());
+        fragments.add(new com.dazewell.gram.shortcuts.LauncherShortcutsActivity());
 
         String n_title = getString(R.string.NekoSettings);
         for (BaseNekoXSettingsActivity fragment: fragments) {
@@ -162,7 +162,7 @@ public class SettingsHelper {
         // guids the settings screens use.
         items.add(new SettingsSearchResult(14000, getString(R.string.InputTextSize), n_title,
                 getString(R.string.ComposerLayoutTitle), R.drawable.msg_customize,
-                () -> callback.presentFragment(new xyz.nextalone.nagram.ui.composer.ComposerLayoutActivity())));
+                () -> callback.presentFragment(new com.dazewell.gram.composer.ComposerLayoutActivity())));
         return items;
     }
 }

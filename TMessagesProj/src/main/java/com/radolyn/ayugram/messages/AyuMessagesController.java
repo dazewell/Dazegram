@@ -9,6 +9,7 @@
 
 package com.radolyn.ayugram.messages;
 
+import com.dazewell.gram.messages.SaveScope;
 import android.os.Environment;
 import android.text.TextUtils;
 

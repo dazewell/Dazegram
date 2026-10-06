@@ -13,9 +13,9 @@ def make_pr(
     number=316,
     state="open",
     head_sha="abc123",
-    head_repo="dazewell/Dazegram",
+    head_repo="dazewell/DwellGram",
     head_ref="2026-09-07-telegram-build-tags-fix",
-    base_repo="dazewell/Dazegram",
+    base_repo="dazewell/DwellGram",
     base_ref="dev",
     labels=(),
     title="title",
@@ -45,7 +45,7 @@ def make_squash_merged_pr():
         state="closed",
         head_sha="feature-head-sha",
         head_ref="2026-09-07-telegram-build-tags-fix",
-        base_repo="dazewell/Dazegram",
+        base_repo="dazewell/DwellGram",
         base_ref="dev",
         title="build labels fix",
         body="restore post-land caption metadata",
@@ -57,9 +57,9 @@ class ResolveBuildTests(unittest.TestCase):
         result = resolve_build.resolve(
             event_name="pull_request",
             head_sha="abc123",
-            repo_full_name="dazewell/Dazegram",
+            repo_full_name="dazewell/DwellGram",
             token="tok",
-            head_repo_full_name="dazewell/Dazegram",
+            head_repo_full_name="dazewell/DwellGram",
             head_ref_name="2026-09-07-telegram-build-tags-fix",
             pr_event={"number": 316, "title": "t", "body": "b"},
         )
@@ -73,9 +73,9 @@ class ResolveBuildTests(unittest.TestCase):
             result = resolve_build.resolve(
                 event_name="workflow_dispatch",
                 head_sha="abc123",
-                repo_full_name="dazewell/Dazegram",
+                repo_full_name="dazewell/DwellGram",
                 token="tok",
-                head_repo_full_name="dazewell/Dazegram",
+                head_repo_full_name="dazewell/DwellGram",
                 head_ref_name="2026-09-07-telegram-build-tags-fix",
             )
         self.assertEqual(gh_get.call_count, 1)
@@ -89,9 +89,9 @@ class ResolveBuildTests(unittest.TestCase):
             result = resolve_build.resolve(
                 event_name="workflow_dispatch",
                 head_sha="abc123",
-                repo_full_name="dazewell/Dazegram",
+                repo_full_name="dazewell/DwellGram",
                 token="tok",
-                head_repo_full_name="dazewell/Dazegram",
+                head_repo_full_name="dazewell/DwellGram",
                 head_ref_name="2026-09-07-telegram-build-tags-fix",
             )
         self.assertEqual(result["build_type"], "test")
@@ -104,9 +104,9 @@ class ResolveBuildTests(unittest.TestCase):
             result = resolve_build.resolve(
                 event_name="workflow_dispatch",
                 head_sha="dev-push-sha",
-                repo_full_name="dazewell/Dazegram",
+                repo_full_name="dazewell/DwellGram",
                 token="tok",
-                head_repo_full_name="dazewell/Dazegram",
+                head_repo_full_name="dazewell/DwellGram",
                 head_ref_name="dev",
             )
         self.assertEqual(result["build_type"], "staging")
@@ -118,9 +118,9 @@ class ResolveBuildTests(unittest.TestCase):
             result = resolve_build.resolve(
                 event_name="workflow_dispatch",
                 head_sha="deadbee",
-                repo_full_name="dazewell/Dazegram",
+                repo_full_name="dazewell/DwellGram",
                 token="tok",
-                head_repo_full_name="dazewell/Dazegram",
+                head_repo_full_name="dazewell/DwellGram",
                 head_ref_name="no-pr-branch",
             )
         self.assertEqual(result["build_type"], "staging")
@@ -133,9 +133,9 @@ class ResolveBuildTests(unittest.TestCase):
                 resolve_build.resolve(
                     event_name="workflow_dispatch",
                     head_sha="abc123",
-                    repo_full_name="dazewell/Dazegram",
+                    repo_full_name="dazewell/DwellGram",
                     token="tok",
-                    head_repo_full_name="dazewell/Dazegram",
+                    head_repo_full_name="dazewell/DwellGram",
                     head_ref_name="2026-09-07-telegram-build-tags-fix",
                 )
 
@@ -147,9 +147,9 @@ class ResolveBuildTests(unittest.TestCase):
                 resolve_build.resolve(
                     event_name="workflow_dispatch",
                     head_sha="abc123",
-                    repo_full_name="dazewell/Dazegram",
+                    repo_full_name="dazewell/DwellGram",
                     token="tok",
-                    head_repo_full_name="dazewell/Dazegram",
+                    head_repo_full_name="dazewell/DwellGram",
                     head_ref_name="2026-09-07-telegram-build-tags-fix",
                 )
 
@@ -159,9 +159,9 @@ class ResolveBuildTests(unittest.TestCase):
             result = resolve_build.resolve(
                 event_name="push",
                 head_sha="dev-push-sha",
-                repo_full_name="dazewell/Dazegram",
+                repo_full_name="dazewell/DwellGram",
                 token="tok",
-                head_repo_full_name="dazewell/Dazegram",
+                head_repo_full_name="dazewell/DwellGram",
                 head_ref_name="dev",
             )
         self.assertEqual(gh_get.call_count, 1)
@@ -176,9 +176,9 @@ class ResolveBuildTests(unittest.TestCase):
             result = resolve_build.resolve(
                 event_name="push",
                 head_sha="dev-push-sha",
-                repo_full_name="dazewell/Dazegram",
+                repo_full_name="dazewell/DwellGram",
                 token="tok",
-                head_repo_full_name="dazewell/Dazegram",
+                head_repo_full_name="dazewell/DwellGram",
                 head_ref_name="dev",
             )
         self.assertEqual(result["build_type"], "staging")
@@ -190,9 +190,9 @@ class ResolveBuildTests(unittest.TestCase):
             result = resolve_build.resolve(
                 event_name="push",
                 head_sha="dev-push-sha",
-                repo_full_name="dazewell/Dazegram",
+                repo_full_name="dazewell/DwellGram",
                 token="tok",
-                head_repo_full_name="dazewell/Dazegram",
+                head_repo_full_name="dazewell/DwellGram",
                 head_ref_name="dev",
             )
         self.assertEqual(result["build_type"], "staging")
@@ -201,21 +201,21 @@ class ResolveBuildTests(unittest.TestCase):
 
     def test_load_associated_prs_marks_top_level_bad_shape(self):
         with mock.patch.object(resolve_build, "gh_get", return_value={"error": "shape"}):
-            loaded = resolve_build.load_associated_prs("dazewell/Dazegram", "abc", "tok")
+            loaded = resolve_build.load_associated_prs("dazewell/DwellGram", "abc", "tok")
         self.assertEqual(loaded["outcome"], resolve_build.OUTCOME_LOOKUP_ERROR)
 
     def test_load_associated_prs_marks_item_bad_shape(self):
         with mock.patch.object(resolve_build, "gh_get", return_value=[{"number": 1}, "not-a-pr"]):
-            loaded = resolve_build.load_associated_prs("dazewell/Dazegram", "abc", "tok")
+            loaded = resolve_build.load_associated_prs("dazewell/DwellGram", "abc", "tok")
         self.assertEqual(loaded["outcome"], resolve_build.OUTCOME_LOOKUP_ERROR)
 
     def test_select_dispatch_preview_pr_filters_on_exact_identity(self):
         pr = make_pr(head_ref="different-branch")
         selected = resolve_build.select_dispatch_preview_pr(
             candidates=[pr],
-            repo_full_name="dazewell/Dazegram",
+            repo_full_name="dazewell/DwellGram",
             head_sha="abc123",
-            head_repo_full_name="dazewell/Dazegram",
+            head_repo_full_name="dazewell/DwellGram",
             head_ref_name="2026-09-07-telegram-build-tags-fix",
         )
         self.assertEqual(selected["outcome"], resolve_build.OUTCOME_NO_MATCH)
@@ -224,7 +224,7 @@ class ResolveBuildTests(unittest.TestCase):
         pr = make_pr(base_ref="main")
         selected = resolve_build.select_push_metadata_pr(
             candidates=[pr],
-            repo_full_name="dazewell/Dazegram",
+            repo_full_name="dazewell/DwellGram",
             pushed_ref_name="dev",
         )
         self.assertEqual(selected["outcome"], resolve_build.OUTCOME_NO_MATCH)

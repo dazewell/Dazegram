@@ -12382,7 +12382,7 @@ public class MessagesController extends BaseController implements NotificationCe
             // write above keeps them structurally out of every stock write path, and
             // feeding objects before the sort and the count post below renders and counts
             // them like any other scheduled message.
-            com.radolyn.ayugram.ghosthold.GhostHoldController.injectHeldScheduled(currentAccount, dialogId, objects);
+            com.dazewell.gram.ghosthold.GhostHoldController.injectHeldScheduled(currentAccount, dialogId, objects);
             // NagramX: held rows share one exact date per bucket (plain 0x7FFFFFFD, online
             // 0x7FFFFFFE, or a same-second timed hold) and carry negative local ids, so the stock
             // tie-break below -- which only fires when BOTH ids are >= 0 -- leaves a held pair tied
@@ -12396,8 +12396,8 @@ public class MessagesController extends BaseController implements NotificationCe
             // exact stock comparator (id >= 0 guard included) and nothing else moves. A held row
             // sorts ABOVE a genuine same-date row (higher array index), making explicit the order a
             // freshly appended-then-stable-sorted load already produced. See docs/codemap/upstream-traps.md.
-            final com.radolyn.ayugram.ghosthold.GhostHoldController.HeldOrderView naxHeldOrder =
-                    com.radolyn.ayugram.ghosthold.GhostHoldController.heldOrderView(currentAccount, dialogId);
+            final com.dazewell.gram.ghosthold.GhostHoldController.HeldOrderView naxHeldOrder =
+                    com.dazewell.gram.ghosthold.GhostHoldController.heldOrderView(currentAccount, dialogId);
             Collections.sort(objects, (o1, o2) -> {
                 if (o1.messageOwner.date == o2.messageOwner.date) {
                     int r1 = naxHeldOrder.rankOf(o1.getId());
@@ -16421,23 +16421,23 @@ public class MessagesController extends BaseController implements NotificationCe
         tw.nekomimi.nekogram.helpers.PasscodeHelper.clearAccountState(currentAccount);
         // NagramX: saved trigger presets are keyed by this reusable account slot; without this a
         // fresh login into the same slot would inherit the previous account's cached/persisted presets.
-        com.radolyn.ayugram.eventschedule.EventSchedulePresetStore.clearAccountState(currentAccount);
+        com.dazewell.gram.eventschedule.EventSchedulePresetStore.clearAccountState(currentAccount);
         // NagramX: the remembered last-trigger setup (sheet seed) is keyed by this slot too, so it
         // must die with the account or it seeds the trigger sheet for whoever reuses the slot next.
-        com.radolyn.ayugram.eventschedule.EventScheduleLastSetup.clearAccountState(currentAccount);
+        com.dazewell.gram.eventschedule.EventScheduleLastSetup.clearAccountState(currentAccount);
         // NagramX: armed triggers are keyed by this slot AND drive a nonEmptyAccounts hot-path flag;
         // without clearing, the new account's incoming messages match the departed account's triggers.
-        com.radolyn.ayugram.eventschedule.EventScheduleStore.clearAccountState(currentAccount);
+        com.dazewell.gram.eventschedule.EventScheduleStore.clearAccountState(currentAccount);
         // NagramX: drop the trigger controller's process-local runtime state for the slot (pending arms,
         // fire queues, suppression holds, in-flight-reconcile marks, warmed/pending bits) and bump the
         // store generation via the clear above, so an async arm that outlived this logout is rejected
         // instead of re-persisting the departed account's trigger into the reused slot.
-        com.radolyn.ayugram.eventschedule.EventScheduleController.onAccountLoggedOut(currentAccount);
+        com.dazewell.gram.eventschedule.EventScheduleController.onAccountLoggedOut(currentAccount);
         // NagramX: the remembered send action is keyed by this slot too, so it must die with the
         // account or the next login into this slot inherits a stranger's armed silent/schedule tap.
-        xyz.nextalone.nagram.RememberedSendAction.clearAccountState(currentAccount);
+        com.dazewell.gram.helpers.RememberedSendAction.clearAccountState(currentAccount);
         // NagramX: the video memo's chosen person is a user id in this slot; a new login here could know them too
-        com.radolyn.ayugram.videonote.VideoNoteTarget.clearAccountState(currentAccount);
+        com.dazewell.gram.videonote.VideoNoteTarget.clearAccountState(currentAccount);
 
         boolean shouldHandle = true;
         ArrayList<NotificationCenter.NotificationCenterDelegate> observers = getNotificationCenter().getObservers(NotificationCenter.appDidLogout);
@@ -22296,7 +22296,7 @@ public class MessagesController extends BaseController implements NotificationCe
         }
         getNotificationCenter().postNotificationName(NotificationCenter.didReceiveNewMessages, dialogId, messages, scheduled, mode);
         // NagramX: single new-message funnel for event-triggered scheduled messages (claim/evaluate).
-        com.radolyn.ayugram.eventschedule.EventScheduleController.onNewMessages(currentAccount, dialogId, messages, scheduled);
+        com.dazewell.gram.eventschedule.EventScheduleController.onNewMessages(currentAccount, dialogId, messages, scheduled);
 
         if (lastMessage == null || scheduled) {
             return false;

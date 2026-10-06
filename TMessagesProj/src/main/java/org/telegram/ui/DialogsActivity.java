@@ -591,19 +591,19 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     // NagramX: every MD3 chat-list top row shares one opaque surface color.
     private int getDialogsTopSurfaceColorKey() {
-        return xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()
-            ? xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListSurfaceKey(Theme.key_actionBarDefault, folderId != 0 || communityId != 0)
+        return com.dazewell.gram.helpers.InterfaceStyleController.applyChatListTopBar()
+            ? com.dazewell.gram.helpers.InterfaceStyleSolidHeader.chatListSurfaceKey(Theme.key_actionBarDefault, folderId != 0 || communityId != 0)
             : Theme.key_windowBackgroundWhite;
     }
 
     private int getDialogsTopSurfaceColor() {
-        return xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListSurface(ColorUtils.setAlphaComponent(getThemedColor(getDialogsTopSurfaceColorKey()), 255), Math.max(whiteActionBar ? searchAnimationProgress : 0, progressToActionMode));
+        return com.dazewell.gram.helpers.InterfaceStyleSolidHeader.chatListSurface(ColorUtils.setAlphaComponent(getThemedColor(getDialogsTopSurfaceColorKey()), 255), Math.max(whiteActionBar ? searchAnimationProgress : 0, progressToActionMode));
     }
 
     // NagramX: this fragment has no resources provider, so the Classic top-bar colours are scoped here.
     @Override
     public int getThemedColor(int key) {
-        return xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListColor(key, super.getThemedColor(key));
+        return com.dazewell.gram.helpers.InterfaceStyleSolidHeader.chatListColor(key, super.getThemedColor(key));
     }
 
     // NagramX: reloadInterface rebuilds this view without reconstructing these final factories.
@@ -948,7 +948,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
             // NagramX: paint one MD3 surface above scrolling rows and below all top controls.
             if (!naxTopSurfaceDrawn
-                    && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()
+                    && com.dazewell.gram.helpers.InterfaceStyleController.applyChatListTopBar()
                     && (child == searchTabsAndFiltersLayout || child == filterTabsView || child == actionBar
                     || child == fragmentSearchField || child == topPanelLayout)) {
                 naxTopSurfaceDrawn = true;
@@ -964,7 +964,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         && iBlur3SourceGlassFrosted != null
                         && canvas.isHardwareAccelerated()
                         && BlurredBackgroundProviderImpl.checkBlurEnabled(currentAccount, resourceProvider)
-                        && (!xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListTopBar() || progressToActionMode > 0)) {
+                        && (!com.dazewell.gram.helpers.InterfaceStyleSolidHeader.chatListTopBar() || progressToActionMode > 0)) {
                     iBlur3SourceGlassFrosted.draw(canvas, 0, surfaceTop, getMeasuredWidth(), surfaceBottom);
                     final int oldColor = actionBarDefaultPaint.getColor();
                     final int oldAlpha = actionBarDefaultPaint.getAlpha();
@@ -975,7 +975,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     actionBarDefaultPaint.setAlpha(oldAlpha);
                 } else {
                     // NagramX: the solid header's paint follows the search blend and the theme animator every frame.
-                    if (xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListTopBar()) actionBarDefaultPaint.setColor(getDialogsTopSurfaceColor());
+                    if (com.dazewell.gram.helpers.InterfaceStyleSolidHeader.chatListTopBar()) actionBarDefaultPaint.setColor(getDialogsTopSurfaceColor());
                     canvas.drawRect(0, surfaceTop, getMeasuredWidth(), surfaceBottom, actionBarDefaultPaint);
                 }
             }
@@ -1107,7 +1107,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 }
                 blurBounds.set(0, top, getMeasuredWidth(), top + actionBarHeight - dp(2 * searchAnimationProgress));
                 if (searchAnimationProgress < 0) {
-                    if (!xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()) {
+                    if (!com.dazewell.gram.helpers.InterfaceStyleController.applyChatListTopBar()) {
                         drawBlurRect(canvas, 0, blurBounds, searchAnimationProgress == 1f ? actionBarSearchPaint : actionBarDefaultPaint, true);
                     }
                 }
@@ -1116,7 +1116,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     if (searchIsShowed || !searchWasFullyShowed) {
                     } else {
                         blurBounds.set(0, top, getMeasuredWidth(), top + actionBarHeight - dp(2 * searchAnimationProgress));
-                        if (!xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()) {
+                        if (!com.dazewell.gram.helpers.InterfaceStyleController.applyChatListTopBar()) {
                             drawBlurRect(canvas, 0, blurBounds, actionBarSearchPaint, true);
                         }
                     }
@@ -1128,12 +1128,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 if (progressToActionMode > 0) {
                     actionBarSearchPaint.setColor(getDialogsTopSurfaceColor());
                     blurBounds.set(0, Math.max(0, top), getMeasuredWidth(), top + actionBarHeight - dp(2 * searchAnimationProgress));
-                    if (!xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()) {
+                    if (!com.dazewell.gram.helpers.InterfaceStyleController.applyChatListTopBar()) {
                         drawBlurRect(canvas, 0, blurBounds, actionBarSearchPaint, true);
                     }
                 } else {
                     blurBounds.set(0, Math.max(0, top), getMeasuredWidth(), top + actionBarHeight - dp(2 * searchAnimationProgress));
-                    if (!xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()) {
+                    if (!com.dazewell.gram.helpers.InterfaceStyleController.applyChatListTopBar()) {
                         drawBlurRect(canvas, 0, blurBounds, actionBarDefaultPaint, true);
                     }
                 }
@@ -1184,11 +1184,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             updateContextViewPosition();
             updateStoriesViewAlpha(storiesAlpha);
             super.dispatchDraw(canvas);
-            if (!xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()) {
+            if (!com.dazewell.gram.helpers.InterfaceStyleController.applyChatListTopBar()) {
                 drawHeaderShadow(canvas, top + actionBarHeight);
-            } else if (naxTopSurfaceDrawn && xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividers()) {
+            } else if (naxTopSurfaceDrawn && com.dazewell.gram.helpers.InterfaceStyleController.panelDividers()) {
                 // NagramX: after the children so no page or tab strip covers the MD3 hairline.
-                canvas.drawRect(0, naxTopSurfaceBottom, getMeasuredWidth(), naxTopSurfaceBottom + Math.max(1, AndroidUtilities.dp(0.66f)), xyz.nextalone.nagram.helpers.InterfaceStyleController.panelDividerPaint(getDialogsTopSurfaceColor(), resourceProvider));
+                canvas.drawRect(0, naxTopSurfaceBottom, getMeasuredWidth(), naxTopSurfaceBottom + Math.max(1, AndroidUtilities.dp(0.66f)), com.dazewell.gram.helpers.InterfaceStyleController.panelDividerPaint(getDialogsTopSurfaceColor(), resourceProvider));
             }
 
             /*if (fragmentContextView != null && fragmentContextView.isCallStyle()) {
@@ -3263,7 +3263,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     @Override
     public ActionBar createActionBar(Context context) {
         // NagramX: scoped provider so the Classic solid top bar reaches the ActionBar's own subtitle overlay.
-        ActionBar actionBar = new ActionBar(context, xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.wrapChatListTopBar(resourceProvider)) {
+        ActionBar actionBar = new ActionBar(context, com.dazewell.gram.helpers.InterfaceStyleSolidHeader.wrapChatListTopBar(resourceProvider)) {
 
             @Override
             public void setTranslationY(float translationY) {
@@ -3682,7 +3682,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 actionBar.setTitle(actionBarTitleNax = getString(R.string.SelectChat));
             }
             // NagramX: the MD3 top surface is painted under the bar by the content view, so an opaque bar would hide it
-            if (!xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()) {
+            if (!com.dazewell.gram.helpers.InterfaceStyleController.applyChatListTopBar()) {
                 actionBar.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
             }
             actionBar.setOnLongClickListener(v -> {
@@ -3746,7 +3746,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             (initialDialogsType == DIALOGS_TYPE_DEFAULT && !onlySelect || initialDialogsType == DIALOGS_TYPE_FORWARD) &&
             folderId == 0 && communityId == 0 && TextUtils.isEmpty(searchString)
         ) {
-            filterTabsView = new FilterTabsView(context, xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.wrapChatListTopBar(resourceProvider)) {
+            filterTabsView = new FilterTabsView(context, com.dazewell.gram.helpers.InterfaceStyleSolidHeader.wrapChatListTopBar(resourceProvider)) {
                 @Override
                 public boolean onInterceptTouchEvent(MotionEvent ev) {
                     getParent().requestDisallowInterceptTouchEvent(true);
@@ -4962,7 +4962,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
 
         // NagramX: flat MD3 bars are opaque and should not inherit the floating-card fade.
-        final boolean naxFlatChatListTopBar = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar();
+        final boolean naxFlatChatListTopBar = com.dazewell.gram.helpers.InterfaceStyleController.applyChatListTopBar();
         topBubblesFadeView = new DialogsActivityTopBubblesFadeView(context);
         topBubblesFadeView.setColor(Theme.getColor(Theme.key_windowBackgroundWhite));
         topBubblesFadeView.setVisibility(naxFlatChatListTopBar ? View.GONE : View.VISIBLE);
@@ -5420,7 +5420,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 filterTabsViewBackground.setPadding(dp(6.666f));
                 filterTabsView.setBlurredBackground(filterTabsViewBackground);
             }
-            contentView.addView(filterTabsView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 36 + 7 + 7, Gravity.TOP, xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar() ? 0 : 4, 0, xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar() ? 0 : 4, 0));
+            contentView.addView(filterTabsView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 36 + 7 + 7, Gravity.TOP, com.dazewell.gram.helpers.InterfaceStyleController.applyChatListTopBar() ? 0 : 4, 0, com.dazewell.gram.helpers.InterfaceStyleController.applyChatListTopBar() ? 0 : 4, 0));
         }
 
         // NagramX: MD3 keeps the field's rounded control fill; the parent owns the outer surface.
@@ -5658,7 +5658,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         actionBarDefaultPaint.setColor(getDialogsTopSurfaceColor());
         // NagramX: the Classic solid top bar needs light foregrounds the 12.4.0 palette no longer has.
-        xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.applyChatListTopBarOnCreate(actionBar, fragmentSearchField, folderId != 0 || communityId != 0);
+        com.dazewell.gram.helpers.InterfaceStyleSolidHeader.applyChatListTopBarOnCreate(actionBar, fragmentSearchField, folderId != 0 || communityId != 0);
         /*
         if (inPreviewMode) {
             final TLRPC.User currentUser = getUserConfig().getCurrentUser();
@@ -7076,7 +7076,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
     }
 
-    // NagramX: physical keyboard hotkeys (com.radolyn.ayugram.hotkeys.HotkeyController)
+    // NagramX: physical keyboard hotkeys (com.dazewell.gram.hotkeys.HotkeyController)
     public boolean hotkeyOpenSearch() {
         if (onlySelect || searchIsShowed || fragmentSearchFieldWatcher == null) {
             return false;
@@ -8833,8 +8833,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
         long dialogId = cell.getDialogId();
         // NagramX: never peek a "require password" chat -- the long-press preview would leak its content
-        if (com.radolyn.ayugram.chatlock.ChatLockController.isLocked(currentAccount, dialogId)
-                && !com.radolyn.ayugram.chatlock.ChatLockController.isUnlocked(currentAccount, dialogId)) {
+        if (com.dazewell.gram.chatlock.ChatLockController.isLocked(currentAccount, dialogId)
+                && !com.dazewell.gram.chatlock.ChatLockController.isUnlocked(currentAccount, dialogId)) {
             return false;
         }
         Bundle args = new Bundle();
@@ -12588,7 +12588,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
 
             // NagramX: the key-only top-bar descriptions have just pushed the shared palette back in.
-            xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.applyChatListTopBar(actionBar, fragmentSearchField, folderId != 0 || communityId != 0);
+            com.dazewell.gram.helpers.InterfaceStyleSolidHeader.applyChatListTopBar(actionBar, fragmentSearchField, folderId != 0 || communityId != 0);
             setSearchAnimationProgress(searchAnimationProgress, false);
             if (dialogStoriesCell != null) {
                 dialogStoriesCell.updateColors();
@@ -12618,7 +12618,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
 
         if (folderId == 0) {
-            if (onlySelect && !xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()) { // NagramX: see createView
+            if (onlySelect && !com.dazewell.gram.helpers.InterfaceStyleController.applyChatListTopBar()) { // NagramX: see createView
                 arrayList.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_windowBackgroundWhite));
             }
             arrayList.add(new ThemeDescription(fragmentView, 0, null, actionBarDefaultPaint, null, null, getDialogsTopSurfaceColorKey()));
@@ -13188,7 +13188,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
         int color = getThemedColor(Theme.key_windowBackgroundWhite);
         // NagramX: the Classic solid top bar is dark, so its icons follow the surface instead; search and selection turn it white.
-        if (xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListTopBar()) color = xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListSurface(ColorUtils.setAlphaComponent(getThemedColor(getDialogsTopSurfaceColorKey()), 255), searching && (whiteActionBar || !onlySelect) || actionBar != null && actionBar.isActionModeShowed() ? 1f : 0f);
+        if (com.dazewell.gram.helpers.InterfaceStyleSolidHeader.chatListTopBar()) color = com.dazewell.gram.helpers.InterfaceStyleSolidHeader.chatListSurface(ColorUtils.setAlphaComponent(getThemedColor(getDialogsTopSurfaceColorKey()), 255), searching && (whiteActionBar || !onlySelect) || actionBar != null && actionBar.isActionModeShowed() ? 1f : 0f);
         return ColorUtils.calculateLuminance(color) > 0.7f;
     }
 
@@ -14272,7 +14272,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             // NagramX: mirrors Recent/Archived/Bookmarks above -- this menu is the only way to
             // reach the Chats long-press options when the bottom nav is hidden.
             if (hideBottomNavigationBar) {
-                com.radolyn.ayugram.eventschedule.MessageTriggersMenu.addTo(io, this);
+                com.dazewell.gram.eventschedule.MessageTriggersMenu.addTo(io, this);
             }
             if (NekoConfig.showGhostInDrawer.Bool()) {
                 final String ghostModeText = NekoConfig.isGhostModeActive()
@@ -14611,7 +14611,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private void checkUi_searchFieldStyle() {
         // NagramX: MD3 keeps the rounded field fill visible in normal and Search modes.
         fragmentSearchField.setBlurredBackgroundVisibility(
-            xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()
+            com.dazewell.gram.helpers.InterfaceStyleController.applyChatListTopBar()
                 ? 0f
                 : animatorSearchVisible.getFloatValue()
         );

@@ -10,7 +10,7 @@ import android.os.SystemClock;
 import android.text.TextUtils;
 import android.view.View;
 
-import com.radolyn.ayugram.hotkeys.HotkeysActivity;
+import com.dazewell.gram.hotkeys.HotkeysActivity;
 
 import org.telegram.messenger.ContactsController;
 import org.telegram.messenger.LocaleController;
@@ -36,16 +36,16 @@ import tw.nekomimi.nekogram.config.cell.ConfigCellHeader;
 import tw.nekomimi.nekogram.config.cell.ConfigCellSelectBox;
 import tw.nekomimi.nekogram.config.cell.ConfigCellText;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextCheck;
-import tw.nekomimi.nekogram.config.cell.ConfigCellTextCheckPage;
+import com.dazewell.gram.ui.ConfigCellTextCheckPage;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextDetail;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextInput;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextInput2;
-import tw.nekomimi.nekogram.helpers.SaveFileNameDialog;
-import tw.nekomimi.nekogram.helpers.SaveFileNameHelper;
+import com.dazewell.gram.helpers.SaveFileNameDialog;
+import com.dazewell.gram.helpers.SaveFileNameHelper;
 import tw.nekomimi.nekogram.utils.AndroidUtil;
 import xyz.nextalone.nagram.NaConfig;
-import xyz.nextalone.nagram.helpers.InterfaceStyleController;
-import xyz.nextalone.nagram.ui.InterfaceStyleActivity;
+import com.dazewell.gram.helpers.InterfaceStyleController;
+import com.dazewell.gram.ui.InterfaceStyleActivity;
 
 @SuppressLint("RtlHardcoded")
 @SuppressWarnings({"unused", "FieldCanBeLocal"})
@@ -83,7 +83,7 @@ public class NekoGeneralSettingsActivity extends BaseNekoXSettingsActivity {
     private final AbstractConfigCell disableNumberRoundingRow = cellGroup.appendCell(new ConfigCellTextCheck(NekoConfig.disableNumberRounding, "4.8K -> 4777"));
     private final AbstractConfigCell preferCommonGroupsTabRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getPreferCommonGroupsTab(), getString(R.string.PreferCommonGroupsTabNotice)));
     private final AbstractConfigCell physicalKeyboardHotkeysRow = cellGroup.appendCell(new ConfigCellTextCheckPage(NaConfig.INSTANCE.getPhysicalKeyboardHotkeys(), getString(R.string.PhysicalKeyboardHotkeysValue), () -> presentFragment(new HotkeysActivity())));
-    private final AbstractConfigCell launcherShortcutsRow = cellGroup.appendCell(new ConfigCellText("LauncherShortcuts", () -> presentFragment(new com.radolyn.ayugram.shortcuts.LauncherShortcutsActivity())));
+    private final AbstractConfigCell launcherShortcutsRow = cellGroup.appendCell(new ConfigCellText("LauncherShortcuts", () -> presentFragment(new com.dazewell.gram.shortcuts.LauncherShortcutsActivity())));
     private final AbstractConfigCell usePersianCalendarRow = cellGroup.appendCell(new ConfigCellTextCheck(NekoConfig.usePersianCalendar, getString(R.string.UsePersianCalendarInfo)));
     private final AbstractConfigCell displayPersianCalendarByLatinRow = cellGroup.appendCell(new ConfigCellTextCheck(NekoConfig.displayPersianCalendarByLatin));
     private final AbstractConfigCell showIdAndDcRow = cellGroup.appendCell(new ConfigCellSelectBox("ShowIdAndDc", NaConfig.INSTANCE.getIdDcType(), new String[]{

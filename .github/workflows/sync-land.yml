@@ -477,7 +477,7 @@ jobs:
             echo "Telegram secrets unset; skipping notification."; exit 0
           fi
           if [ "$MOVED" = "1" ]; then
-            TEXT="⚠️ Dazegram sync-land: origin/nbase has ALREADY advanced to ${SNAP} but a later step failed (pins PR or its guard-check).
+            TEXT="⚠️ DwellGram sync-land: origin/nbase has ALREADY advanced to ${SNAP} but a later step failed (pins PR or its guard-check).
           old nbase: ${OLD_NBASE}
           pins PR:   ${PRN:-not created}
           run: ${RUN_URL}
@@ -496,13 +496,13 @@ jobs:
               [ "$(git rev-parse origin/nbase)" = "$SNAP" ] && MOVED_LIVE=1
             fi
             if [ "$MOVED_LIVE" = "1" ]; then
-              TEXT="⚠️ Dazegram sync-land: origin/nbase has ALREADY advanced to ${SNAP} but a later step failed (pins PR or its guard-check).
+              TEXT="⚠️ DwellGram sync-land: origin/nbase has ALREADY advanced to ${SNAP} but a later step failed (pins PR or its guard-check).
           old nbase: ${OLD_NBASE}
           pins PR:   ${PRN:-not created}
           run: ${RUN_URL}
           If the pins PR was not opened, just re-run this workflow — the fast-forward is idempotent and resumes at the pins PR. If it opened but its sync-guard-check is red, fix it on the PC."
             else
-              TEXT="⚠️ Dazegram sync-land blocked before moving nbase (snapshot resolution or land check). Nothing pushed.
+              TEXT="⚠️ DwellGram sync-land blocked before moving nbase (snapshot resolution or land check). Nothing pushed.
           snapshot: ${SNAP:-unresolved}
           run: ${RUN_URL}
           Finish the reconciliation on the PC."

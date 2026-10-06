@@ -1,6 +1,6 @@
 ---
 name: nagramx-workflow
-description: "Dazewell's process for adding or changing anything in the NagramX repo (a personal Telegram-for-Android fork, GitHub dazewell/Dazegram). Trigger this whenever work touches that repo: adding a feature, fixing a bug, preparing a commit or PR for it, or when dazewell references \"the usual process\" for NagramX. Also trigger when he gives new or corrected guidance about how this workflow should run — this file is meant to be edited, not just read. Covers: the one-change-one-session rule and why child sessions were dropped, the reuse-first / minimal-footprint hook style with concrete hook points and config surfaces, the two review rounds, the compile gate and its CI fallback, the fallback-not-migration rule, temporary diagnostics and the smoke build, the FEATURES.md entry, on-device testing, and when a PR actually gets opened."
+description: "Dazewell's process for adding or changing anything in the NagramX repo (a personal Telegram-for-Android fork, GitHub dazewell/DwellGram). Trigger this whenever work touches that repo: adding a feature, fixing a bug, preparing a commit or PR for it, or when dazewell references \"the usual process\" for NagramX. Also trigger when he gives new or corrected guidance about how this workflow should run — this file is meant to be edited, not just read. Covers: the one-change-one-session rule and why child sessions were dropped, the reuse-first / minimal-footprint hook style with concrete hook points and config surfaces, the two review rounds, the compile gate and its CI fallback, the fallback-not-migration rule, temporary diagnostics and the smoke build, the FEATURES.md entry, on-device testing, and when a PR actually gets opened."
 ---
 
 # NagramX contribution workflow
@@ -105,8 +105,9 @@ of opening a chat funnels through `ChatActivity.onFragmentCreate()` →
 `presentFragment` / `addFragmentToStack`.
 
 **Design as hooks.** New logic goes in self-contained feature classes, typically
-under `com.radolyn.ayugram.<feature>` (e.g. `hidelastmessage`, `chatlock`),
-`tw.nekomimi.nekogram.helpers.*`, or `xyz.nextalone.nagram.*`. The base file
+under `com.dazewell.gram.<feature>` (e.g. `hidelastmessage`, `chatlock`; shared
+helpers in `com.dazewell.gram.helpers`), with `tw.nekomimi` and `xyz.nextalone`
+holding inherited code only. A new class bumps `DAZEWELL_EXACT`. The base file
 gets a few injected lines, usually **fully qualified so no import is added**,
 each marked `// NagramX:` explaining the non-obvious *why*. Mirror an existing
 feature when adding a similar one; `hidelastmessage` (with its `ChatActivity` /
