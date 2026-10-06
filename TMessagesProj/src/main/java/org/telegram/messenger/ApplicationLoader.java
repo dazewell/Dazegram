@@ -283,7 +283,7 @@ public class ApplicationLoader extends Application {
         Utilities.globalQueue.postRunnable(() -> {
             for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
                 try {
-                    com.radolyn.ayugram.chattimezone.ChatTimeZoneController.warmCache(a);
+                    com.dazewell.gram.chattimezone.ChatTimeZoneController.warmCache(a);
                 } catch (Throwable ignore) {}
             }
         });
@@ -305,14 +305,14 @@ public class ApplicationLoader extends Application {
                 // thread, so the durable randoms_v2 heal is the backstop for an ack that lands before it
                 // registers. Confined to logged-in accounts (the same set that resends); idempotent per
                 // process, and a no-op read for accounts with no triggers.
-                com.radolyn.ayugram.eventschedule.EventScheduleController.ensureWarm(a);
+                com.dazewell.gram.eventschedule.EventScheduleController.ensureWarm(a);
                 SendMessagesHelper.getInstance(a).checkUnsentMessages();
             }
         }
 
         // NagramX: if Ghost ended while a Ghost Hold backlog remained (e.g. app killed
         // mid-flush), drain it on this launch so the queue can never be stranded.
-        com.radolyn.ayugram.ghosthold.GhostHoldController.checkOnProcessStart();
+        com.dazewell.gram.ghosthold.GhostHoldController.checkOnProcessStart();
 
         PushListenerController.reconcilePushRegistration();
 

@@ -9,7 +9,7 @@ import com.radolyn.ayugram.AyuUtils;
 import com.radolyn.ayugram.database.entities.AyuMessageBase;
 import com.radolyn.ayugram.messages.AyuMessagesController;
 import com.radolyn.ayugram.messages.AyuSavePreferences;
-import com.radolyn.ayugram.messages.SaveScope;
+import com.dazewell.gram.messages.SaveScope;
 import com.radolyn.ayugram.utils.AyuFileLocation;
 
 import org.telegram.messenger.ChatObject;

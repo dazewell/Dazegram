@@ -30,7 +30,7 @@ public class ChatActivityTopPanelLayout extends AnimatedLinearLayout {
     BlurredBackgroundDrawable backgroundDrawable;
     private boolean flatBackground;
     // NagramX: set by the chat's header photo background while its ActionBar is attached.
-    public com.radolyn.ayugram.headerbg.HeaderBgDrawer naxHeaderBg;
+    public com.dazewell.gram.headerbg.HeaderBgDrawer naxHeaderBg;
 
     public void setBlurredBackground(BlurredBackgroundDrawable background) {
         backgroundDrawable = background;

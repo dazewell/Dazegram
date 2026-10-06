@@ -159,7 +159,7 @@ public class TypefaceHelper {
         builder.setSpan(new LeadingMarginSpan.Standard(dp(2), 0), 0, builder.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         Typeface titleTypeface = NekoConfig.typeface.Bool() && NekoConfig.forceFontWeightFallback.Bool() ? createTypeface(700, false) : createTypeface(600, false);
         // NagramX: scoped provider so the Classic solid chat-list bar can turn this title white.
-        builder.setSpan(new TypefaceSpan(titleTypeface, 0, Theme.key_telegram_color_dialogsLogo, xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.wrapChatListTopBar(null)), 0, builder.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        builder.setSpan(new TypefaceSpan(titleTypeface, 0, Theme.key_telegram_color_dialogsLogo, com.dazewell.gram.helpers.InterfaceStyleSolidHeader.wrapChatListTopBar(null)), 0, builder.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         return builder;
     }
 

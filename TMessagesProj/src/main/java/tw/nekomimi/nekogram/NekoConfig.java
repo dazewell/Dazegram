@@ -31,7 +31,7 @@ import java.util.Set;
 
 import tw.nekomimi.nekogram.config.ConfigItem;
 import tw.nekomimi.nekogram.helpers.CloudSettingsHelper;
-import tw.nekomimi.nekogram.helpers.GhostTypingReminderHelper;
+import com.dazewell.gram.helpers.GhostTypingReminderHelper;
 
 @SuppressLint("ApplySharedPref")
 @SuppressWarnings("unused")
@@ -344,7 +344,7 @@ public class NekoConfig {
         // not as a field on isGhostModeActive(), because that predicate must
         // stay pure and side-effect-free -- Ghost Hold (PR #347) also calls it
         // from multiple threads and relies on that.
-        com.radolyn.ayugram.ghosthold.GhostHoldController.onGhostStateMaybeChanged();
+        com.dazewell.gram.ghosthold.GhostHoldController.onGhostStateMaybeChanged();
         GhostTypingReminderHelper.onGhostSignalsChanged();
     }
 

@@ -26,7 +26,7 @@ import java.util.Locale;
 
 import tw.nekomimi.nekogram.NekoConfig;
 import tw.nekomimi.nekogram.config.ConfigItem;
-import tw.nekomimi.nekogram.helpers.GhostTypingReminderHelper;
+import com.dazewell.gram.helpers.GhostTypingReminderHelper;
 import tw.nekomimi.nekogram.ui.cells.HeaderCell;
 import xyz.nextalone.nagram.NaConfig;
 
@@ -112,7 +112,7 @@ public class GhostModeActivity extends BaseNekoSettingsActivity implements Notif
     }
 
     private void refreshHeldCount() {
-        com.radolyn.ayugram.ghosthold.GhostHoldController.countHeld(count -> {
+        com.dazewell.gram.ghosthold.GhostHoldController.countHeld(count -> {
             heldCount = count;
             if (listAdapter != null && holdMessagesNoticeRow >= 0) {
                 listAdapter.notifyItemChanged(holdMessagesNoticeRow);
@@ -144,7 +144,7 @@ public class GhostModeActivity extends BaseNekoSettingsActivity implements Notif
 
     private void updateGhostViews() {
         // NagramX: a ghost toggle here may have flipped isGhostModeActive() false; drain the hold queue on that edge
-        com.radolyn.ayugram.ghosthold.GhostHoldController.onGhostStateMaybeChanged();
+        com.dazewell.gram.ghosthold.GhostHoldController.onGhostStateMaybeChanged();
 
         // NagramX: every individual signal row routes through here after
         // toggling, and each of those can flip the derived Ghost predicate

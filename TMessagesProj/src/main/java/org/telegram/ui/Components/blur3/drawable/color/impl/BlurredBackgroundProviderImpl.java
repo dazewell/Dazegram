@@ -75,7 +75,7 @@ public class BlurredBackgroundProviderImpl {
     public static BlurredBackgroundProvider dialogsTopPanel(int currentAccount, Theme.ResourcesProvider resourcesProvider) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
             .setBackgroundColor((r, isDark) -> {
-                if (xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar()) {
+                if (com.dazewell.gram.helpers.InterfaceStyleController.applyChatListTopBar()) {
                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && checkBlurEnabled(currentAccount, resourcesProvider)) {
                         return Theme.multAlpha(Theme.getColor(Theme.key_actionBarDefault, r), xyz.nextalone.nagram.NaConfig.interfaceStyleBlurAlpha());
                     }
@@ -86,9 +86,9 @@ public class BlurredBackgroundProviderImpl {
                 final int colorTarget = Theme.getColor(Theme.key_glass_targetMainTopPanel, r);
                 return solveSrcColor(colorBg, colorTarget, alpha);
             })
-            .setStrokeColorTop((r, isDark) -> xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar() ? 0 : (isDark ? 0x06FFFFFF : 0x11000000))
-            .setStrokeColorBottom((r, isDark) -> xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar() ? 0 : (isDark ? 0x11FFFFFF : 0x20000000))
-            .setShadowColor((r, isDark) -> xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatListTopBar() ? 0 : (isDark ? 0x04FFFFFF : 0x20000000))
+            .setStrokeColorTop((r, isDark) -> com.dazewell.gram.helpers.InterfaceStyleController.applyChatListTopBar() ? 0 : (isDark ? 0x06FFFFFF : 0x11000000))
+            .setStrokeColorBottom((r, isDark) -> com.dazewell.gram.helpers.InterfaceStyleController.applyChatListTopBar() ? 0 : (isDark ? 0x11FFFFFF : 0x20000000))
+            .setShadowColor((r, isDark) -> com.dazewell.gram.helpers.InterfaceStyleController.applyChatListTopBar() ? 0 : (isDark ? 0x04FFFFFF : 0x20000000))
             .setShadowLayer(dpf2(2.667f), 0, dpf2(0.85f))
             .setStrokeWidth(dpf2(0.4f), dpf2(0.4f))
             .build();
@@ -109,11 +109,11 @@ public class BlurredBackgroundProviderImpl {
                 .setBackgroundColor((r, isDark) -> {
                     final float alpha = LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS) ? 0.85f : 0.76f;
                     final int colorBg = Theme.getColor(Theme.key_windowBackgroundWhite, r);
-                    return xyz.nextalone.nagram.helpers.InterfaceStyleController.applyButtons() ? ColorUtils.setAlphaComponent(colorBg, 255) : Theme.multAlpha(colorBg, alpha); // NagramX: opaque, a translucent fill shows its own blur
+                    return com.dazewell.gram.helpers.InterfaceStyleController.applyButtons() ? ColorUtils.setAlphaComponent(colorBg, 255) : Theme.multAlpha(colorBg, alpha); // NagramX: opaque, a translucent fill shows its own blur
                 })
-                .setStrokeColorTop((r, isDark) -> xyz.nextalone.nagram.helpers.InterfaceStyleController.applyButtons() ? 0 : (isDark ? 0x28FFFFFF : 0xFFFFFFFF)) // NagramX: flat under MD3 Buttons
-                .setStrokeColorBottom((r, isDark) -> xyz.nextalone.nagram.helpers.InterfaceStyleController.applyButtons() ? 0 : (isDark ? 0x14FFFFFF : 0xFFFFFFFF))
-                .setShadowColor((r, isDark) -> xyz.nextalone.nagram.helpers.InterfaceStyleController.applyButtons() ? 0 : (isDark ? 0 : 0x40000000))
+                .setStrokeColorTop((r, isDark) -> com.dazewell.gram.helpers.InterfaceStyleController.applyButtons() ? 0 : (isDark ? 0x28FFFFFF : 0xFFFFFFFF)) // NagramX: flat under MD3 Buttons
+                .setStrokeColorBottom((r, isDark) -> com.dazewell.gram.helpers.InterfaceStyleController.applyButtons() ? 0 : (isDark ? 0x14FFFFFF : 0xFFFFFFFF))
+                .setShadowColor((r, isDark) -> com.dazewell.gram.helpers.InterfaceStyleController.applyButtons() ? 0 : (isDark ? 0 : 0x40000000))
                 .setShadowLayer(dpf2(11 / 3f), 0, dpf2(2 / 3f))
                 .setStrokeWidth(dpf2(0.5f), dpf2(0.5f))
                 .build();
@@ -235,9 +235,9 @@ public class BlurredBackgroundProviderImpl {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
                 .setBackgroundColor((r, isDark) -> {
                     // NagramX: MD3 keeps the pre-Glass theme colour instead of the glass target tint.
-                    final boolean md3Header = flatMd3Chrome && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader();
-                    if (md3Header && solidHeaderActionBar != null && !solidHeaderActionBar.isActionModeShowed() && xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeader()) {
-                        return xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatHeaderSurface(Theme.getColor(isDark ? Theme.key_actionBarDefault : Theme.key_chat_topPanelBackground, r));
+                    final boolean md3Header = flatMd3Chrome && com.dazewell.gram.helpers.InterfaceStyleController.applyChatHeader();
+                    if (md3Header && solidHeaderActionBar != null && !solidHeaderActionBar.isActionModeShowed() && com.dazewell.gram.helpers.InterfaceStyleSolidHeader.chatHeader()) {
+                        return com.dazewell.gram.helpers.InterfaceStyleSolidHeader.chatHeaderSurface(Theme.getColor(isDark ? Theme.key_actionBarDefault : Theme.key_chat_topPanelBackground, r));
                     }
                     if (md3Header && frostedSourceAvailable && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && checkBlurEnabled(currentAccount, resourcesProvider)) {
                         return Theme.multAlpha(Theme.getColor(isDark ? Theme.key_actionBarDefault : Theme.key_chat_topPanelBackground, r), xyz.nextalone.nagram.NaConfig.interfaceStyleBlurAlpha());
@@ -251,9 +251,9 @@ public class BlurredBackgroundProviderImpl {
                     final int colorBg = Theme.getColor(Theme.key_chat_topPanelBackground, r);
                     return Theme.multAlpha(colorBg, alpha);
                 })
-                .setStrokeColorTop((r, isDark) -> flatMd3Chrome && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : (isDark ? 0x20FFFFFF : 0xFFFFFFFF))
-                .setStrokeColorBottom((r, isDark) -> flatMd3Chrome && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : (isDark ? 0x14FFFFFF : 0xFFFFFFFF))
-                .setShadowColor((r, isDark) -> flatMd3Chrome && xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : (isDark ? 0 : 0x20000000))
+                .setStrokeColorTop((r, isDark) -> flatMd3Chrome && com.dazewell.gram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : (isDark ? 0x20FFFFFF : 0xFFFFFFFF))
+                .setStrokeColorBottom((r, isDark) -> flatMd3Chrome && com.dazewell.gram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : (isDark ? 0x14FFFFFF : 0xFFFFFFFF))
+                .setShadowColor((r, isDark) -> flatMd3Chrome && com.dazewell.gram.helpers.InterfaceStyleController.applyChatHeader() ? 0 : (isDark ? 0 : 0x20000000))
                 //.setShadowLayer(dpf2(10 / 3f), 0, dpf2(2 / 3f))
                 .setStrokeWidth(dpf2(0.55f), dpf2(0.55f))
                 .build();
@@ -269,7 +269,7 @@ public class BlurredBackgroundProviderImpl {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
             .setBackgroundColor((r, isDark) -> {
                 // NagramX: the tag/search strip is visually part of the chat header surface.
-                final boolean md3Header = xyz.nextalone.nagram.helpers.InterfaceStyleController.applyChatHeader();
+                final boolean md3Header = com.dazewell.gram.helpers.InterfaceStyleController.applyChatHeader();
                 if (md3Header && frostedSourceAvailable && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && checkBlurEnabled(currentAccount, resourcesProvider)) {
                     return Theme.multAlpha(Theme.getColor(isDark ? Theme.key_actionBarDefault : Theme.key_chat_topPanelBackground, r), xyz.nextalone.nagram.NaConfig.interfaceStyleBlurAlpha());
                 }

@@ -74,7 +74,7 @@ import tw.nekomimi.nekogram.ui.cells.EmojiSetCell;
 import tw.nekomimi.nekogram.ui.cells.StickerSizePreviewMessagesCell;
 import xyz.nextalone.nagram.NaConfig;
 import xyz.nextalone.nagram.helper.DoubleTap;
-import xyz.nextalone.nagram.helper.RecordingLimitVibration;
+import com.dazewell.gram.helpers.RecordingLimitVibration;
 
 @SuppressLint("RtlHardcoded")
 @SuppressWarnings({"unused", "FieldCanBeLocal"})
@@ -324,10 +324,10 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
     }));
 
     private final AbstractConfigCell composerLayoutRow = cellGroup.appendCell(new ConfigCellTextCheckIcon(null, "ComposerLayout", null, R.drawable.msg_customize, false, () ->
-            presentFragment(new xyz.nextalone.nagram.ui.composer.ComposerLayoutActivity())));
+            presentFragment(new com.dazewell.gram.composer.ComposerLayoutActivity())));
 
     private final AbstractConfigCell rememberedSendActionRow = cellGroup.appendCell(new ConfigCellTextCheckIcon(null, "RememberedSendAction", null, R.drawable.msg_send, false, () ->
-            presentFragment(new xyz.nextalone.nagram.ui.RememberedSendActionSettingsActivity())));
+            presentFragment(new com.dazewell.gram.ui.RememberedSendActionSettingsActivity())));
 
     @SuppressLint("NotifyDataSetChanged")
     private final AbstractConfigCell textStyleRow = cellGroup.appendCell(new ConfigCellTextCheckIcon(null, "TextStyle", null, R.drawable.msg_photo_text_framed3, false, () -> {

@@ -249,9 +249,9 @@ import tw.nekomimi.nekogram.utils.AlertUtil;
 import tw.nekomimi.nekogram.utils.AndroidUtil;
 import tw.nekomimi.nekogram.utils.StringUtils;
 import xyz.nextalone.nagram.NaConfig;
-import xyz.nextalone.nagram.RememberedSendAction;
-import xyz.nextalone.nagram.helper.RecordingLimitVibration;
-import xyz.nextalone.nagram.ui.RememberedSendActionSettingsActivity;
+import com.dazewell.gram.helpers.RememberedSendAction;
+import com.dazewell.gram.helpers.RecordingLimitVibration;
+import com.dazewell.gram.ui.RememberedSendActionSettingsActivity;
 
 public class ChatActivityEnterView extends FrameLayout implements
     NotificationCenter.NotificationCenterDelegate,
@@ -685,7 +685,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     // Read per call rather than cached in a constant: the panel scale is a user setting, and a static
     // final would freeze the first value read for the life of the process.
     private static int composerToolbarHeight() {
-        return xyz.nextalone.nagram.ui.ComposerToolbarLayout.height();
+        return com.dazewell.gram.ui.ComposerToolbarLayout.height();
     }
     private static final int COMPOSER_TOOLBAR_GAP = 2;
     // How far the island's bottom sits off the keyboard while the composer row owns it. The row holds its own
@@ -714,8 +714,8 @@ public class ChatActivityEnterView extends FrameLayout implements
     public FrameLayout messageEditTextContainer;
     public FrameLayout textFieldContainer;
     public FrameLayout sendButtonContainer;
-    private xyz.nextalone.nagram.ui.ComposerToolbarLayout composerToolbar;
-    private xyz.nextalone.nagram.ui.composer.ComposerFormattingActions composerFormattingActions;
+    private com.dazewell.gram.ui.ComposerToolbarLayout composerToolbar;
+    private com.dazewell.gram.composer.ComposerFormattingActions composerFormattingActions;
     private boolean toolbarReplacementVisible;
     private boolean inputPrimarySuppressed;
     private int inputPrimaryVisibility;
@@ -729,7 +729,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     private SendButton doneButton;
     private AnimatorSet doneButtonAnimation;
 
-    private final xyz.nextalone.nagram.ui.InputSatellites inputSatellites = new xyz.nextalone.nagram.ui.InputSatellites();
+    private final com.dazewell.gram.ui.InputSatellites inputSatellites = new com.dazewell.gram.ui.InputSatellites();
     protected View topView;
     private BotKeyboardView botKeyboardView;
     private ImageView notifyButton;
@@ -1372,7 +1372,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         private Drawable vidDrawable;
         // NagramX (#video-hold-send): the paused round video preview's sound, one more chip in this stack, since a
         // tap on the video now holds to send
-        private final com.radolyn.ayugram.videonote.VideoPreviewSoundChip soundChip = new com.radolyn.ayugram.videonote.VideoPreviewSoundChip(this,
+        private final com.dazewell.gram.videonote.VideoPreviewSoundChip soundChip = new com.dazewell.gram.videonote.VideoPreviewSoundChip(this,
                 () -> videoToSendMessageObject != null && parentFragment != null && parentFragment.instantCameraView != null ? parentFragment.instantCameraView.getHoldToSend() : null,
                 () -> {
                     if (this.virtualViewHelper != null) {
@@ -1893,7 +1893,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             useGlassDesign = true;
 
             if (colorProvider == null) {
-                colorProvider = new xyz.nextalone.nagram.ui.Md3ButtonColorProvider(resourcesProvider, Theme.key_chat_messagePanelVoiceLockBackground); // NagramX: the lock and view-once chips follow Interface Style's Buttons switch
+                colorProvider = new com.dazewell.gram.ui.Md3ButtonColorProvider(resourcesProvider, Theme.key_chat_messagePanelVoiceLockBackground); // NagramX: the lock and view-once chips follow Interface Style's Buttons switch
             }
 
             lockBackgroundDrawable = factory.create(this, colorProvider);
@@ -2916,15 +2916,15 @@ public class ChatActivityEnterView extends FrameLayout implements
         frameLayout.setClipChildren(false);
         textFieldContainer.addView(frameLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM, 0, 0, composerToolbarEnabled ? 0 : DEFAULT_HEIGHT + 8, 0));
         if (composerToolbarEnabled) {
-            composerToolbar = new xyz.nextalone.nagram.ui.ComposerToolbarLayout(context);
+            composerToolbar = new com.dazewell.gram.ui.ComposerToolbarLayout(context);
             // NagramX: the toolbar owns the delayed gesture so holding any visible control can reach
             // the same layout editor without replacing that control's normal click/long-click handlers.
             composerToolbar.setConfigurationLongPress(() -> {
                 if (parentFragment != null) {
-                    parentFragment.presentFragment(new xyz.nextalone.nagram.ui.composer.ComposerLayoutActivity());
+                    parentFragment.presentFragment(new com.dazewell.gram.composer.ComposerLayoutActivity());
                 }
             });
-            composerFormattingActions = new xyz.nextalone.nagram.ui.composer.ComposerFormattingActions(this, composerToolbar, resourcesProvider, isChat);
+            composerFormattingActions = new com.dazewell.gram.composer.ComposerFormattingActions(this, composerToolbar, resourcesProvider, isChat);
             messageEditTextContainer.addView(composerToolbar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, composerToolbarHeight(), Gravity.BOTTOM));
         }
 
@@ -2980,7 +2980,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
         });
         if (composerToolbarEnabled) {
-            composerToolbar.addConfigurable(xyz.nextalone.nagram.ui.composer.ComposerButtons.EMOJI, emojiButton);
+            composerToolbar.addConfigurable(com.dazewell.gram.composer.ComposerButtons.EMOJI, emojiButton);
         } else {
             messageEditTextContainer.addView(emojiButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.BOTTOM | Gravity.LEFT, 2, 0, 0, 0));
         }
@@ -3048,11 +3048,11 @@ public class ChatActivityEnterView extends FrameLayout implements
                 notifyButton.setScaleType(ImageView.ScaleType.CENTER);
                 if (composerToolbarEnabled) {
                     // NagramX: keep this wrapped bitmap in the same 24dp visual box as configurable icons.
-                    xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyPanelIconBox(notifyButton, R.drawable.input_notify_on);
+                    com.dazewell.gram.ui.ComposerToolbarLayout.applyPanelIconBox(notifyButton, R.drawable.input_notify_on);
                 }
                 notifyButton.setBackgroundDrawable(composerPanelSelector());
                 notifyButton.setVisibility(canWriteToChannel && (delegate == null || !delegate.hasScheduledMessages()) ? VISIBLE : GONE);
-                int composerContextSize = composerToolbarEnabled ? xyz.nextalone.nagram.ui.ComposerToolbarLayout.buttonSize() : DEFAULT_HEIGHT;
+                int composerContextSize = composerToolbarEnabled ? com.dazewell.gram.ui.ComposerToolbarLayout.buttonSize() : DEFAULT_HEIGHT;
                 attachLayout.addView(notifyButton, LayoutHelper.createLinear(composerContextSize, composerContextSize));
                 notifyButton.setOnClickListener(new OnClickListener() {
                     @Override
@@ -3065,7 +3065,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                         notifySilentDrawable.setCrossOut(silent, true);
                         notifyButton.setImageDrawable(notifySilentDrawable);
                         if (composerToolbarEnabled) {
-                            xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyPanelIconBox(notifyButton, R.drawable.input_notify_on);
+                            com.dazewell.gram.ui.ComposerToolbarLayout.applyPanelIconBox(notifyButton, R.drawable.input_notify_on);
                         }
                         MessagesController.getNotificationsSettings(currentAccount).edit().putBoolean("silent_" + dialog_id, silent).commit();
                         NotificationsController.getInstance(currentAccount).updateServerNotificationsSettings(dialog_id, fragment == null ? 0 : fragment.getTopicId());
@@ -3096,7 +3096,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (composerToolbarEnabled) {
                 // NagramX: attach holds the trailing edge - it is the one always reached for, so it stays put
                 // while everything beside it comes and goes
-                composerToolbar.addConfigurable(xyz.nextalone.nagram.ui.composer.ComposerButtons.ATTACH, attachButton);
+                composerToolbar.addConfigurable(com.dazewell.gram.composer.ComposerButtons.ATTACH, attachButton);
             } else {
                 messageEditTextContainer.addView(attachButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.BOTTOM | Gravity.RIGHT));
             }
@@ -3116,7 +3116,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         aiButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
         aiButton.setBackground(composerPanelCompactSelector());
         if (composerToolbarEnabled) {
-            composerToolbar.addConfigurable(xyz.nextalone.nagram.ui.composer.ComposerButtons.AI, aiButton);
+            composerToolbar.addConfigurable(com.dazewell.gram.composer.ComposerButtons.AI, aiButton);
         } else {
             textFieldContainer.addView(aiButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.TOP | Gravity.RIGHT, 0, 1 + DEFAULT_HEIGHT, 0, 0));
         }
@@ -3187,7 +3187,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         richButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
         richButton.setBackground(composerPanelCompactSelector());
         if (composerToolbarEnabled) {
-            composerToolbar.addConfigurable(xyz.nextalone.nagram.ui.composer.ComposerButtons.RICH, richButton);
+            composerToolbar.addConfigurable(com.dazewell.gram.composer.ComposerButtons.RICH, richButton);
         } else {
             textFieldContainer.addView(richButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.TOP | Gravity.RIGHT, 0, 1, 0, 0));
         }
@@ -3206,7 +3206,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             expandInputButton.setBackground(composerPanelCompactSelector());
             // NagramX: fullscreen expand stays in the pinned trailing group beside attach rather than the
             // scrolling one - it gets used far more than the article editor, so it must never scroll out of reach
-            composerToolbar.addConfigurable(xyz.nextalone.nagram.ui.composer.ComposerButtons.EXPAND, expandInputButton);
+            composerToolbar.addConfigurable(com.dazewell.gram.composer.ComposerButtons.EXPAND, expandInputButton);
             ScaleStateListAnimator.apply(expandInputButton);
             expandInputButton.setOnClickListener(v -> {
                 // NagramX: the budget snapshot is only rewritten from a measure pass, and a composer sitting
@@ -4066,7 +4066,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         scheduledButton.setScaleType(ImageView.ScaleType.CENTER);
         scheduledButton.setBackground(composerPanelSelector());
         if (composerToolbarEnabled) {
-            composerToolbar.addConfigurable(xyz.nextalone.nagram.ui.composer.ComposerButtons.SCHEDULE, scheduledButton);
+            composerToolbar.addConfigurable(com.dazewell.gram.composer.ComposerButtons.SCHEDULE, scheduledButton);
         } else {
             messageEditTextContainer.addView(scheduledButton, 2, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.BOTTOM | Gravity.RIGHT));
         }
@@ -4131,10 +4131,10 @@ public class ChatActivityEnterView extends FrameLayout implements
         giftButton.setContentDescription(getString(R.string.GiftPremium));
         giftButton.setScaleType(ImageView.ScaleType.CENTER);
         if (composerToolbarEnabled) {
-            xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyPanelIconBox(giftButton);
+            com.dazewell.gram.ui.ComposerToolbarLayout.applyPanelIconBox(giftButton);
         }
         giftButton.setBackground(composerPanelSelector());
-        int composerContextSize = composerToolbarEnabled ? xyz.nextalone.nagram.ui.ComposerToolbarLayout.buttonSize() : DEFAULT_HEIGHT;
+        int composerContextSize = composerToolbarEnabled ? com.dazewell.gram.ui.ComposerToolbarLayout.buttonSize() : DEFAULT_HEIGHT;
         attachLayout.addView(giftButton, 0, LayoutHelper.createFrame(composerContextSize, composerContextSize, Gravity.CENTER_VERTICAL | Gravity.RIGHT));
         giftButton.setOnClickListener(v -> {
             SharedPreferences.Editor edit = MessagesController.getInstance(currentAccount).getMainSettings().edit();
@@ -4181,7 +4181,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         suggestButton = new ImageView(getContext());
         suggestButton.setScaleType(ImageView.ScaleType.CENTER);
         if (composerToolbarEnabled) {
-            xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyPanelIconBox(suggestButton);
+            com.dazewell.gram.ui.ComposerToolbarLayout.applyPanelIconBox(suggestButton);
         }
         suggestButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
         suggestButton.setImageResource(R.drawable.input_suggest_paid_24);
@@ -4190,7 +4190,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             suggestButton.setTranslationX(dp(42));
             textFieldContainer.addView(suggestButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.BOTTOM | Gravity.RIGHT, 0, 0, 6 + DEFAULT_HEIGHT, 0));
         } else {
-            int composerContextSize = composerToolbarEnabled ? xyz.nextalone.nagram.ui.ComposerToolbarLayout.buttonSize() : DEFAULT_HEIGHT;
+            int composerContextSize = composerToolbarEnabled ? com.dazewell.gram.ui.ComposerToolbarLayout.buttonSize() : DEFAULT_HEIGHT;
             attachLayout.addView(suggestButton, 0, LayoutHelper.createLinear(composerContextSize, composerContextSize));
         }
         suggestButton.setOnClickListener(v -> {
@@ -4280,12 +4280,12 @@ public class ChatActivityEnterView extends FrameLayout implements
         botButtonDrawable.setIcon(R.drawable.input_bot2, false);
         botButton.setScaleType(ImageView.ScaleType.CENTER);
         if (composerToolbarEnabled) {
-            xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyPanelIconBox(botButton);
+            com.dazewell.gram.ui.ComposerToolbarLayout.applyPanelIconBox(botButton);
         }
         botButton.setBackground(composerPanelSelector());
         botButton.setVisibility(GONE);
         AndroidUtilities.updateViewVisibilityAnimated(botButton, false, 0.1f, false);
-        int composerContextSize = composerToolbarEnabled ? xyz.nextalone.nagram.ui.ComposerToolbarLayout.buttonSize() : DEFAULT_HEIGHT;
+        int composerContextSize = composerToolbarEnabled ? com.dazewell.gram.ui.ComposerToolbarLayout.buttonSize() : DEFAULT_HEIGHT;
         attachLayout.addView(botButton, 0, LayoutHelper.createLinear(composerContextSize, composerContextSize));
         botButton.setOnClickListener(v -> {
 //            if (hasBotWebView() && botCommandsMenuIsShowing()) {
@@ -4476,8 +4476,8 @@ public class ChatActivityEnterView extends FrameLayout implements
             resetRecordedState();
         });
 
-        videoTimelineView = new com.radolyn.ayugram.videoscrub.PlaybackVideoTimelineView(getContext());
-        ((com.radolyn.ayugram.videoscrub.PlaybackVideoTimelineView) videoTimelineView).setOnSeek(progress -> {
+        videoTimelineView = new com.dazewell.gram.videoscrub.PlaybackVideoTimelineView(getContext());
+        ((com.dazewell.gram.videoscrub.PlaybackVideoTimelineView) videoTimelineView).setOnSeek(progress -> {
             if (videoToSendMessageObject != null) {
                 delegate.needChangeVideoPreviewState(2, progress);
             }
@@ -5539,7 +5539,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     }
 
-    // NagramX: physical keyboard hotkeys, Alt+Enter (com.radolyn.ayugram.hotkeys.HotkeyController)
+    // NagramX: physical keyboard hotkeys, Alt+Enter (com.dazewell.gram.hotkeys.HotkeyController)
     public boolean scheduleMessageFromHotkey() {
         if (parentFragment == null || parentActivity == null || !parentFragment.canScheduleMessage() || isInScheduleMode() || editingMessageObject != null) {
             return false;
@@ -7479,7 +7479,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 if (!ignoreTextChange && parentFragment != null && editingMessageObject == null && !isEditingBusinessLink()) {
                     int previousLength = charSequence.length() - count + before;
                     if (previousLength == 0 && count > 0) {
-                        tw.nekomimi.nekogram.helpers.GhostTypingReminderHelper.onComposerTypingObserved(currentAccount, dialog_id, parentFragment);
+                        com.dazewell.gram.helpers.GhostTypingReminderHelper.onComposerTypingObserved(currentAccount, dialog_id, parentFragment);
                     }
                 }
                 updateSendButtonPaid();
@@ -9190,7 +9190,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             attachButton.setContentDescription(LocaleController.getString("AccDescrAttachButton", R.string.AccDescrAttachButton));
         }
         if (composerToolbarEnabled) {
-            xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyPanelIconBox(attachButton, targetRes);
+            com.dazewell.gram.ui.ComposerToolbarLayout.applyPanelIconBox(attachButton, targetRes);
         }
         if (duration == 0) {
             attachButton.setImageResource(targetRes);
@@ -10269,7 +10269,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     // keep opening the attach sheet directly instead of upstream's hide + header stand-in swap.
     private boolean attachPinned() {
         return composerToolbarEnabled && !isStories && !isEditingBusinessLink()
-                && xyz.nextalone.nagram.ui.composer.ComposerLayout.isVisible(xyz.nextalone.nagram.ui.composer.ComposerButtons.ATTACH);
+                && com.dazewell.gram.composer.ComposerLayout.isVisible(com.dazewell.gram.composer.ComposerButtons.ATTACH);
     }
 
     public boolean isAttachPinned() {
@@ -13390,7 +13390,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     private Drawable composerPanelSelector() {
         int color = getThemedColor(Theme.key_listSelector);
         return composerToolbarEnabled
-                ? xyz.nextalone.nagram.ui.ComposerToolbarLayout.panelSelector(color)
+                ? com.dazewell.gram.ui.ComposerToolbarLayout.panelSelector(color)
                 : Theme.createSelectorDrawable(color);
     }
 
@@ -13398,7 +13398,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     private Drawable composerPanelPillSelector() {
         int color = getThemedColor(Theme.key_listSelector);
         return composerToolbarEnabled
-                ? xyz.nextalone.nagram.ui.ComposerToolbarLayout.panelSelector(color)
+                ? com.dazewell.gram.ui.ComposerToolbarLayout.panelSelector(color)
                 : Theme.createInsetRoundRectDrawable(color, dp(19), dp(1), dp(3));
     }
 
@@ -13411,14 +13411,14 @@ public class ChatActivityEnterView extends FrameLayout implements
     private Drawable composerPanelCompactSelector() {
         int color = getThemedColor(Theme.key_listSelector);
         return composerToolbarEnabled
-                ? xyz.nextalone.nagram.ui.ComposerToolbarLayout.panelSelector(color)
+                ? com.dazewell.gram.ui.ComposerToolbarLayout.panelSelector(color)
                 : Theme.createSelectorDrawable(color, Theme.RIPPLE_MASK_CIRCLE_20DP, dp(16));
     }
 
     private void updateRecordedDeleteIconColors() {
         int dotColor = getThemedColor(Theme.key_chat_recordedVoiceDot);
-        int background = xyz.nextalone.nagram.ui.composer.ComposerMd3Surface.recordedDeleteStripeColor(resourcesProvider, composerToolbarEnabled, getThemedColor(Theme.key_chat_messagePanelBackground)); // NagramX: the stripes fake holes in the colour behind them, which a frosted MD3 field can't match
-        int greyColor = xyz.nextalone.nagram.ui.composer.ComposerMd3Surface.recordedDeleteIconColor(resourcesProvider, composerToolbarEnabled, getThemedColor(Theme.key_chat_messagePanelVoiceDelete));
+        int background = com.dazewell.gram.composer.ComposerMd3Surface.recordedDeleteStripeColor(resourcesProvider, composerToolbarEnabled, getThemedColor(Theme.key_chat_messagePanelBackground)); // NagramX: the stripes fake holes in the colour behind them, which a frosted MD3 field can't match
+        int greyColor = com.dazewell.gram.composer.ComposerMd3Surface.recordedDeleteIconColor(resourcesProvider, composerToolbarEnabled, getThemedColor(Theme.key_chat_messagePanelVoiceDelete));
 
         if (recordDeleteImageView != null) {
             recordDeleteImageView.setLayerColor("Cup Red", dotColor);
@@ -14235,7 +14235,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 notifySilentDrawable.setCrossOut(silent, false);
                 notifyButton.setImageDrawable(notifySilentDrawable);
                 if (composerToolbarEnabled) {
-                    xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyPanelIconBox(notifyButton, R.drawable.input_notify_on);
+                    com.dazewell.gram.ui.ComposerToolbarLayout.applyPanelIconBox(notifyButton, R.drawable.input_notify_on);
                 }
             }
             if (attachLayout != null) {
@@ -16636,8 +16636,8 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
         } else if (id == NotificationCenter.videoPreviewProgressChanged) {
             int guid = (Integer) args[0];
-            if (guid == recordingGuid && videoTimelineView instanceof com.radolyn.ayugram.videoscrub.PlaybackVideoTimelineView) {
-                ((com.radolyn.ayugram.videoscrub.PlaybackVideoTimelineView) videoTimelineView).setProgress((Float) args[1]);
+            if (guid == recordingGuid && videoTimelineView instanceof com.dazewell.gram.videoscrub.PlaybackVideoTimelineView) {
+                ((com.dazewell.gram.videoscrub.PlaybackVideoTimelineView) videoTimelineView).setProgress((Float) args[1]);
             }
         } else if (id == NotificationCenter.closeChats) {
             if (messageEditText != null && messageEditText.isFocused()) {
@@ -19100,7 +19100,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     public int getInputBubbleBottomLiftReduction() {
         // NagramX (#interface-style): the MD3 island draws its own padding under the tools row, so it keeps
         // the stock lift and floats clear of the inset below it.
-        if (!composerToolbarEnabled || xyz.nextalone.nagram.helpers.InterfaceStyleController.applyComposer()) {
+        if (!composerToolbarEnabled || com.dazewell.gram.helpers.InterfaceStyleController.applyComposer()) {
             return 0;
         }
         // Subtract the two converted values rather than converting the difference: dp() rounds up, so
@@ -19351,7 +19351,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         // runnable. Gated on infiniteVideoMessage, which the Ask popup toggled on just before this ran, so
         // it only fires in Ask mode -- the overlay toggle stays hidden in schedule mode.
         if (isInScheduleMode() && infiniteVideoMessage) {
-            infiniteVideoScheduleSheet = com.radolyn.ayugram.reschedule.InfiniteVideoScheduleHelper.showScheduleSheet(
+            infiniteVideoScheduleSheet = com.dazewell.gram.reschedule.InfiniteVideoScheduleHelper.showScheduleSheet(
                     parentActivity, dialog_id,
                     (notify, scheduleDate) -> {
                         infiniteVideoScheduleSheet = null;
@@ -19480,7 +19480,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (infiniteVideoBaseDate == 0) {
             return 0;
         }
-        return com.radolyn.ayugram.reschedule.InfiniteVideoScheduleHelper.segmentDate(currentAccount, infiniteVideoBaseDate, segmentIndex);
+        return com.dazewell.gram.reschedule.InfiniteVideoScheduleHelper.segmentDate(currentAccount, infiniteVideoBaseDate, segmentIndex);
     }
 
     // NagramX: infinite video message: the gates that make a segment sendable unattended, minus the schedule
@@ -19597,7 +19597,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         text.setText(label);
         row.addView(text, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, Gravity.CENTER_VERTICAL));
 
-        tw.nekomimi.nekogram.ui.components.PopupRowDivider.addTo(row, resourcesProvider, 10, 12);
+        com.dazewell.gram.ui.components.PopupRowDivider.addTo(row, resourcesProvider, 10, 12);
 
         row.addView(sw, LayoutHelper.createLinear(38, 22, Gravity.CENTER_VERTICAL));
         return row;

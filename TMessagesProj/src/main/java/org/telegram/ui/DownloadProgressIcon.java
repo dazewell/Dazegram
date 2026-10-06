@@ -61,7 +61,7 @@ public class DownloadProgressIcon extends View implements NotificationCenter.Not
     // NagramX: this only sits on the chat-list top bar, and it reads the palette directly, so it needs the
     // Classic solid bar's white explicitly or it stays 12.4.0 black on the blue.
     private static int iconColor() {
-        return xyz.nextalone.nagram.helpers.InterfaceStyleSolidHeader.chatListColor(Theme.key_actionBarDefaultIcon, Theme.getColor(Theme.key_actionBarDefaultIcon));
+        return com.dazewell.gram.helpers.InterfaceStyleSolidHeader.chatListColor(Theme.key_actionBarDefaultIcon, Theme.getColor(Theme.key_actionBarDefaultIcon));
     }
 
     public void updateColors() {

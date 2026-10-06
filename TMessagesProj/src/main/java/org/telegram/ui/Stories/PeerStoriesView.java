@@ -8558,11 +8558,11 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 
     // NagramX: the story buttons get their own provider so MD3 Buttons can flatten them without touching
     // the reply field and emoji keyboard, which share blurredBackgroundColorProvider. Same key and alpha.
-    private xyz.nextalone.nagram.ui.Md3ButtonColorProvider md3ButtonColorProvider;
+    private com.dazewell.gram.ui.Md3ButtonColorProvider md3ButtonColorProvider;
 
-    private xyz.nextalone.nagram.ui.Md3ButtonColorProvider buttonColorProvider() {
+    private com.dazewell.gram.ui.Md3ButtonColorProvider buttonColorProvider() {
         if (md3ButtonColorProvider == null) {
-            md3ButtonColorProvider = new xyz.nextalone.nagram.ui.Md3ButtonColorProvider(resourcesProvider, Theme.key_chat_messagePanelBackground, 0.8f);
+            md3ButtonColorProvider = new com.dazewell.gram.ui.Md3ButtonColorProvider(resourcesProvider, Theme.key_chat_messagePanelBackground, 0.8f);
         }
         return md3ButtonColorProvider;
     }

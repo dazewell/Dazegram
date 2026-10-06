@@ -2319,7 +2319,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             nameLeft += timeWidth;
         }
         // Reserve room for the chat-time-zone pill (no-op when not configured).
-        int tzPillWidth = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.measurePillForDialog(currentAccount, currentDialogId);
+        int tzPillWidth = com.dazewell.gram.chattimezone.ChatTimeZoneRenderer.measurePillForDialog(currentAccount, currentDialogId);
         if (tzPillWidth > 0) {
             nameWidth -= tzPillWidth;
             if (LocaleController.isRTL) {
@@ -2763,8 +2763,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         try {
             CharSequence messageStringFinal;
             // NagramX: disguise chat-list previews only, not message results sharing this cell.
-            if (isDialogCell && com.radolyn.ayugram.hidelastmessage.HideLastMessageController.isHidden(currentAccount, getDialogId())) {
-                messageString = com.radolyn.ayugram.hidelastmessage.HideLastMessagePreview.resolve(currentAccount, getDialogId(), message, unreadCount);
+            if (isDialogCell && com.dazewell.gram.hidelastmessage.HideLastMessageController.isHidden(currentAccount, getDialogId())) {
+                messageString = com.dazewell.gram.hidelastmessage.HideLastMessagePreview.resolve(currentAccount, getDialogId(), message, unreadCount);
                 thumbsCount = 0;
                 // force the normal message color so the placeholder doesn't inherit the accent paint used for media/action previews
                 currentMessagePaint = Theme.dialogs_messagePaint[paintIndex];
@@ -2823,7 +2823,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         float left;
         // NagramX: match the title's spacing when the premium star is followed by mute.
         int premiumStatusTrailingSpace = drawPremium ? Math.max(0, emojiStatus.getIntrinsicWidth()
-                - com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.emojiStatusGlyphWidth(emojiStatus)) : 0;
+                - com.dazewell.gram.chattimezone.ChatTimeZoneRenderer.emojiStatusGlyphWidth(emojiStatus)) : 0;
         if (LocaleController.isRTL) {
             if (nameLayout != null && nameLayout.getLineCount() > 0) {
                 left = nameLayout.getLineLeft(0);
@@ -3456,7 +3456,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                         invalidate = true;
                     }
                     // NagramX: a hidden preview showing the peer's status is text, so it needs the full rebuild, not just the online dot.
-                    if (com.radolyn.ayugram.hidelastmessage.HideLastMessageController.showsStatus(currentAccount, getDialogId())) {
+                    if (com.dazewell.gram.hidelastmessage.HideLastMessageController.showsStatus(currentAccount, getDialogId())) {
                         continueUpdate = true;
                     }
                 }
@@ -4260,7 +4260,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 // dialogs, and it MUST match the reservation made in buildLayout() -- reserving
                 // width without drawing leaves a trimmed name with a missing pill.
                 {
-                    int reserved = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.measurePillForDialog(currentAccount, currentDialogId);
+                    int reserved = com.dazewell.gram.chattimezone.ChatTimeZoneRenderer.measurePillForDialog(currentAccount, currentDialogId);
                     if (reserved > 0) {
                         boolean hasMute = dialogMuted || isHiddenInCommunity || drawUnmute || dialogMutedProgress > 0;
                         int pillX;
@@ -4295,7 +4295,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                             } else if (drawPremium) {
                                 // Anchor to the status glyph's real right edge, not the fixed box: the default
                                 // premium star is a ~14dp bitmap left-pinned in a dp(22) box drawn at nameMuteLeft - dp(2).
-                                iconsRight = nameMuteLeft - dp(2) + com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.emojiStatusGlyphWidth(emojiStatus);
+                                iconsRight = nameMuteLeft - dp(2) + com.dazewell.gram.chattimezone.ChatTimeZoneRenderer.emojiStatusGlyphWidth(emojiStatus);
                                 if (hasMute && nameMutedIconLeft != 0) {
                                     iconsRight = nameMutedIconLeft + Theme.dialogs_muteDrawable.getIntrinsicWidth();
                                 }
@@ -4311,7 +4311,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                         }
                         // Center the pill vertically on the name text, not on the baseline (pill text is smaller than name text).
                         int nameCenterY = nameTop + nameLayout.getHeight() / 2;
-                        com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.drawPillForDialog(canvas, currentAccount, currentDialogId, pillX, nameCenterY, resourcesProvider);
+                        com.dazewell.gram.chattimezone.ChatTimeZoneRenderer.drawPillForDialog(canvas, currentAccount, currentDialogId, pillX, nameCenterY, resourcesProvider);
                     }
                 }
             }
@@ -6416,7 +6416,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 }
             }
             // NagramX: a hidden preview can change with no message or read change (its mode, the peer's status), so its text joins this redraw key.
-            readHash ^= (long) com.radolyn.ayugram.hidelastmessage.HideLastMessagePreview.drawnHash(currentAccount, getDialogId(), message, unreadCount) << 32;
+            readHash ^= (long) com.dazewell.gram.hidelastmessage.HideLastMessagePreview.drawnHash(currentAccount, getDialogId(), message, unreadCount) << 32;
 
             if (!isForumCell() && (isDialogCell || isTopic)) {
                 if (!TextUtils.isEmpty(MessagesController.getInstance(currentAccount).getPrintingString(currentDialogId, getTopicId(), true))) {

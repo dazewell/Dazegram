@@ -25,7 +25,7 @@ repin again if a later commit or an upstream merge touches the file. Precedent:
 Also true of this file:
 
 - **Per-variant values go through `APP_PACKAGE.endsWith('.beta')`** — `.beta` is
-  Official (Dazegram), anything else is Unofficial (DazegramX). That expression
+  Official (DwellGram), anything else is Unofficial (DwellGramX). That expression
   is the only variant discriminator; `BuildVars.isBetaApp()` returns
   `BuildConfig.DEBUG` in this fork and is **not** a package test.
 - **Three ways out of this file.** `manifestPlaceholders` reaches the manifest,

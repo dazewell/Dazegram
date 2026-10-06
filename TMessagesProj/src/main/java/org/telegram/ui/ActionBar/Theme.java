@@ -8867,8 +8867,8 @@ public class Theme {
         // one wallpaper source can opt out of the sampled-and-saturated service gradient in
         // favour of its own flat warm service tokens below — custom per-chat colors still win,
         // and every other BitmapDrawable/MotionBackgroundDrawable wallpaper is untouched.
-        if (drawServiceGradient && custom == null && drawable instanceof xyz.nextalone.nagram.helper.MonetPatternHelper.MonetPatternDrawable
-                && ((xyz.nextalone.nagram.helper.MonetPatternHelper.MonetPatternDrawable) drawable).suppressServiceGradient) {
+        if (drawServiceGradient && custom == null && drawable instanceof com.dazewell.gram.helpers.MonetPatternHelper.MonetPatternDrawable
+                && ((com.dazewell.gram.helpers.MonetPatternHelper.MonetPatternDrawable) drawable).suppressServiceGradient) {
             drawServiceGradient = false;
         }
         if (drawServiceGradient) {
@@ -9677,11 +9677,11 @@ public class Theme {
                     settings.wallpaper = motionBackgroundDrawable;
                 } else if (gradientToColor1 == 0 || gradientToColor1 == backgroundColor) {
                     // NagramX: composite the shared Monet pattern over the live flat colour
-                    Drawable monetPattern = xyz.nextalone.nagram.helper.MonetPatternHelper.buildComposite(currentTheme, backgroundColor);
+                    Drawable monetPattern = com.dazewell.gram.helpers.MonetPatternHelper.buildComposite(currentTheme, backgroundColor);
                     if (monetPattern != null) {
                         settings.wallpaper = monetPattern;
                         settings.isPatternWallpaper = true;
-                        settings.isWallpaperMotion = xyz.nextalone.nagram.helper.MonetPatternHelper.isMotion();
+                        settings.isWallpaperMotion = com.dazewell.gram.helpers.MonetPatternHelper.isMotion();
                     } else {
                         settings.wallpaper = new ColorDrawable(backgroundColor);
                     }
@@ -9919,8 +9919,8 @@ public class Theme {
             if (gradientToColor1 == 0 || gradientToColor1 == backgroundColor) {
                 // NagramX: composite the shared Monet pattern over the live flat colour (same flat test as createBackgroundDrawable)
                 Drawable monetPattern = thumb
-                        ? xyz.nextalone.nagram.helper.MonetPatternHelper.buildThumbComposite(currentTheme, backgroundColor)
-                        : xyz.nextalone.nagram.helper.MonetPatternHelper.buildComposite(currentTheme, backgroundColor);
+                        ? com.dazewell.gram.helpers.MonetPatternHelper.buildThumbComposite(currentTheme, backgroundColor)
+                        : com.dazewell.gram.helpers.MonetPatternHelper.buildComposite(currentTheme, backgroundColor);
                 return monetPattern != null ? monetPattern : new ColorDrawable(backgroundColor);
             } else {
                 ThemeAccent accent = currentTheme.getAccent(false);

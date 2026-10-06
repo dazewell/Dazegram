@@ -1660,7 +1660,7 @@ public class FilterTabsView extends FrameLayout {
             float internalPadding = FolderIconHelper.getTabInternalPadding();
             selectorDrawable.setBounds((int) (indicatorX - dp(internalPadding) - add), y, (int) (indicatorX + indicatorWidth + dp(internalPadding) + add), y + dp(28));
             // NagramX: MD3 chat-list top bars need a stronger tonal selected tab without changing stroke mode.
-            selectorDrawable.setAlpha(xyz.nextalone.nagram.helpers.InterfaceStyleController.filterTabSelectorAlpha(tabStyleStroke));
+            selectorDrawable.setAlpha(com.dazewell.gram.helpers.InterfaceStyleController.filterTabSelectorAlpha(tabStyleStroke));
             selectorDrawable.draw(canvas);
             canvas.restore();
         }

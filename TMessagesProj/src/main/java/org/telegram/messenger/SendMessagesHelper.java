@@ -1763,7 +1763,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         // a user tap (unsent == false) stays allowed, and PR #324's warning covers
         // the exposure if Ghost is on. Cheap and always-correct, so it stays even
         // though migration makes it unreachable after the first post-upgrade launch.
-        if (unsent && com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(messageObject)) {
+        if (unsent && com.dazewell.gram.ghosthold.GhostHoldController.isHeld(messageObject)) {
             return false;
         }
         if (messageObject.messageOwner.action instanceof TLRPC.TL_messageEncryptedAction) {
@@ -3305,7 +3305,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                     uploadedDocument.attributes = document.attributes;
                     // NagramX (#silent-video): the nosound_video upload hint is set for an ordinary video (including a
                     // silent video) but not for a GIF send. isGifSend() already returns false for a null info.
-                    if (!messageObject.isGif() && !xyz.nextalone.nagram.helper.SilentVideoHelper.isGifSend(videoEditedInfo)) {
+                    if (!messageObject.isGif() && !com.dazewell.gram.helpers.SilentVideoHelper.isGifSend(videoEditedInfo)) {
                         uploadedDocument.nosound_video = true;
                         if (BuildVars.DEBUG_VERSION) {
                             FileLog.d("nosound_video = true");
@@ -4450,7 +4450,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         // persisted to the Scheduled list and held locally instead of going to the
         // server. Placed before newMsg is built, before the DB write and before
         // putToSendingMessages, so nothing is left half-started when it diverts.
-        if (com.radolyn.ayugram.ghosthold.GhostHoldController.maybeHold(currentAccount, peer, sendMessageParams)) {
+        if (com.dazewell.gram.ghosthold.GhostHoldController.maybeHold(currentAccount, peer, sendMessageParams)) {
             return;
         }
 
@@ -5638,7 +5638,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                         }
                         // NagramX (#silent-video): set nosound_video for a silent video too, not only for an unmuted
                         // clip — the GIF send is the one that stays without it. The round-video guard is preserved.
-                        if (forceNoSoundVideo || !MessageObject.isRoundVideoDocument(document) && (videoEditedInfo == null || !xyz.nextalone.nagram.helper.SilentVideoHelper.isGifSend(videoEditedInfo) && !videoEditedInfo.roundVideo)) {
+                        if (forceNoSoundVideo || !MessageObject.isRoundVideoDocument(document) && (videoEditedInfo == null || !com.dazewell.gram.helpers.SilentVideoHelper.isGifSend(videoEditedInfo) && !videoEditedInfo.roundVideo)) {
                             uploadedDocument.nosound_video = true;
                             if (BuildVars.DEBUG_VERSION) {
                                 FileLog.d("nosound_video = true");
@@ -9144,7 +9144,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                     // before checkOnProcessStart() has migrated the old marked scheduled
                     // rows out; skipping any still-marked row keeps it from auto-resending
                     // while Ghost is on (a P1 leak) until migration moves it to the fork DB.
-                    if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(messageObject)) {
+                    if (com.dazewell.gram.ghosthold.GhostHoldController.isHeld(messageObject)) {
                         continue;
                     }
                     retrySendMessage(messageObject, true, 0);
@@ -11302,7 +11302,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                                 // NagramX (#silent-video): grouping excludes GIF sends (upstream keys this on muted)
                                 // but must include silent videos, which group like any ordinary video. This local is
                                 // read only at the groupMediaFinal check below.
-                                muted = xyz.nextalone.nagram.helper.SilentVideoHelper.isGifSend(videoEditedInfo);
+                                muted = com.dazewell.gram.helpers.SilentVideoHelper.isGifSend(videoEditedInfo);
                                 // NagramX (#silent-video): a silent video and a GIF of the same source must never share
                                 // a sent-file cache key (the animated attribute is added even on a cache hit, outside
                                 // the document == null block), so give the silent case its own token, never both.
@@ -11418,7 +11418,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                                     // (source duration for a looping clip with no scrubber). A silent video takes the
                                     // ordinary video path so its real trimmed duration is used; PhotoViewer has
                                     // already set originalWidth/Height and rotationValue for it.
-                                    if (info.isVideo && xyz.nextalone.nagram.helper.SilentVideoHelper.isGifSend(videoEditedInfo)) {
+                                    if (info.isVideo && com.dazewell.gram.helpers.SilentVideoHelper.isGifSend(videoEditedInfo)) {
                                         fillVideoAttribute(info.path, attributeVideo, videoEditedInfo);
                                         videoEditedInfo.originalWidth = attributeVideo.w;
                                         videoEditedInfo.originalHeight = attributeVideo.h;
@@ -11480,7 +11480,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                             }
                             // NagramX (#silent-video): tag as an animated GIF document only for a GIF send. A silent
                             // video is an ordinary video document and must not carry TL_documentAttributeAnimated.
-                            if (xyz.nextalone.nagram.helper.SilentVideoHelper.isGifSend(videoEditedInfo)) {
+                            if (com.dazewell.gram.helpers.SilentVideoHelper.isGifSend(videoEditedInfo)) {
                                 boolean found = false;
                                 for (int b = 0, N = document.attributes.size(); b < N; b++) {
                                     if (document.attributes.get(b) instanceof TLRPC.TL_documentAttributeAnimated) {
@@ -12257,7 +12257,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                         // NagramX (#silent-video): only a GIF send is tagged animated and uses the source duration. A
                         // silent video takes the ordinary video path — real trimmed duration, no animated attribute —
                         // while the transcoder still drops its audio track from videoEditedInfo.muted.
-                        if (xyz.nextalone.nagram.helper.SilentVideoHelper.isGifSend(videoEditedInfo)) {
+                        if (com.dazewell.gram.helpers.SilentVideoHelper.isGifSend(videoEditedInfo)) {
                             document.attributes.add(new TLRPC.TL_documentAttributeAnimated());
                             fillVideoAttribute(videoPath, attributeVideo, videoEditedInfo);
                             videoEditedInfo.originalWidth = attributeVideo.w;

@@ -206,7 +206,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     private boolean glassModeIsForum;
     private boolean naxFlatGlassHeader;
     // NagramX: per-chat photo behind the MD3 flat header; set only by ChatActivity, null everywhere else.
-    public com.radolyn.ayugram.headerbg.HeaderBgDrawer naxHeaderBg;
+    public com.dazewell.gram.headerbg.HeaderBgDrawer naxHeaderBg;
 
     // NagramX: what updateGlassForumRadius last wrote. -1 means unknown; false is known, because
     // setupGlass leaves the drawable in exactly the non-centered state.

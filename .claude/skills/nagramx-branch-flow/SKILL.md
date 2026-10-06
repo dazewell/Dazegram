@@ -1,6 +1,6 @@
 ---
 name: nagramx-branch-flow
-description: "Dazewell's git / integration / upstream-sync model for NagramX (dazewell/Dazegram; parent DrKLO/Telegram; NextAlone/Nagram proposal target; risin42/NagramX historical). Trigger for branches/worktrees, one change = one branch = one session, mandatory #tag, discoverability, upstream proposals, sync, ci.yml/staging.yml gates, <YYYY-MM-DD>_<slug> names, no force-push, follow-up commits, merge authority, batch landing, and phone-triggered sync-build-Telegram automation. Companion to nagramx-workflow."
+description: "Dazewell's git / integration / upstream-sync model for NagramX (dazewell/DwellGram; parent DrKLO/Telegram; NextAlone/Nagram proposal target; risin42/NagramX historical). Trigger for branches/worktrees, one change = one branch = one session, mandatory #tag, discoverability, upstream proposals, sync, ci.yml/staging.yml gates, <YYYY-MM-DD>_<slug> names, no force-push, follow-up commits, merge authority, batch landing, and phone-triggered sync-build-Telegram automation. Companion to nagramx-workflow."
 ---
 
 # NagramX branch & integration flow
@@ -10,7 +10,7 @@ finish with subagents. No coordinator branches.
 
 ## Topology
 
-Remotes: `origin` is `dazewell/Dazegram`; old `dazewell/NagramX` redirects but
+Remotes: `origin` is `dazewell/DwellGram`; old `dazewell/NagramX` redirects but
 is not a command target. `nagram` is `.github/sync/pins.env`'s source, now
 `DrKLO/Telegram`; `NAGRAM_*` names are legacy labels.
 
@@ -100,7 +100,7 @@ Revisit if collaborators gain triage.
 Mandatory preflight before issue work:
 
 ```powershell
-$repo = 'dazewell/Dazegram'
+$repo = 'dazewell/DwellGram'
 $n    = 254              # issue number
 $slug = 'eventschedule-bolt-refresh'   # the issue's declared branch slug
 
@@ -257,7 +257,7 @@ git fetch origin refs/pull/<N>/head:<local>
 ```
 
 Preflight settings live:
-`gh api repos/dazewell/Dazegram --jq '{squash:.allow_squash_merge, msg:.squash_merge_commit_message, title:.squash_merge_commit_title}'`.
+`gh api repos/dazewell/DwellGram --jq '{squash:.allow_squash_merge, msg:.squash_merge_commit_message, title:.squash_merge_commit_title}'`.
 Stop unless `allow_squash_merge` is `true` and `squash_merge_commit_message` is
 `COMMIT_MESSAGES`; otherwise `#slug` tags can vanish with CI green.
 `squash_merge_commit_title` is `PR_TITLE`, so PR title is permanent history.
@@ -274,7 +274,7 @@ Merge-time gate:
 $deadline = (Get-Date).AddMinutes(10)
 do {
   $LASTEXITCODE = 1
-  .\.github\scripts\test-merge-preflight.ps1 -Repository dazewell/Dazegram `
+  .\.github\scripts\test-merge-preflight.ps1 -Repository dazewell/DwellGram `
     -PullRequest $n -ExpectedHead $approvedHead -ExpectedBranch $branch
   if ($LASTEXITCODE -eq 0) { break }
   if ($LASTEXITCODE -ne 1) { throw 'Merge preflight has a terminal blocker; re-review and re-approve before landing.' }
@@ -349,7 +349,7 @@ PR to `dev`, merge, delete. If user-visible, update the existing `FEATURES.md`.
 For new pinned `NAGRAM_REPO` / `NAGRAM_BRANCH`, run:
 
 ```powershell
-gh workflow run sync-upstream.yml --repo dazewell/Dazegram
+gh workflow run sync-upstream.yml --repo dazewell/DwellGram
 ```
 
 Replacing parent is attended re-anchor in `.github/sync/README.md`, never
@@ -380,7 +380,7 @@ pins before live `origin/nbase` moves guarantees red `sync-guard-check`.
    repin to unblock sync; repin only for dazewell's own asset change.
 2. and 3. Dispatch:
    ```powershell
-   gh workflow run sync-land.yml --repo dazewell/Dazegram
+   gh workflow run sync-land.yml --repo dazewell/DwellGram
    ```
    Prefer `-f snapshot=<sha>`; zero-input reads `refs/sync/snapshot-<srcshort>`.
    `sync-land` runs `sync-guard.ps1 -LandCheckOnly`: one parent equal to pinned
@@ -424,8 +424,8 @@ workflow edits are not.
 
 `staging.yml` is the only publish pipeline: signed dual APK + Telegram upload on
 push to `dev`, `build-apk`, or dispatch. Matrix: `nekox.messenger` ->
-**Unofficial** (`DazegramX-Unofficial-…`), `org.telegram.messenger.beta` ->
-**Official** (`Dazegram-Official-…`); default local package
+**Unofficial** (`DwellGramX-Unofficial-…`), `org.telegram.messenger.beta` ->
+**Official** (`DwellGram-Official-…`); default local package
 `APP_PACKAGE=nekox.messenger`. Package names must track `applicationId` in
 manifest contact mimeTypes, `res/xml`, `resValue`, `BuildConfig.APPLICATION_ID`;
 `resValue` needs `buildFeatures.resValues = true`; `google-services.json` needs a
@@ -437,7 +437,7 @@ captions include GitHub Models summary via `GITHUB_TOKEN` (`models: read`,
 optional `AI_MODEL`), trimmed for Telegram's 1024-char cap.
 
 Phone sync: GitHub mobile or bot POST to
-`/repos/dazewell/Dazegram/actions/workflows/sync-upstream.yml/dispatches` with
+`/repos/dazewell/DwellGram/actions/workflows/sync-upstream.yml/dispatches` with
 fine-grained PAT (Actions read/write only). `sync-land.yml` needs `SYNC_TOKEN`
 with **Contents: write + Workflows: write** and **Pull requests: write**. Policy
 `none` rejects workflow paths; `manifest` needs workflow scope.

@@ -209,7 +209,7 @@ object NaConfig {
             "CustomTitle",
             ConfigItem.configTypeString,
             // NagramX: kept in sync by hand with the resValue 'NagramX' default in TMessagesProj/build.gradle
-            if (BuildConfig.APPLICATION_ID.endsWith(".beta")) "Dazegram" else "DazegramX"
+            if (BuildConfig.APPLICATION_ID.endsWith(".beta")) "DwellGram" else "DwellGramX"
         )
     val dateOfForwardedMsg =
         addConfig(
@@ -1954,7 +1954,7 @@ object NaConfig {
         if (translatorMode.Int() !in 0..2) {
             translatorMode.setConfigInt(0)
         }
-        xyz.nextalone.nagram.ui.composer.ComposerLayout.migrate()
+        com.dazewell.gram.composer.ComposerLayout.migrate()
         if (!getPreferences().contains(idDcType.key) && !getPreferences().getBoolean(
                 "ShowIdAndDc", true
             )
