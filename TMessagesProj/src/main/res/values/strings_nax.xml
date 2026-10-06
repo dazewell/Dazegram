@@ -470,6 +470,8 @@
     <string name="TextMemoShortcutLabelFull">Text memo · full</string>
     <string name="TextMemoHint">Goes straight to the chat, without opening it</string>
     <string name="TextMemoDraftWaiting">Sending discards a draft waiting in this chat</string>
+    <string name="TextMemoAddPhotos">Add photos or videos</string>
+    <string name="TextMemoMediaSkipped">Skipped %1$d files (limit 10 items, 100 MB per video)</string>
     <string name="LauncherShortcuts">Launcher shortcuts</string>
     <string name="BuiltInShortcutsHeader">Built in</string>
     <string name="NewConversationShortcutNotice">Telegram\'s own launcher shortcut for starting a new chat. Turn it off to free a slot on launchers that only show a few.</string>

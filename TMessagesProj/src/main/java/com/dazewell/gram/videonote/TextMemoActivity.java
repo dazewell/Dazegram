@@ -35,12 +35,15 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.List;
 
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -52,6 +55,7 @@ import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.FileLog;
+import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MediaDataController;
 import org.telegram.messenger.NotificationCenter;
@@ -89,6 +93,7 @@ public class TextMemoActivity extends Activity {
 
     private static final String KEY_MEMO_DRAFT_HASH = "draft_hash";
     private static final String KEY_MEMO_DRAFT_AT = "draft_at";
+    private static final int REQUEST_PHOTOS = 1;
     private static final long MEMO_DRAFT_WINDOW_MS = 5 * 60 * 1000;
 
     private int account = -1;
@@ -115,6 +120,17 @@ public class TextMemoActivity extends Activity {
     // 0 until the recipient is resolved; a send before that waits for it in pendingText
     private long dialogId;
     private String pendingText;
+    // Photos attached to the memo, as cache file paths; they go out with the text as its caption and never become a draft
+    private final ArrayList<String> photos = new ArrayList<>();
+    private ArrayList<String> pendingPhotos;
+    private ImageView attachButton;
+    private LinearLayout photoStrip;
+    private HorizontalScrollView photoScroll;
+    // The system picker is up over this screen: onStop must not read that as being sent away
+    private boolean picking;
+    // Picked photos are still being copied: a send now would leave them behind, and a second pick would pass the cap
+    private boolean importing;
+    private final java.util.HashMap<String, android.graphics.Bitmap> videoThumbs = new java.util.HashMap<>();
     // The chat's draft the memo opened with, or null. A write goes ahead only while the chat still holds this very object,
     // so a draft replaced meanwhile (another device, the chat in the app) is never written over.
     private TLRPC.DraftMessage adoptedDraft;
@@ -166,8 +182,9 @@ public class TextMemoActivity extends Activity {
         VideoNoteTarget.resolveAsync(account, false, id -> {
             dialogId = id;
             if (pendingText != null) {
-                sendTo(pendingText, id);
+                sendTo(pendingText, pendingPhotos, id);
                 pendingText = null;
+                pendingPhotos = null;
             } else if (pendingDraft != null) {
                 writeDraft(pendingDraft);
                 pendingDraft = null;
@@ -220,7 +237,7 @@ public class TextMemoActivity extends Activity {
         }
         // A tap outside closes an empty card like any dialog, but never throws away typed text
         root.setOnClickListener(v -> {
-            if (field.length() == 0) {
+            if (field.length() == 0 && photos.isEmpty()) {
                 dismiss(false);
             }
         });
@@ -320,9 +337,24 @@ public class TextMemoActivity extends Activity {
         closeButton.setOnClickListener(v -> dismiss(true));
         header.addView(closeButton, LayoutHelper.createLinear(40, 40, Gravity.CENTER_VERTICAL));
 
+        photoScroll = new HorizontalScrollView(this);
+        photoScroll.setHorizontalScrollBarEnabled(false);
+        photoScroll.setVisibility(View.GONE);
+        photoStrip = new LinearLayout(this);
+        photoStrip.setOrientation(LinearLayout.HORIZONTAL);
+        photoScroll.addView(photoStrip, new FrameLayout.LayoutParams(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT));
+        card.addView(photoScroll, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 72, 0, 8, 0, 0));
+
         LinearLayout inputRow = new LinearLayout(this);
         inputRow.setOrientation(LinearLayout.HORIZONTAL);
         card.addView(inputRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 8, 0, 0));
+
+        attachButton = new ImageView(this);
+        attachButton.setScaleType(ImageView.ScaleType.CENTER);
+        attachButton.setImageResource(R.drawable.msg_photos_solar);
+        attachButton.setContentDescription(LocaleController.getString(R.string.TextMemoAddPhotos));
+        attachButton.setOnClickListener(v -> pickPhotos());
+        inputRow.addView(attachButton, LayoutHelper.createLinear(44, 44, Gravity.BOTTOM, 0, 0, 4, 4));
 
         // The input drawn like the composer's bubble, tinted with the send colour, and outlined harder while focused
         inputBubble = new FrameLayout(this);
@@ -430,6 +462,8 @@ public class TextMemoActivity extends Activity {
         subtitle.setTextColor(Theme.getColor(Theme.key_dialogTextGray2));
         closeButton.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_dialogTextGray2), PorterDuff.Mode.SRC_IN));
         closeButton.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector), Theme.RIPPLE_MASK_CIRCLE_20DP));
+        attachButton.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_dialogTextGray2), PorterDuff.Mode.SRC_IN));
+        attachButton.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector), Theme.RIPPLE_MASK_CIRCLE_20DP));
 
         int accent = Theme.getColor(Theme.key_chat_messagePanelSend);
         inputBackground.setColor(Theme.multAlpha(accent, .10f));
@@ -517,7 +551,7 @@ public class TextMemoActivity extends Activity {
     }
 
     private void updateSendButton(boolean animated) {
-        boolean hasText = !TextUtils.isEmpty(getText());
+        boolean hasText = (!TextUtils.isEmpty(getText()) || !photos.isEmpty()) && !importing;
         if (hasText == canSend && animated) {
             return;
         }
@@ -542,20 +576,25 @@ public class TextMemoActivity extends Activity {
 
     private void send() {
         String text = getText();
-        if (dismissing || text.isEmpty()) {
+        if (dismissing || importing || text.isEmpty() && photos.isEmpty()) {
             return;
         }
         sendButton.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
         // Sent now, not after the animation, so the message isn't held up by it
+        ArrayList<String> sentPhotos = new ArrayList<>(photos);
+        photos.clear(); // the send owns the files now; dismissal must not delete them
         if (dialogId != 0) {
-            sendTo(text, dialogId);
+            sendTo(text, sentPhotos, dialogId);
         } else {
             pendingText = text; // goes out from the resolve callback, which outlives this screen
+            pendingPhotos = sentPhotos;
         }
         beginExit();
         // One thing moves at a time: the text lifts out of the card to the plane, the plane takes off, then the card drops
         sendButton.animate().alpha(.5f).scaleX(.85f).scaleY(.85f).setDuration(150).setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT).start();
-        flyToPlane(text);
+        if (!text.isEmpty()) {
+            flyToPlane(text);
+        }
         field.setAlpha(0f);
         if (backdrop) {
             hint.animate().alpha(0f).setStartDelay(120).setDuration(150).start();
@@ -793,9 +832,12 @@ public class TextMemoActivity extends Activity {
         try {
             MediaDataController drafts = MediaDataController.getInstance(account);
             if (drafts.getDraft(dialogId, 0) == adoptedDraft && !isChatOpen()) {
+                boolean memoText = adoptedDraft == null || !text.equals(adoptedDraft.message);
                 drafts.saveDraft(dialogId, 0, text, null, null, adoptedDraft != null && adoptedDraft.no_webpage, 0);
+                // A save while the picker is up isn't the last: the next write must still pass the identity check above
+                adoptedDraft = drafts.getDraft(dialogId, 0);
                 // Only text the memo wrote: a chat's own draft reopened and left as it was stays behind the lock
-                if (adoptedDraft == null || !text.equals(adoptedDraft.message)) {
+                if (memoText) {
                     rememberMemoDraft(text);
                 }
             }
@@ -804,11 +846,118 @@ public class TextMemoActivity extends Activity {
         }
     }
 
-    private void sendTo(String text, long dialogId) {
+    private void sendTo(String text, List<String> sentPhotos, long dialogId) {
         try {
+            if (sentPhotos != null && !sentPhotos.isEmpty()) {
+                TextMemoPhotos.send(AccountInstance.getInstance(account), sentPhotos, text, dialogId);
+                return;
+            }
             SendMessagesHelper.prepareSendingText(AccountInstance.getInstance(account), text, dialogId, true, 0, 0, 0);
         } catch (Throwable e) {
             FileLog.e(e);
+        }
+    }
+
+    private void pickPhotos() {
+        if (dismissing || importing || photos.size() >= TextMemoPhotos.MAX) {
+            return;
+        }
+        try {
+            picking = true;
+            startActivityForResult(TextMemoPhotos.pickIntent(), REQUEST_PHOTOS);
+        } catch (Throwable e) {
+            picking = false;
+            FileLog.e(e);
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        picking = false;
+        if (requestCode != REQUEST_PHOTOS || resultCode != RESULT_OK || dismissing || isFinishing()) {
+            return;
+        }
+        importing = true;
+        updateSendButton(true);
+        TextMemoPhotos.importAsync(data, TextMemoPhotos.MAX - photos.size(), (paths, skipped) -> {
+            importing = false;
+            if (dismissing || isFinishing()) {
+                // Left meanwhile: nothing will send these
+                TextMemoPhotos.discard(paths);
+                return;
+            }
+            photos.addAll(paths);
+            refreshPhotoStrip();
+            updateSendButton(true);
+            if (skipped > 0) {
+                android.widget.Toast.makeText(this, LocaleController.formatString("TextMemoMediaSkipped", R.string.TextMemoMediaSkipped, skipped), android.widget.Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    // A video's first frame, made off the UI thread once per file
+    private void showVideoThumb(BackupImageView thumb, String path) {
+        android.graphics.Bitmap known = videoThumbs.get(path);
+        if (known != null) {
+            thumb.setImageBitmap(known);
+            return;
+        }
+        Utilities.globalQueue.postRunnable(() -> {
+            android.graphics.Bitmap frame = null;
+            try {
+                frame = SendMessagesHelper.createVideoThumbnail(path, android.provider.MediaStore.Video.Thumbnails.MINI_KIND);
+            } catch (Throwable e) {
+                FileLog.e(e);
+            }
+            android.graphics.Bitmap made = frame;
+            AndroidUtilities.runOnUIThread(() -> {
+                if (made != null && !isFinishing()) {
+                    videoThumbs.put(path, made);
+                    thumb.setImageBitmap(made);
+                }
+            });
+        });
+    }
+
+    private void refreshPhotoStrip() {
+        photoStrip.removeAllViews();
+        photoScroll.setVisibility(photos.isEmpty() ? View.GONE : View.VISIBLE);
+        for (String path : new ArrayList<>(photos)) {
+            FrameLayout cell = new FrameLayout(this);
+            BackupImageView thumb = new BackupImageView(this);
+            thumb.setRoundRadius(dp(8));
+            boolean video = TextMemoPhotos.isVideo(path);
+            if (video) {
+                showVideoThumb(thumb, path);
+            } else {
+                thumb.setImage(ImageLocation.getForPath(path), "64_64", (android.graphics.drawable.Drawable) null, null);
+            }
+            cell.addView(thumb, LayoutHelper.createFrame(64, 64, Gravity.BOTTOM | Gravity.START));
+            if (video) {
+                ImageView play = new ImageView(this);
+                play.setScaleType(ImageView.ScaleType.CENTER);
+                play.setImageResource(R.drawable.msg_round_play_m);
+                cell.addView(play, LayoutHelper.createFrame(24, 24, Gravity.CENTER, 0, 4, 0, 0));
+            }
+            ImageView remove = new ImageView(this);
+            remove.setScaleType(ImageView.ScaleType.CENTER);
+            remove.setImageResource(R.drawable.ic_close_white);
+            remove.setColorFilter(Color.WHITE);
+            GradientDrawable dot = new GradientDrawable();
+            dot.setShape(GradientDrawable.OVAL);
+            dot.setColor(0x99000000);
+            remove.setBackground(new InsetDrawable(dot, dp(4)));
+            remove.setContentDescription(LocaleController.getString(R.string.Delete));
+            remove.setOnClickListener(v -> {
+                if (!dismissing && photos.remove(path)) {
+                    TextMemoPhotos.discard(java.util.Collections.singletonList(path));
+                    refreshPhotoStrip();
+                    updateSendButton(true);
+                }
+            });
+            cell.addView(remove, LayoutHelper.createFrame(28, 28, Gravity.TOP | Gravity.END));
+            photoStrip.addView(cell, LayoutHelper.createLinear(72, 72, 0, 0, 4, 0));
         }
     }
 
@@ -827,6 +976,8 @@ public class TextMemoActivity extends Activity {
         } else {
             writeDraft(getText());
         }
+        TextMemoPhotos.discard(photos);
+        photos.clear();
         beginExit();
         field.setText("");
         if (backdrop) {
@@ -870,7 +1021,7 @@ public class TextMemoActivity extends Activity {
     // Without a backdrop there is no full-screen view to tap, so a touch outside the card lands here
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        if (!backdrop && root != null && event.getAction() == MotionEvent.ACTION_DOWN && field.length() == 0
+        if (!backdrop && root != null && event.getAction() == MotionEvent.ACTION_DOWN && field.length() == 0 && photos.isEmpty()
                 && (event.getX() < card.getLeft() || event.getX() > card.getRight() || event.getY() < card.getTop() || event.getY() > card.getBottom())) {
             dismiss(false);
             return true;
@@ -918,9 +1069,19 @@ public class TextMemoActivity extends Activity {
     @Override
     protected void onStop() {
         super.onStop();
+        if (picking) {
+            // The system picker covers this screen and the result comes back to it, but the user may leave from there
+            // (Home, a call) and the text exists nowhere else: save it as the draft without finishing
+            if (field != null && !dismissing) {
+                writeDraft(getText());
+            }
+            return;
+        }
         if (field != null && !dismissing) {
             dismissing = true;
             writeDraft(getText());
+            TextMemoPhotos.discard(photos);
+            photos.clear();
         }
         if (!isFinishing()) {
             finish();
@@ -929,6 +1090,9 @@ public class TextMemoActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        // Left from the picker and never came back: a send clears the list first, so what is left was never sent
+        TextMemoPhotos.discard(photos);
+        photos.clear();
         NotificationCenter.getGlobalInstance().removeObserver(wallpaperObserver, NotificationCenter.didSetNewWallpapper);
         super.onDestroy();
     }
