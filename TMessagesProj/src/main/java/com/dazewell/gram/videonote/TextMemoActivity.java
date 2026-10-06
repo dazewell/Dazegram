@@ -18,6 +18,7 @@ import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.InsetDrawable;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
@@ -75,6 +76,7 @@ import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.EditTextBoldCursor;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.RadialProgressView;
 import org.telegram.ui.Components.RLottieImageView;
 import org.telegram.ui.Components.SizeNotifierFrameLayout;
 import org.telegram.ui.ChatActivity;
@@ -128,8 +130,10 @@ public class TextMemoActivity extends Activity {
     private HorizontalScrollView photoScroll;
     // The system picker is up over this screen: onStop must not read that as being sent away
     private boolean picking;
-    // Picked photos are still being copied: a send now would leave them behind, and a second pick would pass the cap
-    private boolean importing;
+    // Picks still being copied, in pick order: a send now would leave them behind, and a second pick would pass the cap
+    private final ArrayList<TextMemoPhotos.Pick> pending = new ArrayList<>();
+    // Picks of this batch that were left out (past the limit, refused, failed), told once when the last copy resolves
+    private int skippedInBatch;
     private final java.util.HashMap<String, android.graphics.Bitmap> videoThumbs = new java.util.HashMap<>();
     // The chat's draft the memo opened with, or null. A write goes ahead only while the chat still holds this very object,
     // so a draft replaced meanwhile (another device, the chat in the app) is never written over.
@@ -551,7 +555,7 @@ public class TextMemoActivity extends Activity {
     }
 
     private void updateSendButton(boolean animated) {
-        boolean hasText = (!TextUtils.isEmpty(getText()) || !photos.isEmpty()) && !importing;
+        boolean hasText = (!TextUtils.isEmpty(getText()) || !photos.isEmpty()) && pending.isEmpty();
         if (hasText == canSend && animated) {
             return;
         }
@@ -576,7 +580,7 @@ public class TextMemoActivity extends Activity {
 
     private void send() {
         String text = getText();
-        if (dismissing || importing || text.isEmpty() && photos.isEmpty()) {
+        if (dismissing || !pending.isEmpty() || text.isEmpty() && photos.isEmpty()) {
             return;
         }
         sendButton.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
@@ -859,7 +863,7 @@ public class TextMemoActivity extends Activity {
     }
 
     private void pickPhotos() {
-        if (dismissing || importing || photos.size() >= TextMemoPhotos.MAX) {
+        if (dismissing || !pending.isEmpty() || photos.size() >= TextMemoPhotos.MAX) {
             return;
         }
         try {
@@ -878,22 +882,80 @@ public class TextMemoActivity extends Activity {
         if (requestCode != REQUEST_PHOTOS || resultCode != RESULT_OK || dismissing || isFinishing()) {
             return;
         }
-        importing = true;
-        updateSendButton(true);
-        TextMemoPhotos.importAsync(data, TextMemoPhotos.MAX - photos.size(), (paths, skipped) -> {
-            importing = false;
-            if (dismissing || isFinishing()) {
-                // Left meanwhile: nothing will send these
-                TextMemoPhotos.discard(paths);
+        ArrayList<TextMemoPhotos.Pick> picks = new ArrayList<>();
+        int room = TextMemoPhotos.MAX - photos.size() - pending.size();
+        for (Uri uri : TextMemoPhotos.urisOf(data)) {
+            if (picks.size() < room) {
+                picks.add(new TextMemoPhotos.Pick(uri));
+            } else {
+                skippedInBatch++;
+            }
+        }
+        if (picks.isEmpty()) {
+            reportSkipped();
+            return;
+        }
+        pending.addAll(picks);
+        refreshPhotoStrip();
+        updatePending();
+        TextMemoPhotos.copyAsync(picks, copyListener);
+    }
+
+    private final TextMemoPhotos.Listener copyListener = new TextMemoPhotos.Listener() {
+        @Override
+        public void onProgress(TextMemoPhotos.Pick pick, float progress) {
+            pick.progress = progress;
+            if (pick.ring != null && !pick.cancelled) {
+                pick.ring.setNoProgress(false);
+                pick.ring.setProgress(progress);
+            }
+        }
+
+        @Override
+        public void onDone(TextMemoPhotos.Pick pick, String path) {
+            if (pick.cancelled || !pending.remove(pick) || dismissing || isFinishing()) {
+                // Cancelled or left meanwhile: nothing will send it
+                if (path != null) {
+                    TextMemoPhotos.discard(java.util.Collections.singletonList(path));
+                }
                 return;
             }
-            photos.addAll(paths);
-            refreshPhotoStrip();
-            updateSendButton(true);
-            if (skipped > 0) {
-                android.widget.Toast.makeText(this, LocaleController.formatString("TextMemoMediaSkipped", R.string.TextMemoMediaSkipped, skipped), android.widget.Toast.LENGTH_LONG).show();
+            pick.ring = null;
+            if (path == null) {
+                skippedInBatch++;
+            } else {
+                photos.add(path);
             }
-        });
+            refreshPhotoStrip();
+            updatePending();
+            reportSkipped();
+        }
+    };
+
+    // Send and the photo button wait while any copy runs
+    private void updatePending() {
+        // A long copy is watched, not touched: a screen timeout would stop the memo and cancel it
+        root.setKeepScreenOn(!pending.isEmpty());
+        attachButton.setAlpha(pending.isEmpty() ? 1f : .5f);
+        updateSendButton(true);
+    }
+
+    private void reportSkipped() {
+        if (pending.isEmpty() && skippedInBatch > 0) {
+            android.widget.Toast.makeText(this, LocaleController.formatString("TextMemoMediaSkipped", R.string.TextMemoMediaSkipped, skippedInBatch), android.widget.Toast.LENGTH_LONG).show();
+            skippedInBatch = 0;
+        }
+    }
+
+    // Every copy still running stops at its next chunk and deletes its partial file
+    private void cancelPending() {
+        for (TextMemoPhotos.Pick pick : pending) {
+            pick.cancelled = true;
+            pick.listener = null;
+            pick.ring = null;
+        }
+        pending.clear();
+        skippedInBatch = 0;
     }
 
     // A video's first frame, made off the UI thread once per file
@@ -922,7 +984,7 @@ public class TextMemoActivity extends Activity {
 
     private void refreshPhotoStrip() {
         photoStrip.removeAllViews();
-        photoScroll.setVisibility(photos.isEmpty() ? View.GONE : View.VISIBLE);
+        photoScroll.setVisibility(photos.isEmpty() && pending.isEmpty() ? View.GONE : View.VISIBLE);
         for (String path : new ArrayList<>(photos)) {
             FrameLayout cell = new FrameLayout(this);
             BackupImageView thumb = new BackupImageView(this);
@@ -959,6 +1021,47 @@ public class TextMemoActivity extends Activity {
             cell.addView(remove, LayoutHelper.createFrame(28, 28, Gravity.TOP | Gravity.END));
             photoStrip.addView(cell, LayoutHelper.createLinear(72, 72, 0, 0, 4, 0));
         }
+        int accent = Theme.getColor(Theme.key_chat_messagePanelSend);
+        for (TextMemoPhotos.Pick pick : new ArrayList<>(pending)) {
+            FrameLayout cell = new FrameLayout(this);
+            View tile = new View(this);
+            GradientDrawable tileBackground = new GradientDrawable();
+            tileBackground.setCornerRadius(dp(8));
+            tileBackground.setColor(Theme.multAlpha(accent, .10f));
+            tile.setBackground(tileBackground);
+            cell.addView(tile, LayoutHelper.createFrame(64, 64, Gravity.BOTTOM | Gravity.START));
+            RadialProgressView ring = new RadialProgressView(this);
+            ring.setSize(dp(26));
+            ring.setStrokeWidth(2.5f);
+            ring.setProgressColor(accent);
+            if (pick.progress >= 0) {
+                ring.setNoProgress(false);
+                ring.setProgress(pick.progress);
+            }
+            pick.ring = ring;
+            cell.addView(ring, LayoutHelper.createFrame(32, 32, Gravity.CENTER, 0, 4, 0, 0));
+            ImageView cancel = new ImageView(this);
+            cancel.setScaleType(ImageView.ScaleType.CENTER);
+            cancel.setImageResource(R.drawable.ic_close_white);
+            cancel.setColorFilter(Color.WHITE);
+            GradientDrawable dot = new GradientDrawable();
+            dot.setShape(GradientDrawable.OVAL);
+            dot.setColor(0x99000000);
+            cancel.setBackground(new InsetDrawable(dot, dp(4)));
+            cancel.setContentDescription(LocaleController.getString(R.string.Delete));
+            cancel.setOnClickListener(v -> {
+                if (!dismissing && pending.remove(pick)) {
+                    pick.cancelled = true;
+                    pick.listener = null;
+                    pick.ring = null;
+                    refreshPhotoStrip();
+                    updatePending();
+                    reportSkipped();
+                }
+            });
+            cell.addView(cancel, LayoutHelper.createFrame(28, 28, Gravity.TOP | Gravity.END));
+            photoStrip.addView(cell, LayoutHelper.createLinear(72, 72, 0, 0, 4, 0));
+        }
     }
 
     /**
@@ -976,6 +1079,7 @@ public class TextMemoActivity extends Activity {
         } else {
             writeDraft(getText());
         }
+        cancelPending();
         TextMemoPhotos.discard(photos);
         photos.clear();
         beginExit();
@@ -1080,6 +1184,7 @@ public class TextMemoActivity extends Activity {
         if (field != null && !dismissing) {
             dismissing = true;
             writeDraft(getText());
+            cancelPending();
             TextMemoPhotos.discard(photos);
             photos.clear();
         }
@@ -1091,6 +1196,7 @@ public class TextMemoActivity extends Activity {
     @Override
     protected void onDestroy() {
         // Left from the picker and never came back: a send clears the list first, so what is left was never sent
+        cancelPending();
         TextMemoPhotos.discard(photos);
         photos.clear();
         NotificationCenter.getGlobalInstance().removeObserver(wallpaperObserver, NotificationCenter.didSetNewWallpapper);

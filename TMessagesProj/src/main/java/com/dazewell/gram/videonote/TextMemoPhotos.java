@@ -1,5 +1,6 @@
 package com.dazewell.gram.videonote;
 
+import android.annotation.SuppressLint;
 import android.content.ClipData;
 import android.content.ContentResolver;
 import android.content.Intent;
@@ -12,29 +13,64 @@ import android.webkit.MimeTypeMap;
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
+import org.telegram.messenger.DispatchQueue;
+import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.MediaController;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.SendMessagesHelper;
 import org.telegram.messenger.Utilities;
+import org.telegram.ui.Components.RadialProgressView;
 
 import java.io.File;
+import java.io.FileDescriptor;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.function.BiConsumer;
 
 /**
  * Photos and videos for the text memo, picked with the system picker so no storage permission is asked and the app lock
- * is never involved. A picked uri is only readable while the memo lives, so each one is copied to the cache at pick time and
- * the memo holds plain file paths from then on. Media is never part of the chat's draft: leaving without sending drops it.
+ * is never involved. A picked uri is only readable while the memo lives, so each one is copied to the cache and the memo
+ * holds plain file paths from then on. The copy is our own loop rather than MediaController.copyFileToCache, which has no
+ * way to report progress or stop. Media is never part of the chat's draft: leaving without sending drops it.
  */
 final class TextMemoPhotos {
 
     // Photos and videos together
     static final int MAX = 10;
     // A video is copied whole before it is sent, so a very large one is refused rather than filling the cache
-    private static final long MAX_VIDEO_BYTES = 100L * 1024 * 1024;
+    private static final long MAX_VIDEO_BYTES = 1024L * 1024 * 1024;
+    private static final long PROGRESS_INTERVAL_MS = 100;
+    // Its own queue: a gigabyte pulled from a cloud provider would hold the app-wide Utilities.globalQueue for minutes
+    private static final DispatchQueue copyQueue = new DispatchQueue("textMemoCopy");
+
+    /** One picked item, from the picker's result until its copy resolves. Touched from the UI thread and the copy thread. */
+    static final class Pick {
+        final Uri uri;
+        volatile boolean cancelled;
+        // The ring in the strip's placeholder, when it is on screen; UI thread only
+        RadialProgressView ring;
+        // 0..1 when the provider reports a size, else -1; UI thread only
+        float progress = -1;
+        // Cleared when the memo is torn down, so a copy stuck in a provider's read doesn't keep the activity reachable
+        volatile Listener listener;
+
+        Pick(Uri uri) {
+            this.uri = uri;
+        }
+    }
+
+    interface Listener {
+        /** On the UI thread, throttled. */
+        void onProgress(Pick pick, float progress);
+
+        /** On the UI thread, once per pick that started copying; null when it was cancelled, refused or failed. */
+        void onDone(Pick pick, String path);
+    }
 
     private TextMemoPhotos() {
     }
@@ -48,6 +84,24 @@ final class TextMemoPhotos {
         return intent;
     }
 
+    /** What the picker returned, in pick order. */
+    static List<Uri> urisOf(Intent data) {
+        List<Uri> uris = new ArrayList<>();
+        if (data != null) {
+            ClipData clip = data.getClipData();
+            if (clip != null) {
+                for (int i = 0; i < clip.getItemCount(); i++) {
+                    if (clip.getItemAt(i).getUri() != null) {
+                        uris.add(clip.getItemAt(i).getUri());
+                    }
+                }
+            } else if (data.getData() != null) {
+                uris.add(data.getData());
+            }
+        }
+        return uris;
+    }
+
     /** By the copy's extension, which keeps the picked file's own name. */
     static boolean isVideo(String path) {
         int dot = path == null ? -1 : path.lastIndexOf('.');
@@ -58,64 +112,130 @@ final class TextMemoPhotos {
         return mime != null && mime.startsWith("video/");
     }
 
-    /**
-     * Copies what the picker returned to the cache off the UI thread, then hands back the paths and how many picks were
-     * left out (past the limit, too large, unreadable) on it.
-     */
-    static void importAsync(Intent data, int room, BiConsumer<List<String>, Integer> done) {
-        List<Uri> uris = new ArrayList<>();
-        if (data != null) {
-            ClipData clip = data.getClipData();
-            if (clip != null) {
-                for (int i = 0; i < clip.getItemCount(); i++) {
-                    uris.add(clip.getItemAt(i).getUri());
-                }
-            } else if (data.getData() != null) {
-                uris.add(data.getData());
-            }
+    /** Copies the picks to the cache one after another, in order, off the UI thread. A cancelled pick is skipped or stopped at its next chunk. */
+    static void copyAsync(List<Pick> picks, Listener listener) {
+        for (Pick pick : picks) {
+            pick.listener = listener;
         }
-        Utilities.globalQueue.postRunnable(() -> {
-            List<String> paths = new ArrayList<>();
-            int skipped = 0;
-            for (Uri uri : uris) {
-                if (paths.size() >= room) {
-                    skipped++;
+        copyQueue.postRunnable(() -> {
+            for (Pick pick : picks) {
+                if (pick.cancelled) {
                     continue;
                 }
+                String path = null;
                 try {
-                    String path = uri == null ? null : copy(uri);
-                    if (TextUtils.isEmpty(path)) {
-                        skipped++;
-                    } else {
-                        paths.add(path);
-                    }
+                    path = copy(pick);
                 } catch (Throwable e) {
                     FileLog.e(e);
-                    skipped++;
+                }
+                String done = path;
+                Listener target = pick.listener;
+                if (target != null) {
+                    AndroidUtilities.runOnUIThread(() -> target.onDone(pick, done));
+                } else if (done != null) {
+                    // Cancelled just after it finished: nobody will send it
+                    discard(java.util.Collections.singletonList(done));
                 }
             }
-            int left = skipped;
-            AndroidUtilities.runOnUIThread(() -> done.accept(paths, left));
         });
     }
 
-    private static String copy(Uri uri) {
+    private static String copy(Pick pick) throws Exception {
         ContentResolver resolver = ApplicationLoader.applicationContext.getContentResolver();
-        String type = resolver.getType(uri);
-        boolean video = type != null && type.startsWith("video/");
-        if (video && size(resolver, uri) > MAX_VIDEO_BYTES) {
+        String type = resolver.getType(pick.uri);
+        String name = FileLoader.fixFileName(MediaController.getFileName(pick.uri));
+        // A provider may report no type, or a generic one, for a file that is plainly a video by its name; sending goes by the name
+        boolean video = type != null && type.startsWith("video/") || isVideo(name);
+        long size = size(resolver, pick.uri);
+        if (video && size > MAX_VIDEO_BYTES) {
             return null;
         }
-        // The limit also bounds a provider that doesn't report a size
-        String path = video ? MediaController.copyFileToCache(uri, "mp4", MAX_VIDEO_BYTES) : MediaController.copyFileToCache(uri, "jpg");
-        if (video && path != null && !isVideo(path)) {
-            // The copy keeps the provider's file name, and the flag is re-derived from its extension when sending
-            File renamed = new File(path + ".mp4");
-            if (new File(path).renameTo(renamed)) {
-                return renamed.getAbsolutePath();
+        if (TextUtils.isEmpty(name)) {
+            name = "memo_" + System.currentTimeMillis() + (video ? ".mp4" : ".jpg");
+        } else if (video && !isVideo(name)) {
+            // The video flag is re-derived from the extension when sending; named before the collision check so nothing is renamed over
+            name += ".mp4";
+        }
+        File dir = AndroidUtilities.getSharingDirectory();
+        dir.mkdirs();
+        if (AndroidUtilities.isInternalUri(Uri.fromFile(dir))) {
+            return null;
+        }
+        File out = new File(dir, name);
+        for (int count = 1; out.exists(); count++) {
+            int dot = name.lastIndexOf('.');
+            out = new File(dir, dot > 0 ? name.substring(0, dot) + " (" + count + ")" + name.substring(dot) : name + " (" + count + ")");
+        }
+        boolean finished = false;
+        InputStream in = null;
+        FileOutputStream output = null;
+        try {
+            in = resolver.openInputStream(pick.uri);
+            if (in == null || isInternalFd(in)) {
+                return null;
+            }
+            output = new FileOutputStream(out);
+            byte[] buffer = new byte[128 * 1024];
+            long total = 0;
+            long lastReport = 0;
+            int len;
+            while ((len = in.read(buffer)) != -1) {
+                if (pick.cancelled) {
+                    return null;
+                }
+                output.write(buffer, 0, len);
+                total += len;
+                if (video && total > MAX_VIDEO_BYTES) {
+                    // A provider that didn't report its size
+                    return null;
+                }
+                long now = System.currentTimeMillis();
+                if (video && size > 0 && now - lastReport >= PROGRESS_INTERVAL_MS) {
+                    lastReport = now;
+                    float progress = Math.min(1f, total / (float) size);
+                    Listener target = pick.listener;
+                    if (target != null) {
+                        AndroidUtilities.runOnUIThread(() -> target.onProgress(pick, progress));
+                    }
+                }
+            }
+            output.flush();
+            finished = !pick.cancelled;
+        } finally {
+            closeQuietly(in);
+            closeQuietly(output);
+            if (!finished) {
+                out.delete();
             }
         }
-        return path;
+        if (!finished) {
+            return null;
+        }
+        return out.getAbsolutePath();
+    }
+
+    // The picked uri may point at one of the app's own private files; refuse those, as MediaController.copyFileToCache does
+    @SuppressLint("DiscouragedPrivateApi")
+    private static boolean isInternalFd(InputStream in) {
+        if (in instanceof FileInputStream) {
+            try {
+                Method getInt = FileDescriptor.class.getDeclaredMethod("getInt$");
+                int fd = (Integer) getInt.invoke(((FileInputStream) in).getFD());
+                return AndroidUtilities.isInternalUri(fd);
+            } catch (Throwable e) {
+                FileLog.e(e);
+            }
+        }
+        return false;
+    }
+
+    private static void closeQuietly(java.io.Closeable closeable) {
+        try {
+            if (closeable != null) {
+                closeable.close();
+            }
+        } catch (Throwable ignore) {
+        }
     }
 
     // -1 when the provider doesn't say
