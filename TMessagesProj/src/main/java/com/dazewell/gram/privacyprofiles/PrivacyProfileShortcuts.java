@@ -25,6 +25,8 @@ import java.util.Collections;
  */
 public final class PrivacyProfileShortcuts {
 
+    // NagramX: keeps the pre-DwellGram package string; shortcuts already pinned on devices carry this action
+    // NagramX: keeps the pre-DwellGram package string; shortcuts already pinned on devices carry this action
     public static final String ACTION_ACTIVATE = "com.radolyn.ayugram.privacyprofiles.ACTIVATE";
     public static final String EXTRA_PROFILE_ID = "privacyProfileId";
     public static final String EXTRA_TOKEN = "privacyProfileToken";

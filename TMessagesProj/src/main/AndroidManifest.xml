@@ -620,6 +620,15 @@
             android:taskAffinity=""
             android:theme="@style/Theme.TMessages.TextMemoCard"
             android:windowSoftInputMode="adjustResize|stateHidden" />
+        <!-- NagramX: launcher shortcuts pinned before the DwellGram package move store these old component names; the aliases keep them opening -->
+        <activity-alias
+            android:name="com.radolyn.ayugram.videonote.TextMemoActivity"
+            android:exported="false"
+            android:targetActivity="com.dazewell.gram.videonote.TextMemoActivity" />
+        <activity-alias
+            android:name="com.radolyn.ayugram.videonote.TextMemoCardActivity"
+            android:exported="false"
+            android:targetActivity="com.dazewell.gram.videonote.TextMemoCardActivity" />
         <activity android:name="org.telegram.ui.VoIPPermissionActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|uiMode"
             android:taskAffinity="${applicationId}.voip"
