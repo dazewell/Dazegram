@@ -64,7 +64,7 @@ final class TextMemoPhotos {
         });
     }
 
-    /** An album when there are several; the text rides on the first photo as its caption. The copies are removed once sent. */
+    /** An album when there are several; the text rides on the first photo as its caption. */
     static void send(AccountInstance account, List<String> paths, String caption, long dialogId) {
         ArrayList<SendMessagesHelper.SendingMediaInfo> infos = new ArrayList<>();
         for (String path : paths) {
@@ -73,7 +73,6 @@ final class TextMemoPhotos {
             }
             SendMessagesHelper.SendingMediaInfo info = new SendMessagesHelper.SendingMediaInfo();
             info.path = path;
-            info.canDeleteAfter = true;
             infos.add(info);
         }
         if (infos.isEmpty()) {

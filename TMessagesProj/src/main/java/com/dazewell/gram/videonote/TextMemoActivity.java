@@ -128,6 +128,8 @@ public class TextMemoActivity extends Activity {
     private HorizontalScrollView photoScroll;
     // The system picker is up over this screen: onStop must not read that as being sent away
     private boolean picking;
+    // Picked photos are still being copied: a send now would leave them behind, and a second pick would pass the cap
+    private boolean importing;
     // The chat's draft the memo opened with, or null. A write goes ahead only while the chat still holds this very object,
     // so a draft replaced meanwhile (another device, the chat in the app) is never written over.
     private TLRPC.DraftMessage adoptedDraft;
@@ -234,7 +236,7 @@ public class TextMemoActivity extends Activity {
         }
         // A tap outside closes an empty card like any dialog, but never throws away typed text
         root.setOnClickListener(v -> {
-            if (field.length() == 0) {
+            if (field.length() == 0 && photos.isEmpty()) {
                 dismiss(false);
             }
         });
@@ -548,7 +550,7 @@ public class TextMemoActivity extends Activity {
     }
 
     private void updateSendButton(boolean animated) {
-        boolean hasText = !TextUtils.isEmpty(getText()) || !photos.isEmpty();
+        boolean hasText = (!TextUtils.isEmpty(getText()) || !photos.isEmpty()) && !importing;
         if (hasText == canSend && animated) {
             return;
         }
@@ -573,7 +575,7 @@ public class TextMemoActivity extends Activity {
 
     private void send() {
         String text = getText();
-        if (dismissing || text.isEmpty() && photos.isEmpty()) {
+        if (dismissing || importing || text.isEmpty() && photos.isEmpty()) {
             return;
         }
         sendButton.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
@@ -589,7 +591,9 @@ public class TextMemoActivity extends Activity {
         beginExit();
         // One thing moves at a time: the text lifts out of the card to the plane, the plane takes off, then the card drops
         sendButton.animate().alpha(.5f).scaleX(.85f).scaleY(.85f).setDuration(150).setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT).start();
-        flyToPlane(text);
+        if (!text.isEmpty()) {
+            flyToPlane(text);
+        }
         field.setAlpha(0f);
         if (backdrop) {
             hint.animate().alpha(0f).setStartDelay(120).setDuration(150).start();
@@ -827,9 +831,12 @@ public class TextMemoActivity extends Activity {
         try {
             MediaDataController drafts = MediaDataController.getInstance(account);
             if (drafts.getDraft(dialogId, 0) == adoptedDraft && !isChatOpen()) {
+                boolean memoText = adoptedDraft == null || !text.equals(adoptedDraft.message);
                 drafts.saveDraft(dialogId, 0, text, null, null, adoptedDraft != null && adoptedDraft.no_webpage, 0);
+                // A save while the picker is up isn't the last: the next write must still pass the identity check above
+                adoptedDraft = drafts.getDraft(dialogId, 0);
                 // Only text the memo wrote: a chat's own draft reopened and left as it was stays behind the lock
-                if (adoptedDraft == null || !text.equals(adoptedDraft.message)) {
+                if (memoText) {
                     rememberMemoDraft(text);
                 }
             }
@@ -851,7 +858,7 @@ public class TextMemoActivity extends Activity {
     }
 
     private void pickPhotos() {
-        if (dismissing || photos.size() >= TextMemoPhotos.MAX) {
+        if (dismissing || importing || photos.size() >= TextMemoPhotos.MAX) {
             return;
         }
         try {
@@ -870,7 +877,10 @@ public class TextMemoActivity extends Activity {
         if (requestCode != REQUEST_PHOTOS || resultCode != RESULT_OK || dismissing || isFinishing()) {
             return;
         }
+        importing = true;
+        updateSendButton(true);
         TextMemoPhotos.importAsync(data, TextMemoPhotos.MAX - photos.size(), paths -> {
+            importing = false;
             if (dismissing || isFinishing()) {
                 // Left meanwhile: nothing will send these
                 TextMemoPhotos.discard(paths);
@@ -972,7 +982,7 @@ public class TextMemoActivity extends Activity {
     // Without a backdrop there is no full-screen view to tap, so a touch outside the card lands here
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        if (!backdrop && root != null && event.getAction() == MotionEvent.ACTION_DOWN && field.length() == 0
+        if (!backdrop && root != null && event.getAction() == MotionEvent.ACTION_DOWN && field.length() == 0 && photos.isEmpty()
                 && (event.getX() < card.getLeft() || event.getX() > card.getRight() || event.getY() < card.getTop() || event.getY() > card.getBottom())) {
             dismiss(false);
             return true;
@@ -1021,7 +1031,11 @@ public class TextMemoActivity extends Activity {
     protected void onStop() {
         super.onStop();
         if (picking) {
-            // The system picker covers this screen; the result comes back to it
+            // The system picker covers this screen and the result comes back to it, but the user may leave from there
+            // (Home, a call) and the text exists nowhere else: save it as the draft without finishing
+            if (field != null && !dismissing) {
+                writeDraft(getText());
+            }
             return;
         }
         if (field != null && !dismissing) {
