@@ -16,7 +16,7 @@ module, and it **merges from upstream regularly**. That last fact drives almost
 every rule below: every line you touch in a base fork file is a future rebase
 conflict.
 
-- Source root: `TMessagesProj/src/main/java` (some fork Kotlin in `.../kotlin`,
+- Source root: `TMessagesProj/src/main/java` (inherited Kotlin in `.../kotlin`,
   e.g. `NaConfig.kt` — its `const val`s surface as Java static fields).
   Code this fork wrote lives in `com.dazewell.gram.<feature>`; `com.radolyn`,
   `tw.nekomimi` and `xyz.nextalone` now hold inherited code only. A new class

@@ -64,8 +64,8 @@ hard-line policy, docs.
 ### Fork fit and upstream survivability
 
 - **Minimal footprint.** Base-fork files move as little as possible. New logic
-  belongs in feature classes such as `com.dazewell.gram.<feature>`,
-  `tw.nekomimi.nekogram.helpers.*`, or `xyz.nextalone.nagram.*`; base files get
+  belongs in feature classes such as `com.dazewell.gram.<feature>`
+  (never `tw.nekomimi` or `xyz.nextalone`, which hold inherited code only); base files get
   only injected hooks.
 - **Right chokepoint.** Core flows should hook the single funnel, not many call
   sites. Chat open funnels through `ChatActivity.onFragmentCreate()`; chat-list
