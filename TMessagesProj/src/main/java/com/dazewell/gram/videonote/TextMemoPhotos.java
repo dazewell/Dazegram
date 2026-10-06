@@ -56,6 +56,8 @@ final class TextMemoPhotos {
         RadialProgressView ring;
         // 0..1 when the provider reports a size, else -1; UI thread only
         float progress = -1;
+        // Cleared when the memo is torn down, so a copy stuck in a provider's read doesn't keep the activity reachable
+        volatile Listener listener;
 
         Pick(Uri uri) {
             this.uri = uri;
@@ -112,6 +114,9 @@ final class TextMemoPhotos {
 
     /** Copies the picks to the cache one after another, in order, off the UI thread. A cancelled pick is skipped or stopped at its next chunk. */
     static void copyAsync(List<Pick> picks, Listener listener) {
+        for (Pick pick : picks) {
+            pick.listener = listener;
+        }
         copyQueue.postRunnable(() -> {
             for (Pick pick : picks) {
                 if (pick.cancelled) {
@@ -119,25 +124,32 @@ final class TextMemoPhotos {
                 }
                 String path = null;
                 try {
-                    path = copy(pick, listener);
+                    path = copy(pick);
                 } catch (Throwable e) {
                     FileLog.e(e);
                 }
                 String done = path;
-                AndroidUtilities.runOnUIThread(() -> listener.onDone(pick, done));
+                Listener target = pick.listener;
+                if (target != null) {
+                    AndroidUtilities.runOnUIThread(() -> target.onDone(pick, done));
+                } else if (done != null) {
+                    // Cancelled just after it finished: nobody will send it
+                    discard(java.util.Collections.singletonList(done));
+                }
             }
         });
     }
 
-    private static String copy(Pick pick, Listener listener) throws Exception {
+    private static String copy(Pick pick) throws Exception {
         ContentResolver resolver = ApplicationLoader.applicationContext.getContentResolver();
         String type = resolver.getType(pick.uri);
-        boolean video = type != null && type.startsWith("video/");
+        String name = FileLoader.fixFileName(MediaController.getFileName(pick.uri));
+        // A provider may report no type, or a generic one, for a file that is plainly a video by its name; sending goes by the name
+        boolean video = type != null && type.startsWith("video/") || isVideo(name);
         long size = size(resolver, pick.uri);
         if (video && size > MAX_VIDEO_BYTES) {
             return null;
         }
-        String name = FileLoader.fixFileName(MediaController.getFileName(pick.uri));
         if (TextUtils.isEmpty(name)) {
             name = "memo_" + System.currentTimeMillis() + (video ? ".mp4" : ".jpg");
         } else if (video && !isVideo(name)) {
@@ -181,7 +193,10 @@ final class TextMemoPhotos {
                 if (video && size > 0 && now - lastReport >= PROGRESS_INTERVAL_MS) {
                     lastReport = now;
                     float progress = Math.min(1f, total / (float) size);
-                    AndroidUtilities.runOnUIThread(() -> listener.onProgress(pick, progress));
+                    Listener target = pick.listener;
+                    if (target != null) {
+                        AndroidUtilities.runOnUIThread(() -> target.onProgress(pick, progress));
+                    }
                 }
             }
             output.flush();

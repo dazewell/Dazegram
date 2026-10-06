@@ -951,6 +951,7 @@ public class TextMemoActivity extends Activity {
     private void cancelPending() {
         for (TextMemoPhotos.Pick pick : pending) {
             pick.cancelled = true;
+            pick.listener = null;
             pick.ring = null;
         }
         pending.clear();
@@ -1051,6 +1052,7 @@ public class TextMemoActivity extends Activity {
             cancel.setOnClickListener(v -> {
                 if (!dismissing && pending.remove(pick)) {
                     pick.cancelled = true;
+                    pick.listener = null;
                     pick.ring = null;
                     refreshPhotoStrip();
                     updatePending();
