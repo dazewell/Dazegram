@@ -1,4 +1,4 @@
-# Dazegram features
+# DwellGram features
 
 Extra bits I've added on top of [NagramX](https://github.com/risin42/NagramX). Most are on out of the box. Where something has a setting, I've said so.
 
@@ -309,7 +309,7 @@ If multiple providers are configured, the Retry option on a transcription become
 
 ### Extera themes <!-- #extera-themes -->
 
-Extera Light and Extera Dark bring [exteraGram](https://github.com/exteraSquad/exteraGram)'s look to Dazegram. The design is exteraSquad's. Only the palettes were rebuilt here — reverse-engineered rather than copied, and shipped as Monet-token theme assets — so the look, and the credit for it, stay theirs.
+Extera Light and Extera Dark bring [exteraGram](https://github.com/exteraSquad/exteraGram)'s look to DwellGram. The design is exteraSquad's. Only the palettes were rebuilt here — reverse-engineered rather than copied, and shipped as Monet-token theme assets — so the look, and the credit for it, stay theirs.
 
 <img height="260" alt="chat rendered in the Extera Light theme" src="docs/images/features/extera-light.png" />
 <img height="260" alt="the same chat rendered in the Extera Dark theme" src="docs/images/features/extera-dark.png" />
@@ -322,11 +322,11 @@ You can apply a chat pattern over your live Material You color. Turn it off by o
 
 ### Ribbon app icons <!-- #ribbon-icons -->
 
-Three launcher icons drawn for the fork, not recoloured stock art: a strip folded into a chat bubble, with a cut end at the top right and a folded tail. *Ribbon* is amber on graphite, *Ribbon Dawn* warm cream, *Ribbon Amber* dark on amber. Pick one under Chat Settings → App Icon; all three carry a themed-icon layer. DazegramX (Unofficial) starts on Ribbon Amber; Dazegram (Official) starts on Blue.
+Three launcher icons drawn for the fork, not recoloured stock art: a strip folded into a chat bubble, with a cut end at the top right and a folded tail. *Ribbon* is amber on graphite, *Ribbon Dawn* warm cream, *Ribbon Amber* dark on amber. Pick one under Chat Settings → App Icon; all three carry a themed-icon layer. DwellGramX (Unofficial) starts on Ribbon Amber; DwellGram (Official) starts on Blue.
 
 ### Fixed app icon matches the build's default <!-- #app-icon-fallback -->
 
-On DazegramX (Unofficial), the app's fixed system-level icon — the one Android shows in the app switcher, permission dialogs and the notification header — is the *Ribbon Amber* art the build also starts on. Dazegram (Official) keeps its usual Blue icon. This icon is fixed at build time, so it does not follow your Chat Settings → App Icon choice.
+On DwellGramX (Unofficial), the app's fixed system-level icon — the one Android shows in the app switcher, permission dialogs and the notification header — is the *Ribbon Amber* art the build also starts on. DwellGram (Official) keeps its usual Blue icon. This icon is fixed at build time, so it does not follow your Chat Settings → App Icon choice.
 
 ### Centered chat title <!-- #title-pill-fix -->
 

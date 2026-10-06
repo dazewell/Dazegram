@@ -223,7 +223,7 @@ unresolved finding is the thing you most need to see. Read the resolution state
 through the shared pagination-safe script:
 
 ```powershell
-.\.github\scripts\get-review-threads.ps1 -Repository dazewell/Dazegram -PullRequest $pr.number |
+.\.github\scripts\get-review-threads.ps1 -Repository dazewell/DwellGram -PullRequest $pr.number |
   ConvertFrom-Json | ForEach-Object {
     "$($(if ($_.isResolved) { 'resolved' } else { 'OPEN' })) $($_.path):$($_.line)`n$($_.comments.nodes[0].body)`n---"
   }

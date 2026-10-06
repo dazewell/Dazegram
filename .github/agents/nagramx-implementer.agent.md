@@ -242,10 +242,10 @@ loose PR comment. Verify none remain unresolved.
 # reply in-thread; --body-file avoids this shell mangling backticks and $ in prose
 $pr = '<n>'
 [System.IO.File]::WriteAllText("$env:TEMP\reply.md", $text, (New-Object System.Text.UTF8Encoding $false))
-gh api "repos/dazewell/Dazegram/pulls/$pr/comments/<comment-id>/replies" -F body=@"$env:TEMP\reply.md"
+gh api "repos/dazewell/DwellGram/pulls/$pr/comments/<comment-id>/replies" -F body=@"$env:TEMP\reply.md"
 
 # resolve. threadId is the PRRT_... node id, not the comment id
-.\.github\scripts\get-review-threads.ps1 -Repository dazewell/Dazegram -PullRequest $pr |
+.\.github\scripts\get-review-threads.ps1 -Repository dazewell/DwellGram -PullRequest $pr |
   ConvertFrom-Json | Where-Object { -not $_.isResolved }
 
 $m = 'mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}'

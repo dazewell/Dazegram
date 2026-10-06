@@ -43,7 +43,7 @@ exists so you can start searching immediately, not so you can skip the skill.
 
 - Source root: `TMessagesProj/src/main/java`, plus Kotlin in
   `TMessagesProj/src/main/kotlin`.
-- Fork feature code lives in `com.radolyn.ayugram.<feature>`,
+- Fork feature code lives in `com.dazewell.gram.<feature>`,
   `tw.nekomimi.nekogram.helpers.*`, `xyz.nextalone.nagram.*`. Base-fork files
   should carry only a few injected lines, each marked `// NagramX:`.
 - Settings surfaces: `xyz.nextalone.nagram.NaConfig` (`NaConfig.kt`),

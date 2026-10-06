@@ -78,7 +78,7 @@ indistinguishable from this evidence alone — both pointed at the same blue
 asset. This entry only kills the activity-alias theory.
 
 **Positive result (post-smoke).** On dazewell's tested ColorOS device, the
-Unofficial (`nekox.messenger`, DazegramX) smoke build from PR #291 head
+Unofficial (`nekox.messenger`, DwellGramX) smoke build from PR #291 head
 `a6938cde4a` was installed with the Neon launcher alias still selected in Chat
 Settings. That build's `<application>` node carried a direct
 `android:icon="@mipmap/ic_launcher_nagram"`/`android:roundIcon="@mipmap/ic_launcher_nagram_round"`
@@ -111,7 +111,7 @@ the opposite direction, and a good illustration of why this entry exists: the
 notification icon looks like it should follow the launcher icon and never does.
 
 This entry says nothing about
-Official (`org.telegram.messenger.beta`, Dazegram), which keeps its
+Official (`org.telegram.messenger.beta`, DwellGram), which keeps its
 pre-existing Blue fixed icon and was not part of this investigation.
 
 *(Established 2026-09-04, confirmed 2026-09-05, re-confirmed 2026-09-20.)*
@@ -854,7 +854,7 @@ Two constraints recorded in earlier rounds were overridden to do it, both
 deliberately. Instrumenting `GhostModeActivity` was avoided in round 1 to stay
 textually conflict-free with the then-unmerged `#ghost-hold` work that touches the
 same file; correctness won, at the cost of a small merge resolution in that file
-when Ghost Hold landed. And [issue #339](https://github.com/dazewell/Dazegram/issues/339)
+when Ghost Hold landed. And [issue #339](https://github.com/dazewell/DwellGram/issues/339)
 proposed waiting for Ghost Hold (which merged as `#347`) and then reusing its
 `GhostHoldController#onGhostStateMaybeChanged`. That is the same
 derived-edge-detector shape arrived at here independently, which is good
@@ -910,7 +910,7 @@ or second serialization path is needed.
 ## "Copy a held photo privately, then restore it to its original local-id cache path"
 
 Rejected on 2026-09-13 after
-[PR #363](https://github.com/dazewell/Dazegram/pull/363) was closed unmerged.
+[PR #363](https://github.com/dazewell/DwellGram/pull/363) was closed unmerged.
 An app-private copy is outside the media-cache sweeps
 (`ApplicationLoader.java:188-212`, `ImageLoader.java:2416-2428`), so it can
 preserve bytes that cache cleanup would remove. It does not preserve the stock
