@@ -1090,6 +1090,9 @@ public class TextMemoActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        // Left from the picker and never came back: a send clears the list first, so what is left was never sent
+        TextMemoPhotos.discard(photos);
+        photos.clear();
         NotificationCenter.getGlobalInstance().removeObserver(wallpaperObserver, NotificationCenter.didSetNewWallpapper);
         super.onDestroy();
     }

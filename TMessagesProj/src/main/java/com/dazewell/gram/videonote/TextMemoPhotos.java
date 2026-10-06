@@ -14,6 +14,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.MediaController;
+import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.SendMessagesHelper;
 import org.telegram.messenger.Utilities;
 
@@ -105,7 +106,16 @@ final class TextMemoPhotos {
         if (video && size(resolver, uri) > MAX_VIDEO_BYTES) {
             return null;
         }
-        return MediaController.copyFileToCache(uri, video ? "mp4" : "jpg");
+        // The limit also bounds a provider that doesn't report a size
+        String path = video ? MediaController.copyFileToCache(uri, "mp4", MAX_VIDEO_BYTES) : MediaController.copyFileToCache(uri, "jpg");
+        if (video && path != null && !isVideo(path)) {
+            // The copy keeps the provider's file name, and the flag is re-derived from its extension when sending
+            File renamed = new File(path + ".mp4");
+            if (new File(path).renameTo(renamed)) {
+                return renamed.getAbsolutePath();
+            }
+        }
+        return path;
     }
 
     // -1 when the provider doesn't say
@@ -139,8 +149,13 @@ final class TextMemoPhotos {
             }
             return;
         }
-        infos.get(0).caption = caption;
+        // A caption has its own, shorter limit than a message
+        boolean captionFits = caption == null || caption.length() <= MessagesController.getInstance(account.getCurrentAccount()).getCaptionMaxLengthLimit();
+        infos.get(0).caption = captionFits ? caption : null;
         SendMessagesHelper.prepareSendingMedia(account, infos, dialogId, null, null, null, null, false, infos.size() > 1, null, true, 0, 0, 0, false, null, null, 0, false, 0, 0, null);
+        if (!captionFits) {
+            SendMessagesHelper.prepareSendingText(account, caption, dialogId, true, 0, 0, 0);
+        }
     }
 
     static void discard(List<String> paths) {

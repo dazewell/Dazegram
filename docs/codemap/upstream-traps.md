@@ -2671,6 +2671,6 @@ is visual, from the device, not from logs.
 
 *(Established 2026-10-04, `#text-memo-shortcut`.)*
 
-The memo finishes itself in `onStop` (`TextMemoActivity.java:1072` is the guard), so any screen opened over it ends it. Photos and videos (`#text-memo-photos`) use the system `ACTION_GET_CONTENT` picker, and `picking` skips that finish while it is up and saves the text as the draft instead. A picked uri is only readable while the memo lives, so each is copied to the cache at pick time (`TextMemoPhotos.java:108`) and the memo holds paths. Media is never part of the chat's draft; leaving without sending deletes the copies, and a sent copy stays in the sharing cache until it is cleared, which a video makes costly (so videos are capped at 100 MB).
+The memo finishes itself in `onStop` (`TextMemoActivity.java:1072` is the guard), so any screen opened over it ends it. Photos and videos (`#text-memo-photos`) use the system `ACTION_GET_CONTENT` picker, and `picking` skips that finish while it is up and saves the text as the draft instead. A picked uri is only readable while the memo lives, so each is copied to the cache at pick time (`TextMemoPhotos.java:110`) and the memo holds paths. Media is never part of the chat's draft; leaving without sending deletes the copies, and a sent copy stays in the sharing cache until it is cleared, which a video makes costly (so videos are capped at 100 MB).
 
 *(Established 2026-10-05, `#text-memo-photos`.)*
