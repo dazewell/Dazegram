@@ -130,6 +130,7 @@ public class TextMemoActivity extends Activity {
     private boolean picking;
     // Picked photos are still being copied: a send now would leave them behind, and a second pick would pass the cap
     private boolean importing;
+    private final java.util.HashMap<String, android.graphics.Bitmap> videoThumbs = new java.util.HashMap<>();
     // The chat's draft the memo opened with, or null. A write goes ahead only while the chat still holds this very object,
     // so a draft replaced meanwhile (another device, the chat in the app) is never written over.
     private TLRPC.DraftMessage adoptedDraft;
@@ -879,7 +880,7 @@ public class TextMemoActivity extends Activity {
         }
         importing = true;
         updateSendButton(true);
-        TextMemoPhotos.importAsync(data, TextMemoPhotos.MAX - photos.size(), paths -> {
+        TextMemoPhotos.importAsync(data, TextMemoPhotos.MAX - photos.size(), (paths, skipped) -> {
             importing = false;
             if (dismissing || isFinishing()) {
                 // Left meanwhile: nothing will send these
@@ -889,6 +890,33 @@ public class TextMemoActivity extends Activity {
             photos.addAll(paths);
             refreshPhotoStrip();
             updateSendButton(true);
+            if (skipped > 0) {
+                android.widget.Toast.makeText(this, LocaleController.formatString("TextMemoMediaSkipped", R.string.TextMemoMediaSkipped, skipped), android.widget.Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    // A video's first frame, made off the UI thread once per file
+    private void showVideoThumb(BackupImageView thumb, String path) {
+        android.graphics.Bitmap known = videoThumbs.get(path);
+        if (known != null) {
+            thumb.setImageBitmap(known);
+            return;
+        }
+        Utilities.globalQueue.postRunnable(() -> {
+            android.graphics.Bitmap frame = null;
+            try {
+                frame = SendMessagesHelper.createVideoThumbnail(path, android.provider.MediaStore.Video.Thumbnails.MINI_KIND);
+            } catch (Throwable e) {
+                FileLog.e(e);
+            }
+            android.graphics.Bitmap made = frame;
+            AndroidUtilities.runOnUIThread(() -> {
+                if (made != null && !isFinishing()) {
+                    videoThumbs.put(path, made);
+                    thumb.setImageBitmap(made);
+                }
+            });
         });
     }
 
@@ -899,8 +927,19 @@ public class TextMemoActivity extends Activity {
             FrameLayout cell = new FrameLayout(this);
             BackupImageView thumb = new BackupImageView(this);
             thumb.setRoundRadius(dp(8));
-            thumb.setImage(ImageLocation.getForPath(path), "64_64", (android.graphics.drawable.Drawable) null, null);
+            boolean video = TextMemoPhotos.isVideo(path);
+            if (video) {
+                showVideoThumb(thumb, path);
+            } else {
+                thumb.setImage(ImageLocation.getForPath(path), "64_64", (android.graphics.drawable.Drawable) null, null);
+            }
             cell.addView(thumb, LayoutHelper.createFrame(64, 64, Gravity.BOTTOM | Gravity.START));
+            if (video) {
+                ImageView play = new ImageView(this);
+                play.setScaleType(ImageView.ScaleType.CENTER);
+                play.setImageResource(R.drawable.msg_round_play_m);
+                cell.addView(play, LayoutHelper.createFrame(24, 24, Gravity.CENTER, 0, 4, 0, 0));
+            }
             ImageView remove = new ImageView(this);
             remove.setScaleType(ImageView.ScaleType.CENTER);
             remove.setImageResource(R.drawable.ic_close_white);
