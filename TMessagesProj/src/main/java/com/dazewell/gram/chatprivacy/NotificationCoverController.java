@@ -786,6 +786,11 @@ public final class NotificationCoverController {
             if (behavior.grouped) {
                 b.setGroup(behavior.group);
                 b.setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY);
+            } else {
+                // A lone cover has no conversation identity, so Android 16 auto-groups it ~3 s after posting (observed in the
+                // notification event log; a real conversation notification was not). An explicit group key with no summary
+                // keeps it ungrouped, as for Passive. Suspected, not proven: the auto-group is what makes a watch vibrate twice.
+                b.setGroup("nax_cover_solo_" + account);
             }
             if (DialogObject.isEncryptedDialog(dialogId) || !com.dazewell.gram.helpers.WearBridgeHelper.isWatchEnabled(account, dialogId)) {
                 b.setLocalOnly(true);

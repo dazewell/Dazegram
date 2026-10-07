@@ -634,6 +634,19 @@ disguise mid-stream cannot leave stale covered popup cards behind.
 
 *(Established 2026-09-03.)*
 
+## Android 16 auto-groups a lone non-conversation notification about 3 s after it posts
+
+On the OPPO (Android 16, 2026-10-07) a disguised Loud or Quiet cover with no group key was followed ~3 s later by a
+`notification_autogrouped` event and a `key_group_key` adjustment to `g:Aggregate_AlertingSection` in the event log
+(`adb logcat -d -b events`); a real conversation notification (shortcut plus MessagingStyle) posted at the same time was
+not auto-grouped, and neither were Passive covers, which carry an explicit group key with no summary. A lone cover
+therefore gets `nax_cover_solo_<account>` as its group (`NotificationCoverController.postChild`, the `else` after
+`GROUP_ALERT_SUMMARY`). The user also saw a double watch vibration on those covers; the auto-group is the suspected cause
+(not proven; fix pending a watch test). Separately, upstream re-posts a normal notification on the `silent` channel
+about 5 s after the alert, which is why its status-bar icon disappears on that phone.
+
+*(Established 2026-10-07, `#disguise-parity`.)*
+
 ## `validateChannelId` creates a chat-named OS channel; a covered chat must pass the persona name and be renamed
 
 `validateChannelId(lastDialogId, ...)` can create a per-chat channel (only when the chat has custom sound, importance, LED or
