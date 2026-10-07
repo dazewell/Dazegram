@@ -758,10 +758,11 @@ public final class NotificationCoverController {
             PendingIntent contentIntent = interactionIntent(account, tapToken, INTERACTION_EVENT_TAP, internalId);
             long when = behavior.date * 1000L;
 
-            // the dismissal id is opaque on purpose: the real one embeds the dialog and message ids and is visible to a watch
+            // the dismissal id is a fresh random value on purpose: the real one embeds the dialog and message ids and reaches a watch,
+            // and any value derived from those ids could be brute-forced back
             NotificationCompat.WearableExtender wear = new NotificationCompat.WearableExtender()
                     .setBridgeTag("tgaccount" + UserConfig.getInstance(account).getClientUserId())
-                    .setDismissalId(coverTag(account, dialogId) + "_" + behavior.maxId);
+                    .setDismissalId(java.util.UUID.randomUUID().toString());
             NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, behavior.channelId)
                     .setContentTitle(LocaleController.getString(persona.labelRes))
                     .setContentText(LocaleController.formatString(persona.bodyRes, count))
@@ -792,7 +793,7 @@ public final class NotificationCoverController {
             try {
                 notificationManager.notify(coverTag(account, dialogId), internalId, b.build());
             } catch (SecurityException e) {
-                // an unreadable custom sound on the chat's channel: the real path repairs it, the cover posts once more silently
+                // an unreadable custom sound on the chat's channel: a covered chat never reaches the real resetNotificationSound repair, so post once more silently
                 if (behavior.silentChannel == null) throw e;
                 b.setChannelId(behavior.silentChannel.get());
                 notificationManager.notify(coverTag(account, dialogId), internalId, b.build());

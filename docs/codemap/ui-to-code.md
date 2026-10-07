@@ -753,8 +753,8 @@ delegate, offset host, or row-anchor wrapper (`ChatPrivacySheet.java:194-203`,
 Cover config is stored in the account's notifications `SharedPreferences`
 (`MessagesController.getNotificationsSettings(account)`), keyed
 `nax_cover_v1_enabled_<dialogId>` / `nax_cover_v1_persona_<dialogId>`
-(`com/dazewell/gram/chatprivacy/NotificationCoverController.java:57-68`, `:201-229`). The cover no longer creates
-channels; the old `nax_cover_v1_channel_*` ids are only deleted at logout (`deleteChannels`, `:1287`).
+(`com/dazewell/gram/chatprivacy/NotificationCoverController.java:60-68`, `:205-235`). The cover no longer creates
+channels; the old `nax_cover_v1_channel_*` ids are only deleted at logout (`deleteChannels`, `:1288`).
 
 *(Updated 2026-10-07, `#disguise-parity`.)*
 

@@ -5143,7 +5143,7 @@ public class NotificationsController extends BaseController implements Notificat
                 com.dazewell.gram.chatprivacy.NotificationCoverController.Behavior naxBehavior = new com.dazewell.gram.chatprivacy.NotificationCoverController.Behavior(
                         useSummaryNotification ? OTHER_NOTIFICATIONS_CHANNEL : naxCoverChannel, useSummaryNotification, notificationGroup, naxAlert && dialogId == lastDialogId, isInApp,
                         com.dazewell.gram.notifprofiles.NotificationProfiles.of(naxProfiles, dialogId), getNotificationIconResId(), NekoXConfig.getNotificationColor(),
-                        messageObjects.get(0).messageOwner.date, maxId, !waitingForPasscode, naxSilentChannel);
+                        messageObjects.get(0).messageOwner.date, maxId, !waitingForPasscode && dialogId != UserObject.VERIFY && dialogId != UserObject.OAUTH && !lastMessageObject.isStoryReactionPush, naxSilentChannel);
                 // NagramX: record as live only when the post actually landed, so a failed post is reconciled away rather than masking a stale cover
                 if (com.dazewell.gram.chatprivacy.NotificationCoverController.postChild(currentAccount, dialogId, coverCount, naxBehavior, represented)) {
                     coverNotificationsIds.put(dialogId, com.dazewell.gram.chatprivacy.NotificationCoverController.internalId(dialogId));
@@ -5934,7 +5934,23 @@ public class NotificationsController extends BaseController implements Notificat
                         coverSummaryPosted = true;
                     } catch (Exception e) {
                         FileLog.e(e);
-                        notificationManager.cancel(notificationId);
+                        // NagramX: an unreadable custom sound on the chat's channel; post the cover summary once more on the silent channel (never resetNotificationSound, which posts the real builder)
+                        boolean naxSummaryReposted = false;
+                        if (e instanceof SecurityException && naxSilentChannel != null) {
+                            try {
+                                Notification naxSilentSummary = naxBuildCoverSummary(messagesByDialogs, naxCoveredSet, naxCoverPlans, naxSummaryRepresented, summaryDismissDate, naxSilentChannel.get(), naxProfiles);
+                                if (naxSilentSummary != null) {
+                                    notificationManager.notify(notificationId, naxSilentSummary);
+                                    coverSummaryPosted = true;
+                                    naxSummaryReposted = true;
+                                }
+                            } catch (Exception e2) {
+                                FileLog.e(e2);
+                            }
+                        }
+                        if (!naxSummaryReposted) {
+                            notificationManager.cancel(notificationId);
+                        }
                     }
                 } else {
                     notificationManager.cancel(notificationId);

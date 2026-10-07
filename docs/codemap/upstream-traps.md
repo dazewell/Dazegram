@@ -248,7 +248,7 @@ the platform allowing a name change through `createNotificationChannel` (not yet
 
 In a grouped state only the summary alerts: upstream sets `GROUP_ALERT_SUMMARY` on every child
 (`NotificationsController.java:5834`) and puts them on the shared OTHER channel. A cover child now does the same
-(`NotificationCoverController.java:785`), and the cover summary carries the real channel and alert. The one exception is a
+(`NotificationCoverController.java:786`), and the cover summary carries the real channel and alert. The one exception is a
 Quiet-profile chat that is the newest message: its summary goes through the silent channel, so
 `NotificationProfiles.apply` switches that child to `GROUP_ALERT_ALL` (`NotificationProfiles.java:174`); applying
 `GROUP_ALERT_SUMMARY` unconditionally would make that child inert as soon as grouping turns on.
