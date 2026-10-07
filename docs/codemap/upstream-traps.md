@@ -642,12 +642,12 @@ On the OPPO (Android 16, 2026-10-07) a disguised Loud or Quiet cover was followe
 (`groupKey=nax_cover_solo_9`, 09:26, build 0c0603c33e; that key was then removed as ineffective). A real conversation notification
 (shortcut, locus id, MessagingStyle) posted at the same time was not auto-grouped, and neither were Passive covers (minimum
 importance). The user sees a double watch vibration on disguised Loud and Quiet chats and one vibration on a normal chat; the
-auto-group is the only difference seen in the log, so it is the suspected cause (not proven). With the persona conversation below the
-watch vibrated once (build 5b507b0979), which supports the fix but does not prove the auto-group stopped. The fix makes a cover a
+auto-group is the only difference seen in the log, so it is the suspected cause. The fix makes a cover a
 persona conversation (`conversationSupported`, `conversationId`, the shortcut and MessagingStyle in `postChild`,
-`NotificationCoverController.java:748`, `:763`, `:816`) gated exactly like the real child; whether that exempts it from
-auto-grouping is inferred from the real notification's behaviour and unconfirmed until the device experiment (clear the event log,
-send three messages, look for `notification_autogrouped` on a `naxcover_` key). The shortcut, locus id and person key are one random
+`NotificationCoverController.java:748`, `:763`, `:816`) gated exactly like the real child. Confirmed on the same phone
+(2026-10-07, 11:50-11:51): three messages ~15 s and ~30 s apart to a disguised Loud chat gave three `notification_enqueue` and three
+`notification_alert` events on `naxcover_9_<dialog>` and no `notification_autogrouped` anywhere in the event log (watch vibration not
+re-observed that round). The shortcut, locus id and person key are one random
 id per (account, dialog), rotated on uncover, so they never name the real dialog; uncovering and logout also remove the shortcut and
 any conversation channel the user created (`clearConversation`, `NotificationCoverController.java:778`). Separately, upstream re-posts
 a normal notification on the `silent` channel about 5 s after the alert, which is why its status-bar icon disappears on that phone.
