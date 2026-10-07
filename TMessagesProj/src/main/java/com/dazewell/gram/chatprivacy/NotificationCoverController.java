@@ -13,13 +13,18 @@ import android.text.TextUtils;
 import androidx.collection.LongSparseArray;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
+import androidx.core.app.Person;
+import androidx.core.content.LocusIdCompat;
+import androidx.core.content.pm.ShortcutInfoCompat;
 import androidx.core.content.pm.ShortcutManagerCompat;
+import androidx.core.graphics.drawable.IconCompat;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.AutoMessageHeardReceiver;
+import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
@@ -27,7 +32,10 @@ import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationsController;
 import org.telegram.messenger.R;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
+import org.telegram.tgnet.TLRPC;
+import org.telegram.ui.LaunchActivity;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -61,6 +69,7 @@ public final class NotificationCoverController {
     private static final String KEY_PERSONA = "nax_cover_v1_persona_";
     private static final String KEY_SUPPRESSION_STATE = "nax_cover_v1_suppress_state_";
     private static final String KEY_CHANNEL = "nax_cover_v1_channel_";
+    private static final String KEY_CONVERSATION_ID = "nax_cover_v1_conv_";
     private static final String KEY_SUMMARY_CHANNEL = "nax_cover_v1_summary_channel";
     private static final String KEY_TOKEN_RECORD = "nax_cover_v1_token_";
     private static final String KEY_ACTIVE_CHILD_TAP = "nax_cover_v1_active_child_tap_";
@@ -228,6 +237,7 @@ public final class NotificationCoverController {
             NotificationManagerCompat.from(ApplicationLoader.applicationContext).cancel(internalId(dialogId));
         } else {
             NotificationManagerCompat.from(ApplicationLoader.applicationContext).cancel(coverTag(account, dialogId), internalId(dialogId));
+            clearConversation(account, dialogId);
         }
         if (clearPreviewNotification) {
             cancelPreviewNotification(account);
@@ -728,6 +738,78 @@ public final class NotificationCoverController {
         return LocaleController.getString(p.labelRes) + ": " + LocaleController.formatString(p.bodyRes, count);
     }
 
+    // ---- Persona conversation ----
+    // A real child is a conversation notification (shortcut + MessagingStyle). Android ranks those with the conversations and does not
+    // auto-group them, while a plain cover is auto-grouped about 3 s after it posts (seen in the event log, and the suspected cause of a
+    // double watch vibration). So a cover becomes a conversation too, under the persona name and the generic app icon: nothing about the
+    // real chat. The gate matches the real child's (NotificationsController.unsupportedNotificationShortcut and the channel and secret
+    // chat exclusions), so a cover is a conversation exactly when the real notification would be.
+
+    private static boolean conversationSupported(int account, long dialogId) {
+        if (Build.VERSION.SDK_INT < 29 || !SharedConfig.chatBubbles || DialogObject.isEncryptedDialog(dialogId)) {
+            return false;
+        }
+        if (DialogObject.isChatDialog(dialogId)) {
+            TLRPC.Chat chat = MessagesController.getInstance(account).getChat(-dialogId);
+            if (ChatObject.isChannel(chat) && !chat.megagroup) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // Opaque on purpose: the id reaches the shortcut, the locus id, the person key and every notification listener, so it must neither
+    // name the real dialog nor say the chat is disguised. Random per (account, dialog), kept until the chat is uncovered, then rotated.
+    private static String conversationId(int account, long dialogId) {
+        SharedPreferences p = prefs(account);
+        synchronized (COVER_STATE_LOCK) {
+            String id = p.getString(KEY_CONVERSATION_ID + dialogId, null);
+            if (id == null || !id.matches("[0-9a-f]{16}")) {
+                id = java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+                p.edit().putString(KEY_CONVERSATION_ID + dialogId, id).apply();
+            }
+            return id;
+        }
+    }
+
+    private static void clearConversation(int account, long dialogId) {
+        SharedPreferences p = prefs(account);
+        String id;
+        synchronized (COVER_STATE_LOCK) {
+            id = p.getString(KEY_CONVERSATION_ID + dialogId, null);
+            if (id != null) {
+                p.edit().remove(KEY_CONVERSATION_ID + dialogId).apply();
+            }
+        }
+        if (TextUtils.isEmpty(id) || Build.VERSION.SDK_INT < 29) {
+            return;
+        }
+        ArrayList<String> ids = new ArrayList<>();
+        ids.add(id);
+        try {
+            Context ctx = ApplicationLoader.applicationContext;
+            ShortcutManagerCompat.removeDynamicShortcuts(ctx, ids);
+            if (Build.VERSION.SDK_INT >= 30) {
+                android.content.pm.ShortcutManager shortcutManager = ctx.getSystemService(android.content.pm.ShortcutManager.class);
+                if (shortcutManager != null) {
+                    shortcutManager.removeLongLivedShortcuts(ids);
+                }
+                // choosing Priority/Default/Silent on a conversation creates a channel under the parent that outlives the shortcut
+                NotificationManager nm = systemManager();
+                if (nm != null) {
+                    List<NotificationChannel> channels = nm.getNotificationChannels();
+                    for (int i = 0; i < channels.size(); i++) {
+                        if (id.equals(channels.get(i).getConversationId())) {
+                            nm.deleteNotificationChannel(channels.get(i).getId());
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
     public static boolean postChild(int account, long dialogId, int count, Behavior behavior, ArrayList<String> representedIds) {
         Context ctx = ApplicationLoader.applicationContext;
         SharedPreferences p = prefs(account);
@@ -759,6 +841,38 @@ public final class NotificationCoverController {
             }
             PendingIntent contentIntent = interactionIntent(account, tapToken, INTERACTION_EVENT_TAP, internalId);
             long when = behavior.date * 1000L;
+            String personaLabel = LocaleController.getString(persona.labelRes);
+            String bodyText = LocaleController.formatString(persona.bodyRes, count);
+
+            // persona conversation; any failure (for example shortcut rate limiting) falls back to the plain cover, never drops it
+            String conversationId = null;
+            Person personaPerson = null;
+            ShortcutInfoCompat conversationShortcut = null;
+            if (conversationSupported(account, dialogId)) {
+                try {
+                    conversationId = conversationId(account, dialogId);
+                    personaPerson = new Person.Builder()
+                            .setName(personaLabel)
+                            .setKey(conversationId)
+                            .setIcon(IconCompat.createWithResource(ctx, R.mipmap.ic_launcher_dr))
+                            .build();
+                    Intent openApp = new Intent(ctx, LaunchActivity.class).setAction(Intent.ACTION_MAIN);
+                    conversationShortcut = new ShortcutInfoCompat.Builder(ctx, conversationId)
+                            .setShortLabel(personaLabel)
+                            .setLongLabel(personaLabel)
+                            .setIntent(openApp)
+                            .setLongLived(true)
+                            .setLocusId(new LocusIdCompat(conversationId))
+                            .setPerson(personaPerson)
+                            .setIcon(personaPerson.getIcon())
+                            .build();
+                    ShortcutManagerCompat.pushDynamicShortcut(ctx, conversationShortcut);
+                } catch (Exception e) {
+                    FileLog.e(e);
+                    conversationShortcut = null;
+                    personaPerson = null;
+                }
+            }
 
             // the dismissal id is a fresh random value on purpose: the real one embeds the dialog and message ids and reaches a watch,
             // and any value derived from those ids could be brute-forced back
@@ -766,8 +880,8 @@ public final class NotificationCoverController {
                     .setBridgeTag("tgaccount" + UserConfig.getInstance(account).getClientUserId())
                     .setDismissalId(java.util.UUID.randomUUID().toString());
             NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, behavior.channelId)
-                    .setContentTitle(LocaleController.getString(persona.labelRes))
-                    .setContentText(LocaleController.formatString(persona.bodyRes, count))
+                    .setContentTitle(personaLabel)
+                    .setContentText(bodyText)
                     .setSmallIcon(behavior.iconRes)
                     .setColor(behavior.color)
                     .setNumber(count)
@@ -790,15 +904,30 @@ public final class NotificationCoverController {
             if (DialogObject.isEncryptedDialog(dialogId) || !com.dazewell.gram.helpers.WearBridgeHelper.isWatchEnabled(account, dialogId)) {
                 b.setLocalOnly(true);
             }
+            if (conversationShortcut != null) {
+                b.setShortcutInfo(conversationShortcut);
+                NotificationCompat.MessagingStyle style = new NotificationCompat.MessagingStyle(new Person.Builder().setName(LocaleController.getString(R.string.FromYou)).build());
+                style.addMessage(bodyText, when, personaPerson);
+                b.setStyle(style);
+            }
             com.dazewell.gram.notifprofiles.NotificationProfiles.apply(account, b, behavior.profile, behavior.alert, behavior.inApp);
             NotificationManagerCompat notificationManager = NotificationManagerCompat.from(ctx);
             try {
-                notificationManager.notify(coverTag(account, dialogId), internalId, b.build());
-            } catch (SecurityException e) {
-                // an unreadable custom sound on the chat's channel: a covered chat never reaches the real resetNotificationSound repair, so post once more silently
-                if (behavior.silentChannel == null) throw e;
-                b.setChannelId(behavior.silentChannel.get());
-                notificationManager.notify(coverTag(account, dialogId), internalId, b.build());
+                try {
+                    notificationManager.notify(coverTag(account, dialogId), internalId, b.build());
+                } catch (SecurityException e) {
+                    // an unreadable custom sound on the chat's channel: a covered chat never reaches the real resetNotificationSound repair, so post once more silently
+                    if (behavior.silentChannel == null) throw e;
+                    b.setChannelId(behavior.silentChannel.get());
+                    notificationManager.notify(coverTag(account, dialogId), internalId, b.build());
+                }
+            } finally {
+                if (conversationShortcut != null) {
+                    // same as upstream: once posted the notification keeps the cached long-lived shortcut, so nothing stays in the dynamic list
+                    ArrayList<String> dynamicIds = new ArrayList<>();
+                    dynamicIds.add(conversationId);
+                    ShortcutManagerCompat.removeDynamicShortcuts(ctx, dynamicIds);
+                }
             }
             return true;
         } catch (Exception t) {
@@ -1289,6 +1418,16 @@ public final class NotificationCoverController {
 
     public static void deleteChannels(int account, SharedPreferences preferences) {
         if (Build.VERSION.SDK_INT < 26) return;
+        ArrayList<Long> conversationDialogs = new ArrayList<>();
+        for (Map.Entry<String, ?> e : preferences.getAll().entrySet()) {
+            if (e.getKey().startsWith(KEY_CONVERSATION_ID)) {
+                long did = parseDialogId(e.getKey(), KEY_CONVERSATION_ID);
+                if (did != 0) conversationDialogs.add(did);
+            }
+        }
+        for (int i = 0; i < conversationDialogs.size(); i++) {
+            clearConversation(account, conversationDialogs.get(i));
+        }
         NotificationManager nm = systemManager();
         if (nm == null) return;
         ArrayList<String> ids = new ArrayList<>();

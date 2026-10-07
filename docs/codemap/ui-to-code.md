@@ -629,9 +629,9 @@ no-condition failure expands actionable groups before the existing toast
 ## Covered notification channel and alert decision
 
 A covered chat's notification is posted by `NotificationCoverController.postChild(...)`
-(`NotificationCoverController.java:731`) from the covered branch of `showExtraNotifications`
+(`NotificationCoverController.java:813`) from the covered branch of `showExtraNotifications`
 (`NotificationsController.java:5144-5147`); the real child is never built. Everything that is behaviour comes in through
-`NotificationCoverController.Behavior` (`:651`): channel (the newest chat's `validateChannelId` result, or
+`NotificationCoverController.Behavior` (`:661`): channel (the newest chat's `validateChannelId` result, or
 `OTHER_NOTIFICATIONS_CHANNEL` when grouped), group, whether this child may alert (`naxAlert && dialogId == lastDialogId`), the
 chat's notification profile, the real icon and colour, message date, last message id and whether "Mark as read" is allowed
 (`NotificationsController.java:5009-5015`, `:5144-5147`). The summary is `naxBuildCoverSummary(...)`
@@ -753,8 +753,8 @@ delegate, offset host, or row-anchor wrapper (`ChatPrivacySheet.java:194-203`,
 Cover config is stored in the account's notifications `SharedPreferences`
 (`MessagesController.getNotificationsSettings(account)`), keyed
 `nax_cover_v1_enabled_<dialogId>` / `nax_cover_v1_persona_<dialogId>`
-(`com/dazewell/gram/chatprivacy/NotificationCoverController.java:60-68`, `:205-235`). The cover no longer creates
-channels; the old `nax_cover_v1_channel_*` ids are only deleted at logout (`deleteChannels`, `:1290`).
+(`com/dazewell/gram/chatprivacy/NotificationCoverController.java:68-77`, `:214-244`). The cover no longer creates
+channels; the old `nax_cover_v1_channel_*` ids are only deleted at logout (`deleteChannels`, `:1419`).
 
 *(Updated 2026-10-07, `#disguise-parity`.)*
 
