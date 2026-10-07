@@ -17,9 +17,9 @@ Set a time zone for any personal chat or group from its profile edit view. The c
 <img height="200" alt="time zone picker sheet listing selectable IANA time zones under a search field" src="docs/images/features/timezones-1.png" />
 <img height="200" alt="chat list row showing a peer's name with a clock pill giving their local time" src="docs/images/features/timezones-2.png" />
 
-### Customized privacy <!-- #customized-privacy --> <!-- #hide-last-message --> <!-- #require-password --> <!-- #disguise-alerting -->
+### Customized privacy <!-- #customized-privacy --> <!-- #hide-last-message --> <!-- #require-password --> <!-- #disguise-alerting --> <!-- #disguise-parity -->
 
-Each chat's ⋯ menu has one `Chat privacy` item, opening a sheet with `Hide last message`, `Require password`, and `Disguise notifications` — cover persona selection plus a preview button. A hidden chat's list preview shows your own text, the header's last-seen status or member count, the unread count, or just the message type. Covered notifications follow Telegram's own silent-vs-alert signal; mute, sound and watch tuning stay in Telegram and Android settings.
+Each chat's ⋯ menu has one `Chat privacy` item, opening a sheet with `Hide last message`, `Require password`, and `Disguise notifications` — cover persona selection plus a preview button. A hidden chat's list preview shows your own text, the header's last-seen status or member count, the unread count, or just the message type. Covered notifications behave like any other, differing only in text and tap, and add Mark as read.
 
 <img height="260" alt="Chat privacy sheet with Hide last message and Require password switched on, a custom placeholder text row between them, and the Disguise notifications card below" src="docs/images/features/chat-privacy-sheet.png" />
 

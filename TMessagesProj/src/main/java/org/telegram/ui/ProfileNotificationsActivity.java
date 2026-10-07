@@ -416,10 +416,7 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
                     button.setTextColor(Theme.getColor(Theme.key_text_RedBold));
                 }
             } else if (position == profileRow) {
-                // NagramX: a covered chat posts its own disguise notification and never reads the profile
-                if (com.dazewell.gram.chatprivacy.NotificationCoverController.isCovered(currentAccount, dialogId)) {
-                    android.widget.Toast.makeText(context, LocaleController.getString(R.string.NaxNotifProfileCovered), android.widget.Toast.LENGTH_SHORT).show();
-                } else if (getParentActivity() != null) {
+                if (getParentActivity() != null) {
                     showDialog(com.dazewell.gram.notifprofiles.NotificationProfilePicker.create(getParentActivity(), currentAccount, dialogId, resourcesProvider, () -> {
                         if (adapter != null) {
                             adapter.notifyItemChanged(profileRow);

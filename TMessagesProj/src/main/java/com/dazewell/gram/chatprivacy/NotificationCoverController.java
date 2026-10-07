@@ -19,12 +19,15 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.telegram.messenger.ApplicationLoader;
+import org.telegram.messenger.AutoMessageHeardReceiver;
+import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationsController;
 import org.telegram.messenger.R;
+import org.telegram.messenger.UserConfig;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -67,7 +70,6 @@ public final class NotificationCoverController {
     private static final String KEY_ACTIVE_SUMMARY_DISMISS = "nax_cover_v1_active_summary_dismiss";
     private static final String KEY_ACTIVE_PREVIEW_TAP = "nax_cover_v1_active_preview_tap";
     private static final String KEY_PREVIEW_DIALOG = "nax_cover_v1_preview_dialog";
-    private static final String ALERT_CHANNEL_SUFFIX = "_alert";
 
     public static final String EXTRA_COVER_TOKEN = "nax_cover_token";
     public static final String EXTRA_COVER_EVENT = "nax_cover_event";
@@ -80,10 +82,6 @@ public final class NotificationCoverController {
     private static final int SUPPRESSION_LIMIT = 100;
     private static final int SUPPRESSION_ALIAS_LIMIT = 200;
     private static final Object COVER_STATE_LOCK = new Object();
-    private static final int ACTIVE_MEMBERS_VERSION = 1;
-    private static final String ACTIVE_MEMBERS_VERSION_KEY = "v";
-    private static final String ACTIVE_MEMBERS_IDS_KEY = "ids";
-    private static final String ACTIVE_MEMBERS_OVER_CAPACITY_KEY = "over_capacity";
 
     private static final int TOKEN_KIND_CHILD_TAP = 1;
     private static final int TOKEN_KIND_CHILD_DISMISS = 2;
@@ -140,27 +138,13 @@ public final class NotificationCoverController {
         final LongSparseArray<ArrayList<String>> snapshots = new LongSparseArray<>();
     }
 
-    private static final class ActiveChildMembersState {
-        final boolean present;
-        final boolean overCapacity;
-        final ArrayList<String> ids;
-
-        ActiveChildMembersState(boolean present, boolean overCapacity, ArrayList<String> ids) {
-            this.present = present;
-            this.overCapacity = overCapacity;
-            this.ids = ids;
-        }
-    }
-
     public static final class CoverPostPlan {
         public final int displayCount;
         public final ArrayList<String> representedIds;
-        public final boolean representedOverCapacity;
 
-        CoverPostPlan(int displayCount, ArrayList<String> representedIds, boolean representedOverCapacity) {
+        CoverPostPlan(int displayCount, ArrayList<String> representedIds) {
             this.displayCount = displayCount;
             this.representedIds = representedIds;
-            this.representedOverCapacity = representedOverCapacity;
         }
 
         public boolean hasRepresentedMembers() {
@@ -239,6 +223,7 @@ public final class NotificationCoverController {
             ed.apply();
         }
         if (enabled) {
+            renameChatChannels(account, java.util.Collections.singletonList(dialogId));
             clearConversationArtifacts(dialogId);
             NotificationManagerCompat.from(ApplicationLoader.applicationContext).cancel(internalId(dialogId));
         } else {
@@ -252,6 +237,9 @@ public final class NotificationCoverController {
     public static void setPersona(int account, long dialogId, int personaId) {
         if (dialogId == 0 || personaById(personaId) == null) return;
         prefs(account).edit().putInt(KEY_PERSONA + dialogId, personaId).apply();
+        if (isCovered(account, dialogId)) {
+            renameChatChannels(account, java.util.Collections.singletonList(dialogId));
+        }
     }
 
     public static int[] personaIds() {
@@ -333,6 +321,7 @@ public final class NotificationCoverController {
                 set.add(did);
             }
         }
+        renameChatChannels(account, set);
         return set;
     }
 
@@ -534,7 +523,7 @@ public final class NotificationCoverController {
 
     public static CoverPostPlan buildPostPlan(int account, long dialogId, ArrayList<MessageObject> messages) {
         if (messages == null || messages.isEmpty()) {
-            return new CoverPostPlan(0, new ArrayList<>(), false);
+            return new CoverPostPlan(0, new ArrayList<>());
         }
         synchronized (COVER_STATE_LOCK) {
             SuppressionState state = loadSuppressionState(account, dialogId);
@@ -558,9 +547,7 @@ public final class NotificationCoverController {
             if (aliasChanged) {
                 saveSuppressionState(account, dialogId, state);
             }
-            int displayCount = visible.size();
-            boolean representedOverCapacity = displayCount > SUPPRESSION_LIMIT;
-            return new CoverPostPlan(displayCount, new ArrayList<>(visible), representedOverCapacity);
+            return new CoverPostPlan(visible.size(), new ArrayList<>(visible));
         }
     }
 
@@ -657,75 +644,77 @@ public final class NotificationCoverController {
         return (NotificationManager) ApplicationLoader.applicationContext.getSystemService(Context.NOTIFICATION_SERVICE);
     }
 
-    private static void ensureChannel(String id, String name) {
-        if (Build.VERSION.SDK_INT < 26) return;
+    // The cover owns no notification channel. It posts on the channels a normal notification would use (picked by
+    // NotificationsController.validateChannelId and handed in here), so sound, vibration, importance and grouping follow
+    // the user's Telegram settings exactly; only the text, the tap and the dismiss differ. Every field below is an explicit
+    // non-identifying copy, never read off the real builder, so a field upstream adds later can't leak into a cover.
+    public static final class Behavior {
+        final String channelId;
+        final boolean grouped;
+        final String group;
+        final boolean alert;
+        final boolean inApp;
+        final int profile;
+        final int iconRes;
+        final int color;
+        final int date;
+        final int maxId;
+        final boolean markAsRead;
+        final java.util.function.Supplier<String> silentChannel;
+
+        public Behavior(String channelId, boolean grouped, String group, boolean alert, boolean inApp, int profile, int iconRes, int color, int date, int maxId, boolean markAsRead, java.util.function.Supplier<String> silentChannel) {
+            this.channelId = channelId;
+            this.grouped = grouped;
+            this.group = group;
+            this.alert = alert;
+            this.inApp = inApp;
+            this.profile = profile;
+            this.iconRes = iconRes;
+            this.color = color;
+            this.date = date;
+            this.maxId = maxId;
+            this.markAsRead = markAsRead;
+            this.silentChannel = silentChannel;
+        }
+    }
+
+    // Per-chat channels are created named after the real chat; that title would show when the cover is long-pressed.
+    // The id format "<account>channel_<dialogId>_<random>" is private to NotificationsController.validateChannelId.
+    // A rename keeps every other setting and does not change upstream's settings hash, so nothing is recreated.
+    private static void renameChatChannels(int account, java.util.Collection<Long> dialogIds) {
+        if (Build.VERSION.SDK_INT < 26 || dialogIds.isEmpty()) return;
         NotificationManager nm = systemManager();
         if (nm == null) return;
-        if (nm.getNotificationChannel(id) != null) return;
-        NotificationChannel channel = new NotificationChannel(id, name, NotificationManager.IMPORTANCE_LOW);
-        channel.enableLights(false);
-        channel.enableVibration(false);
-        channel.setSound(null, null);
         try {
-            nm.createNotificationChannel(channel);
-        } catch (Exception e) {
-            FileLog.e(e);
-        }
-    }
-
-    private static String childChannelId(int account, int personaId) {
-        SharedPreferences p = prefs(account);
-        String key = KEY_CHANNEL + personaId;
-        String id = p.getString(key, null);
-        if (id == null) {
-            id = TAG_PREFIX + account + "_p" + personaId + "_" + java.util.UUID.randomUUID();
-            p.edit().putString(key, id).apply();
-        }
-        ensureChannel(id, personaLabel(personaId));
-        return id;
-    }
-
-    private static String summaryChannelId(int account) {
-        SharedPreferences p = prefs(account);
-        String id = p.getString(KEY_SUMMARY_CHANNEL, null);
-        if (id == null) {
-            id = TAG_PREFIX + account + "_summary_" + java.util.UUID.randomUUID();
-            p.edit().putString(KEY_SUMMARY_CHANNEL, id).apply();
-        }
-        ensureChannel(id, LocaleController.getString(R.string.NaxCoverSummaryChannelName));
-        return id;
-    }
-
-    // Second channel tier per persona: same cover identity, but IMPORTANCE_DEFAULT with vibration on.
-    // postChild routes into this tier whenever upstream says the event is non-silent, without touching
-    // the silent channel tier used when upstream marks an event silent.
-    private static void ensureAlertChannel(String id, String name) {
-        if (Build.VERSION.SDK_INT < 26) return;
-        NotificationManager nm = systemManager();
-        if (nm == null) return;
-        if (nm.getNotificationChannel(id) != null) return;
-        NotificationChannel channel = new NotificationChannel(id, name, NotificationManager.IMPORTANCE_DEFAULT);
-        channel.enableVibration(true);
-        try {
-            nm.createNotificationChannel(channel);
-        } catch (Exception e) {
-            FileLog.e(e);
-        }
-    }
-
-    private static String alertChannelId(int account, int personaId) {
-        SharedPreferences p = prefs(account);
-        String key = KEY_CHANNEL + personaId + ALERT_CHANNEL_SUFFIX;
-        String id;
-        synchronized (COVER_STATE_LOCK) {
-            id = p.getString(key, null);
-            if (id == null) {
-                id = TAG_PREFIX + account + "_p" + personaId + ALERT_CHANNEL_SUFFIX + "_" + java.util.UUID.randomUUID();
-                p.edit().putString(key, id).apply();
+            List<NotificationChannel> channels = nm.getNotificationChannels();
+            for (Long did : dialogIds) {
+                String prefix = account + "channel_" + did + "_";
+                String label = activePersonaLabel(account, did);
+                for (int i = 0; i < channels.size(); i++) {
+                    NotificationChannel channel = channels.get(i);
+                    if (channel.getId().startsWith(prefix) && !label.contentEquals(channel.getName())) {
+                        channel.setName(label);
+                        nm.createNotificationChannel(channel);
+                    }
+                }
             }
+        } catch (Exception e) {
+            FileLog.e(e);
         }
-        ensureAlertChannel(id, LocaleController.formatString(R.string.NaxCoverAlertChannelName, personaLabel(personaId)));
-        return id;
+    }
+
+    private static NotificationCompat.Action markAsReadAction(int account, long dialogId, int maxId, int requestCode) {
+        Intent intent = new Intent(ApplicationLoader.applicationContext, AutoMessageHeardReceiver.class);
+        intent.addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES);
+        intent.setAction("org.telegram.messenger.ACTION_MESSAGE_HEARD");
+        intent.putExtra("dialog_id", dialogId);
+        intent.putExtra("max_id", maxId);
+        intent.putExtra("currentAccount", account);
+        PendingIntent pendingIntent = PendingIntent.getBroadcast(ApplicationLoader.applicationContext, requestCode, intent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        return new NotificationCompat.Action.Builder(R.drawable.msg_markread, LocaleController.getString(R.string.MarkAsRead), pendingIntent)
+                .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_MARK_AS_READ)
+                .setShowsUserInterface(false)
+                .build();
     }
 
     // ---- Notification build helpers ----
@@ -737,7 +726,7 @@ public final class NotificationCoverController {
         return LocaleController.getString(p.labelRes) + ": " + LocaleController.formatString(p.bodyRes, count);
     }
 
-    public static boolean postChild(int account, long dialogId, int count, boolean silent, boolean grouped, String group, ArrayList<String> representedIds, boolean representedOverCapacity) {
+    public static boolean postChild(int account, long dialogId, int count, Behavior behavior, ArrayList<String> representedIds) {
         Context ctx = ApplicationLoader.applicationContext;
         SharedPreferences p = prefs(account);
         int internalId = internalId(dialogId);
@@ -755,61 +744,58 @@ public final class NotificationCoverController {
             int personaId = resolvePersonaId(account, dialogId);
             Persona persona = personaById(personaId);
             if (persona == null) persona = personaById(SAFE_PERSONA_ID);
-            boolean hadPrevious;
-            boolean forceSilentForMigration;
-            boolean forceSilentForOverCapacity;
-            boolean hasRepresentedGrowth;
 
             LongSparseArray<ArrayList<String>> snapshots = new LongSparseArray<>();
             snapshots.put(dialogId, new ArrayList<>(represented));
             String tapToken;
             String dismissToken;
             synchronized (COVER_STATE_LOCK) {
-                hadPrevious = hasActiveChildTokenLocked(p, dialogId);
-                SuppressionState suppressionState = loadSuppressionState(account, dialogId);
-                ActiveChildMembersState previousMembers = readActiveChildMembersLocked(p, dialogId, suppressionState);
-                forceSilentForMigration = !previousMembers.present && hadPrevious;
-                forceSilentForOverCapacity = representedOverCapacity;
-                hasRepresentedGrowth = hasRepresentedGrowthLocked(previousMembers, represented);
                 SharedPreferences.Editor ed = p.edit();
                 tapToken = replaceActiveToken(ed, p, activeChildTapKey(dialogId), buildRecord(TOKEN_KIND_CHILD_TAP, 0, dialogId, snapshots));
                 dismissToken = replaceActiveToken(ed, p, activeChildDismissKey(dialogId), buildRecord(TOKEN_KIND_CHILD_DISMISS, 0, dialogId, snapshots));
                 ed.apply();
             }
-            boolean effectiveSilent = silent || forceSilentForMigration || forceSilentForOverCapacity || !hasRepresentedGrowth;
             PendingIntent contentIntent = interactionIntent(account, tapToken, INTERACTION_EVENT_TAP, internalId);
+            long when = behavior.date * 1000L;
 
-            NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, effectiveSilent ? childChannelId(account, personaId) : alertChannelId(account, personaId))
+            // the dismissal id is opaque on purpose: the real one embeds the dialog and message ids and is visible to a watch
+            NotificationCompat.WearableExtender wear = new NotificationCompat.WearableExtender()
+                    .setBridgeTag("tgaccount" + UserConfig.getInstance(account).getClientUserId())
+                    .setDismissalId(coverTag(account, dialogId) + "_" + behavior.maxId);
+            NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, behavior.channelId)
                     .setContentTitle(LocaleController.getString(persona.labelRes))
                     .setContentText(LocaleController.formatString(persona.bodyRes, count))
-                    .setSmallIcon(R.drawable.nax_cover_notification)
+                    .setSmallIcon(behavior.iconRes)
+                    .setColor(behavior.color)
                     .setNumber(count)
                     .setAutoCancel(true)
-                    .setOnlyAlertOnce(effectiveSilent)
-                    .setShowWhen(false)
+                    .setGroupSummary(false)
+                    .setWhen(when)
+                    .setShowWhen(true)
+                    .setSortKey(String.valueOf(Long.MAX_VALUE - when))
+                    .setCategory(NotificationCompat.CATEGORY_MESSAGE)
                     .setContentIntent(contentIntent)
                     .setDeleteIntent(interactionIntent(account, dismissToken, INTERACTION_EVENT_DISMISS, internalId + 0x31))
-                    .setCategory(NotificationCompat.CATEGORY_STATUS)
-                    .setPriority(NotificationCompat.PRIORITY_LOW);
-            if (grouped) {
-                b.setGroup(group);
-                if (effectiveSilent) {
-                    b.setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY);
-                }
+                    .extend(wear);
+            if (behavior.markAsRead) {
+                b.addAction(markAsReadAction(account, dialogId, behavior.maxId, internalId));
             }
-            // NagramX: watch-off wins over cover -- a covered chat that is also "Show on Watch" off must not send even
-            // its contentless decoy card to a bridged Wear device (the ping-without-content case that was ruled out).
-            if (!com.dazewell.gram.helpers.WearBridgeHelper.isWatchEnabled(account, dialogId)) {
+            if (behavior.grouped) {
+                b.setGroup(behavior.group);
+                b.setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY);
+            }
+            if (DialogObject.isEncryptedDialog(dialogId) || !com.dazewell.gram.helpers.WearBridgeHelper.isWatchEnabled(account, dialogId)) {
                 b.setLocalOnly(true);
             }
-            NotificationManagerCompat.from(ctx).notify(coverTag(account, dialogId), internalId, b.build());
-            synchronized (COVER_STATE_LOCK) {
-                String activeTap = p.getString(activeChildTapKey(dialogId), null);
-                if (TextUtils.equals(activeTap, tapToken)) {
-                    SharedPreferences.Editor membershipEditor = p.edit();
-                    putActiveChildMembersLocked(membershipEditor, dialogId, represented, representedOverCapacity);
-                    membershipEditor.apply();
-                }
+            com.dazewell.gram.notifprofiles.NotificationProfiles.apply(account, b, behavior.profile, behavior.alert, behavior.inApp);
+            NotificationManagerCompat notificationManager = NotificationManagerCompat.from(ctx);
+            try {
+                notificationManager.notify(coverTag(account, dialogId), internalId, b.build());
+            } catch (SecurityException e) {
+                // an unreadable custom sound on the chat's channel: the real path repairs it, the cover posts once more silently
+                if (behavior.silentChannel == null) throw e;
+                b.setChannelId(behavior.silentChannel.get());
+                notificationManager.notify(coverTag(account, dialogId), internalId, b.build());
             }
             return true;
         } catch (Exception t) {
@@ -824,7 +810,7 @@ public final class NotificationCoverController {
         }
     }
 
-    public static Notification buildCoverSummary(int account, String group, String title, List<String> lines, String subText, LongSparseArray<ArrayList<String>> representedByDialog, int summaryDate) {
+    public static Notification buildCoverSummary(int account, String channelId, int iconRes, int color, String group, String title, List<String> lines, String subText, LongSparseArray<ArrayList<String>> representedByDialog, int summaryDate) {
         if (lines == null || lines.isEmpty()) {
             clearSummaryInteractionState(account);
             return null;
@@ -858,20 +844,20 @@ public final class NotificationCoverController {
             return null;
         }
 
-        return new NotificationCompat.Builder(ctx, summaryChannelId(account))
+        return new NotificationCompat.Builder(ctx, channelId)
                 .setContentTitle(title)
                 .setContentText(subText)
-                .setSmallIcon(R.drawable.nax_cover_notification)
+                .setSmallIcon(iconRes)
+                .setColor(color)
                 .setGroup(group)
                 .setGroupSummary(true)
                 .setAutoCancel(true)
-                .setOnlyAlertOnce(true)
-                .setShowWhen(false)
+                .setWhen(summaryDate * 1000L)
+                .setShowWhen(true)
                 .setContentIntent(interactionIntent(account, tapToken, INTERACTION_EVENT_TAP, SUMMARY_REQUEST_CODE))
                 .setDeleteIntent(interactionIntent(account, dismissToken, INTERACTION_EVENT_DISMISS, SUMMARY_REQUEST_CODE + 0x11))
                 .setStyle(inbox)
-                .setCategory(NotificationCompat.CATEGORY_STATUS)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
                 .build();
     }
 
@@ -899,17 +885,19 @@ public final class NotificationCoverController {
                 ed.apply();
             }
 
-            NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, alertChannelId(account, personaId))
+            // the preview posts on the app's generic internal channel, so it no longer plays the chat's own alert
+            NotificationsController.checkOtherNotificationsChannel();
+            NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, NotificationsController.OTHER_NOTIFICATIONS_CHANNEL)
                     .setContentTitle(LocaleController.getString(persona.labelRes))
                     .setContentText(LocaleController.formatString(persona.bodyRes, count))
-                    .setSmallIcon(R.drawable.nax_cover_notification)
+                    .setSmallIcon(NotificationsController.getInstance(account).getNotificationIconResId())
+                    .setColor(tw.nekomimi.nekogram.NekoXConfig.getNotificationColor())
                     .setNumber(count)
                     .setAutoCancel(true)
                     .setOnlyAlertOnce(false)
                     .setShowWhen(false)
                     .setContentIntent(interactionIntent(account, token, INTERACTION_EVENT_TAP, PREVIEW_ID_BASE + account))
-                    .setCategory(NotificationCompat.CATEGORY_STATUS)
-                    .setPriority(NotificationCompat.PRIORITY_LOW);
+                    .setCategory(NotificationCompat.CATEGORY_MESSAGE);
             notificationManager.notify(previewTag(account), PREVIEW_ID_BASE + account, b.build());
             return true;
         } catch (Exception e) {
@@ -1081,96 +1069,6 @@ public final class NotificationCoverController {
             }
         }
         return safe;
-    }
-
-    private static ActiveChildMembersState readActiveChildMembersLocked(SharedPreferences p, long dialogId, SuppressionState suppressionState) {
-        String raw = p.getString(activeChildMembersKey(dialogId), null);
-        if (TextUtils.isEmpty(raw)) {
-            return new ActiveChildMembersState(false, false, new ArrayList<>());
-        }
-        try {
-            JSONObject root = new JSONObject(raw);
-            if (root.optInt(ACTIVE_MEMBERS_VERSION_KEY, -1) != ACTIVE_MEMBERS_VERSION) {
-                return new ActiveChildMembersState(true, true, new ArrayList<>());
-            }
-            if (root.optBoolean(ACTIVE_MEMBERS_OVER_CAPACITY_KEY, false)) {
-                return new ActiveChildMembersState(true, true, new ArrayList<>());
-            }
-            JSONArray idsArray = root.optJSONArray(ACTIVE_MEMBERS_IDS_KEY);
-            if (idsArray == null) {
-                return new ActiveChildMembersState(false, false, new ArrayList<>());
-            }
-            ArrayList<String> ids = new ArrayList<>();
-            LinkedHashSet<String> seen = new LinkedHashSet<>();
-            for (int i = 0; i < idsArray.length(); i++) {
-                String rawId = idsArray.optString(i, null);
-                if (!validIdentity(rawId)) {
-                    continue;
-                }
-                String resolved = resolveCanonical(suppressionState, rawId);
-                if (!validIdentity(resolved)) {
-                    continue;
-                }
-                if (seen.add(resolved)) {
-                    ids.add(resolved);
-                }
-            }
-            return new ActiveChildMembersState(true, false, ids);
-        } catch (Exception e) {
-            return new ActiveChildMembersState(true, true, new ArrayList<>());
-        }
-    }
-
-    private static void putActiveChildMembersLocked(SharedPreferences.Editor ed, long dialogId, ArrayList<String> representedIds, boolean representedOverCapacity) {
-        String key = activeChildMembersKey(dialogId);
-        if (representedOverCapacity) {
-            JSONObject root = new JSONObject();
-            try {
-                root.put(ACTIVE_MEMBERS_VERSION_KEY, ACTIVE_MEMBERS_VERSION);
-                root.put(ACTIVE_MEMBERS_OVER_CAPACITY_KEY, true);
-                ed.putString(key, root.toString());
-            } catch (JSONException e) {
-                FileLog.e(e);
-            }
-            return;
-        }
-        JSONObject root = new JSONObject();
-        JSONArray ids = new JSONArray();
-        for (int i = 0; i < representedIds.size(); i++) {
-            ids.put(representedIds.get(i));
-        }
-        try {
-            root.put(ACTIVE_MEMBERS_VERSION_KEY, ACTIVE_MEMBERS_VERSION);
-            root.put(ACTIVE_MEMBERS_IDS_KEY, ids);
-            ed.putString(key, root.toString());
-        } catch (JSONException e) {
-            FileLog.e(e);
-        }
-    }
-
-    private static boolean hasRepresentedGrowthLocked(ActiveChildMembersState previousMembers, ArrayList<String> representedIds) {
-        if (representedIds == null || representedIds.isEmpty()) {
-            return false;
-        }
-        if (previousMembers == null || !previousMembers.present) {
-            return true;
-        }
-        if (previousMembers.overCapacity) {
-            return false;
-        }
-        LinkedHashSet<String> oldIds = new LinkedHashSet<>(previousMembers.ids);
-        for (int i = 0; i < representedIds.size(); i++) {
-            if (!oldIds.contains(representedIds.get(i))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static boolean hasActiveChildTokenLocked(SharedPreferences p, long dialogId) {
-        String tapToken = p.getString(activeChildTapKey(dialogId), null);
-        String dismissToken = p.getString(activeChildDismissKey(dialogId), null);
-        return !TextUtils.isEmpty(tapToken) || !TextUtils.isEmpty(dismissToken);
     }
 
     private static String activeKeyForKind(InteractionRecord record) {

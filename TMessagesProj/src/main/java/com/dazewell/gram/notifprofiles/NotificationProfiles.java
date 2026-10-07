@@ -23,7 +23,6 @@ import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 
 // NagramX: per-chat notification profiles. Loud is "no override" (today's path, byte-identical), Quiet keeps the
 // icon, vibration, lock screen and watch but drops the sound, Passive sits in the shade only. The assignment is
@@ -98,21 +97,25 @@ public final class NotificationProfiles {
         }
     }
 
-    // One snapshot per notification rebuild, taken in the preflight: only dialogs that are not covered (the privacy
-    // cover wins and returns before the profile is read) and have a non-Loud profile are present, so the summary
-    // decision and the per-chat children agree even if the user changes a profile mid-rebuild.
-    public static LongSparseArray<Integer> collect(int account, LongSparseArray<ArrayList<MessageObject>> byDialog, HashSet<Long> covered) {
+    // One snapshot per notification rebuild, taken in the preflight: only dialogs with a non-Loud profile are present, so the
+    // summary decision and the per-chat children agree even if the user changes a profile mid-rebuild. Covered chats are
+    // included; their cover posts through the same apply().
+    public static LongSparseArray<Integer> collect(int account, LongSparseArray<ArrayList<MessageObject>> byDialog) {
         LongSparseArray<Integer> result = new LongSparseArray<>();
         if (Build.VERSION.SDK_INT < 26) return result;
         for (int i = 0; i < byDialog.size(); i++) {
             long did = byDialog.keyAt(i);
-            if (covered.contains(did)) continue;
             int profile = get(account, did);
             if (profile != LOUD) {
                 result.put(did, profile);
             }
         }
         return result;
+    }
+
+    public static int of(LongSparseArray<Integer> profiles, long dialogId) {
+        Integer profile = profiles.get(dialogId);
+        return profile == null ? LOUD : profile;
     }
 
     public static boolean isPassive(LongSparseArray<Integer> profiles, long dialogId) {

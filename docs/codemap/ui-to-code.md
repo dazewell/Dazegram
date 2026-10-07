@@ -626,50 +626,19 @@ no-condition failure expands actionable groups before the existing toast
 
 *(Updated 2026-09-07.)*
 
-## Covered notification silent-tier decision in mixed rebuilds
+## Covered notification channel and alert decision
 
-Covered-child silent/alert selection is now explicitly split by scope.
-Preflight captures a rebuild-wide suppression bit
-`naxRebuildSuppressed = !notifyAboutLast || isRecordingAudio()` and builds an
-immutable per-covered-dialog map `naxCoverSuppressed`, keyed from the covered
-snapshot (`naxMessagesByDialogs`) using the extracted read-only helper
-`naxCoveredDialogSuppressed(...)` (notify override/global-enabled, message
-silence, per-chat `sound_enabled_`) (`NotificationsController.java:4193-4202`,
-`:6001-6029`).
+A covered chat's notification is posted by `NotificationCoverController.postChild(...)`
+(`NotificationCoverController.java:729`) from the covered branch of `showExtraNotifications`
+(`NotificationsController.java:5143-5146`); the real child is never built. Everything that is behaviour comes in through
+`NotificationCoverController.Behavior` (`:651`): channel (the newest chat's `validateChannelId` result, or
+`OTHER_NOTIFICATIONS_CHANNEL` when grouped), group, whether this child may alert (`naxAlert && dialogId == lastDialogId`), the
+chat's notification profile, the real icon and colour, message date, last message id and whether "Mark as read" is allowed
+(`NotificationsController.java:5009-5014`, `:5143-5146`). The summary is `naxBuildCoverSummary(...)`
+(`NotificationsController.java:5023`) on the same channel. Only the title, text, count and tap/dismiss tokens are cover-owned.
+Quiet and Passive apply through `NotificationProfiles.apply` inside `postChild`.
 
-`showExtraNotifications(...)` now receives both values and derives child
-`coverSilent` as:
-`naxRebuildSuppressed || naxDialogSuppressed == null || naxDialogSuppressed || (dialogId == lastDialogId && isSilent)`,
-then passes that into `NotificationCoverController.postChild(...)`
-(`NotificationsController.java:4887`, `:4962`, `:5117-5119`). Inside
-`postChild(...)`, growth is no longer derived from capped token snapshots.
-Authoritative baseline now lives in per-dialog exact-membership prefs
-(`KEY_ACTIVE_CHILD_MEMBERS`), while token snapshots stay capped interaction
-payloads only (`NotificationCoverController.java:65`, `:739-776`, `:972-1038`).
-
-Ordering is now split deliberately: under `COVER_STATE_LOCK`, child posting
-reads prior exact membership (resolving stored ids through current alias map),
-computes growth/migration/over-capacity, and rotates only tap/dismiss token
-records first (`NotificationCoverController.java:767-776`, `:1085-1169`); after
-`notify(...)` succeeds, it re-locks and writes the new membership baseline only
-when the active tap pointer still equals this post's token (CAS guard),
-preventing stale rewrites after concurrent interaction or rebuild
-(`NotificationCoverController.java:803-811`).
-
-Over-capacity represented sets (`displayCount > SUPPRESSION_LIMIT`) are marked
-explicitly in `buildPostPlan` and always forced silent; the stored baseline is
-an explicit sentinel (`over_capacity`) rather than a truncated id list
-(`NotificationCoverController.java:561-562`, `:771`, `:1095`, `:1125-1134`).
-Migration is also explicit: missing membership + existing active child token
-forces silent for that post and seeds baseline only after successful notify/CAS
-(`NotificationCoverController.java:767-770`, `:778`, `:803-811`).
-
-Cleanup ownership is centralized: membership state is cleared only by
-`clearDialogInteractionState(...)`, and stale/orphan membership keys are pulled
-into reconcile candidate scanning through the membership prefix
-(`NotificationCoverController.java:1278-1282`, `:1341-1343`).
-
-*(Updated 2026-09-07.)*
+*(Rewritten 2026-10-07, `#disguise-parity`.)*
 
 ## Double-tap edit keeps the caret on the tapped word
 
@@ -783,13 +752,11 @@ delegate, offset host, or row-anchor wrapper (`ChatPrivacySheet.java:194-203`,
 
 Cover config is stored in the account's notifications `SharedPreferences`
 (`MessagesController.getNotificationsSettings(account)`), keyed
-`nax_cover_v1_enabled_<dialogId>` / `nax_cover_v1_persona_<dialogId>`, with lazy
-generic channels under `nax_cover_v1_channel_<personaId>` /
-`nax_cover_v1_summary_channel`
-(`com/dazewell/gram/chatprivacy/NotificationCoverController.java:57-68`,
-`:201-229`, `:654-671`).
+`nax_cover_v1_enabled_<dialogId>` / `nax_cover_v1_persona_<dialogId>`
+(`com/dazewell/gram/chatprivacy/NotificationCoverController.java:57-68`, `:201-229`). The cover no longer creates
+channels; the old `nax_cover_v1_channel_*` ids are only deleted at logout (`deleteChannels`, `:1287`).
 
-*(Updated 2026-09-07.)*
+*(Updated 2026-10-07, `#disguise-parity`.)*
 
 ## Tokenized broadcast interaction path for covered notifications
 
