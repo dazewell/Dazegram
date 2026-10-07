@@ -763,6 +763,9 @@ public final class NotificationCoverController {
     private static String conversationId(int account, long dialogId) {
         SharedPreferences p = prefs(account);
         synchronized (COVER_STATE_LOCK) {
+            if (!p.getBoolean(KEY_ENABLED + dialogId, false)) {
+                return null; // uncovered while this post was running: a new id would outlive the uncover
+            }
             String id = p.getString(KEY_CONVERSATION_ID + dialogId, null);
             if (id == null || !id.matches("[0-9a-f]{16}")) {
                 id = java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16);
@@ -849,8 +852,10 @@ public final class NotificationCoverController {
             Person personaPerson = null;
             ShortcutInfoCompat conversationShortcut = null;
             if (conversationSupported(account, dialogId)) {
+                conversationId = conversationId(account, dialogId);
+            }
+            if (conversationId != null) {
                 try {
-                    conversationId = conversationId(account, dialogId);
                     personaPerson = new Person.Builder()
                             .setName(personaLabel)
                             .setKey(conversationId)
@@ -924,9 +929,13 @@ public final class NotificationCoverController {
             } finally {
                 if (conversationShortcut != null) {
                     // same as upstream: once posted the notification keeps the cached long-lived shortcut, so nothing stays in the dynamic list
-                    ArrayList<String> dynamicIds = new ArrayList<>();
-                    dynamicIds.add(conversationId);
-                    ShortcutManagerCompat.removeDynamicShortcuts(ctx, dynamicIds);
+                    try {
+                        ArrayList<String> dynamicIds = new ArrayList<>();
+                        dynamicIds.add(conversationId);
+                        ShortcutManagerCompat.removeDynamicShortcuts(ctx, dynamicIds);
+                    } catch (Exception e) {
+                        FileLog.e(e); // never let a cleanup failure cancel a cover that already posted
+                    }
                 }
             }
             return true;
