@@ -498,6 +498,7 @@ public class ChatActivity extends BaseFragment implements
     private final static int nkheaderbtn_header_bg = 2103;
     private final static int nkbtn_personal_replies = 2104;
     private final static int nkheaderbtn_notif_profile = 2105; // NagramX: chat menu "Alerts: <profile>" item
+    private final static int nkheaderbtn_notif_bell = 2106; // NagramX: header bell that cycles the profile
 
     public int shareAlertDebugMode = DEBUG_SHARE_ALERT_MODE_NORMAL;
     public boolean shareAlertDebugTopicsSlowMotion;
@@ -573,6 +574,7 @@ public class ChatActivity extends BaseFragment implements
     private ActionBarMenuItem.Item addContactItem;
     private ActionBarMenuItem.Item clearHistoryItem;
     private ActionBarMenuItem.Item nkProfileItem; // NagramX: the "Alerts" menu item, refreshed on each menu open
+    private ActionBarMenuItem nkBellItem; // NagramX: the header bell; null when the setting is off or the chat has no mute
     private ActionBarMenuItem.Item viewAsTopics;
     private ActionBarMenuItem.Item closeTopicItem;
     private ActionBarMenuItem.Item openForumItem;
@@ -5039,6 +5041,10 @@ public class ChatActivity extends BaseFragment implements
                     showAudioCallAsIcon = false;
                     audioCallIconItem.setVisibility(View.GONE);
                 }
+            }
+            // NagramX: Alerts bell, added here so it lands between the call icon and the options button; visibility is owned by updateBell
+            if (!inPreviewMode && (currentUser == null || !currentUser.self) && NaConfig.INSTANCE.getChatMenuItemNotifProfileBell().Bool()) {
+                nkBellItem = com.dazewell.gram.notifprofiles.NotificationProfileMenu.addBell(this, menu, nkheaderbtn_notif_bell, currentAccount, dialog_id);
             }
         }
         /*
@@ -20269,6 +20275,9 @@ public class ChatActivity extends BaseFragment implements
                         ((ViewGroup.MarginLayoutParams) avatarContainer.getLayoutParams()).rightMargin = isTitleCentered() ? 0 : AndroidUtilities.dp(52);
                     }
                 }
+                if (nkBellItem != null && !isTitleCentered() && avatarContainer != null && avatarContainer.getLayoutParams() != null) {
+                    ((ViewGroup.MarginLayoutParams) avatarContainer.getLayoutParams()).rightMargin += AndroidUtilities.dp(48); // NagramX: room for the Alerts bell left of the options button
+                }
                 if (showSearchAsIcon) {
                     if (!actionBar.isSearchFieldVisible() && searchIconItem != null) {
                         searchIconItem.setVisibility(View.VISIBLE);
@@ -21821,6 +21830,7 @@ public class ChatActivity extends BaseFragment implements
         if (chatNotificationsPopupWrapper != null) {
             chatNotificationsPopupWrapper.update(dialog_id, getTopicId(), null);
         }
+        com.dazewell.gram.notifprofiles.NotificationProfileMenu.updateBell(nkBellItem, currentAccount, dialog_id, getTopicId() != 0, currentChat == null || !ChatObject.isNotInChat(currentChat), isMuted); // NagramX: hidden while Telegram's mute is on
     }
 
     public void checkAndUpdateAvatar() {
@@ -30604,6 +30614,7 @@ public class ChatActivity extends BaseFragment implements
                     muteItemGap.setVisibility(View.VISIBLE);
                 }
             }
+            com.dazewell.gram.notifprofiles.NotificationProfileMenu.updateBell(nkBellItem, currentAccount, dialog_id, getTopicId() != 0, currentChat == null || !ChatObject.isNotInChat(currentChat), getMessagesController().isDialogMuted(dialog_id, getTopicId())); // NagramX: the bell follows the same join state as mute
             if (isInsideContainer || forceNoBottom || shouldHideBottomFor3ButtonNav() || shouldHideBottomForGesture()) {
                 bottomChannelButtonsLayout.setVisibility(View.GONE);
                 chatActivityEnterView.setVisibility(View.GONE);

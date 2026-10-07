@@ -84,7 +84,7 @@ Each chat's Notifications screen (open a chat → its name → Notifications) ha
 
 ### Notification profile per chat <!-- #notification-profiles -->
 
-Each chat's Notifications screen has a **Notification profile** row (also an **Alerts** item in the chat's ⋮ menu): **Loud** (Telegram's usual alerts, the default), **Quiet** (icon, vibration and watch, no sound) or **Passive** (shade only: no status-bar icon, lock screen, sound, vibration, popup or watch notification of its own). It overrides that chat's sound, vibration and priority settings. Not available on forum topics; set it on the forum's main chat.
+Each chat has a **Notification profile**: **Loud** (Telegram's usual alerts, the default), **Quiet** (icon, vibration and watch, no sound) or **Passive** (shade only: no status-bar icon, lock screen, sound, vibration, popup or watch). Set it on the chat's Notifications screen, the ⋮ menu's **Alerts** item, or the header bell: tap to cycle, long-press to pick. Turn the bell off in N-Settings → Chats → Chat menu. Not on forum topics.
 
 ### Swipe to next channel within the folder <!-- #next-channel-in-folder -->
 
