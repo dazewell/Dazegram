@@ -789,17 +789,15 @@
     <string name="NaxCoverSectionTitle">Notifications</string>
     <string name="NaxCoverDisguiseTitle">Disguise notifications</string>
     <string name="NaxCoverDisguiseSubtitle">Show this chat as something else in your notifications, so a glance doesn\'t give it away.</string>
-    <string name="NaxCoverAlertChannelName">%1$s (alerting)</string>
     <string name="NaxCoverRowTitle">Cover</string>
     <string name="NaxCoverPreviewTitle">Preview notification</string>
     <string name="NaxCoverHowItWorks">How covers work</string>
     <string name="NaxCoverPreviewPosted">Preview notification posted.</string>
     <string name="NaxCoverPreviewUnavailable">Couldn\'t post preview.</string>
-    <string name="NaxCoverLimitations">Covers hide chat name, sender, and message in app notifications. Tapping or dismissing a cover only clears that notification. It never opens the chat and never marks anything read. Attempting to open the real chat in the app clears its cover, even if unlock is cancelled or fails. Live incoming/ongoing call UI and stories remain outside disguise, while missed-call service notifications are covered generically. Android may still show the app as source, badges, and older pinned conversation/channel labels. Android notification settings and user-tuned channels stay authoritative.</string>
+    <string name="NaxCoverLimitations">Covers hide chat name, sender, and message in app notifications. Tapping or dismissing a cover only clears that notification and never opens the chat. A cover has a Mark as read button but no reply, and with chat bubbles on it is usually a conversation under its persona name, which can appear in the conversation lists in Android settings. Attempting to open the real chat in the app clears its cover, even if unlock is cancelled or fails. Live incoming/ongoing call UI and stories remain outside disguise, while missed-call service notifications are covered generically. Android may still show the app as source, badges, and older pinned conversation/channel labels. Android notification settings and user-tuned channels stay authoritative.</string>
     <string name="NaxCoverSheetTitle">Cover</string>
     <string name="NaxCoverEnabledHint">Notifications for this chat are now disguised.</string>
     <string name="NaxCoverDisabledHint">Notifications for this chat are back to normal.</string>
-    <string name="NaxCoverSummaryChannelName">System services</string>
     <string name="NaxCoverPersonaBackgroundService">Background service</string>
     <string name="NaxCoverPersonaBuildStatus">Build status</string>
     <string name="NaxCoverPersonaDeviceMaintenance">Device maintenance</string>
@@ -826,7 +824,6 @@
     <string name="NaxNotifProfilePassiveInfo">Sits in the notification shade only. No icon, sound, vibration, lock screen or watch.</string>
     <string name="NaxNotifProfileQuietAlertChannel">Quiet (new messages)</string>
     <string name="NaxNotifProfileWatchOff">Off in Passive profile</string>
-    <string name="NaxNotifProfileCovered">Not available while Disguise notifications is on for this chat.</string>
     <string name="EditorMuteHintSilentVideo">Sound is now muted, so the video will loop like a GIF. Tap the quality button to send it as a silent video instead.</string>
     <string name="AccDescrVideoGifState">Video quality, GIF. Tap to send as a silent video</string>
     <string name="AccDescrVideoSilentState">Video quality, silent video</string>

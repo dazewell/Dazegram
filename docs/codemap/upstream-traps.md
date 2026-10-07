@@ -233,116 +233,42 @@ this branch.)*
 
 ## An app can never change an existing notification channel's importance in code; only the user can, via system settings
 
-`NotificationCoverController.ensureChannel(...)` still no-ops when the channel
-id already exists (`NotificationCoverController.java:639-651`), because
-Android treats re-creating an existing `NotificationChannel` id as a silent
-no-op. There is no app-side API to raise or lower that existing channel's
-importance in place - only the user can do that in Android notification
-settings.
+Android treats re-creating an existing `NotificationChannel` id as a no-op for importance, sound and vibration;
+only the name and description can change. That is why the notification profiles use fixed, versioned channel ids
+(`nax_np_v1_<account>_<tier>`, bump the version to change a preset: `NotificationProfiles.java:42`, `:190`) and why a
+profile switch only picks a different existing channel at post time. The disguise cover owns no channel at all since
+`#disguise-parity`: it posts on whatever channel `validateChannelId` picked for a normal notification
+(`NotificationsController.java:5009-5015`, `NotificationCoverController.Behavior` at `NotificationCoverController.java:661`).
+The one in-place edit it makes is a rename (`renameChatChannels`, `NotificationCoverController.java:694`), which relies on
+the platform allowing a name change through `createNotificationChannel` (not yet device-verified).
 
-That is why the cover path still keeps two channel tiers per persona instead
-of one mutable tier: `childChannelId(...)` (silent/low) and
-`alertChannelId(...)` (alert/default+vibration)
-(`NotificationCoverController.java:655-715`). The behavior change moved the
-choice source, not the channel model: `postChild(...)` now routes between those
-two existing tiers from upstream's silent signal (`silent` parameter) rather
-than from a per-chat fork toggle (`NotificationCoverController.java:719-784`).
-`postPreview(...)` is user-initiated and always uses the alert tier
-(`NotificationCoverController.java:836-885`), while `NaxCoverAlertChannelName`
-remains the alert-tier label in settings (`strings_nax.xml`).
+*(Established 2026-09-07, `#disguise-alerting`; rewritten 2026-10-07, `#disguise-parity`.)*
 
-*(Established 2026-09-07, `#disguise-alerting`.)*
+## `GROUP_ALERT_SUMMARY` still mutes grouped children; an alerting child must skip it
 
-## `GROUP_ALERT_SUMMARY` still mutes grouped children; non-silent covered events must skip it
+In a grouped state only the summary alerts: upstream sets `GROUP_ALERT_SUMMARY` on every child
+(`NotificationsController.java:5835`) and puts them on the shared OTHER channel. A cover child now does the same
+(`NotificationCoverController.java:907`), and the cover summary carries the real channel and alert. The one exception is a
+Quiet-profile chat that is the newest message: its summary goes through the silent channel, so
+`NotificationProfiles.apply` switches that child to `GROUP_ALERT_ALL` (`NotificationProfiles.java:174`); applying
+`GROUP_ALERT_SUMMARY` unconditionally would make that child inert as soon as grouping turns on.
 
-`useSummaryNotification` is still the same gate in
-`NotificationsController.showExtraNotifications(...)`
-(`NotificationsController.java:4993`): grouped notifications are common once
-multiple dialogs are pending. In that state, `GROUP_ALERT_SUMMARY` still mutes
-the child regardless of the child's own channel importance. The new cover path
-therefore applies `setGroupAlertBehavior(GROUP_ALERT_SUMMARY)` only when the
-upstream signal is silent, and skips it when upstream says the event is
-non-silent (`NotificationCoverController.java:761-765`). If that line is
-applied unconditionally in the non-silent branch, alert-tier covered children
-become inert as soon as grouping turns on.
+*(Established 2026-09-07, `#disguise-alerting`; rewritten 2026-10-07.)*
 
-*(Established 2026-09-07, `#disguise-alerting`.)*
+## Cover alerting is upstream's `notifyDisabled`; the old cover-only growth gate is gone
 
-## `isSilent` at `showExtraNotifications(...)` is rebuild-scoped, not a per-dialog covered flag
+Before `#disguise-parity` a cover had its own alert rules (`coverSilent`, a per-dialog suppression map mirroring
+upstream, and a "new hidden member" growth gate with stored exact membership) and its own persona channels. All of that was
+deleted: `showOrUpdateNotification` already folds notifyAboutLast, recording, mute, smart notifications, `sound_enabled_`
+and the profile override into `notifyDisabled`, which feeds `validateChannelId(isSilent)` and `naxAlert`
+(`NotificationsController.java:4526`), and a covered child that is not the newest chat cannot alert in a grouped state
+anyway. Covers therefore re-alert wherever a normal notification would (repeat alarms, cold start). Two things remain
+cover-specific: the tap/dismiss tokens and suppression state (written before `notify`, all under `COVER_STATE_LOCK`), and
+the fact that Android can drop a notification at its global count limit without throwing from `notify(...)`, so only a Java
+exception counts as a post failure. A legacy `nax_cover_v1_active_child_members_<dialogId>` key can still exist from older
+installs; `clearDialogInteractionState` and `reconcile` clean it up.
 
-The `isSilent` argument passed into `showExtraNotifications(...)` is the
-upstream rebuild-level suppression result (`notifyDisabled`) from
-`showOrUpdateNotification(...)`, not a per-dialog covered-message property
-(`NotificationsController.java:4505`, `:4912`, `:4987`). Reusing it unchanged
-for every covered child can spread the newest dialog's suppression state across
-unrelated covered dialogs; ignoring it entirely can re-enable suppressed rebuild
-paths.
-
-Current fix splits scopes explicitly: preflight captures a rebuild-wide flag
-(`naxRebuildSuppressed`) and a read-only per-covered-dialog suppression map
-(`naxCoverSuppressed` via `naxCoveredDialogSuppressed(...)`), then fanout composes
-`coverSilent = naxRebuildSuppressed || naxDialogSuppressed == null || naxDialogSuppressed || (dialogId == lastDialogId && isSilent)`
-(`NotificationsController.java:4193-4202`, `:5116-5117`, `:6001-6029`). This keeps fail-closed
-behavior for missing map entries and reuses upstream's method-level suppression
-for the one `lastDialogId` it actually describes, without mutating
-`smartNotificationsDialogs`.
-
-One more trap exists after that composition: a rebuild can repost the same
-represented covered members again. Using token snapshots as membership state is
-wrong here: they are capped at `SUPPRESSION_LIMIT` by `buildRecord(...)`
-(`NotificationCoverController.java:972-995`) and therefore cannot represent an
-exact membership baseline for growth decisions.
-
-Current fix splits those roles. Exact per-dialog active membership is stored on
-its own key namespace (`KEY_ACTIVE_CHILD_MEMBERS`) with an explicit
-`over_capacity` sentinel for `displayCount > SUPPRESSION_LIMIT`, while token
-snapshots stay interaction payload only (`NotificationCoverController.java:65`,
-`:561-562`, `:1085-1134`). Child alert tier is then gated by
-`effectiveSilent = upstreamSilent || migration || overCapacity || !hasGrowth` in
-`postChild(...)` (`NotificationCoverController.java:758-778`): unchanged reposts
-force silent, growth can alert only when upstream also allows it.
-
-Migration trap: branches without a stored membership key but with an already
-live cover token must not infer growth. That case is forced silent once and
-seeds baseline only after successful post + CAS (`NotificationCoverController.java:767-770`,
-`:803-811`).
-
-Ordering trap: token records are written before `notify(...)`, but membership
-baseline is written after `notify(...)` and only when active tap pointer still
-matches this post token (CAS), so a concurrent interaction or newer post cannot
-be overwritten by stale baseline state (`NotificationCoverController.java:767-776`,
-`:803-811`).
-
-Cleanup trap: membership key lifecycle is owned by
-`clearDialogInteractionState(...)`; reconcile must scan membership-prefix keys
-or orphan baselines can survive after a dialog no longer posts a cover
-(`NotificationCoverController.java:1278-1282`, `:1341-1343`, `:1356`).
-
-Android can drop notifications at global count limits without throwing from
-`notify(...)`. This path therefore only treats Java exceptions as hard post
-failures; absence of an exception is not a proof that Android displayed the new
-card.
-
-*(Established 2026-09-07, `#disguise-alerting`.)*
-
-## Pre-existing (out of scope): mixed covered + uncovered batches can inherit the silent cover-summary alert behavior
-
-This branch still has a pre-existing mixed-batch trap that this change does not
-fix. When any covered dialog is present, `showExtraNotifications(...)` posts
-the fork cover summary instead of the real summary (`NotificationsController.java:5016-5030`),
-and that cover summary is always built on the low/silent cover-summary channel
-(`NotificationCoverController.buildCoverSummary(...)` ->
-`summaryChannelId(...)` -> `ensureChannel(...)`,
-`NotificationCoverController.java:639-651, 667-675, 785-835`).
-
-At the same time, non-covered child notifications in a grouped batch still set
-`GROUP_ALERT_SUMMARY` in the regular child path
-(`NotificationsController.java:5830`). So in a mixed covered/uncovered
-grouped batch, an uncovered child that would otherwise alert can be muted by
-the grouped-summary policy it shares with the silent cover summary. This is
-recorded as pre-existing and out of scope for this tuning slice.
-
-*(Established 2026-09-07, pre-existing and not fixed in this branch.)*
+*(Established 2026-09-07, `#disguise-alerting`; rewritten 2026-10-07, `#disguise-parity`.)*
 
 ## Editing `TMessagesProj/build.gradle` fails Sync guard check until its blob pin is bumped
 
@@ -708,16 +634,41 @@ disguise mid-stream cannot leave stale covered popup cards behind.
 
 *(Established 2026-09-03.)*
 
-## `validateChannelId` observes/creates a chat-named OS channel as a side effect
+## Android 16 auto-groups a lone disguised notification about 3 s after it posts, even with an explicit group key
 
-`showExtraNotifications` calls `validateChannelId(lastDialogId, ...)` on the summary
-builder (`NotificationsController.java:4939`), which synchronizes against — and can
-create — a real per-dialog `NotificationChannel` named after the chat. Reusing it for
-a covered chat would leave the chat's real name visible in Android Settings even though
-the notification itself is disguised, so that call sits in the **non-covered branch
-only**: when any dialog is covered the real summary is never built and this is never
-reached. Cover channels are created directly (not through `validateChannelId`) so they
-never adopt real-chat identity.
+On the OPPO (Android 16, 2026-10-07) a disguised Loud or Quiet cover was followed ~3 s later by a
+`notification_autogrouped` event and a `key_group_key` adjustment to `g:Aggregate_AlertingSection` in the event log
+(`adb logcat -d -b events`), including when the cover carried an explicit group key with no summary
+(`groupKey=nax_cover_solo_9`, 09:26, build 0c0603c33e; that key was then removed as ineffective). A real conversation notification
+(shortcut, locus id, MessagingStyle) posted at the same time was not auto-grouped, and neither were Passive covers (minimum
+importance). The user sees a double watch vibration on disguised Loud and Quiet chats and one vibration on a normal chat; the
+auto-group is the only difference seen in the log, so it is the suspected cause (not proven). With the persona conversation below the
+watch vibrated once (build 5b507b0979), which supports the fix but does not prove the auto-group stopped. The fix makes a cover a
+persona conversation (`conversationSupported`, `conversationId`, the shortcut and MessagingStyle in `postChild`,
+`NotificationCoverController.java:748`, `:763`, `:816`) gated exactly like the real child; whether that exempts it from
+auto-grouping is inferred from the real notification's behaviour and unconfirmed until the device experiment (clear the event log,
+send three messages, look for `notification_autogrouped` on a `naxcover_` key). The shortcut, locus id and person key are one random
+id per (account, dialog), rotated on uncover, so they never name the real dialog; uncovering and logout also remove the shortcut and
+any conversation channel the user created (`clearConversation`, `NotificationCoverController.java:778`). Separately, upstream re-posts
+a normal notification on the `silent` channel about 5 s after the alert, which is why its status-bar icon disappears on that phone.
+
+*(Established 2026-10-07, `#disguise-parity`.)*
+
+## `validateChannelId` creates a chat-named OS channel; a covered chat must pass the persona name and be renamed
+
+`validateChannelId(lastDialogId, ...)` can create a per-chat channel (only when the chat has custom sound, importance, LED or
+vibration, or the in-app variant) whose name is the real chat title, set once at creation
+(`NotificationsController.java:4120-4122`). Covers now call it too, with the persona label as the name when the newest chat is
+covered (`NotificationsController.java:5009-5015`). A channel that already exists keeps its old title, so
+`NotificationCoverController` renames every `<account>channel_<dialogId>_*` channel of a covered chat in place: on each rebuild
+(`collectCovered`, `NotificationCoverController.java:334`), when disguise is enabled and when the persona changes
+(`:235`, `:251`). Uncovering a chat leaves the persona name (the safe direction). The channel id format is private to
+`validateChannelId`; if it changes, `renameChatChannels` silently stops matching. Also note upstream's
+`deleteNotificationChannelInternal` builds `org.telegram.key<dialogId>` (`NotificationsController.java:3484`), without the
+`_<topic>_<soundHash>` suffix `validateChannelId` stores (`:3911-3913`), so it looks like it never finds the channel (inferred
+from reading, never run).
+
+*(Established 2026-09-03; rewritten 2026-10-07, `#disguise-parity`.)*
 
 ## `minSdk` is 27, so the `SDK_INT <= 19` notification branch is dead
 
