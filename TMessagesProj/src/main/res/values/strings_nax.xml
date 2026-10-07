@@ -816,6 +816,7 @@
     <string name="NaxCoverBodySecurityCheck">%1$d check(s) completed.</string>
     <string name="NotificationsShowOnWatch">Show on Watch</string>
     <string name="NaxNotifProfile">Notification profile</string>
+    <string name="NaxNotifProfileMenu">Alerts: %1$s</string>
     <string name="NaxNotifProfileLoud">Loud</string>
     <string name="NaxNotifProfileQuiet">Quiet</string>
     <string name="NaxNotifProfilePassive">Passive</string>
