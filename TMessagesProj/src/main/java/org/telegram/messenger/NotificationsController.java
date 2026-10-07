@@ -4190,6 +4190,8 @@ public class NotificationsController extends BaseController implements Notificat
                 naxList.add(naxMsg);
             }
             java.util.HashSet<Long> naxCoveredSet = com.dazewell.gram.chatprivacy.NotificationCoverController.collectCovered(currentAccount, naxMessagesByDialogs);
+            // NagramX: per-chat notification profiles, read once per rebuild so the summary and the children agree
+            LongSparseArray<Integer> naxProfiles = com.dazewell.gram.notifprofiles.NotificationProfiles.collect(currentAccount, naxMessagesByDialogs, naxCoveredSet);
             final boolean naxRebuildSuppressed = !notifyAboutLast || MediaController.getInstance().isRecordingAudio();
             final LongSparseArray<Boolean> naxCoverSuppressed = new LongSparseArray<>();
             if (!naxCoveredSet.isEmpty()) {
@@ -4513,6 +4515,13 @@ public class NotificationsController extends BaseController implements Notificat
             }
 
             if (!notifyDisabled && !preferences.getBoolean("sound_enabled_" + getSharedPrefKey(dialog_id, topicId), true)) {
+                notifyDisabled = true;
+            }
+
+            // NagramX: a Quiet or Passive last chat posts the shared summary through upstream's own silent channel (which also
+            // skips the channel write-back); the chat's own child alerts or stays quiet on its profile channel, driven by naxAlert
+            final boolean naxAlert = !notifyDisabled;
+            if (!story && naxProfiles.get(dialog_id) != null) {
                 notifyDisabled = true;
             }
 
@@ -4884,7 +4893,7 @@ public class NotificationsController extends BaseController implements Notificat
                     mBuilder.addAction(R.drawable.ic_ab_reply, LocaleController.getString(R.string.Reply), PendingIntent.getBroadcast(ApplicationLoader.applicationContext, 2, replyIntent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
                 }
             }
-            naxCoverSummaryPosted = showExtraNotifications(mBuilder, detailText, dialog_id, topicId, chatName, vibrationPattern, ledColor, sound, configImportance, isDefault, isInApp, notifyDisabled, chatType, naxSortedDialogs, naxMessagesByDialogs, naxCoveredSet, naxCoverSuppressed, naxRebuildSuppressed, lastMessageObject.messageOwner.date);
+            naxCoverSummaryPosted = showExtraNotifications(mBuilder, detailText, dialog_id, topicId, chatName, vibrationPattern, ledColor, sound, configImportance, isDefault, isInApp, notifyDisabled, chatType, naxSortedDialogs, naxMessagesByDialogs, naxCoveredSet, naxCoverSuppressed, naxRebuildSuppressed, lastMessageObject.messageOwner.date, naxProfiles, naxAlert);
             scheduleNotificationRepeat();
             } finally {
                 // NagramX: reconcile stale tagged covers from the preflight finally, so an early return or an exception
@@ -4959,13 +4968,18 @@ public class NotificationsController extends BaseController implements Notificat
     }
 
     @SuppressLint("InlinedApi")
-    private boolean showExtraNotifications(NotificationCompat.Builder notificationBuilder, String summary, long lastDialogId, long lastTopicId, String chatName, long[] vibrationPattern, int ledColor, Uri sound, int importance, boolean isDefault, boolean isInApp, boolean isSilent, int chatType, ArrayList<DialogKey> sortedDialogs, LongSparseArray<ArrayList<MessageObject>> messagesByDialogs, java.util.HashSet<Long> naxCoveredSet, LongSparseArray<Boolean> naxCoverSuppressed, boolean naxRebuildSuppressed, int summaryDismissDate) {
+    private boolean showExtraNotifications(NotificationCompat.Builder notificationBuilder, String summary, long lastDialogId, long lastTopicId, String chatName, long[] vibrationPattern, int ledColor, Uri sound, int importance, boolean isDefault, boolean isInApp, boolean isSilent, int chatType, ArrayList<DialogKey> sortedDialogs, LongSparseArray<ArrayList<MessageObject>> messagesByDialogs, java.util.HashSet<Long> naxCoveredSet, LongSparseArray<Boolean> naxCoverSuppressed, boolean naxRebuildSuppressed, int summaryDismissDate, LongSparseArray<Integer> naxProfiles, boolean naxAlert) {
         FileLog.d("showExtraNotifications pushMessages.size()=" + pushMessages.size());
 
         SharedPreferences preferences = getAccountInstance().getNotificationsSettings();
         boolean coverSummaryPosted = false;
 
         boolean useSummaryNotification = Build.VERSION.SDK_INT <= Build.VERSION_CODES.O_MR1 || sortedDialogs.size() > (storyPushMessages.isEmpty() ? 1 : 2);
+        // NagramX: Passive chats sit outside the group, so a summary is only worth posting for the chats that remain
+        int naxPassive = com.dazewell.gram.notifprofiles.NotificationProfiles.passiveCount(naxProfiles);
+        if (naxPassive > 0) {
+            useSummaryNotification = Build.VERSION.SDK_INT <= Build.VERSION_CODES.O_MR1 ? sortedDialogs.size() > naxPassive : sortedDialogs.size() - naxPassive > (storyPushMessages.isEmpty() ? 1 : 2);
+        }
 
         // NagramX: the covered set and grouping were resolved in the preflight (showOrUpdateNotification), and the old
         // real summary + covered dialogs' prior children were already cancelled there. Here we only build the disguised
@@ -5882,6 +5896,10 @@ public class NotificationsController extends BaseController implements Notificat
 
             if (Build.VERSION.SDK_INT >= 26) {
                 setNotificationChannel(mainNotification, builder, useSummaryNotification);
+                // NagramX: a Quiet or Passive chat moves from the shared channel onto its profile channel; Loud is untouched
+                if (!dialogKey.story) {
+                    com.dazewell.gram.notifprofiles.NotificationProfiles.apply(currentAccount, builder, naxProfiles.get(dialogId), naxAlert && dialogId == lastDialogId, isInApp);
+                }
             }
             FileLog.d("showExtraNotifications: holders.add " + dialogId);
             holders.add(new NotificationHolder(internalId, dialogId, dialogKey.story, topicId, name, user, chat, builder));

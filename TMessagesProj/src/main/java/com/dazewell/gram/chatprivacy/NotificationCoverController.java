@@ -337,7 +337,8 @@ public final class NotificationCoverController {
     }
 
     public static boolean blocksPopupMessage(int account, long dialogId) {
-        return dialogId != 0 && isCovered(account, dialogId);
+        // Passive notification profile shares the popup guard: the popup is itself a loud, lock-screen-visible surface
+        return dialogId != 0 && (isCovered(account, dialogId) || com.dazewell.gram.notifprofiles.NotificationProfiles.blocksPopup(account, dialogId));
     }
 
     // ---- Suppression state ----
