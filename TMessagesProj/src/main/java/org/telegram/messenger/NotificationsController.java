@@ -5011,7 +5011,8 @@ public class NotificationsController extends BaseController implements Notificat
         if (naxAnyCovered && Build.VERSION.SDK_INT >= 26) {
             final String naxChannelName = naxCoveredSet.contains(lastDialogId) ? com.dazewell.gram.chatprivacy.NotificationCoverController.activePersonaLabel(currentAccount, lastDialogId) : chatName;
             naxCoverChannel = validateChannelId(lastDialogId, lastTopicId, naxChannelName, vibrationPattern, ledColor, sound, importance, isDefault, isInApp, isSilent, chatType);
-            naxSilentChannel = () -> validateChannelId(lastDialogId, lastTopicId, naxChannelName, vibrationPattern, ledColor, sound, importance, isDefault, isInApp, true, chatType);
+            // the retry is only reached when the chat's own sound was unreadable, so it must not carry that sound or vibration (same values upstream passes when notifyDisabled)
+            naxSilentChannel = () -> validateChannelId(lastDialogId, lastTopicId, naxChannelName, new long[]{0, 0}, 0, null, NotificationManager.IMPORTANCE_LOW, isDefault, isInApp, true, chatType);
         }
 
         Notification mainNotification;

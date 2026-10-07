@@ -707,6 +707,8 @@ public final class NotificationCoverController {
         Intent intent = new Intent(ApplicationLoader.applicationContext, AutoMessageHeardReceiver.class);
         intent.addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES);
         intent.setAction("org.telegram.messenger.ACTION_MESSAGE_HEARD");
+        // extras are not part of PendingIntent identity, so two accounts with the same dialog id would share one intent; the data makes it account-specific
+        intent.setData(android.net.Uri.parse("nax-cover://mark-read/" + account + "/" + dialogId));
         intent.putExtra("dialog_id", dialogId);
         intent.putExtra("max_id", maxId);
         intent.putExtra("currentAccount", account);

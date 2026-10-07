@@ -238,7 +238,7 @@ only the name and description can change. That is why the notification profiles 
 (`nax_np_v1_<account>_<tier>`, bump the version to change a preset: `NotificationProfiles.java:42`, `:190`) and why a
 profile switch only picks a different existing channel at post time. The disguise cover owns no channel at all since
 `#disguise-parity`: it posts on whatever channel `validateChannelId` picked for a normal notification
-(`NotificationsController.java:5009-5014`, `NotificationCoverController.Behavior` at `NotificationCoverController.java:651`).
+(`NotificationsController.java:5009-5015`, `NotificationCoverController.Behavior` at `NotificationCoverController.java:651`).
 The one in-place edit it makes is a rename (`renameChatChannels`, `NotificationCoverController.java:684`), which relies on
 the platform allowing a name change through `createNotificationChannel` (not yet device-verified).
 
@@ -247,8 +247,8 @@ the platform allowing a name change through `createNotificationChannel` (not yet
 ## `GROUP_ALERT_SUMMARY` still mutes grouped children; an alerting child must skip it
 
 In a grouped state only the summary alerts: upstream sets `GROUP_ALERT_SUMMARY` on every child
-(`NotificationsController.java:5834`) and puts them on the shared OTHER channel. A cover child now does the same
-(`NotificationCoverController.java:786`), and the cover summary carries the real channel and alert. The one exception is a
+(`NotificationsController.java:5835`) and puts them on the shared OTHER channel. A cover child now does the same
+(`NotificationCoverController.java:788`), and the cover summary carries the real channel and alert. The one exception is a
 Quiet-profile chat that is the newest message: its summary goes through the silent channel, so
 `NotificationProfiles.apply` switches that child to `GROUP_ALERT_ALL` (`NotificationProfiles.java:174`); applying
 `GROUP_ALERT_SUMMARY` unconditionally would make that child inert as soon as grouping turns on.
@@ -639,7 +639,7 @@ disguise mid-stream cannot leave stale covered popup cards behind.
 `validateChannelId(lastDialogId, ...)` can create a per-chat channel (only when the chat has custom sound, importance, LED or
 vibration, or the in-app variant) whose name is the real chat title, set once at creation
 (`NotificationsController.java:4120-4122`). Covers now call it too, with the persona label as the name when the newest chat is
-covered (`NotificationsController.java:5009-5014`). A channel that already exists keeps its old title, so
+covered (`NotificationsController.java:5009-5015`). A channel that already exists keeps its old title, so
 `NotificationCoverController` renames every `<account>channel_<dialogId>_*` channel of a covered chat in place: on each rebuild
 (`collectCovered`, `NotificationCoverController.java:324`), when disguise is enabled and when the persona changes
 (`:226`, `:241`). Uncovering a chat leaves the persona name (the safe direction). The channel id format is private to
