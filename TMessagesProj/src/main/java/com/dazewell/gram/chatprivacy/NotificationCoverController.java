@@ -854,7 +854,7 @@ public final class NotificationCoverController {
                     personaPerson = new Person.Builder()
                             .setName(personaLabel)
                             .setKey(conversationId)
-                            .setIcon(IconCompat.createWithResource(ctx, R.mipmap.ic_launcher_dr))
+                            .setIcon(IconCompat.createWithResource(ctx, ctx.getApplicationInfo().icon)) // the fixed app icon the header already shows, not the stock Telegram art
                             .build();
                     Intent openApp = new Intent(ctx, LaunchActivity.class).setAction(Intent.ACTION_MAIN);
                     conversationShortcut = new ShortcutInfoCompat.Builder(ctx, conversationId)
