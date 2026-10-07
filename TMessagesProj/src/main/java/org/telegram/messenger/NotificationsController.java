@@ -4520,7 +4520,7 @@ public class NotificationsController extends BaseController implements Notificat
 
             // NagramX: a Quiet or Passive last chat posts the shared summary through upstream's own silent channel (which also
             // skips the channel write-back); the chat's own child alerts or stays quiet on its profile channel, driven by naxAlert
-            final boolean naxAlert = !notifyDisabled;
+            final boolean naxAlert = !notifyDisabled && !story; // a story's dialog_id is the author's real id, which must not make that user's Quiet chat vibrate
             if (!story && naxProfiles.get(dialog_id) != null) {
                 notifyDisabled = true;
             }

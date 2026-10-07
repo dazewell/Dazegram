@@ -425,6 +425,8 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
                             adapter.notifyItemChanged(profileRow);
                             if (watchRow != -1) {
                                 adapter.notifyItemChanged(watchRow);
+                                // item animations are off, so the rebind never re-runs onViewAttachedToWindow; refresh the enabled state here
+                                checkRowsEnabled();
                             }
                         }
                     }));
