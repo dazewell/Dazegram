@@ -645,7 +645,7 @@ importance). The user sees a double watch vibration on disguised Loud and Quiet 
 auto-group is the only difference seen in the log, so it is the suspected cause (not proven). With the persona conversation below the
 watch vibrated once (build 5b507b0979), which supports the fix but does not prove the auto-group stopped. The fix makes a cover a
 persona conversation (`conversationSupported`, `conversationId`, the shortcut and MessagingStyle in `postChild`,
-`NotificationCoverController.java:748`, `:763`, `:813`) gated exactly like the real child; whether that exempts it from
+`NotificationCoverController.java:748`, `:763`, `:816`) gated exactly like the real child; whether that exempts it from
 auto-grouping is inferred from the real notification's behaviour and unconfirmed until the device experiment (clear the event log,
 send three messages, look for `notification_autogrouped` on a `naxcover_` key). The shortcut, locus id and person key are one random
 id per (account, dialog), rotated on uncover, so they never name the real dialog; uncovering and logout also remove the shortcut and
