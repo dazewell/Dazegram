@@ -497,7 +497,7 @@ public class ChatActivity extends BaseFragment implements
     private final static int nkheaderbtn_chat_privacy = 2102;
     private final static int nkheaderbtn_header_bg = 2103;
     private final static int nkbtn_personal_replies = 2104;
-    private final static int nkheaderbtn_notif_profile = 2105;
+    private final static int nkheaderbtn_notif_profile = 2105; // NagramX: chat menu "Alerts: <profile>" item
 
     public int shareAlertDebugMode = DEBUG_SHARE_ALERT_MODE_NORMAL;
     public boolean shareAlertDebugTopicsSlowMotion;
@@ -572,7 +572,7 @@ public class ChatActivity extends BaseFragment implements
     private RadialProgressView progressBar;
     private ActionBarMenuItem.Item addContactItem;
     private ActionBarMenuItem.Item clearHistoryItem;
-    private ActionBarMenuItem.Item nkProfileItem;
+    private ActionBarMenuItem.Item nkProfileItem; // NagramX: the "Alerts" menu item, refreshed on each menu open
     private ActionBarMenuItem.Item viewAsTopics;
     private ActionBarMenuItem.Item closeTopicItem;
     private ActionBarMenuItem.Item openForumItem;
