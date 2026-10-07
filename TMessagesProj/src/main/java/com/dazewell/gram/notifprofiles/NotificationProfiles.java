@@ -10,11 +10,14 @@ import android.os.Build;
 import androidx.collection.LongSparseArray;
 import androidx.core.app.NotificationCompat;
 
+import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
+import org.telegram.messenger.NotificationCenter;
+import org.telegram.messenger.NotificationsController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
@@ -112,6 +115,11 @@ public final class NotificationProfiles {
         return result;
     }
 
+    public static boolean isPassive(LongSparseArray<Integer> profiles, long dialogId) {
+        Integer profile = profiles.get(dialogId);
+        return profile != null && profile == PASSIVE;
+    }
+
     // Passive chats never join the notification group, so they don't count toward whether a summary is needed.
     public static int passiveCount(LongSparseArray<Integer> profiles) {
         int count = 0;
@@ -120,6 +128,28 @@ public final class NotificationProfiles {
             if (profile != null && profile == PASSIVE) count++;
         }
         return count;
+    }
+
+    // Called after the user picks a profile: rebuild so an already-posted notification moves to its new channel now
+    // (the rebuild is not "notify about last", so nothing alerts), and drop popups already queued for a Passive chat.
+    public static void onChanged(int account, long dialogId) {
+        NotificationsController controller = NotificationsController.getInstance(account);
+        if (get(account, dialogId) == PASSIVE) {
+            AndroidUtilities.runOnUIThread(() -> {
+                boolean changed = false;
+                for (int i = controller.popupMessages.size() - 1; i >= 0; i--) {
+                    MessageObject popup = controller.popupMessages.get(i);
+                    if (popup != null && popup.getDialogId() == dialogId) {
+                        controller.popupMessages.remove(i);
+                        changed = true;
+                    }
+                }
+                if (changed) {
+                    NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.pushMessagesUpdated);
+                }
+            });
+        }
+        controller.showNotifications();
     }
 
     // Passive chats never open the in-app popup.

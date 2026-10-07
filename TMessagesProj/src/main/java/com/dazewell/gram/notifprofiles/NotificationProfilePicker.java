@@ -33,6 +33,7 @@ public final class NotificationProfilePicker {
             cell.setOnClickListener(v -> {
                 builder.getDismissRunnable().run();
                 NotificationProfiles.set(account, dialogId, profile);
+                NotificationProfiles.onChanged(account, dialogId);
                 if (onChanged != null) {
                     onChanged.run();
                 }

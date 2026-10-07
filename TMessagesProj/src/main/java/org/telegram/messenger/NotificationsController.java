@@ -4393,6 +4393,12 @@ public class NotificationsController extends BaseController implements Notificat
             if (lastMessageObject != null && (lastMessageObject.isReactionPush || lastMessageObject.isStoryReactionPush) && !preferences.getBoolean("EnableReactionsPreview", true)) {
                 name = LocaleController.getString(R.string.NotificationHiddenName);
             }
+            // NagramX: with summaries off (Samsung) the shared notification carries the last chat's own title and text; keep a Passive last chat out of it
+            final boolean naxPassiveLast = !story && com.dazewell.gram.notifprofiles.NotificationProfiles.isPassive(naxProfiles, dialog_id);
+            if (naxPassiveLast && !allowSummary) {
+                name = LocaleController.getString(R.string.NagramX);
+                replace = false;
+            }
 
             String detailText;
             if (allowSummary) {
@@ -4439,6 +4445,9 @@ public class NotificationsController extends BaseController implements Notificat
                         }
                     }
                 }
+                if (naxPassiveLast && !allowSummary) {
+                    message = LocaleController.formatPluralString("NewMessages", total_unread_count);
+                }
                 mBuilder.setContentText(message);
                 if (!allowSummary) {
                     detailText = message;
@@ -4452,6 +4461,10 @@ public class NotificationsController extends BaseController implements Notificat
                 boolean[] text = new boolean[1];
                 for (int i = 0; i < count; i++) {
                     MessageObject messageObject = pushMessages.get(i);
+                    // NagramX: a Passive chat's text must never reach the shared summary, which can show on the lock screen and watch
+                    if (com.dazewell.gram.notifprofiles.NotificationProfiles.isPassive(naxProfiles, messageObject.getDialogId())) {
+                        continue;
+                    }
                     String message = getStringForMessage(messageObject, false, text, null);
                     if (message == null || !messageObject.isStoryPush && (messageObject.messageOwner.date <= dismissDate && NaConfig.INSTANCE.getPushServiceType().Int() != 3)) {
                         continue;
