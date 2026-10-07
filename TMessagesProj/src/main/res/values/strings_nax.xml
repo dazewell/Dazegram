@@ -817,6 +817,16 @@
     <string name="NaxCoverBodySyncService">Synced %1$d item(s).</string>
     <string name="NaxCoverBodySecurityCheck">%1$d check(s) completed.</string>
     <string name="NotificationsShowOnWatch">Show on Watch</string>
+    <string name="NaxNotifProfile">Notification profile</string>
+    <string name="NaxNotifProfileLoud">Loud</string>
+    <string name="NaxNotifProfileQuiet">Quiet</string>
+    <string name="NaxNotifProfilePassive">Passive</string>
+    <string name="NaxNotifProfileLoudInfo">Normal Telegram alerts: icon, sound, vibration.</string>
+    <string name="NaxNotifProfileQuietInfo">Icon, vibration and watch, but no sound.</string>
+    <string name="NaxNotifProfilePassiveInfo">Sits in the notification shade only. No icon, sound, vibration, lock screen or watch.</string>
+    <string name="NaxNotifProfileQuietAlertChannel">Quiet (new messages)</string>
+    <string name="NaxNotifProfileWatchOff">Off in Passive profile</string>
+    <string name="NaxNotifProfileCovered">Not available while Disguise notifications is on for this chat.</string>
     <string name="EditorMuteHintSilentVideo">Sound is now muted, so the video will loop like a GIF. Tap the quality button to send it as a silent video instead.</string>
     <string name="AccDescrVideoGifState">Video quality, GIF. Tap to send as a silent video</string>
     <string name="AccDescrVideoSilentState">Video quality, silent video</string>

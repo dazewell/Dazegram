@@ -93,6 +93,7 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
     private int enableRow;
     private int previewRow;
     private int watchRow;
+    private int profileRow;
     private int soundRow;
     private int vibrateRow;
     private int smartRow;
@@ -165,6 +166,9 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
         } else {
             enableRow = -1;
         }
+        // NagramX: per-chat notification profile, first row under the header. Keyed by raw dialogId like Show on Watch,
+        // so topic screens (and the exception-adding flow) don't get it.
+        profileRow = topicId == 0 && !addingException ? rowCount++ : -1;
         storiesRow = -1;
         watchRow = -1;
         if (!DialogObject.isEncryptedDialog(dialogId)) {
@@ -411,6 +415,22 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
                 if (button != null) {
                     button.setTextColor(Theme.getColor(Theme.key_text_RedBold));
                 }
+            } else if (position == profileRow) {
+                // NagramX: a covered chat posts its own disguise notification and never reads the profile
+                if (com.dazewell.gram.chatprivacy.NotificationCoverController.isCovered(currentAccount, dialogId)) {
+                    android.widget.Toast.makeText(context, LocaleController.getString(R.string.NaxNotifProfileCovered), android.widget.Toast.LENGTH_SHORT).show();
+                } else if (getParentActivity() != null) {
+                    showDialog(com.dazewell.gram.notifprofiles.NotificationProfilePicker.create(getParentActivity(), currentAccount, dialogId, resourcesProvider, () -> {
+                        if (adapter != null) {
+                            adapter.notifyItemChanged(profileRow);
+                            if (watchRow != -1) {
+                                adapter.notifyItemChanged(watchRow);
+                                // item animations are off, so the rebind never re-runs onViewAttachedToWindow; refresh the enabled state here
+                                checkRowsEnabled();
+                            }
+                        }
+                    }));
+                }
             } else if (position == soundRow) {
                 Bundle bundle = new Bundle();
                 bundle.putLong("dialog_id", dialogId);
@@ -646,7 +666,7 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
                     case ListAdapter.VIEW_TYPE_TEXT_CHECK: {
                         if (position == previewRow || position == watchRow) {
                             TextCheckCell checkCell = (TextCheckCell) holder.itemView;
-                            checkCell.setEnabled(notificationsEnabled, animators);
+                            checkCell.setEnabled(notificationsEnabled && !(position == watchRow && naxWatchOffByProfile()), animators);
                         }
                         break;
                     }
@@ -670,6 +690,11 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
             animatorSet.setDuration(150);
             animatorSet.start();
         }
+    }
+
+    // NagramX: Passive keeps the chat's own notification off the watch, so the Show on Watch switch is greyed under it
+    private boolean naxWatchOffByProfile() {
+        return com.dazewell.gram.notifprofiles.NotificationProfiles.get(currentAccount, dialogId) == com.dazewell.gram.notifprofiles.NotificationProfiles.PASSIVE;
     }
 
     private class ListAdapter extends RecyclerListView.SelectionAdapter {
@@ -696,7 +721,7 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
             if (holder.getAdapterPosition() == previewRow || holder.getAdapterPosition() == watchRow) {
-                return notificationsEnabled;
+                return notificationsEnabled && !(holder.getAdapterPosition() == watchRow && naxWatchOffByProfile());
             } else if (holder.getAdapterPosition() == customResetRow) {
                 return true;
             }
@@ -785,7 +810,9 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
                         textCell.setTextColor(getThemedColor(Theme.key_text_RedBold));
                     } else {
                         textCell.setTextColor(getThemedColor(Theme.key_windowBackgroundWhiteBlackText));
-                        if (position == soundRow) {
+                        if (position == profileRow) {
+                            textCell.setTextAndValue(LocaleController.getString(R.string.NaxNotifProfile), LocaleController.getString(com.dazewell.gram.notifprofiles.NotificationProfiles.labelRes(com.dazewell.gram.notifprofiles.NotificationProfiles.get(currentAccount, dialogId))), true);
+                        } else if (position == soundRow) {
                             String value = preferences.getString("sound_" + key, LocaleController.getString(R.string.SoundDefault));
                             long documentId = preferences.getLong("sound_document_id_" + key, 0);
                             if (documentId != 0) {
@@ -942,7 +969,11 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
                         boolean value = preferences.getBoolean("stories_" + key, isInTop5Peers || preferences.contains("EnableAllStories") && preferences.getBoolean("EnableAllStories", true));
                         checkCell.setTextAndCheck(LocaleController.getString(R.string.StoriesSoundEnabled), value, true);
                     } else if (position == watchRow) {
-                        checkCell.setTextAndCheck(LocaleController.getString(R.string.NotificationsShowOnWatch), preferences.getBoolean("nax_wear_" + dialogId, true), true);
+                        if (naxWatchOffByProfile()) {
+                            checkCell.setTextAndValueAndCheck(LocaleController.getString(R.string.NotificationsShowOnWatch), LocaleController.getString(R.string.NaxNotifProfileWatchOff), preferences.getBoolean("nax_wear_" + dialogId, true), false, true);
+                        } else {
+                            checkCell.setTextAndCheck(LocaleController.getString(R.string.NotificationsShowOnWatch), preferences.getBoolean("nax_wear_" + dialogId, true), true);
+                        }
                     }
                     break;
                 }
@@ -993,7 +1024,7 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
                     } else if (holder.getAdapterPosition() == storiesRow) {
                         checkCell.setEnabled(notificationsEnabled, null);
                     } else if (holder.getAdapterPosition() == watchRow) {
-                        checkCell.setEnabled(notificationsEnabled, null);
+                        checkCell.setEnabled(notificationsEnabled && !naxWatchOffByProfile(), null);
                     } else {
                         checkCell.setEnabled(true, null);
                     }
@@ -1005,7 +1036,7 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
         public int getItemViewType(int position) {
             if (position == generalRow || position == popupRow || position == ledRow || position == callsRow) {
                 return VIEW_TYPE_HEADER;
-            } else if (position == soundRow || position == vibrateRow || position == priorityRow || position == smartRow || position == ringtoneRow || position == callsVibrateRow || position == customResetRow) {
+            } else if (position == profileRow || position == soundRow || position == vibrateRow || position == priorityRow || position == smartRow || position == ringtoneRow || position == callsVibrateRow || position == customResetRow) {
                 return VIEW_TYPE_TEXT_SETTINGS;
             } else if (position == popupInfoRow || position == ledInfoRow || position == priorityInfoRow || position == ringtoneInfoRow) {
                 return VIEW_TYPE_INFO;

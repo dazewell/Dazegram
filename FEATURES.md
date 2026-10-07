@@ -82,6 +82,10 @@ Clear Message Database now removes only the media this install has database rows
 
 Each chat's Notifications screen (open a chat → its name → Notifications) has a **Show on Watch** switch under Message Preview, on by default. Turn it off and that chat's message notifications stop reaching a paired Wear OS watch, while the phone notification is unaffected. It isn't available on secret chats — set it on a forum's main chat to cover every topic.
 
+### Notification profile per chat <!-- #notification-profiles -->
+
+Each chat's Notifications screen has a **Notification profile** row: **Loud** (Telegram's usual alerts, the default), **Quiet** (icon, vibration and watch, no sound) or **Passive** (shade only: no status-bar icon, lock screen, sound, vibration, popup or watch notification of its own). It overrides that chat's sound, vibration and priority settings. Not available on forum topics; set it on the forum's main chat.
+
 ### Swipe to next channel within the folder <!-- #next-channel-in-folder -->
 
 Swiping up at the end of a channel normally jumps to the next unread channel, and once the current folder runs out it moves on to other folders and the archive. N-Settings → Chat → Channels → *Swipe to Next Within Folder* keeps it in the folder you opened the channel from. Off by default.
