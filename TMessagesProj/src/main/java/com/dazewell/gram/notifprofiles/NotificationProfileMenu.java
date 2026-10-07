@@ -18,8 +18,9 @@ public final class NotificationProfileMenu {
     }
 
     // The profile can also change from the Notifications screen, so this runs again whenever the menu opens.
-    public static void refresh(ActionBarMenuItem.Item item, int account, long dialogId) {
+    public static void refresh(ActionBarMenuItem.Item item, int account, long dialogId, boolean visible) {
         if (item == null) return;
+        item.setVisibility(visible ? android.view.View.VISIBLE : android.view.View.GONE);
         int profile = NotificationProfiles.get(account, dialogId);
         item.setText(text(profile));
         item.setIcon(iconRes(profile));
@@ -27,7 +28,7 @@ public final class NotificationProfileMenu {
 
     public static void open(BaseFragment fragment, int account, long dialogId, ActionBarMenuItem.Item item) {
         if (fragment.getParentActivity() == null) return;
-        fragment.showDialog(NotificationProfilePicker.create(fragment.getParentActivity(), account, dialogId, fragment.getResourceProvider(), () -> refresh(item, account, dialogId)));
+        fragment.showDialog(NotificationProfilePicker.create(fragment.getParentActivity(), account, dialogId, fragment.getResourceProvider(), () -> refresh(item, account, dialogId, true)));
     }
 
     private static CharSequence text(int profile) {

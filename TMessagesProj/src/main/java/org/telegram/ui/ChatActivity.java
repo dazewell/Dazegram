@@ -5071,7 +5071,7 @@ public class ChatActivity extends BaseFragment implements
                 @Override
                 public void onShowSubMenu() {
                     updateScrimSourceBitmap();
-                    com.dazewell.gram.notifprofiles.NotificationProfileMenu.refresh(nkProfileItem, currentAccount, dialog_id); // NagramX: may have changed on the Notifications screen
+                    com.dazewell.gram.notifprofiles.NotificationProfileMenu.refresh(nkProfileItem, currentAccount, dialog_id, getTopicId() == 0 && (currentChat == null || !ChatObject.isNotInChat(currentChat))); // NagramX: profile may have changed elsewhere; hidden on topics (keyed by the raw dialog id) and when mute is hidden
                 }
 
                 @Override
@@ -5163,8 +5163,8 @@ public class ChatActivity extends BaseFragment implements
                         muteItem.openSwipeBack();
                     }
                 });
-                // NagramX: sits with mute; per-chat only, so not on forum topics (the profile is keyed by the raw dialog id).
-                if (!isTopic) nkProfileItem = com.dazewell.gram.notifprofiles.NotificationProfileMenu.add(headerItem, nkheaderbtn_notif_profile, currentAccount, dialog_id);
+                // NagramX: sits with mute; shown per open (see onShowSubMenu), since a forum chat switches topics in place.
+                nkProfileItem = com.dazewell.gram.notifprofiles.NotificationProfileMenu.add(headerItem, nkheaderbtn_notif_profile, currentAccount, dialog_id);
                 muteItemGap = headerItem.lazilyAddColoredGap();
             }
 
