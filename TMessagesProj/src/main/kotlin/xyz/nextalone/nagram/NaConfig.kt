@@ -1203,22 +1203,10 @@ object NaConfig {
             ConfigItem.configTypeBool,
             true
         )
-    val chatMenuItemCall =
+    // Empty means never edited: ChatMenuLayout derives it from the ChatMenuItem* / Shortcuts* switches above.
+    val chatMenuLayout =
         addConfig(
-            "ChatMenuItemCall",
-            ConfigItem.configTypeBool,
-            true
-        )
-    // Empty means the default order, which lives in ChatMenuOrder.
-    val chatHeaderOrder =
-        addConfig(
-            "ChatHeaderOrder",
-            ConfigItem.configTypeString,
-            ""
-        )
-    val chatMenuOrder =
-        addConfig(
-            "ChatMenuOrder",
+            "ChatMenuLayout",
             ConfigItem.configTypeString,
             ""
         )

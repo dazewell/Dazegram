@@ -250,7 +250,7 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
     // MenuAndButtons
     private final AbstractConfigCell headerMenuAndButtons = cellGroup.appendCell(new ConfigCellHeader(getString(R.string.MenuAndButtons)));
     private final AbstractConfigCell chatMenuRow = cellGroup.appendCell(new ConfigCellTextCheckIcon(null, "ChatMenu", null, R.drawable.menu_chats, false, () ->
-            com.dazewell.gram.chatmenu.ChatMenuSettingsDialog.show(this)
+            presentFragment(new com.dazewell.gram.chatmenu.ChatMenuLayoutActivity())
     ));
     private final AbstractConfigCell messageMenuRow = cellGroup.appendCell(new ConfigCellTextCheckIcon(null, "MessageMenu", null, R.drawable.msg_list, false, () ->
             showDialog(showConfigMenuWithIconAlert(this, R.string.MessageMenu, new ArrayList<>() {{

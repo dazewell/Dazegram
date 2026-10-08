@@ -574,7 +574,7 @@ public class ChatActivity extends BaseFragment implements
     private ActionBarMenuItem.Item addContactItem;
     private ActionBarMenuItem.Item clearHistoryItem;
     private ActionBarMenuItem.Item nkProfileItem; // NagramX: the "Alerts" menu item, refreshed on each menu open
-    private ActionBarMenuItem nkBellItem; // NagramX: the header bell; null when the setting is off, in a preview, in Saved Messages or outside the plain chat header
+    private com.dazewell.gram.chatmenu.ChatMenuController nkChatMenu; // NagramX: where the configurable chat buttons go (header icon, menu row or nowhere); null before createView
     private ActionBarMenuItem.Item viewAsTopics;
     private ActionBarMenuItem.Item closeTopicItem;
     private ActionBarMenuItem.Item openForumItem;
@@ -5028,16 +5028,15 @@ public class ChatActivity extends BaseFragment implements
             searchItemVisible = false;
         }
 
+        // NagramX: created for every chat mode, since the menu block below also runs where this header block doesn't; ids in ChatMenuLayout.KEYS order
+        nkChatMenu = new com.dazewell.gram.chatmenu.ChatMenuController(this, currentAccount, dialog_id, nkheaderbtn_notif_bell, nkheaderbtn_notif_profile, shortcuts_administrators, shortcuts_recent_actions,
+                shortcuts_statistics, shortcuts_permissions, shortcuts_members, call, video_call, boost_group, nkheaderbtn_linked_chat, to_the_beginning, to_the_message, nkheaderbtn_hide_title,
+                nkbtn_viewDeleted, nkbtn_clearDeleted, nkheaderbtn_zibi);
         if (chatMode == 0 && (threadMessageId == 0 || isTopic) && !UserObject.isReplyUser(currentUser) && !isReport() && !isTitleCentered()) {
             TLRPC.UserFull userFull = null;
-            // NagramX: Alerts bell, added before or after the call icon per the saved header order (menu order follows the id registration order); visibility is owned by updateBell
-            boolean nkBell = !inPreviewMode && (currentUser == null || !currentUser.self) && NaConfig.INSTANCE.getChatMenuItemNotifProfileBell().Bool();
-            boolean nkBellFirst = com.dazewell.gram.chatmenu.ChatMenuOrder.bellFirst();
-            if (nkBell && nkBellFirst) {
-                nkBellItem = com.dazewell.gram.notifprofiles.NotificationProfileMenu.addBell(this, menu, nkheaderbtn_notif_bell, currentAccount, dialog_id);
-            }
-            // NagramX: the Call toggle only drops the header icon; with no icon, Call stays in the "..." menu
-            if (currentUser != null && NaConfig.INSTANCE.getChatMenuItemCall().Bool()) {
+            nkChatMenu.addHeaderIcons(menu, true); // NagramX: the header icons ahead of Call, in the user's order (registration order is screen order)
+            // NagramX: Call's header icon only when the user put Call in the header; otherwise its menu row stands in
+            if (currentUser != null && nkChatMenu.inHeader(com.dazewell.gram.chatmenu.ChatMenuLayout.CALL)) {
                 audioCallIconItem = menu.lazilyAddItem(call, R.drawable.call, themeDelegate);
                 audioCallIconItem.setContentDescription(LocaleController.getString(R.string.Call));
                 userFull = getMessagesController().getUserFull(currentUser.id);
@@ -5049,9 +5048,7 @@ public class ChatActivity extends BaseFragment implements
                     audioCallIconItem.setVisibility(View.GONE);
                 }
             }
-            if (nkBell && !nkBellFirst) {
-                nkBellItem = com.dazewell.gram.notifprofiles.NotificationProfileMenu.addBell(this, menu, nkheaderbtn_notif_bell, currentAccount, dialog_id);
-            }
+            nkChatMenu.addHeaderIcons(menu, false); // NagramX: the header icons after Call
         }
         /*
         Choreographer60FpsContent.getInstance().addFrameCallback(justForTest = () -> {
@@ -5083,7 +5080,7 @@ public class ChatActivity extends BaseFragment implements
                 @Override
                 public void onShowSubMenu() {
                     updateScrimSourceBitmap();
-                    com.dazewell.gram.notifprofiles.NotificationProfileMenu.refresh(nkProfileItem, currentAccount, dialog_id, getTopicId() == 0 && (currentChat == null || !ChatObject.isNotInChat(currentChat))); // NagramX: profile may have changed elsewhere; hidden on topics (keyed by the raw dialog id) and when mute is hidden
+                    com.dazewell.gram.notifprofiles.NotificationProfileMenu.refresh(nkProfileItem, currentAccount, dialog_id, getTopicId() == 0 && (currentChat == null || !ChatObject.isNotInChat(currentChat)) && nkChatMenu != null && nkChatMenu.alertsRowWanted()); // NagramX: profile may have changed elsewhere; hidden on topics (keyed by the raw dialog id), when mute is hidden, and while the bell shows
                 }
 
                 @Override
@@ -5176,32 +5173,17 @@ public class ChatActivity extends BaseFragment implements
                     }
                 });
                 // NagramX: sits with mute; shown per open (see onShowSubMenu), since a forum chat switches topics in place.
-                nkProfileItem = com.dazewell.gram.notifprofiles.NotificationProfileMenu.add(headerItem, nkheaderbtn_notif_profile, currentAccount, dialog_id);
+                nkProfileItem = nkChatMenu.addAlerts(headerItem);
                 muteItemGap = headerItem.lazilyAddColoredGap();
             }
 
             if (ChatObject.hasAdminRights(currentChat)) {
                 boolean hasAtLeastOneOption = false;
-                if (NaConfig.INSTANCE.getShortcutsAdministrators().Bool()) {
-                    hasAtLeastOneOption = true;
-                    headerItem.lazilyAddSubItem(shortcuts_administrators, R.drawable.msg_admins, LocaleController.getString(R.string.ChannelAdministrators));
-                }
-                if (NaConfig.INSTANCE.getShortcutsRecentActions().Bool()) {
-                    hasAtLeastOneOption = true;
-                    headerItem.lazilyAddSubItem(shortcuts_recent_actions, R.drawable.msg_log, LocaleController.getString(R.string.EventLog));
-                }
-                if (NaConfig.INSTANCE.getShortcutsStatistics().Bool()) {
-                    hasAtLeastOneOption = true;
-                    headerItem.lazilyAddSubItem(shortcuts_statistics, R.drawable.msg_stats, LocaleController.getString(R.string.Statistics));
-                }
-                if (NaConfig.INSTANCE.getShortcutsPermissions().Bool()) {
-                    hasAtLeastOneOption = true;
-                    headerItem.lazilyAddSubItem(shortcuts_permissions, R.drawable.msg_permissions, LocaleController.getString(R.string.ChannelPermissions));
-                }
-                if (NaConfig.INSTANCE.getShortcutsMembers().Bool()) {
-                    hasAtLeastOneOption = true;
-                    headerItem.lazilyAddSubItem(shortcuts_members, R.drawable.msg_groups, LocaleController.getString(R.string.GroupMembers));
-                }
+                hasAtLeastOneOption |= nkChatMenu.add(headerItem, com.dazewell.gram.chatmenu.ChatMenuLayout.ADMINS, R.drawable.msg_admins, LocaleController.getString(R.string.ChannelAdministrators)) != null;
+                hasAtLeastOneOption |= nkChatMenu.add(headerItem, com.dazewell.gram.chatmenu.ChatMenuLayout.RECENT, R.drawable.msg_log, LocaleController.getString(R.string.EventLog)) != null;
+                hasAtLeastOneOption |= nkChatMenu.add(headerItem, com.dazewell.gram.chatmenu.ChatMenuLayout.STATS, R.drawable.msg_stats, LocaleController.getString(R.string.Statistics)) != null;
+                hasAtLeastOneOption |= nkChatMenu.add(headerItem, com.dazewell.gram.chatmenu.ChatMenuLayout.PERMISSIONS, R.drawable.msg_permissions, LocaleController.getString(R.string.ChannelPermissions)) != null;
+                hasAtLeastOneOption |= nkChatMenu.add(headerItem, com.dazewell.gram.chatmenu.ChatMenuLayout.MEMBERS, R.drawable.msg_groups, LocaleController.getString(R.string.GroupMembers)) != null;
                 if (hasAtLeastOneOption) {
                     headerItem.lazilyAddColoredGap();
                 }
@@ -5212,8 +5194,8 @@ public class ChatActivity extends BaseFragment implements
                 headerItem.setSubItemShown(open_direct, ChatObject.isChannel(currentChat) && !ChatObject.isMonoForum(currentChat) && currentChat.linked_monoforum_id != 0 && (NaConfig.INSTANCE.getDisableChannelMuteButton().Bool() || ChatObject.canManageMonoForum(currentAccount, -currentChat.linked_monoforum_id)));
             }
             if (currentUser != null && chatMode != MODE_SAVED) {
-                headerItem.lazilyAddSubItem(call, R.drawable.msg_callback, LocaleController.getString(R.string.Call));
-                headerItem.lazilyAddSubItem(video_call, R.drawable.msg_videocall, LocaleController.getString(R.string.VideoCall));
+                if (!nkChatMenu.hidden(com.dazewell.gram.chatmenu.ChatMenuLayout.CALL)) headerItem.lazilyAddSubItem(call, R.drawable.msg_callback, LocaleController.getString(R.string.Call)); // NagramX: also upstream's stand-in while Call's header icon can't show
+                nkChatMenu.add(headerItem, com.dazewell.gram.chatmenu.ChatMenuLayout.VIDEO, R.drawable.msg_videocall, LocaleController.getString(R.string.VideoCall)); // NagramX: header icon, menu row or hidden
                 if (userFull != null && userFull.phone_calls_available) {
                     headerItem.showSubItem(call);
                     if (userFull.video_calls_available) {
@@ -5245,7 +5227,7 @@ public class ChatActivity extends BaseFragment implements
             }
             if (ChatObject.isBoostSupported(currentChat) && (getUserConfig().isPremium() || ChatObject.isBoosted(chatInfo) || ChatObject.hasAdminRights(currentChat))) {
                 RLottieDrawable drawable = new RLottieDrawable(R.raw.boosts, dp(24), dp(24));
-                if (NaConfig.INSTANCE.getChatMenuItemBoostGroup().Bool()) headerItem.lazilyAddSubItem(boost_group, drawable, LocaleController.getString(ChatObject.isChannelAndNotMegaGroup(currentChat) ? R.string.BoostingBoostChannelMenu : R.string.BoostingBoostGroupMenu));
+                nkChatMenu.add(headerItem, com.dazewell.gram.chatmenu.ChatMenuLayout.BOOST, drawable, LocaleController.getString(ChatObject.isChannelAndNotMegaGroup(currentChat) ? R.string.BoostingBoostChannelMenu : R.string.BoostingBoostGroupMenu));
             }
             translateItem = headerItem.lazilyAddSubItem(translate, LlmConfig.llmIsDefaultProvider() ? R.drawable.magic_stick_solar : R.drawable.msg_translate, LocaleController.getString(R.string.TranslateMessage));
             updateTranslateItemVisibility();
@@ -5263,7 +5245,7 @@ public class ChatActivity extends BaseFragment implements
                     text = getString(R.string.LinkedChannelChat);
                     draw = R.drawable.msg_channel;
                 }
-                if (NaConfig.INSTANCE.getChatMenuItemLinkedChat().Bool()) headerItem.lazilyAddSubItem(nkheaderbtn_linked_chat, draw, text);
+                nkChatMenu.add(headerItem, com.dazewell.gram.chatmenu.ChatMenuLayout.LINKED, draw, text);
             }
             if (currentUser != null && currentUser.id != UserObject.VERIFY && currentUser.id != UserObject.REPLY_BOT) {
                 addContactItem = headerItem.lazilyAddSubItem(share_contact, R.drawable.msg_addcontact, LocaleController.getString(R.string.AddToContacts));
@@ -5289,18 +5271,20 @@ public class ChatActivity extends BaseFragment implements
             // NagramX: shown in Glass too; the sheet then explains it needs MD3 and links to the switch.
             if (com.dazewell.gram.headerbg.HeaderBgDrawer.eligible(this)) headerItem.lazilyAddSubItem(nkheaderbtn_header_bg, R.drawable.menu_feature_cover_24, getString(R.string.HeaderBackground));
             boolean addedSettings = false;
-            if (NaConfig.INSTANCE.getChatMenuItemToBeginning().Bool()) headerItem.lazilyAddSubItem(to_the_beginning, R.drawable.ic_upward, getString(R.string.ToTheBeginning));
-            if (NaConfig.INSTANCE.getChatMenuItemGoToMessage().Bool()) headerItem.lazilyAddSubItem(to_the_message, R.drawable.msg_go_up, getString(R.string.ToTheMessage));
+            nkChatMenu.add(headerItem, com.dazewell.gram.chatmenu.ChatMenuLayout.BEGINNING, R.drawable.ic_upward, getString(R.string.ToTheBeginning));
+            nkChatMenu.add(headerItem, com.dazewell.gram.chatmenu.ChatMenuLayout.GOTOMSG, R.drawable.msg_go_up, getString(R.string.ToTheMessage));
             if (NaConfig.INSTANCE.getShowAddToBookmark().Bool()) {
                 bookmarksItem = headerItem.lazilyAddSubItem(nkbtn_bookmarks_manager, R.drawable.msg_fave, getString(R.string.BookmarksManager));
                 headerItem.setSubItemShown(nkbtn_bookmarks_manager, BookmarksHelper.getBookmarkedMessageIds(currentAccount, dialog_id).length > 0);
             }
-            hideTitleItem = NaConfig.INSTANCE.getChatMenuItemHideTitle().Bool() ? headerItem.lazilyAddSubItem(nkheaderbtn_hide_title, R.drawable.hide_title, getString(R.string.HideTitle)) : null;
-            if (NaConfig.INSTANCE.getChatMenuItemViewDeleted().Bool() && NaConfig.INSTANCE.getEnableSaveDeletedMessages().Bool()) headerItem.lazilyAddSubItem(nkbtn_viewDeleted, R.drawable.msg_view_file, getString(R.string.ViewDeleted));
-            if (NaConfig.INSTANCE.getChatMenuItemClearDeleted().Bool() && NaConfig.INSTANCE.getEnableSaveDeletedMessages().Bool()) headerItem.lazilyAddSubItem(nkbtn_clearDeleted, R.drawable.msg_clear, getString(R.string.ClearDeleted));
+            hideTitleItem = nkChatMenu.add(headerItem, com.dazewell.gram.chatmenu.ChatMenuLayout.HIDETITLE, R.drawable.hide_title, getString(R.string.HideTitle));
+            if (NaConfig.INSTANCE.getEnableSaveDeletedMessages().Bool()) {
+                nkChatMenu.add(headerItem, com.dazewell.gram.chatmenu.ChatMenuLayout.VIEWDELETED, R.drawable.msg_view_file, getString(R.string.ViewDeleted));
+                nkChatMenu.add(headerItem, com.dazewell.gram.chatmenu.ChatMenuLayout.CLEARDELETED, R.drawable.msg_clear, getString(R.string.ClearDeleted));
+            }
             if (!isTopic) {
-                if (NaConfig.INSTANCE.getChatMenuItemDeleteOwnMessages().Bool() && (ChatObject.isMegagroup(currentChat) || currentChat != null && !ChatObject.isChannel(currentChat))) {
-                    headerItem.lazilyAddSubItem(nkheaderbtn_zibi, R.drawable.msg_delete, LocaleController.getString(R.string.DeleteAllFromSelf));
+                if (ChatObject.isMegagroup(currentChat) || currentChat != null && !ChatObject.isChannel(currentChat)) {
+                    nkChatMenu.add(headerItem, com.dazewell.gram.chatmenu.ChatMenuLayout.DELETEOWN, R.drawable.msg_delete, LocaleController.getString(R.string.DeleteAllFromSelf));
                 }
                 if (ChatObject.isChannel(currentChat) && !currentChat.creator) {
                     if (!ChatObject.isNotInChat(currentChat)) {
@@ -5340,9 +5324,7 @@ public class ChatActivity extends BaseFragment implements
                 feeItemGap.setVisibility(View.GONE);
                 feeItemText.setVisibility(View.GONE);
             }
-            // NagramX: reorder the configurable items among their own slots, per N-Settings > Chats > Chat menu; ids in default order
-            com.dazewell.gram.chatmenu.ChatMenuOrder.apply(headerItem, shortcuts_administrators, shortcuts_recent_actions, shortcuts_statistics, shortcuts_permissions, shortcuts_members,
-                    boost_group, nkheaderbtn_linked_chat, to_the_beginning, to_the_message, nkheaderbtn_hide_title, nkbtn_viewDeleted, nkbtn_clearDeleted, nkheaderbtn_zibi);
+            nkChatMenu.finish(headerItem); // NagramX: the configurable rows take the user's order among the slots they occupy
         } else if (chatMode == MODE_EDIT_BUSINESS_LINK) {
             headerItem = menu.addItem(chat_menu_options, otherIcon);
             otherIcon.addView(headerItem.getIconView());
@@ -20284,9 +20266,6 @@ public class ChatActivity extends BaseFragment implements
                         ((ViewGroup.MarginLayoutParams) avatarContainer.getLayoutParams()).rightMargin = isTitleCentered() ? 0 : AndroidUtilities.dp(52);
                     }
                 }
-                if (nkBellItem != null && nkBellItem.getVisibility() == View.VISIBLE && !isTitleCentered() && avatarContainer != null && avatarContainer.getLayoutParams() != null) {
-                    ((ViewGroup.MarginLayoutParams) avatarContainer.getLayoutParams()).rightMargin += AndroidUtilities.dp(48); // NagramX: room for the visible Alerts bell; relies on this block running on every measure (lastWidth is never equal), so a bell flip re-measures
-                }
                 if (showSearchAsIcon) {
                     if (!actionBar.isSearchFieldVisible() && searchIconItem != null) {
                         searchIconItem.setVisibility(View.VISIBLE);
@@ -20315,6 +20294,7 @@ public class ChatActivity extends BaseFragment implements
                 }
                 globalIgnoreLayout = false;
             }
+            com.dazewell.gram.chatmenu.ChatMenuController.applyTitleMargin(avatarContainer, actionBar.menu, isTitleCentered() || actionBar.isSearchFieldVisible()); // NagramX: overrides the fixed margin above with the icons actually on screen, after their visibility is settled
 
             setMeasuredDimension(allWidth, heightSize);
             heightSize -= getPaddingTop();
@@ -21839,7 +21819,7 @@ public class ChatActivity extends BaseFragment implements
         if (chatNotificationsPopupWrapper != null) {
             chatNotificationsPopupWrapper.update(dialog_id, getTopicId(), null);
         }
-        com.dazewell.gram.notifprofiles.NotificationProfileMenu.updateBell(nkBellItem, currentAccount, dialog_id, getTopicId() != 0, !searchItemVisible && (currentChat == null || !ChatObject.isNotInChat(currentChat)), isMuted); // NagramX: hidden while Telegram's mute is on or in-chat search is open
+        nkUpdateChatMenu(isMuted); // NagramX: the bell hides while Telegram's mute is on
     }
 
     public void checkAndUpdateAvatar() {
@@ -26345,7 +26325,7 @@ public class ChatActivity extends BaseFragment implements
                     }
                 }
                 if (headerItem != null) {
-                    showAudioCallAsIcon = userInfo.phone_calls_available && !inPreviewMode && !isTitleCentered() && NaConfig.INSTANCE.getChatMenuItemCall().Bool(); // NagramX: no header icon with the Call toggle off, so Call stays in "..."
+                    showAudioCallAsIcon = userInfo.phone_calls_available && !inPreviewMode && !isTitleCentered() && audioCallIconItem != null; // NagramX: no icon unless Call is placed in the header and the header exists; the menu row stands in otherwise
                     if (userInfo.phone_calls_available) {
                         if (showAudioCallAsIcon) {
                             if (audioCallIconItem != null) {
@@ -26372,6 +26352,7 @@ public class ChatActivity extends BaseFragment implements
                         }
                     }
                 }
+                nkUpdateChatMenu(getMessagesController().isDialogMuted(dialog_id, getTopicId())); // NagramX: a Video call header icon waits for this user info
                 checkActionBarMenu(fragmentOpened);
                 if (!inMenuMode && !loadingPinnedMessagesList && !pinnedMessageIds.isEmpty() && userInfo.pinned_msg_id > pinnedMessageIds.get(0)) {
                     getMediaDataController().loadPinnedMessages(dialog_id, 0, userInfo.pinned_msg_id);
@@ -30524,7 +30505,7 @@ public class ChatActivity extends BaseFragment implements
             showGiftButton = false;
             showSuggestButton = false;
         }
-        com.dazewell.gram.notifprofiles.NotificationProfileMenu.updateBell(nkBellItem, currentAccount, dialog_id, getTopicId() != 0, !searchItemVisible && (currentChat == null || !ChatObject.isNotInChat(currentChat)), getMessagesController().isDialogMuted(dialog_id, getTopicId())); // NagramX: before the branches so it also runs for in-chat search, which hides the other header icons; follows join state like mute
+        nkUpdateChatMenu(getMessagesController().isDialogMuted(dialog_id, getTopicId())); // NagramX: before the branches so it also runs for in-chat search, which hides the header icons; follows join state like mute
         if (inPreviewMode) {
             bottomViewsVisibilityController.setViewVisible(MESSAGE_SEARCH_CONTAINER, false, false);
             bottomChannelButtonsLayout.setVisibility(View.INVISIBLE);
@@ -32327,9 +32308,17 @@ public class ChatActivity extends BaseFragment implements
         super.dismissCurrentDialog();
     }
 
+    // NagramX: the one place the chat button controller learns the state its header icons follow
+    private void nkUpdateChatMenu(boolean muted) {
+        if (nkChatMenu != null) {
+            nkChatMenu.updateHeader(searchItemVisible, inPreviewMode, getTopicId() != 0, currentChat == null || !ChatObject.isNotInChat(currentChat), muted);
+        }
+    }
+
     @Override
     public void setInPreviewMode(boolean value) {
         super.setInPreviewMode(value);
+        nkUpdateChatMenu(getMessagesController().isDialogMuted(dialog_id, getTopicId())); // NagramX: a peek expanded into the chat shows its header icons
         if (currentUser != null && audioCallIconItem != null) {
             TLRPC.UserFull userFull = getMessagesController().getUserFull(currentUser.id);
             if (userFull != null && userFull.phone_calls_available) {
@@ -48573,7 +48562,7 @@ public class ChatActivity extends BaseFragment implements
         } else if (id == nkbtn_viewDeleted) {
             presentFragment(new AyuViewDeleted(dialog_id));
         } else if (id == nkheaderbtn_notif_profile) {
-            com.dazewell.gram.notifprofiles.NotificationProfileMenu.open(ChatActivity.this, currentAccount, dialog_id, nkProfileItem, nkBellItem);
+            com.dazewell.gram.notifprofiles.NotificationProfileMenu.open(ChatActivity.this, currentAccount, dialog_id, nkProfileItem, nkChatMenu == null ? null : nkChatMenu.bell());
         } else if (id == nkheaderbtn_chat_privacy) {
             com.dazewell.gram.chatprivacy.ChatPrivacySheet.show(ChatActivity.this, dialog_id);
         } else if (id == nkheaderbtn_header_bg) {
@@ -48629,6 +48618,7 @@ public class ChatActivity extends BaseFragment implements
                 }
             }
             if (hideTitleItem != null) hideTitleItem.setVisibility(android.view.View.GONE);
+            if (nkChatMenu != null) nkChatMenu.consumeHideTitle(); // NagramX: its header icon goes too
         } else if (id == nkbtn_detail) {
             ArrayList<MessageObject> messageObjects = getSelectedMessages();
             if (!messageObjects.isEmpty()) {

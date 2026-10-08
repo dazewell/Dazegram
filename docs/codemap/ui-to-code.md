@@ -1263,17 +1263,22 @@ about this screen, use the labels; reading the code, expect the constants.
 
 *(Established 2026-09-13, #docs.)*
 
-## Chat ⋮ menu order is applied by permuting the lazy list
+## Chat header icons and ⋮ rows are placed by one per-chat controller
 
-The in-chat ⋮ menu items are registered with `lazilyAddSubItem`, which only
-appends to `ActionBarMenuItem.lazyList`; nothing is laid out until the first
-`toggleSubMenu` calls `layoutLazyItems()`
-(`org/telegram/ui/ActionBar/ActionBarMenuItem.java:827`, `:2762`, `:2773`).
-So the user's order from N-Settings → Chats → Chat menu is applied once, after
-the whole menu is built, by `ChatMenuOrder.apply(...)` sorting the configurable
-items among the slots they already occupy
-(`org/telegram/ui/ChatActivity.java:5344`). Registration code and its
-conditions stay untouched; header buttons follow registration order instead
-(`ChatActivity.java:5035`).
+`ChatMenuController` is created for every chat mode before the header block,
+because the ⋮ block also runs where the header block doesn't (centred title,
+suggestions) (`org/telegram/ui/ChatActivity.java:5032`). Header icons register
+on each side of upstream's Call icon, since registration order is screen order
+(`:5037`, `:5051`). Each configurable ⋮ site calls `nkChatMenu.add(...)` under
+its own conditions; `finish` then sorts those rows among the slots they occupy
+in `ActionBarMenuItem.lazyList`, which nothing lays out until the first
+`toggleSubMenu` (`:5327`; `org/telegram/ui/ActionBar/ActionBarMenuItem.java:827`,
+`:2762`, `:2773`). Header-icon visibility funnels through `nkUpdateChatMenu`
+(`ChatActivity.java:32312`).
+
+Upstream's fixed 52/92dp title margin assumes 48dp icons, but Glass gives each
+menu item -5dp side margins (`org/telegram/ui/ActionBar/ActionBarMenu.java:666`),
+so the margin is recomputed from the visible items after upstream's block
+(`ChatActivity.java:20297`).
 
 *(Established 2026-10-07.)*
