@@ -574,7 +574,7 @@ public class ChatActivity extends BaseFragment implements
     private ActionBarMenuItem.Item addContactItem;
     private ActionBarMenuItem.Item clearHistoryItem;
     private ActionBarMenuItem.Item nkProfileItem; // NagramX: the "Alerts" menu item, refreshed on each menu open
-    private ActionBarMenuItem nkBellItem; // NagramX: the header bell; null when the setting is off or the chat has no mute
+    private ActionBarMenuItem nkBellItem; // NagramX: the header bell; null when the setting is off, in a preview, in Saved Messages or outside the plain chat header
     private ActionBarMenuItem.Item viewAsTopics;
     private ActionBarMenuItem.Item closeTopicItem;
     private ActionBarMenuItem.Item openForumItem;
@@ -20275,8 +20275,8 @@ public class ChatActivity extends BaseFragment implements
                         ((ViewGroup.MarginLayoutParams) avatarContainer.getLayoutParams()).rightMargin = isTitleCentered() ? 0 : AndroidUtilities.dp(52);
                     }
                 }
-                if (nkBellItem != null && !isTitleCentered() && avatarContainer != null && avatarContainer.getLayoutParams() != null) {
-                    ((ViewGroup.MarginLayoutParams) avatarContainer.getLayoutParams()).rightMargin += AndroidUtilities.dp(48); // NagramX: room for the Alerts bell left of the options button
+                if (nkBellItem != null && nkBellItem.getVisibility() == View.VISIBLE && !isTitleCentered() && avatarContainer != null && avatarContainer.getLayoutParams() != null) {
+                    ((ViewGroup.MarginLayoutParams) avatarContainer.getLayoutParams()).rightMargin += AndroidUtilities.dp(48); // NagramX: room for the visible Alerts bell; relies on this block running on every measure (lastWidth is never equal), so a bell flip re-measures
                 }
                 if (showSearchAsIcon) {
                     if (!actionBar.isSearchFieldVisible() && searchIconItem != null) {
@@ -21830,7 +21830,7 @@ public class ChatActivity extends BaseFragment implements
         if (chatNotificationsPopupWrapper != null) {
             chatNotificationsPopupWrapper.update(dialog_id, getTopicId(), null);
         }
-        com.dazewell.gram.notifprofiles.NotificationProfileMenu.updateBell(nkBellItem, currentAccount, dialog_id, getTopicId() != 0, currentChat == null || !ChatObject.isNotInChat(currentChat), isMuted); // NagramX: hidden while Telegram's mute is on
+        com.dazewell.gram.notifprofiles.NotificationProfileMenu.updateBell(nkBellItem, currentAccount, dialog_id, getTopicId() != 0, !searchItemVisible && (currentChat == null || !ChatObject.isNotInChat(currentChat)), isMuted); // NagramX: hidden while Telegram's mute is on or in-chat search is open
     }
 
     public void checkAndUpdateAvatar() {
@@ -30515,6 +30515,7 @@ public class ChatActivity extends BaseFragment implements
             showGiftButton = false;
             showSuggestButton = false;
         }
+        com.dazewell.gram.notifprofiles.NotificationProfileMenu.updateBell(nkBellItem, currentAccount, dialog_id, getTopicId() != 0, !searchItemVisible && (currentChat == null || !ChatObject.isNotInChat(currentChat)), getMessagesController().isDialogMuted(dialog_id, getTopicId())); // NagramX: before the branches so it also runs for in-chat search, which hides the other header icons; follows join state like mute
         if (inPreviewMode) {
             bottomViewsVisibilityController.setViewVisible(MESSAGE_SEARCH_CONTAINER, false, false);
             bottomChannelButtonsLayout.setVisibility(View.INVISIBLE);
@@ -30614,7 +30615,6 @@ public class ChatActivity extends BaseFragment implements
                     muteItemGap.setVisibility(View.VISIBLE);
                 }
             }
-            com.dazewell.gram.notifprofiles.NotificationProfileMenu.updateBell(nkBellItem, currentAccount, dialog_id, getTopicId() != 0, currentChat == null || !ChatObject.isNotInChat(currentChat), getMessagesController().isDialogMuted(dialog_id, getTopicId())); // NagramX: the bell follows the same join state as mute
             if (isInsideContainer || forceNoBottom || shouldHideBottomFor3ButtonNav() || shouldHideBottomForGesture()) {
                 bottomChannelButtonsLayout.setVisibility(View.GONE);
                 chatActivityEnterView.setVisibility(View.GONE);

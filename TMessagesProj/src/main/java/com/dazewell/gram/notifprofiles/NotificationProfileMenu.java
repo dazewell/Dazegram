@@ -34,7 +34,7 @@ public final class NotificationProfileMenu {
     }
 
     // The header bell: one tap cycles Loud -> Quiet -> Passive and says what the new profile does, a long press opens
-    // the picker. It starts hidden; update() owns its visibility because a forum chat switches topics in place and
+    // the picker. It starts hidden; updateBell() owns its visibility because a forum chat switches topics in place and
     // Telegram's own mute can flip while the chat is open.
     public static ActionBarMenuItem addBell(BaseFragment fragment, ActionBarMenu menu, int id, int account, long dialogId) {
         ActionBarMenuItem bell = menu.addItem(id, iconRes(NotificationProfiles.get(account, dialogId)), fragment.getResourceProvider());
