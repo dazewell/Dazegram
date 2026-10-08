@@ -498,6 +498,7 @@ public class ChatActivity extends BaseFragment implements
     private final static int nkheaderbtn_header_bg = 2103;
     private final static int nkbtn_personal_replies = 2104;
     private final static int nkheaderbtn_notif_profile = 2105; // NagramX: chat menu "Alerts: <profile>" item
+    private final static int nkheaderbtn_notif_bell = 2106; // NagramX: header bell that cycles the profile
 
     public int shareAlertDebugMode = DEBUG_SHARE_ALERT_MODE_NORMAL;
     public boolean shareAlertDebugTopicsSlowMotion;
@@ -573,6 +574,7 @@ public class ChatActivity extends BaseFragment implements
     private ActionBarMenuItem.Item addContactItem;
     private ActionBarMenuItem.Item clearHistoryItem;
     private ActionBarMenuItem.Item nkProfileItem; // NagramX: the "Alerts" menu item, refreshed on each menu open
+    private ActionBarMenuItem nkBellItem; // NagramX: the header bell; null when the setting is off, in a preview, in Saved Messages or outside the plain chat header
     private ActionBarMenuItem.Item viewAsTopics;
     private ActionBarMenuItem.Item closeTopicItem;
     private ActionBarMenuItem.Item openForumItem;
@@ -5028,6 +5030,10 @@ public class ChatActivity extends BaseFragment implements
 
         if (chatMode == 0 && (threadMessageId == 0 || isTopic) && !UserObject.isReplyUser(currentUser) && !isReport() && !isTitleCentered()) {
             TLRPC.UserFull userFull = null;
+            // NagramX: Alerts bell, added before the call icon so it sits left of it (menu order follows the id registration order); visibility is owned by updateBell
+            if (!inPreviewMode && (currentUser == null || !currentUser.self) && NaConfig.INSTANCE.getChatMenuItemNotifProfileBell().Bool()) {
+                nkBellItem = com.dazewell.gram.notifprofiles.NotificationProfileMenu.addBell(this, menu, nkheaderbtn_notif_bell, currentAccount, dialog_id);
+            }
             if (currentUser != null) {
                 audioCallIconItem = menu.lazilyAddItem(call, R.drawable.call, themeDelegate);
                 audioCallIconItem.setContentDescription(LocaleController.getString(R.string.Call));
@@ -20269,6 +20275,9 @@ public class ChatActivity extends BaseFragment implements
                         ((ViewGroup.MarginLayoutParams) avatarContainer.getLayoutParams()).rightMargin = isTitleCentered() ? 0 : AndroidUtilities.dp(52);
                     }
                 }
+                if (nkBellItem != null && nkBellItem.getVisibility() == View.VISIBLE && !isTitleCentered() && avatarContainer != null && avatarContainer.getLayoutParams() != null) {
+                    ((ViewGroup.MarginLayoutParams) avatarContainer.getLayoutParams()).rightMargin += AndroidUtilities.dp(48); // NagramX: room for the visible Alerts bell; relies on this block running on every measure (lastWidth is never equal), so a bell flip re-measures
+                }
                 if (showSearchAsIcon) {
                     if (!actionBar.isSearchFieldVisible() && searchIconItem != null) {
                         searchIconItem.setVisibility(View.VISIBLE);
@@ -21821,6 +21830,7 @@ public class ChatActivity extends BaseFragment implements
         if (chatNotificationsPopupWrapper != null) {
             chatNotificationsPopupWrapper.update(dialog_id, getTopicId(), null);
         }
+        com.dazewell.gram.notifprofiles.NotificationProfileMenu.updateBell(nkBellItem, currentAccount, dialog_id, getTopicId() != 0, !searchItemVisible && (currentChat == null || !ChatObject.isNotInChat(currentChat)), isMuted); // NagramX: hidden while Telegram's mute is on or in-chat search is open
     }
 
     public void checkAndUpdateAvatar() {
@@ -30505,6 +30515,7 @@ public class ChatActivity extends BaseFragment implements
             showGiftButton = false;
             showSuggestButton = false;
         }
+        com.dazewell.gram.notifprofiles.NotificationProfileMenu.updateBell(nkBellItem, currentAccount, dialog_id, getTopicId() != 0, !searchItemVisible && (currentChat == null || !ChatObject.isNotInChat(currentChat)), getMessagesController().isDialogMuted(dialog_id, getTopicId())); // NagramX: before the branches so it also runs for in-chat search, which hides the other header icons; follows join state like mute
         if (inPreviewMode) {
             bottomViewsVisibilityController.setViewVisible(MESSAGE_SEARCH_CONTAINER, false, false);
             bottomChannelButtonsLayout.setVisibility(View.INVISIBLE);
@@ -48553,7 +48564,7 @@ public class ChatActivity extends BaseFragment implements
         } else if (id == nkbtn_viewDeleted) {
             presentFragment(new AyuViewDeleted(dialog_id));
         } else if (id == nkheaderbtn_notif_profile) {
-            com.dazewell.gram.notifprofiles.NotificationProfileMenu.open(ChatActivity.this, currentAccount, dialog_id, nkProfileItem);
+            com.dazewell.gram.notifprofiles.NotificationProfileMenu.open(ChatActivity.this, currentAccount, dialog_id, nkProfileItem, nkBellItem);
         } else if (id == nkheaderbtn_chat_privacy) {
             com.dazewell.gram.chatprivacy.ChatPrivacySheet.show(ChatActivity.this, dialog_id);
         } else if (id == nkheaderbtn_header_bg) {

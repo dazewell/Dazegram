@@ -1197,6 +1197,12 @@ object NaConfig {
             ConfigItem.configTypeBool,
             true
         )
+    val chatMenuItemNotifProfileBell =
+        addConfig(
+            "ChatMenuItemNotifProfileBell",
+            ConfigItem.configTypeBool,
+            true
+        )
     val mediaViewerMenuItemForward =
         addConfig(
             "MediaViewerMenuItemForward",

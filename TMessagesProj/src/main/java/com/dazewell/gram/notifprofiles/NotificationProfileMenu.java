@@ -2,8 +2,10 @@ package com.dazewell.gram.notifprofiles;
 
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
+import org.telegram.ui.ActionBar.ActionBarMenu;
 import org.telegram.ui.ActionBar.ActionBarMenuItem;
 import org.telegram.ui.ActionBar.BaseFragment;
+import org.telegram.ui.Components.BulletinFactory;
 
 // NagramX: the chat header menu entry that shows a chat's notification profile and opens the picker, so changing it
 // no longer takes four taps through the Notifications screen.
@@ -26,9 +28,58 @@ public final class NotificationProfileMenu {
         item.setIcon(iconRes(profile));
     }
 
-    public static void open(BaseFragment fragment, int account, long dialogId, ActionBarMenuItem.Item item) {
+    public static void open(BaseFragment fragment, int account, long dialogId, ActionBarMenuItem.Item item, ActionBarMenuItem bell) {
         if (fragment.getParentActivity() == null) return;
-        fragment.showDialog(NotificationProfilePicker.create(fragment.getParentActivity(), account, dialogId, fragment.getResourceProvider(), () -> refresh(item, account, dialogId, true)));
+        fragment.showDialog(NotificationProfilePicker.create(fragment.getParentActivity(), account, dialogId, fragment.getResourceProvider(), () -> {
+            refresh(item, account, dialogId, true);
+            syncBell(bell, account, dialogId);
+        }));
+    }
+
+    // The header bell: one tap cycles Loud -> Quiet -> Passive and says what the new profile does, a long press opens
+    // the picker. It starts hidden; updateBell() owns its visibility because a forum chat switches topics in place and
+    // Telegram's own mute can flip while the chat is open.
+    public static ActionBarMenuItem addBell(BaseFragment fragment, ActionBarMenu menu, int id, int account, long dialogId) {
+        ActionBarMenuItem bell = menu.addItem(id, iconRes(NotificationProfiles.get(account, dialogId)), fragment.getResourceProvider());
+        bell.setVisibility(android.view.View.GONE);
+        bell.setOnClickListener(v -> cycle(fragment, bell, account, dialogId));
+        bell.setOnLongClickListener(v -> {
+            if (fragment.getParentActivity() != null) {
+                fragment.showDialog(NotificationProfilePicker.create(fragment.getParentActivity(), account, dialogId, fragment.getResourceProvider(), () -> syncBell(bell, account, dialogId)));
+            }
+            return true;
+        });
+        return bell;
+    }
+
+    // Shown only where the Alerts menu item is (not on topics, which are keyed by the raw dialog id, and not while the user is
+    // out of the chat) and not while Telegram's own mute is on, since a muted chat posts nothing for a profile to shape.
+    public static void updateBell(ActionBarMenuItem bell, int account, long dialogId, boolean topic, boolean inChat, boolean muted) {
+        if (bell == null) return;
+        boolean visible = !topic && inChat && !muted;
+        bell.setVisibility(visible ? android.view.View.VISIBLE : android.view.View.GONE);
+        if (visible) {
+            syncBell(bell, account, dialogId);
+        }
+    }
+
+    // Icon and description only, never visibility: the picker is also reachable from the Alerts item while the bell is hidden.
+    private static void syncBell(ActionBarMenuItem bell, int account, long dialogId) {
+        if (bell == null) return;
+        int profile = NotificationProfiles.get(account, dialogId);
+        bell.setIcon(iconRes(profile));
+        bell.setContentDescription(text(profile));
+    }
+
+    private static void cycle(BaseFragment fragment, ActionBarMenuItem bell, int account, long dialogId) {
+        int profile = (NotificationProfiles.get(account, dialogId) + 1) % 3;
+        NotificationProfiles.set(account, dialogId, profile);
+        NotificationProfiles.onChanged(account, dialogId);
+        syncBell(bell, account, dialogId);
+        if (BulletinFactory.canShowBulletin(fragment)) {
+            int raw = profile == NotificationProfiles.PASSIVE ? R.raw.ic_mute : profile == NotificationProfiles.QUIET ? R.raw.sound_off : R.raw.ic_unmute;
+            BulletinFactory.of(fragment).createSimpleBulletin(raw, text(profile), LocaleController.getString(NotificationProfiles.infoRes(profile))).show();
+        }
     }
 
     private static CharSequence text(int profile) {

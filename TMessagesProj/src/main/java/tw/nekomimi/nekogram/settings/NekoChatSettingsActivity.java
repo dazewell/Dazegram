@@ -264,6 +264,7 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
                 add(new ConfigCellTextCheckIcon(NaConfig.INSTANCE.getChatMenuItemViewDeleted(), getString(R.string.ViewDeleted), R.drawable.msg_view_file));
                 add(new ConfigCellTextCheckIcon(NaConfig.INSTANCE.getChatMenuItemClearDeleted(), getString(R.string.ClearDeleted), R.drawable.msg_clear));
                 add(new ConfigCellTextCheckIcon(NaConfig.INSTANCE.getChatMenuItemDeleteOwnMessages(), getString(R.string.DeleteAllFromSelf), R.drawable.msg_delete));
+                add(new ConfigCellTextCheckIcon(NaConfig.INSTANCE.getChatMenuItemNotifProfileBell(), getString(R.string.NaxNotifProfileBell), R.drawable.msg_unmute));
             }}))
     ));
     private final AbstractConfigCell messageMenuRow = cellGroup.appendCell(new ConfigCellTextCheckIcon(null, "MessageMenu", null, R.drawable.msg_list, false, () ->
