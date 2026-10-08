@@ -1203,6 +1203,13 @@ object NaConfig {
             ConfigItem.configTypeBool,
             true
         )
+    // Empty means never edited: ChatMenuLayout derives it from the ChatMenuItem* / Shortcuts* switches above.
+    val chatMenuLayout =
+        addConfig(
+            "ChatMenuLayout",
+            ConfigItem.configTypeString,
+            ""
+        )
     val mediaViewerMenuItemForward =
         addConfig(
             "MediaViewerMenuItemForward",

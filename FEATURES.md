@@ -84,7 +84,11 @@ Each chat's Notifications screen (open a chat → its name → Notifications) ha
 
 ### Notification profile per chat <!-- #notification-profiles -->
 
-Each chat has a **Notification profile**: **Loud** (Telegram's usual alerts, the default), **Quiet** (icon, vibration and watch, no sound) or **Passive** (shade only: no status-bar icon, lock screen, sound, vibration, popup or watch). Set it on the chat's Notifications screen, the ⋮ menu's **Alerts** item, or the header bell: tap to cycle, long-press to pick. Turn the bell off in N-Settings → Chats → Chat menu. Not on forum topics.
+Each chat has a **Notification profile**: **Loud** (Telegram's usual alerts, the default), **Quiet** (icon, vibration and watch, no sound) or **Passive** (shade only: no status-bar icon, lock screen, sound, vibration, popup or watch). Set it on the chat's Notifications screen or with the header bell: tap to cycle, long-press to pick. Chat menu settings can move it into the ⋮ menu or hide it. Not on forum topics.
+
+### Chat header and menu order <!-- #chat-menu-order -->
+
+N-Settings → Chats → Chat menu, or a long-press on ⋮ in a chat, places each chat button in the Header (up to two icons), the ⋮ menu or Hidden: drag between sections, or tap to hide or restore. Alerts is the header bell or a ⋮ row. A header button that can't show in a chat appears in ⋮ instead. Changes save immediately and show once you leave.
 
 ### Notification schedule per chat <!-- #notif-profile-schedules -->
 

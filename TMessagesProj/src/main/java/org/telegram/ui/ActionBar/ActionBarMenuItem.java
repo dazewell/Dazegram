@@ -2758,6 +2758,11 @@ public class ActionBarMenuItem extends FrameLayout {
         return item;
     }
 
+    // NagramX: lets ChatMenuController permute the chat menu before its first layout; empty once laid out, null if nothing was added.
+    public ArrayList<Item> getLazyItems() {
+        return lazyList;
+    }
+
     private Item findLazyItem(int id) {
         if (lazyMap == null) {
             return null;
