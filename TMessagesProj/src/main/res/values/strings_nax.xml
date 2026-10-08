@@ -817,7 +817,6 @@
     <string name="NotificationsShowOnWatch">Show on Watch</string>
     <string name="NaxNotifProfile">Notification profile</string>
     <string name="NaxNotifProfileMenu">Alerts: %1$s</string>
-    <string name="NaxNotifProfileBell">Alerts bell</string>
     <string name="NaxNotifProfileLoud">Loud</string>
     <string name="NaxNotifProfileQuiet">Quiet</string>
     <string name="NaxNotifProfilePassive">Passive</string>
@@ -875,4 +874,11 @@
     <string name="HeaderBackgroundGlassInfo">Header backgrounds are part of Material Design 3. The Glass interface draws its own header, so switch the interface style to Material Design 3 to use this.</string>
     <string name="HeaderBackgroundApplyOffInfo">Material Design 3 isn\'t applied to the chat header yet. Turn on Apply to → Chat header to use this.</string>
     <string name="HeaderBackgroundOpenSettings">Open Interface Style</string>
+    <string name="ChatMenuHeaderSection">Header — up to 2</string>
+    <string name="ChatMenuHeaderInfo">Icons next to the ⋮ button. One that can\'t show in a chat appears in the ⋮ menu instead; one that doesn\'t apply to a chat is left out.</string>
+    <string name="ChatMenuMoreSection">⋮ menu</string>
+    <string name="ChatMenuMoreInfo">Telegram\'s own items keep their place; these are sorted among them in this order.</string>
+    <string name="ChatMenuHiddenInfo">Never shown. Tap a button to move it between Hidden and the ⋮ menu, or drag it anywhere. Chats update when you leave this screen.</string>
+    <string name="ChatMenuResetDone">Chat menu reset</string>
+    <string name="NaxChatMenuAlerts">Alerts</string>
 </resources>
