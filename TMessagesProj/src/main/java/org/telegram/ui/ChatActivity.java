@@ -5030,6 +5030,10 @@ public class ChatActivity extends BaseFragment implements
 
         if (chatMode == 0 && (threadMessageId == 0 || isTopic) && !UserObject.isReplyUser(currentUser) && !isReport() && !isTitleCentered()) {
             TLRPC.UserFull userFull = null;
+            // NagramX: Alerts bell, added before the call icon so it sits left of it (menu order follows the id registration order); visibility is owned by updateBell
+            if (!inPreviewMode && (currentUser == null || !currentUser.self) && NaConfig.INSTANCE.getChatMenuItemNotifProfileBell().Bool()) {
+                nkBellItem = com.dazewell.gram.notifprofiles.NotificationProfileMenu.addBell(this, menu, nkheaderbtn_notif_bell, currentAccount, dialog_id);
+            }
             if (currentUser != null) {
                 audioCallIconItem = menu.lazilyAddItem(call, R.drawable.call, themeDelegate);
                 audioCallIconItem.setContentDescription(LocaleController.getString(R.string.Call));
@@ -5041,10 +5045,6 @@ public class ChatActivity extends BaseFragment implements
                     showAudioCallAsIcon = false;
                     audioCallIconItem.setVisibility(View.GONE);
                 }
-            }
-            // NagramX: Alerts bell, added here so it lands between the call icon and the options button; visibility is owned by updateBell
-            if (!inPreviewMode && (currentUser == null || !currentUser.self) && NaConfig.INSTANCE.getChatMenuItemNotifProfileBell().Bool()) {
-                nkBellItem = com.dazewell.gram.notifprofiles.NotificationProfileMenu.addBell(this, menu, nkheaderbtn_notif_bell, currentAccount, dialog_id);
             }
         }
         /*
