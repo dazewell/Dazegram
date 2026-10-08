@@ -28,8 +28,8 @@ import java.util.TimeZone;
 
 // NagramX: per-chat notification profiles. Loud is "no override" (today's path, byte-identical), Quiet keeps the
 // icon, vibration, lock screen and watch but drops the sound, Passive sits in the shade only. The assignment is
-// one int per chat in the account's notifications prefs (so logout wipes it, like the cover and Show on Watch
-// state), keyed by raw dialogId because a notification batch's DialogKey carries whichever topic pushed first.
+// one int per chat in the account's notifications prefs, next to an optional schedule and override string (see
+// NotificationSchedule), so logout wipes it all, like the cover and Show on Watch state. Keyed by raw dialogId because a notification batch's DialogKey carries whichever topic pushed first.
 // Presentation lives on a handful of fork-owned channels per account, not per chat: moving a chat between profiles
 // only changes which existing channel its notification posts on, so no channel is ever recreated. The channel ids
 // are fixed and versioned (never start with "<account>channel", which logout and upstream cleanup delete); a change

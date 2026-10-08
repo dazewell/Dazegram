@@ -2,7 +2,6 @@ package com.dazewell.gram.notifprofiles;
 
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.LayerDrawable;
-import android.os.Build;
 import android.view.Gravity;
 
 import androidx.core.content.ContextCompat;
@@ -78,11 +77,13 @@ public final class NotificationProfileMenu {
         bell.setContentDescription(text(account, dialogId, profile));
         // A small clock in the corner while a schedule window, not the user's own choice, decides. The header tints the
         // whole icon one colour, so the bell shrinks to make room for it instead of the two overlapping.
-        if (Build.VERSION.SDK_INT >= 23 && NotificationProfiles.isScheduleDeciding(account, dialogId)) {
+        if (NotificationProfiles.isScheduleDeciding(account, dialogId)) {
             Drawable bellIcon = ContextCompat.getDrawable(bell.getContext(), iconRes(profile));
             Drawable clock = ContextCompat.getDrawable(bell.getContext(), R.drawable.baseline_schedule_24);
             if (bellIcon != null && clock != null) {
                 LayerDrawable layers = new LayerDrawable(new Drawable[]{bellIcon.mutate(), clock.mutate()});
+                // the 4dp end/top inset makes the box 24dp, so the 12dp clock only meets the bell's empty corner
+                layers.setLayerInsetRelative(0, 0, AndroidUtilities.dp(4), AndroidUtilities.dp(4), 0);
                 layers.setLayerSize(0, AndroidUtilities.dp(20), AndroidUtilities.dp(20));
                 layers.setLayerGravity(0, Gravity.BOTTOM | Gravity.START);
                 layers.setLayerSize(1, AndroidUtilities.dp(12), AndroidUtilities.dp(12));
