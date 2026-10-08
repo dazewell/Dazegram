@@ -19,7 +19,7 @@ public final class NotificationProfilePicker {
     }
 
     public static Dialog create(Activity activity, int account, long dialogId, Theme.ResourcesProvider resourcesProvider, Runnable onChanged) {
-        int selected = NotificationProfiles.get(account, dialogId);
+        int selected = NotificationProfiles.effective(account, dialogId);
         LinearLayout layout = new LinearLayout(activity);
         layout.setOrientation(LinearLayout.VERTICAL);
         AlertDialog.Builder builder = new AlertDialog.Builder(activity, resourcesProvider);

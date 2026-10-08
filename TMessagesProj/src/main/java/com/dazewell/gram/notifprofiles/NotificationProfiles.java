@@ -23,6 +23,8 @@ import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
 
 import java.util.ArrayList;
+import java.util.List;
+import java.util.TimeZone;
 
 // NagramX: per-chat notification profiles. Loud is "no override" (today's path, byte-identical), Quiet keeps the
 // icon, vibration, lock screen and watch but drops the sound, Passive sits in the shade only. The assignment is
@@ -39,6 +41,9 @@ public final class NotificationProfiles {
     public static final int PASSIVE = 2;
 
     private static final String KEY = "nax_np_";
+    // Strings, so they can't collide with the int key above (a dialog id never starts with a letter).
+    private static final String SCHEDULE_KEY = "nax_np_s_";
+    private static final String OVERRIDE_KEY = "nax_np_o_";
     private static final String CHANNEL_VERSION = "v1";
 
     private NotificationProfiles() {
@@ -62,17 +67,85 @@ public final class NotificationProfiles {
         }
     }
 
-    // Loud removes the key, so a Loud chat stores nothing.
+    // Loud removes the key, so a Loud chat stores nothing. On a chat with a schedule the choice is an override instead
+    // (profile + the time it was set) and the stored base value is left alone; it lapses at the next schedule boundary.
     public static void set(int account, long dialogId, int profile) {
         if (dialogId == 0) return;
         SharedPreferences.Editor editor = prefs(account).edit();
         profile = clamp(profile);
-        if (profile == LOUD) {
+        if (!rules(account, dialogId).isEmpty()) {
+            editor.putString(OVERRIDE_KEY + dialogId, profile + ":" + System.currentTimeMillis());
+        } else if (profile == LOUD) {
             editor.remove(KEY + dialogId);
         } else {
             editor.putInt(KEY + dialogId, profile);
         }
         editor.apply();
+    }
+
+    // The chat's schedule rules; absent or unparseable reads as none.
+    public static List<NotificationSchedule.Rule> rules(int account, long dialogId) {
+        if (dialogId == 0) return new ArrayList<>();
+        try {
+            return NotificationSchedule.parse(prefs(account).getString(SCHEDULE_KEY + dialogId, null));
+        } catch (ClassCastException e) {
+            return new ArrayList<>();
+        }
+    }
+
+    // Saving a schedule means the schedule is in charge now, so the override goes in the same edit.
+    public static void setRules(int account, long dialogId, List<NotificationSchedule.Rule> rules) {
+        if (dialogId == 0) return;
+        SharedPreferences.Editor editor = prefs(account).edit();
+        editor.remove(OVERRIDE_KEY + dialogId);
+        if (rules.isEmpty()) {
+            editor.remove(SCHEDULE_KEY + dialogId);
+        } else {
+            editor.putString(SCHEDULE_KEY + dialogId, NotificationSchedule.serialize(rules));
+        }
+        editor.apply();
+    }
+
+    // The override's profile while it is still in force, else -1. In force until a boundary passes after it was set;
+    // one stamped in the future (clock moved back) or unparseable counts as lapsed.
+    private static int liveOverride(int account, long dialogId, List<NotificationSchedule.Rule> rules, long now, TimeZone zone) {
+        String value;
+        try {
+            value = prefs(account).getString(OVERRIDE_KEY + dialogId, null);
+        } catch (ClassCastException e) {
+            return -1;
+        }
+        if (value == null) return -1;
+        try {
+            int colon = value.indexOf(':');
+            int profile = Integer.parseInt(value.substring(0, colon));
+            long setAt = Long.parseLong(value.substring(colon + 1));
+            if (setAt > now || NotificationSchedule.nextBoundaryAfter(rules, setAt, zone) <= now) return -1;
+            return clamp(profile);
+        } catch (RuntimeException e) {
+            return -1;
+        }
+    }
+
+    // What the chat actually does right now: a live override, else the open schedule window, else the stored base.
+    public static int effective(int account, long dialogId) {
+        List<NotificationSchedule.Rule> rules = rules(account, dialogId);
+        if (rules.isEmpty()) return get(account, dialogId);
+        long now = System.currentTimeMillis();
+        TimeZone zone = TimeZone.getDefault();
+        int override = liveOverride(account, dialogId, rules, now, zone);
+        if (override >= 0) return override;
+        int active = NotificationSchedule.activeRule(rules, now, zone);
+        return active >= 0 ? clamp(rules.get(active).profile) : get(account, dialogId);
+    }
+
+    // True while a schedule window, not the user's own choice, decides the profile.
+    public static boolean isScheduleDeciding(int account, long dialogId) {
+        List<NotificationSchedule.Rule> rules = rules(account, dialogId);
+        if (rules.isEmpty()) return false;
+        long now = System.currentTimeMillis();
+        TimeZone zone = TimeZone.getDefault();
+        return liveOverride(account, dialogId, rules, now, zone) < 0 && NotificationSchedule.activeRule(rules, now, zone) >= 0;
     }
 
     public static int labelRes(int profile) {
@@ -105,7 +178,7 @@ public final class NotificationProfiles {
         if (Build.VERSION.SDK_INT < 26) return result;
         for (int i = 0; i < byDialog.size(); i++) {
             long did = byDialog.keyAt(i);
-            int profile = get(account, did);
+            int profile = effective(account, did);
             if (profile != LOUD) {
                 result.put(did, profile);
             }
@@ -137,7 +210,7 @@ public final class NotificationProfiles {
     // (the rebuild is not "notify about last", so nothing alerts), and drop popups already queued for a Passive chat.
     public static void onChanged(int account, long dialogId) {
         NotificationsController controller = NotificationsController.getInstance(account);
-        if (get(account, dialogId) == PASSIVE) {
+        if (effective(account, dialogId) == PASSIVE) {
             AndroidUtilities.runOnUIThread(() -> {
                 boolean changed = false;
                 for (int i = controller.popupMessages.size() - 1; i >= 0; i--) {
@@ -157,7 +230,7 @@ public final class NotificationProfiles {
 
     // Passive chats never open the in-app popup.
     public static boolean blocksPopup(int account, long dialogId) {
-        return dialogId != 0 && get(account, dialogId) == PASSIVE;
+        return dialogId != 0 && effective(account, dialogId) == PASSIVE;
     }
 
     // Reroutes one per-chat notification onto its profile's channel. alert is true only for the newest message of

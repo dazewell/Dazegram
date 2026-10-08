@@ -15,16 +15,16 @@ public final class NotificationProfileMenu {
     }
 
     public static ActionBarMenuItem.Item add(ActionBarMenuItem headerItem, int id, int account, long dialogId) {
-        int profile = NotificationProfiles.get(account, dialogId);
-        return headerItem.lazilyAddSubItem(id, iconRes(profile), text(profile));
+        int profile = NotificationProfiles.effective(account, dialogId);
+        return headerItem.lazilyAddSubItem(id, iconRes(profile), text(account, dialogId, profile));
     }
 
     // The profile can also change from the Notifications screen, so this runs again whenever the menu opens.
     public static void refresh(ActionBarMenuItem.Item item, int account, long dialogId, boolean visible) {
         if (item == null) return;
         item.setVisibility(visible ? android.view.View.VISIBLE : android.view.View.GONE);
-        int profile = NotificationProfiles.get(account, dialogId);
-        item.setText(text(profile));
+        int profile = NotificationProfiles.effective(account, dialogId);
+        item.setText(text(account, dialogId, profile));
         item.setIcon(iconRes(profile));
     }
 
@@ -40,7 +40,7 @@ public final class NotificationProfileMenu {
     // the picker. It starts hidden; updateBell() owns its visibility because a forum chat switches topics in place and
     // Telegram's own mute can flip while the chat is open.
     public static ActionBarMenuItem addBell(BaseFragment fragment, ActionBarMenu menu, int id, int account, long dialogId) {
-        ActionBarMenuItem bell = menu.addItem(id, iconRes(NotificationProfiles.get(account, dialogId)), fragment.getResourceProvider());
+        ActionBarMenuItem bell = menu.addItem(id, iconRes(NotificationProfiles.effective(account, dialogId)), fragment.getResourceProvider());
         bell.setVisibility(android.view.View.GONE);
         bell.setOnClickListener(v -> cycle(fragment, bell, account, dialogId));
         bell.setOnLongClickListener(v -> {
@@ -66,13 +66,13 @@ public final class NotificationProfileMenu {
     // Icon and description only, never visibility: the picker is also reachable from the Alerts item while the bell is hidden.
     private static void syncBell(ActionBarMenuItem bell, int account, long dialogId) {
         if (bell == null) return;
-        int profile = NotificationProfiles.get(account, dialogId);
+        int profile = NotificationProfiles.effective(account, dialogId);
         bell.setIcon(iconRes(profile));
-        bell.setContentDescription(text(profile));
+        bell.setContentDescription(text(account, dialogId, profile));
     }
 
     private static void cycle(BaseFragment fragment, ActionBarMenuItem bell, int account, long dialogId) {
-        int profile = (NotificationProfiles.get(account, dialogId) + 1) % 3;
+        int profile = (NotificationProfiles.effective(account, dialogId) + 1) % 3;
         NotificationProfiles.set(account, dialogId, profile);
         NotificationProfiles.onChanged(account, dialogId);
         syncBell(bell, account, dialogId);
@@ -84,6 +84,12 @@ public final class NotificationProfileMenu {
 
     private static CharSequence text(int profile) {
         return LocaleController.formatString(R.string.NaxNotifProfileMenu, LocaleController.getString(NotificationProfiles.labelRes(profile)));
+    }
+
+    // "(scheduled)" while a schedule window, not the user's own choice, is what decides.
+    private static CharSequence text(int account, long dialogId, int profile) {
+        if (!NotificationProfiles.isScheduleDeciding(account, dialogId)) return text(profile);
+        return LocaleController.formatString(R.string.NaxNotifProfileMenuScheduled, LocaleController.getString(NotificationProfiles.labelRes(profile)));
     }
 
     private static int iconRes(int profile) {
