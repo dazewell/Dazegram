@@ -11,7 +11,6 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.Utilities;
 import org.telegram.ui.ActionBar.AlertDialog;
-import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Business.OpeningHoursActivity;
 import org.telegram.ui.Cells.RadioColorCell;
@@ -67,6 +66,9 @@ public final class NotificationScheduleDialog {
                 TextDetailSettingsCell cell = new TextDetailSettingsCell(activity);
                 cell.setBackground(Theme.getSelectorDrawable(false));
                 cell.setTextAndValue(summary(rule), LocaleController.getString(NotificationProfiles.labelRes(rule.profile)), false);
+                // the cell has no resources-provider constructor, so a chat theme's colors are applied here
+                cell.getTextView().setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, rp));
+                cell.getValueTextView().setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2, rp));
                 cell.setOnClickListener(v -> edit(activity, rp, rule, saved -> {
                     List<NotificationSchedule.Rule> next = new ArrayList<>(rules);
                     next.set(index, saved);
@@ -191,11 +193,11 @@ public final class NotificationScheduleDialog {
     }
 
     private static void pickTime(Activity activity, int titleRes, int[] value, Runnable done) {
-        BottomSheet sheet = AlertsCreator.createTimePickerDialog(activity, LocaleController.getString(titleRes), value[0], 0, 1439, minutes -> {
+        // the helper shows its own sheet and reports the pick when that sheet is dismissed
+        AlertsCreator.createTimePickerDialog(activity, LocaleController.getString(titleRes), value[0], 0, 1439, minutes -> {
             value[0] = Math.max(0, Math.min(1439, minutes));
             done.run();
         });
-        if (sheet != null) sheet.show();
     }
 
     // An end that is not after the start belongs to the next day (equal times make a full 24 hours).
