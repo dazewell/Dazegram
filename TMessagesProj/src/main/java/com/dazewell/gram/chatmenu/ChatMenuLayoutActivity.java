@@ -22,6 +22,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenuItem;
@@ -72,6 +73,7 @@ public class ChatMenuLayoutActivity extends BaseFragment {
     private ListAdapter adapter;
     private ItemTouchHelper itemTouchHelper;
     private List<List<String>> lastSaved;
+    private boolean rebuildPending;
 
     private int pendingSwapFrom = RecyclerView.NO_POSITION;
     private int pendingSwapTo = RecyclerView.NO_POSITION;
@@ -119,9 +121,24 @@ public class ChatMenuLayoutActivity extends BaseFragment {
     }
 
     @Override
+    public void onPause() {
+        super.onPause();
+        persist();
+        flushRebuild();
+    }
+
+    @Override
     public void onFragmentDestroy() {
         persist();
+        flushRebuild();
         super.onFragmentDestroy();
+    }
+
+    /** A chat builds its buttons once, so leaving after a change rebuilds the screens behind, as the composer editor does. */
+    private void flushRebuild() {
+        if (!rebuildPending) return;
+        rebuildPending = false;
+        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.reloadInterface);
     }
 
     private void buildItems(List<List<String>> layout) {
@@ -169,12 +186,14 @@ public class ChatMenuLayoutActivity extends BaseFragment {
         if (current.equals(lastSaved)) return;
         ChatMenuLayout.save(current);
         lastSaved = current;
+        rebuildPending = true;
     }
 
     @SuppressLint("NotifyDataSetChanged")
     private void apply(List<List<String>> layout) {
         ChatMenuLayout.save(layout);
         lastSaved = ChatMenuLayout.snapshot();
+        rebuildPending = true;
         buildItems(lastSaved);
         if (adapter != null) adapter.notifyDataSetChanged();
     }
