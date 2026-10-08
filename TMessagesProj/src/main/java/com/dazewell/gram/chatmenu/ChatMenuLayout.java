@@ -5,7 +5,6 @@ import android.text.TextUtils;
 import org.telegram.messenger.R;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 import tw.nekomimi.nekogram.config.ConfigItem;
@@ -105,19 +104,6 @@ public final class ChatMenuLayout {
     static int headerIcon(String key) {
         if (VIDEO.equals(key)) return R.drawable.profile_video;
         return menuIcon(key);
-    }
-
-    public static synchronized int sectionOf(String key) {
-        parse();
-        for (int i = 0; i < SECTIONS; i++) {
-            if (sections.get(i).contains(key)) return i;
-        }
-        return HIDDEN;
-    }
-
-    public static synchronized List<String> section(int section) {
-        parse();
-        return Collections.unmodifiableList(sections.get(section));
     }
 
     /** A fresh copy the editor can shuffle. */

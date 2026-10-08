@@ -1272,13 +1272,13 @@ on each side of upstream's Call icon, since registration order is screen order
 (`:5037`, `:5051`). Each configurable ⋮ site calls `nkChatMenu.add(...)` under
 its own conditions; `finish` then sorts those rows among the slots they occupy
 in `ActionBarMenuItem.lazyList`, which nothing lays out until the first
-`toggleSubMenu` (`:5327`; `org/telegram/ui/ActionBar/ActionBarMenuItem.java:827`,
+`toggleSubMenu` (`:5328`; `org/telegram/ui/ActionBar/ActionBarMenuItem.java:827`,
 `:2762`, `:2773`). Header-icon visibility funnels through `nkUpdateChatMenu`
-(`ChatActivity.java:32312`).
+(`ChatActivity.java:32313`).
 
 Upstream's fixed 52/92dp title margin assumes 48dp icons, but Glass gives each
 menu item -5dp side margins (`org/telegram/ui/ActionBar/ActionBarMenu.java:666`),
 so the margin is recomputed from the visible items after upstream's block
-(`ChatActivity.java:20297`).
+(`ChatActivity.java:20298`).
 
 *(Established 2026-10-07.)*

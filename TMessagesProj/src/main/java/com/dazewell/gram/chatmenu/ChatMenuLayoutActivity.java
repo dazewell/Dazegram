@@ -273,6 +273,10 @@ public class ChatMenuLayoutActivity extends BaseFragment {
             super.clearView(recyclerView, viewHolder);
             viewHolder.itemView.setPressed(false);
             viewHolder.itemView.setTag(R.id.dragging, null);
+            // onMove only re-fires while the finger moves, so a swap whose dwell ran out under a still finger lands on release.
+            if (pendingSwapFrom != RecyclerView.NO_POSITION && SystemClock.uptimeMillis() - pendingSwapSince >= HEADER_SWAP_DWELL_MS) {
+                Collections.swap(items, pendingSwapFrom, pendingSwapTo);
+            }
             clearPendingSwap();
             // Rebuilt from the saved layout so an emptied section gets its placeholder back.
             persist();
