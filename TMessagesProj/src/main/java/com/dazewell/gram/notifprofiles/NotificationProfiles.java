@@ -71,11 +71,20 @@ public final class NotificationProfiles {
     // (profile + the time it was set) and the stored base value is left alone; it lapses at the next schedule boundary.
     public static void set(int account, long dialogId, int profile) {
         if (dialogId == 0) return;
+        if (rules(account, dialogId).isEmpty()) {
+            setBase(account, dialogId, profile);
+            return;
+        }
+        prefs(account).edit().putString(OVERRIDE_KEY + dialogId, clamp(profile) + ":" + System.currentTimeMillis()).apply();
+    }
+
+    // The stored profile itself: all there is on a chat without a schedule, and what applies outside every window on
+    // one with a schedule.
+    public static void setBase(int account, long dialogId, int profile) {
+        if (dialogId == 0) return;
         SharedPreferences.Editor editor = prefs(account).edit();
         profile = clamp(profile);
-        if (!rules(account, dialogId).isEmpty()) {
-            editor.putString(OVERRIDE_KEY + dialogId, profile + ":" + System.currentTimeMillis());
-        } else if (profile == LOUD) {
+        if (profile == LOUD) {
             editor.remove(KEY + dialogId);
         } else {
             editor.putInt(KEY + dialogId, profile);
