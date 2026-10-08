@@ -88,7 +88,7 @@ Each chat has a **Notification profile**: **Loud** (Telegram's usual alerts, the
 
 ### Chat header and menu order <!-- #chat-menu-order -->
 
-N-Settings → Chats → Chat menu places each chat button in the Header (up to two icons), the ⋮ menu or Hidden: drag between sections, or tap to hide or restore. Alerts is the header bell or a ⋮ row; Call and Video call are separate. A header button that can't show in a chat appears in ⋮ instead. Changes save immediately and apply to chats opened afterwards.
+N-Settings → Chats → Chat menu, or a long-press on ⋮ in a chat, places each chat button in the Header (up to two icons), the ⋮ menu or Hidden: drag between sections, or tap to hide or restore. Alerts is the header bell or a ⋮ row; A header button that can't show in a chat appears in ⋮ instead. Changes save immediately and apply to chats opened afterwards.
 
 ### Swipe to next channel within the folder <!-- #next-channel-in-folder -->
 

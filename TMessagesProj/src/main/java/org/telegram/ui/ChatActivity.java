@@ -5094,6 +5094,7 @@ public class ChatActivity extends BaseFragment implements
                 avatarContainer.setAvatarOptionsMenuItem(headerItem);
             }
             headerItem.setForceHidden(isTitleCentered());
+            headerItem.setOnLongClickListener(v -> { presentFragment(new com.dazewell.gram.chatmenu.ChatMenuLayoutActivity()); return true; }); // NagramX: long-press ⋮ edits what it and the header show
 
             if (currentUser != null && currentUser.self && chatMode != MODE_SAVED) {
                 savedChatsItem = headerItem.lazilyAddSubItem(view_as_topics, R.drawable.msg_topics, LocaleController.getString(R.string.SavedViewAsChats));
