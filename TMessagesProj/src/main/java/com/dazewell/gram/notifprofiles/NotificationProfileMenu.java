@@ -28,9 +28,12 @@ public final class NotificationProfileMenu {
         item.setIcon(iconRes(profile));
     }
 
-    public static void open(BaseFragment fragment, int account, long dialogId, ActionBarMenuItem.Item item) {
+    public static void open(BaseFragment fragment, int account, long dialogId, ActionBarMenuItem.Item item, ActionBarMenuItem bell) {
         if (fragment.getParentActivity() == null) return;
-        fragment.showDialog(NotificationProfilePicker.create(fragment.getParentActivity(), account, dialogId, fragment.getResourceProvider(), () -> refresh(item, account, dialogId, true)));
+        fragment.showDialog(NotificationProfilePicker.create(fragment.getParentActivity(), account, dialogId, fragment.getResourceProvider(), () -> {
+            refresh(item, account, dialogId, true);
+            syncBell(bell, account, dialogId);
+        }));
     }
 
     // The header bell: one tap cycles Loud -> Quiet -> Passive and says what the new profile does, a long press opens
@@ -42,7 +45,7 @@ public final class NotificationProfileMenu {
         bell.setOnClickListener(v -> cycle(fragment, bell, account, dialogId));
         bell.setOnLongClickListener(v -> {
             if (fragment.getParentActivity() != null) {
-                fragment.showDialog(NotificationProfilePicker.create(fragment.getParentActivity(), account, dialogId, fragment.getResourceProvider(), () -> updateBell(bell, account, dialogId, false, true, false)));
+                fragment.showDialog(NotificationProfilePicker.create(fragment.getParentActivity(), account, dialogId, fragment.getResourceProvider(), () -> syncBell(bell, account, dialogId)));
             }
             return true;
         });
@@ -56,17 +59,23 @@ public final class NotificationProfileMenu {
         boolean visible = !topic && inChat && !muted;
         bell.setVisibility(visible ? android.view.View.VISIBLE : android.view.View.GONE);
         if (visible) {
-            int profile = NotificationProfiles.get(account, dialogId);
-            bell.setIcon(iconRes(profile));
-            bell.setContentDescription(text(profile));
+            syncBell(bell, account, dialogId);
         }
+    }
+
+    // Icon and description only, never visibility: the picker is also reachable from the Alerts item while the bell is hidden.
+    private static void syncBell(ActionBarMenuItem bell, int account, long dialogId) {
+        if (bell == null) return;
+        int profile = NotificationProfiles.get(account, dialogId);
+        bell.setIcon(iconRes(profile));
+        bell.setContentDescription(text(profile));
     }
 
     private static void cycle(BaseFragment fragment, ActionBarMenuItem bell, int account, long dialogId) {
         int profile = (NotificationProfiles.get(account, dialogId) + 1) % 3;
         NotificationProfiles.set(account, dialogId, profile);
         NotificationProfiles.onChanged(account, dialogId);
-        updateBell(bell, account, dialogId, false, true, false);
+        syncBell(bell, account, dialogId);
         if (BulletinFactory.canShowBulletin(fragment)) {
             int raw = profile == NotificationProfiles.PASSIVE ? R.raw.ic_mute : profile == NotificationProfiles.QUIET ? R.raw.sound_off : R.raw.ic_unmute;
             BulletinFactory.of(fragment).createSimpleBulletin(raw, text(profile), LocaleController.getString(NotificationProfiles.infoRes(profile))).show();

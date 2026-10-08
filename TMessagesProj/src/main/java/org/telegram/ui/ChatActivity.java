@@ -48564,7 +48564,7 @@ public class ChatActivity extends BaseFragment implements
         } else if (id == nkbtn_viewDeleted) {
             presentFragment(new AyuViewDeleted(dialog_id));
         } else if (id == nkheaderbtn_notif_profile) {
-            com.dazewell.gram.notifprofiles.NotificationProfileMenu.open(ChatActivity.this, currentAccount, dialog_id, nkProfileItem);
+            com.dazewell.gram.notifprofiles.NotificationProfileMenu.open(ChatActivity.this, currentAccount, dialog_id, nkProfileItem, nkBellItem);
         } else if (id == nkheaderbtn_chat_privacy) {
             com.dazewell.gram.chatprivacy.ChatPrivacySheet.show(ChatActivity.this, dialog_id);
         } else if (id == nkheaderbtn_header_bg) {
