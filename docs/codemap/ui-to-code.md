@@ -1262,3 +1262,18 @@ put the screen and the prose side by side until one was committed. Writing
 about this screen, use the labels; reading the code, expect the constants.
 
 *(Established 2026-09-13, #docs.)*
+
+## Chat ⋮ menu order is applied by permuting the lazy list
+
+The in-chat ⋮ menu items are registered with `lazilyAddSubItem`, which only
+appends to `ActionBarMenuItem.lazyList`; nothing is laid out until the first
+`toggleSubMenu` calls `layoutLazyItems()`
+(`org/telegram/ui/ActionBar/ActionBarMenuItem.java:827`, `:2762`, `:2773`).
+So the user's order from N-Settings → Chats → Chat menu is applied once, after
+the whole menu is built, by `ChatMenuOrder.apply(...)` sorting the configurable
+items among the slots they already occupy
+(`org/telegram/ui/ChatActivity.java:5344`). Registration code and its
+conditions stay untouched; header buttons follow registration order instead
+(`ChatActivity.java:5035`).
+
+*(Established 2026-10-07.)*

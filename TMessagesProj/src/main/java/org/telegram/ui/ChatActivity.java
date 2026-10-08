@@ -5030,11 +5030,14 @@ public class ChatActivity extends BaseFragment implements
 
         if (chatMode == 0 && (threadMessageId == 0 || isTopic) && !UserObject.isReplyUser(currentUser) && !isReport() && !isTitleCentered()) {
             TLRPC.UserFull userFull = null;
-            // NagramX: Alerts bell, added before the call icon so it sits left of it (menu order follows the id registration order); visibility is owned by updateBell
-            if (!inPreviewMode && (currentUser == null || !currentUser.self) && NaConfig.INSTANCE.getChatMenuItemNotifProfileBell().Bool()) {
+            // NagramX: Alerts bell, added before or after the call icon per the saved header order (menu order follows the id registration order); visibility is owned by updateBell
+            boolean nkBell = !inPreviewMode && (currentUser == null || !currentUser.self) && NaConfig.INSTANCE.getChatMenuItemNotifProfileBell().Bool();
+            boolean nkBellFirst = com.dazewell.gram.chatmenu.ChatMenuOrder.bellFirst();
+            if (nkBell && nkBellFirst) {
                 nkBellItem = com.dazewell.gram.notifprofiles.NotificationProfileMenu.addBell(this, menu, nkheaderbtn_notif_bell, currentAccount, dialog_id);
             }
-            if (currentUser != null) {
+            // NagramX: the Call toggle only drops the header icon; with no icon, Call stays in the "..." menu
+            if (currentUser != null && NaConfig.INSTANCE.getChatMenuItemCall().Bool()) {
                 audioCallIconItem = menu.lazilyAddItem(call, R.drawable.call, themeDelegate);
                 audioCallIconItem.setContentDescription(LocaleController.getString(R.string.Call));
                 userFull = getMessagesController().getUserFull(currentUser.id);
@@ -5045,6 +5048,9 @@ public class ChatActivity extends BaseFragment implements
                     showAudioCallAsIcon = false;
                     audioCallIconItem.setVisibility(View.GONE);
                 }
+            }
+            if (nkBell && !nkBellFirst) {
+                nkBellItem = com.dazewell.gram.notifprofiles.NotificationProfileMenu.addBell(this, menu, nkheaderbtn_notif_bell, currentAccount, dialog_id);
             }
         }
         /*
@@ -5334,6 +5340,9 @@ public class ChatActivity extends BaseFragment implements
                 feeItemGap.setVisibility(View.GONE);
                 feeItemText.setVisibility(View.GONE);
             }
+            // NagramX: reorder the configurable items among their own slots, per N-Settings > Chats > Chat menu; ids in default order
+            com.dazewell.gram.chatmenu.ChatMenuOrder.apply(headerItem, shortcuts_administrators, shortcuts_recent_actions, shortcuts_statistics, shortcuts_permissions, shortcuts_members,
+                    boost_group, nkheaderbtn_linked_chat, to_the_beginning, to_the_message, nkheaderbtn_hide_title, nkbtn_viewDeleted, nkbtn_clearDeleted, nkheaderbtn_zibi);
         } else if (chatMode == MODE_EDIT_BUSINESS_LINK) {
             headerItem = menu.addItem(chat_menu_options, otherIcon);
             otherIcon.addView(headerItem.getIconView());
@@ -26336,7 +26345,7 @@ public class ChatActivity extends BaseFragment implements
                     }
                 }
                 if (headerItem != null) {
-                    showAudioCallAsIcon = userInfo.phone_calls_available && !inPreviewMode && !isTitleCentered();
+                    showAudioCallAsIcon = userInfo.phone_calls_available && !inPreviewMode && !isTitleCentered() && NaConfig.INSTANCE.getChatMenuItemCall().Bool(); // NagramX: no header icon with the Call toggle off, so Call stays in "..."
                     if (userInfo.phone_calls_available) {
                         if (showAudioCallAsIcon) {
                             if (audioCallIconItem != null) {

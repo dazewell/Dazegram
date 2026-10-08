@@ -875,4 +875,6 @@
     <string name="HeaderBackgroundGlassInfo">Header backgrounds are part of Material Design 3. The Glass interface draws its own header, so switch the interface style to Material Design 3 to use this.</string>
     <string name="HeaderBackgroundApplyOffInfo">Material Design 3 isn\'t applied to the chat header yet. Turn on Apply to → Chat header to use this.</string>
     <string name="HeaderBackgroundOpenSettings">Open Interface Style</string>
+    <string name="ChatMenuHeaderSection">Chat header</string>
+    <string name="ChatMenuMoreSection">⋮ menu</string>
 </resources>

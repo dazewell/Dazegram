@@ -86,6 +86,10 @@ Each chat's Notifications screen (open a chat → its name → Notifications) ha
 
 Each chat has a **Notification profile**: **Loud** (Telegram's usual alerts, the default), **Quiet** (icon, vibration and watch, no sound) or **Passive** (shade only: no status-bar icon, lock screen, sound, vibration, popup or watch). Set it on the chat's Notifications screen, the ⋮ menu's **Alerts** item, or the header bell: tap to cycle, long-press to pick. Turn the bell off in N-Settings → Chats → Chat menu. Not on forum topics.
 
+### Chat header and menu order <!-- #chat-menu-order -->
+
+N-Settings → Chats → Chat menu lists the chat header buttons (Alerts bell, Call) and the ⋮ menu's optional items in the order chats show them. Drag a row to reorder it within its section; Telegram's own items keep their place. Switching Call off removes the header icon only, leaving Call in the ⋮ menu. Applies to chats opened afterwards.
+
 ### Swipe to next channel within the folder <!-- #next-channel-in-folder -->
 
 Swiping up at the end of a channel normally jumps to the next unread channel, and once the current folder runs out it moves on to other folders and the archive. N-Settings → Chat → Channels → *Swipe to Next Within Folder* keeps it in the folder you opened the channel from. Off by default.

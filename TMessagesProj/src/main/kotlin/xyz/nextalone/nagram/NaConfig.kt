@@ -1203,6 +1203,25 @@ object NaConfig {
             ConfigItem.configTypeBool,
             true
         )
+    val chatMenuItemCall =
+        addConfig(
+            "ChatMenuItemCall",
+            ConfigItem.configTypeBool,
+            true
+        )
+    // Empty means the default order, which lives in ChatMenuOrder.
+    val chatHeaderOrder =
+        addConfig(
+            "ChatHeaderOrder",
+            ConfigItem.configTypeString,
+            ""
+        )
+    val chatMenuOrder =
+        addConfig(
+            "ChatMenuOrder",
+            ConfigItem.configTypeString,
+            ""
+        )
     val mediaViewerMenuItemForward =
         addConfig(
             "MediaViewerMenuItemForward",
