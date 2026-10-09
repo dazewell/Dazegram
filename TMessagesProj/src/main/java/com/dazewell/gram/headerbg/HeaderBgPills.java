@@ -32,7 +32,7 @@ final class HeaderBgPills {
     // Wider than this, an action bar child is the expanded search field, not an icon button.
     private static final int MAX_ICON_DP = 56;
     // Every shape keeps this far from the screen's sides.
-    private static final int EDGE_DP = 4;
+    private static final int EDGE_DP = 8;
     // A text pill keeps this far from the trailing icons' capsule, and shrinks rather than move it.
     private static final int GAP_DP = 8;
     // Narrower than this after clamping, a text pill is dropped rather than drawn as a sliver.
@@ -51,10 +51,10 @@ final class HeaderBgPills {
     /** The backing colour for a text mode, or 0 for the modes that have none. */
     static int fill(int mode) {
         if (mode == HeaderBgForeground.DARK_PILL) {
-            return 0x52000000;
+            return 0x80000000;
         }
         if (mode == HeaderBgForeground.LIGHT_PILL) {
-            return 0x73ffffff;
+            return 0x99ffffff;
         }
         return 0;
     }
@@ -175,10 +175,12 @@ final class HeaderBgPills {
                 }
             }
             if (textRight > textLeft) {
-                // The line sits inside the pill, with room before it where the screen edge allows.
-                float left = lineLeft != Float.MAX_VALUE ? lineLeft - dp(6) : textLeft - dp(10);
+                // The line sits inside the pill with room before it; near the screen edge the line wins over the margin.
+                float left = lineLeft != Float.MAX_VALUE
+                        ? Math.min(Math.max(x + lineLeft - dp(10), minX), x + lineLeft - dp(4))
+                        : Math.max(x + textLeft - dp(10), minX);
                 float top = y + Math.min(strip.getHeight(), dp(48)) / 2f - dp(18);
-                rect.set(Math.max(x + left, minX), top, Math.min(x + textRight + dp(10), rightLimit), top + dp(36));
+                rect.set(left, top, Math.min(x + textRight + dp(10), rightLimit), top + dp(36));
                 if (rect.width() >= dp(MIN_PILL_DP)) {
                     scratch.add(rect, alpha);
                 }
