@@ -691,7 +691,7 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
 
     // NagramX: Passive keeps the chat's own notification off the watch, so the Show on Watch switch is greyed under it
     private boolean naxWatchOffByProfile() {
-        return com.dazewell.gram.notifprofiles.NotificationProfiles.get(currentAccount, dialogId) == com.dazewell.gram.notifprofiles.NotificationProfiles.PASSIVE;
+        return com.dazewell.gram.notifprofiles.NotificationProfiles.effective(currentAccount, dialogId) == com.dazewell.gram.notifprofiles.NotificationProfiles.PASSIVE;
     }
 
     private class ListAdapter extends RecyclerListView.SelectionAdapter {
@@ -808,7 +808,7 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
                     } else {
                         textCell.setTextColor(getThemedColor(Theme.key_windowBackgroundWhiteBlackText));
                         if (position == profileRow) {
-                            textCell.setTextAndValue(LocaleController.getString(R.string.NaxNotifProfile), LocaleController.getString(com.dazewell.gram.notifprofiles.NotificationProfiles.labelRes(com.dazewell.gram.notifprofiles.NotificationProfiles.get(currentAccount, dialogId))), true);
+                            textCell.setTextAndValue(LocaleController.getString(R.string.NaxNotifProfile), LocaleController.getString(com.dazewell.gram.notifprofiles.NotificationProfiles.labelRes(com.dazewell.gram.notifprofiles.NotificationProfiles.effective(currentAccount, dialogId))), true);
                         } else if (position == soundRow) {
                             String value = preferences.getString("sound_" + key, LocaleController.getString(R.string.SoundDefault));
                             long documentId = preferences.getLong("sound_document_id_" + key, 0);

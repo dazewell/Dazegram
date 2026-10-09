@@ -817,6 +817,14 @@
     <string name="NotificationsShowOnWatch">Show on Watch</string>
     <string name="NaxNotifProfile">Notification profile</string>
     <string name="NaxNotifProfileMenu">Alerts: %1$s</string>
+    <string name="NaxNotifProfileMenuScheduled">Alerts: %1$s (scheduled)</string>
+    <string name="NaxNotifSchedule">Schedule…</string>
+    <string name="NaxNotifScheduleTitle">Notification schedule</string>
+    <string name="NaxNotifScheduleRule">Schedule rule</string>
+    <string name="NaxNotifScheduleAdd">Add rule</string>
+    <string name="NaxNotifScheduleOutside">Outside schedule</string>
+    <string name="NaxNotifScheduleStart">Start</string>
+    <string name="NaxNotifScheduleEnd">End</string>
     <string name="NaxNotifProfileLoud">Loud</string>
     <string name="NaxNotifProfileQuiet">Quiet</string>
     <string name="NaxNotifProfilePassive">Passive</string>

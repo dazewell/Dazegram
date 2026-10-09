@@ -90,6 +90,10 @@ Each chat has a **Notification profile**: **Loud** (Telegram's usual alerts, the
 
 N-Settings → Chats → Chat menu, or a long-press on ⋮ in a chat, places each chat button in the Header (up to two icons), the ⋮ menu or Hidden: drag between sections, or tap to hide or restore. Alerts is the header bell or a ⋮ row. A header button that can't show in a chat appears in ⋮ instead. Changes save immediately and show once you leave.
 
+### Notification schedule per chat <!-- #notif-profile-schedules -->
+
+Give a chat's notification profile a schedule: in the profile picker (long-press the header bell, ⋮ Alerts, or the Notifications screen) tap **Schedule…** and add rules with days, start, end and a profile. The rule that started last wins. A manual pick lasts until the next rule starts or ends; **Outside schedule** sets the profile between rules. A clock on the bell shows a schedule is in charge.
+
 ### Swipe to next channel within the folder <!-- #next-channel-in-folder -->
 
 Swiping up at the end of a channel normally jumps to the next unread channel, and once the current folder runs out it moves on to other folders and the archive. N-Settings → Chat → Channels → *Swipe to Next Within Folder* keeps it in the folder you opened the channel from. Off by default.
