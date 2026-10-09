@@ -13,6 +13,7 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 
 import androidx.core.graphics.ColorUtils;
 
@@ -102,6 +103,10 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
     int applied = HeaderBgForeground.THEME;
     int appliedPin = HeaderBgForeground.THEME;
     private boolean repushPosted;
+    // The pill modes' backings. Measured before every frame while attached, from the observer below.
+    final HeaderBgPills pills = new HeaderBgPills();
+    private final ViewTreeObserver.OnPreDrawListener measurePills = this::measurePills;
+    private ViewTreeObserver pillsObserver;
     /** Run after the icon choice changes, for the open sheet, whose own window draws the status bar meanwhile. */
     public Runnable onStatusIconsChanged;
 
@@ -221,12 +226,19 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
             panel.naxHeaderBg = this;
             panel.invalidate();
         }
+        pillsObserver = actionBar.getViewTreeObserver();
+        pillsObserver.addOnPreDrawListener(measurePills);
     }
 
     @Override
     public void onViewDetachedFromWindow(View v) {
         imageReceiver.onDetachedFromWindow();
         NotificationCenter.getInstance(account).removeObserver(this, NotificationCenter.updateInterfaces);
+        // The observer taken at attach can have been merged into the window's since; then the live one holds the listener.
+        (pillsObserver != null && pillsObserver.isAlive() ? pillsObserver : actionBar.getViewTreeObserver()).removeOnPreDrawListener(measurePills);
+        pillsObserver = null;
+        pills.measureHeader(null, null);
+        pills.measurePanel(null, null);
         if (panel != null && panel.naxHeaderBg == this) {
             panel.naxHeaderBg = null;
         }
@@ -270,6 +282,7 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         canvas.save();
         canvas.clipRect(0, 0, width, height);
         paint(canvas, width, height, alpha, headerFade, surfaceColor(true));
+        pills.drawHeader(canvas, HeaderBgPills.fill(applied), alpha);
         canvas.restore();
     }
 
@@ -292,6 +305,23 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         canvas.translate(actionBar.getX() - panel.getX(), actionBar.getY() - panel.getY());
         paint(canvas, width, height, alpha, panelFade, surfaceColor(false));
         canvas.restore();
+        canvas.save();
+        canvas.clipRect(left, 0, right, bottom);
+        pills.drawPanel(canvas, HeaderBgPills.fill(appliedPin), alpha);
+        canvas.restore();
+    }
+
+    // Keyed to the pushed sets, so a backing never shows without its text colours or the other way round.
+    private boolean measurePills() {
+        boolean header = HeaderBgPills.fill(applied) != 0 && alpha() > 0f;
+        if (pills.measureHeader(header ? actionBar : null, fragment.getAvatarContainer())) {
+            actionBar.invalidate();
+        }
+        boolean pin = HeaderBgPills.fill(appliedPin) != 0 && settings.extendPanel;
+        if (pills.measurePanel(pin ? panel : null, HeaderBgForeground.pinnedViews(fragment))) {
+            invalidatePanel();
+        }
+        return true;
     }
 
     // 0 when nothing should show; otherwise how far the selection-mode fade lets it through.

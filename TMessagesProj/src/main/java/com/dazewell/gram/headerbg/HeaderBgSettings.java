@@ -28,10 +28,12 @@ public final class HeaderBgSettings {
     public static final int TINT_AUTO = -1;
     public static final int TINT_THEME = -2;
 
-    /** A text colour set for one surface in one theme; the values match HeaderBgForeground's THEME, LIGHT and DARK. */
+    /** A text colour set for one surface in one theme; the values match HeaderBgForeground's THEME to LIGHT_PILL. */
     public static final int TEXT_AUTO = 0;
     public static final int TEXT_LIGHT = 1;
     public static final int TEXT_DARK = 2;
+    public static final int TEXT_DARK_PILL = 3;
+    public static final int TEXT_LIGHT_PILL = 4;
 
     private static final int DEF_ZOOM = 100;
     private static final int DEF_OPACITY = 55;
@@ -67,7 +69,7 @@ public final class HeaderBgSettings {
 
     public void cycleText(boolean pin, boolean dark) {
         int i = (pin ? 2 : 0) + (dark ? 1 : 0);
-        text[i] = (text[i] + 1) % (TEXT_DARK + 1);
+        text[i] = (text[i] + 1) % (TEXT_LIGHT_PILL + 1);
     }
 
     /** Everything back to its default except {@link #enabled}. */
@@ -164,7 +166,7 @@ public final class HeaderBgSettings {
         s.desaturate = parse(f, 15, 0, 100, 0);
         // Slot 16 held the retired Alternate color; it is never read, and the next new field goes on slot 21.
         for (int i = 0; i < s.text.length; i++) {
-            s.text[i] = parse(f, 17 + i, TEXT_AUTO, TEXT_DARK, TEXT_AUTO);
+            s.text[i] = parse(f, 17 + i, TEXT_AUTO, TEXT_LIGHT_PILL, TEXT_AUTO);
         }
         return s;
     }

@@ -587,6 +587,12 @@ public final class HeaderBgSheet {
         if (text == HeaderBgSettings.TEXT_DARK) {
             return getString(R.string.HeaderBackgroundTextDark);
         }
+        if (text == HeaderBgSettings.TEXT_DARK_PILL) {
+            return getString(R.string.HeaderBackgroundTextDarkPill);
+        }
+        if (text == HeaderBgSettings.TEXT_LIGHT_PILL) {
+            return getString(R.string.HeaderBackgroundTextLightPill);
+        }
         return getString(R.string.HeaderBackgroundTintTheme);
     }
 
