@@ -126,10 +126,7 @@ public final class VideoNoteShortcut {
     private static void publish(boolean rear, boolean recreate, List<String> existingIds, int rank) {
         String id = rear ? SHORTCUT_ID_REAR : SHORTCUT_ID;
         try {
-            Intent intent = new Intent(ApplicationLoader.applicationContext, LaunchActivity.class);
-            intent.setAction(ACTION);
-            intent.putExtra(EXTRA_HASH, SharedConfig.directShareHash);
-            intent.putExtra(EXTRA_REAR, rear);
+            Intent intent = createIntent(rear);
             ShortcutInfoCompat shortcut = new ShortcutInfoCompat.Builder(ApplicationLoader.applicationContext, id)
                     .setShortLabel(getLabel(rear, false))
                     .setLongLabel(getLabel(rear, true))
@@ -147,6 +144,15 @@ public final class VideoNoteShortcut {
         } catch (Throwable e) {
             FileLog.e(e);
         }
+    }
+
+    /** The intent a launcher shortcut or MemoPickerActivity starts, carrying the current hash. */
+    static Intent createIntent(boolean rear) {
+        Intent intent = new Intent(ApplicationLoader.applicationContext, LaunchActivity.class);
+        intent.setAction(ACTION);
+        intent.putExtra(EXTRA_HASH, SharedConfig.directShareHash);
+        intent.putExtra(EXTRA_REAR, rear);
+        return intent;
     }
 
     // Same look as the Ayu Mode shortcut: white glyph on the Telegram-blue disc, rasterized for picky OEM launchers.

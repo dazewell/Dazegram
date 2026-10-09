@@ -289,9 +289,9 @@ While a round video records hands-free or waits paused in its preview, tap the v
 
 A round video message you've recorded but haven't sent survives backing out of the chat, switching apps mid-recording, or the chat locking behind a passcode — the clip waits in the preview, trimmed the way you left it, for up to a day. After a teardown it returns as the trim strip and send button, not the round preview. A pause under two seconds (wireless Android Auto) won't stop recording.
 
-### Video and text memo shortcuts <!-- #video-note-shortcut --> <!-- #text-memo-shortcut --> <!-- #text-memo-photos --> <!-- #text-memo-big-video -->
+### Video and text memo shortcuts <!-- #video-note-shortcut --> <!-- #text-memo-shortcut --> <!-- #text-memo-photos --> <!-- #text-memo-big-video --> <!-- #memo-shortcut-picker -->
 
-Turn on *Video memo shortcut* or *Text memo shortcut* under N-Settings → General → Launcher shortcuts (off by default) and long-pressing the icon offers *Video memo*, a hands-free round video on the chosen *Camera*, or *Text memo*, a message box with photos and videos up to 1 GB that keeps unsent text as the chat's draft. Both go to Saved Messages or your *Recipient*, even locked; a video memo then returns home.
+Turn on *Video memo shortcut* or *Text memo shortcut* under N-Settings → General → Launcher shortcuts (off by default) and long-pressing the icon offers *Video memo*, a hands-free round video on the chosen *Camera*, or *Text memo*, a message box with photos and videos up to 1 GB that keeps unsent text as the chat's draft. Both go to Saved Messages or your *Recipient*, even locked. Shortcut Maker-style apps list them too.
 
 ### Custom file names for saved media <!-- #custom-file-names -->
 
