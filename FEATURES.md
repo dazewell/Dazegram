@@ -53,6 +53,10 @@ Edits History (message menu, with *Save Edits History* on under N-Settings → E
 
 A launcher shortcut (long-press the app icon, or pin it to your home screen) that opens the app with Ghost Mode already on. Tapping it flips every Ghost toggle you haven't locked and pushes you offline, then opens as normal. On by default; switch it off under N-Settings → General → Launcher shortcuts.
 
+### Unofficial shortcut names <!-- #shortcut-variant-prefix -->
+
+DwellGramX puts an X in front of its own launcher shortcut names (*X Ayu Mode*, *X Video memo*, *X Text memo*), including the entries in shortcut pickers, so both builds can sit on one phone. DwellGram keeps the plain names.
+
 ### New conversation shortcut switch <!-- #new-conversation-shortcut -->
 
 Telegram's *New conversation* launcher shortcut can be switched off under N-Settings → General → Launcher shortcuts → Built in, for launchers that only show a few shortcuts. On by default.

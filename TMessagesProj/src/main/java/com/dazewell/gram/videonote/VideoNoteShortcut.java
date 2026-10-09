@@ -77,6 +77,10 @@ public final class VideoNoteShortcut {
 
     /** The launcher label: plain while there is one shortcut, naming the camera once there are two. */
     public static String getLabel(boolean rear, boolean longLabel) {
+        return com.dazewell.gram.helpers.ShortcutHelper.variantLabel(getBaseLabel(rear, longLabel));
+    }
+
+    private static String getBaseLabel(boolean rear, boolean longLabel) {
         if (getCameraMode() != CAMERA_BOTH) {
             return LocaleController.getString(R.string.VideoNoteShortcutLabel);
         }

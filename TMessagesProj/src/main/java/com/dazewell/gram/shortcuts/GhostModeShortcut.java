@@ -33,6 +33,10 @@ public final class GhostModeShortcut {
     private GhostModeShortcut() {
     }
 
+    public static String getLabel() {
+        return com.dazewell.gram.helpers.ShortcutHelper.variantLabel(LocaleController.getString(R.string.AyuModeShortcut));
+    }
+
     public static boolean isEnabled() {
         return NaConfig.INSTANCE.getGhostModeShortcut().Bool();
     }
@@ -53,8 +57,8 @@ public final class GhostModeShortcut {
             Intent intent = new Intent(ApplicationLoader.applicationContext, LaunchActivity.class);
             intent.setAction(ACTION);
             ShortcutInfoCompat shortcut = new ShortcutInfoCompat.Builder(ApplicationLoader.applicationContext, SHORTCUT_ID)
-                    .setShortLabel(LocaleController.getString(R.string.AyuModeShortcut))
-                    .setLongLabel(LocaleController.getString(R.string.AyuModeShortcut))
+                    .setShortLabel(getLabel())
+                    .setLongLabel(getLabel())
                     .setIcon(IconCompat.createWithBitmap(createIcon()))
                     .setRank(rank)
                     .setIntent(intent)
