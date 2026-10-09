@@ -5,6 +5,7 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.os.Bundle;
 
+import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
 
@@ -21,6 +22,8 @@ public class MemoPickerActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // A cold process starts here: NaConfig and the hash load in postInitApplication, and until then the switches read false
+        ApplicationLoader.postInitApplication();
         super.onCreate(savedInstanceState);
         Intent self = getIntent();
         if (self != null && Intent.ACTION_CREATE_SHORTCUT.equals(self.getAction())) {
