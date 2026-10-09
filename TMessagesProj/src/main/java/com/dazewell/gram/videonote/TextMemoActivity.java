@@ -500,13 +500,14 @@ public class TextMemoActivity extends Activity {
             }
         });
         // Not with the window: the card settles first, and an automation that swaps the keyboard per app (Tasker) gets
-        // to switch it before it comes up, rather than the wrong one opening and then reopening
+        // to switch it before it comes up, rather than the wrong one opening and then reopening. The floating card waits
+        // longer: the switch lands later than behind the wallpaper, and 500 ms still opened the old keyboard first
         field.requestFocus();
         field.postDelayed(() -> {
             if (!dismissing && !isFinishing()) {
                 AndroidUtilities.showKeyboard(field);
             }
-        }, 500);
+        }, backdrop ? 500 : 1000);
     }
 
     private void animateBackdropIn() {
