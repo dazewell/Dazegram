@@ -345,7 +345,6 @@ public class PinnedPlayerRow extends FrameLayout {
                 textColor = text;
                 textView.setTextColor(text);
             }
-            HeaderBgForeground.drawCompactPill(chat, canvas, getWidth(), getHeight());
             super.dispatchDraw(canvas);
             final float x = getWidth() - 1;
             canvas.drawLine(x, dp(8), x, getHeight() - dp(8), Theme.dividerPaint);

@@ -871,8 +871,6 @@
     <string name="HeaderBackgroundTextPin">Pinned bar text</string>
     <string name="HeaderBackgroundTextLight">Light</string>
     <string name="HeaderBackgroundTextDark">Dark</string>
-    <string name="HeaderBackgroundTextDarkPill">Light on dark pill</string>
-    <string name="HeaderBackgroundTextLightPill">Dark on light pill</string>
     <string name="HeaderBackgroundTextInfoLight">Remembered separately for the light and dark themes. You\'re editing the light one now.</string>
     <string name="HeaderBackgroundTextInfoDark">Remembered separately for the light and dark themes. You\'re editing the dark one now.</string>
     <string name="HeaderBackgroundNoPhoto">This chat has no photo, so there\'s nothing to show behind the header.</string>

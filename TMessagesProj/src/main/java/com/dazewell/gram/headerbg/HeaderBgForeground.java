@@ -36,9 +36,6 @@ public final class HeaderBgForeground {
     static final int THEME = 0;
     static final int LIGHT = 1;
     static final int DARK = 2;
-    // Light text on a dark backing, and dark text on a light one; HeaderBgPills draws the backings.
-    static final int DARK_PILL = 3;
-    static final int LIGHT_PILL = 4;
 
     // The CHAT_HEADER key set plus the pinned bar's. Online/typing stays at full strength so it still differs from "last seen".
     private static final SparseIntArray ON_DARK = new SparseIntArray();
@@ -85,7 +82,7 @@ public final class HeaderBgForeground {
     }
 
     private static int map(int mode, int key, int color) {
-        SparseIntArray table = mode == LIGHT || mode == DARK_PILL ? ON_DARK : mode == DARK || mode == LIGHT_PILL ? ON_LIGHT : null;
+        SparseIntArray table = mode == LIGHT ? ON_DARK : mode == DARK ? ON_LIGHT : null;
         int index = table != null ? table.indexOfKey(key) : -1;
         return index >= 0 ? table.valueAt(index) : color;
     }
@@ -100,19 +97,6 @@ public final class HeaderBgForeground {
     public static int pinColor(ChatActivity fragment, int key, int themedColor) {
         HeaderBgDrawer drawer = drawer(fragment);
         return map(drawer != null ? drawer.appliedPin : THEME, key, themedColor);
-    }
-
-    /** The pinned strip's views for a chat, or null before its strip is built. */
-    static PinnedViews pinnedViews(ChatActivity fragment) {
-        return pinned.get(fragment);
-    }
-
-    /** From the combined player row's compact pinned copy, before its text, so it gets the strip's backing too. */
-    public static void drawCompactPill(ChatActivity fragment, Canvas canvas, int width, int height) {
-        HeaderBgDrawer drawer = drawer(fragment);
-        if (drawer != null) {
-            drawer.pills.drawCompact(canvas, HeaderBgPills.fill(drawer.appliedPin), width, height);
-        }
     }
 
     /** For the auto-delete timer, which reads the title key through its own provider at draw time. */
@@ -243,7 +227,7 @@ public final class HeaderBgForeground {
         }
     }
 
-    static final class PinnedViews {
+    private static final class PinnedViews {
         WeakReference<NumberTextView> counter;
         WeakReference<SimpleTextView[]> names;
         WeakReference<SimpleTextView[]> messages;
