@@ -416,6 +416,7 @@ public class LauncherShortcutsActivity extends BaseNekoXSettingsActivity {
             ghostModeItem.setVisibility(GhostModeShortcut.isEnabled() ? VISIBLE : GONE);
             // With one shortcut the first item stands for whichever camera it opens, labelled plainly
             boolean both = VideoNoteShortcut.getCameraMode() == VideoNoteShortcut.CAMERA_BOTH;
+            labels[1].setText(GhostModeShortcut.getLabel());
             labels[2].setText(VideoNoteShortcut.getLabel(false, true));
             labels[3].setText(VideoNoteShortcut.getLabel(true, true));
             videoNoteItem.setVisibility(VideoNoteShortcut.isEnabled() ? VISIBLE : GONE);

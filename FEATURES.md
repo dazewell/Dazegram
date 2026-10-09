@@ -55,7 +55,7 @@ A launcher shortcut (long-press the app icon, or pin it to your home screen) tha
 
 ### Unofficial shortcut names <!-- #shortcut-variant-prefix -->
 
-DwellGramX puts an X in front of its launcher shortcut names, such as *X Video memo* and *X Text memo*, including the entries in shortcut pickers, so both builds can sit on one phone. DwellGram keeps the plain names.
+DwellGramX puts an X in front of its own launcher shortcut names (*X Ayu Mode*, *X Video memo*, *X Text memo*), including the entries in shortcut pickers, so both builds can sit on one phone. DwellGram keeps the plain names.
 
 ### New conversation shortcut switch <!-- #new-conversation-shortcut -->
 
