@@ -2384,9 +2384,7 @@ the server flag `androidDisableRoundCamera2`, default **true**
 fork's N-Settings switch `VideoMessagesCamera2` is OR-ed in only while that
 Debug force is unset, and a force stays set once the Debug row is touched. So
 round video usually runs on Camera1, whose `Parameters.getZoomRatios()`
-(`CameraSession.java:257`) starts at 1x on the main sensor. Its
-`isSmoothZoomSupported()` was false on the OPPO below, which says nothing
-about Camera2 support.
+(`CameraSession.java:255`) starts at 1x on the main sensor.
 
 Upstream Camera2 round zoom is a `SCALER_CROP_REGION` with `getMinZoom()`
 fixed at 1 (`Camera2Session.java:399`). The fork's ratio mode

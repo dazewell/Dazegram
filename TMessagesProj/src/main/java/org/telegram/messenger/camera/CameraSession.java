@@ -27,7 +27,6 @@ import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.FileLog;
 
-import xyz.nextalone.nagram.NaConfig;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -46,7 +45,6 @@ public class CameraSession {
     private boolean initied;
     private int maxZoom;
     private List<Integer> zoomRatios;
-    private boolean smoothZoomSupported;
     private boolean meteringAreaSupported;
     private int currentOrientation;
     private int diffOrientation;
@@ -255,9 +253,8 @@ public class CameraSession {
                     params.setRecordingHint(true);
                     maxZoom = params.getMaxZoom();
                     zoomRatios = maxZoom > 0 ? params.getZoomRatios() : null;
-                    smoothZoomSupported = maxZoom > 0 && params.isSmoothZoomSupported();
                     if (initial && BuildVars.LOGS_ENABLED) {
-                        FileLog.d("camera1 zoom levels " + maxZoom + " smooth " + smoothZoomSupported + " ratios " + zoomRatios);
+                        FileLog.d("camera1 zoom levels " + maxZoom + " ratios " + zoomRatios);
                     }
 
                     String desiredMode = Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO;
@@ -394,7 +391,6 @@ public class CameraSession {
                     params.setJpegThumbnailQuality(100);
                     maxZoom = params.getMaxZoom();
                     zoomRatios = maxZoom > 0 ? params.getZoomRatios() : null;
-                    smoothZoomSupported = maxZoom > 0 && params.isSmoothZoomSupported();
                     params.setZoom((int) (currentZoom * maxZoom));
 
                     if (optimizeForBarcode) {
@@ -530,57 +526,8 @@ public class CameraSession {
         // mid-step fraction so the (int) (currentZoom * maxZoom) reapply in configure can't truncate a level down
         currentZoom = (level + 0.5f) / maxZoom;
         zoomTargetLevel = level;
-        if (smoothZoomSupported && NaConfig.INSTANCE.getVideoMessagesHalSmoothZoom().Bool()) {
-            kickSmoothZoom();
-        } else if (!zoomStepping && level != appliedZoomLevel) {
+        if (!zoomStepping && level != appliedZoomLevel) {
             stepZoomLevel();
-        }
-    }
-
-    // NagramX: HAL-animated zoom (opt-in): the camera ramps to the target itself, interpolating smoother than
-    // one-level software steps can. startSmoothZoom must not be called again until the ramp reports stopped,
-    // so targets that arrive mid-ramp are chased from the listener; only a direction reversal stops it early.
-    private boolean smoothZooming;
-    private int smoothZoomStartedTo = -1;
-
-    private void kickSmoothZoom() {
-        try {
-            Camera camera = destroyed ? null : (cameraInfo != null ? cameraInfo.camera : null);
-            if (camera == null) {
-                return;
-            }
-            if (appliedZoomLevel < 0) {
-                appliedZoomLevel = camera.getParameters().getZoom();
-            }
-            if (smoothZooming) {
-                if ((zoomTargetLevel - appliedZoomLevel) * (smoothZoomStartedTo - appliedZoomLevel) < 0) {
-                    camera.stopSmoothZoom();
-                }
-                return;
-            }
-            if (appliedZoomLevel == zoomTargetLevel) {
-                return;
-            }
-            smoothZooming = true;
-            smoothZoomStartedTo = zoomTargetLevel;
-            camera.setZoomChangeListener((value, stopped, cam) -> AndroidUtilities.runOnUIThread(() -> {
-                appliedZoomLevel = value;
-                if (stopped) {
-                    smoothZooming = false;
-                    if (value != zoomTargetLevel) {
-                        kickSmoothZoom();
-                    }
-                }
-            }));
-            camera.startSmoothZoom(zoomTargetLevel);
-        } catch (Exception e) {
-            // the HAL advertised smooth zoom but won't run it: use the software ramp for the rest of the session
-            FileLog.e(e);
-            smoothZooming = false;
-            smoothZoomSupported = false;
-            if (!zoomStepping && appliedZoomLevel != zoomTargetLevel) {
-                stepZoomLevel();
-            }
         }
     }
 
