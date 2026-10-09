@@ -130,6 +130,43 @@ public class TextMemoActivity extends Activity {
     private HorizontalScrollView photoScroll;
     // The system picker is up over this screen: onStop must not read that as being sent away
     private boolean picking;
+    private long smokeT0;
+    private android.database.ContentObserver smokeObs;
+    private int smokeIme = -1;
+
+    private void smokeLog(String what) {
+        android.util.Log.e("NAX_SMOKE_memo_kbd", "t=" + (SystemClock.uptimeMillis() - smokeT0) + " " + what + " defaultIme="
+                + android.provider.Settings.Secure.getString(getContentResolver(), "default_input_method"));
+    }
+
+    private void smokeBegin() {
+        smokeT0 = SystemClock.uptimeMillis();
+        smokeLog("BEGIN build=" + org.telegram.messenger.BuildVars.BUILD_VERSION_STRING + " pkg=" + getPackageName() + " backdrop=" + backdrop);
+        smokeObs = new android.database.ContentObserver(new android.os.Handler(android.os.Looper.getMainLooper())) {
+            @Override
+            public void onChange(boolean selfChange) {
+                smokeLog("IME_SETTING_CHANGED");
+            }
+        };
+        getContentResolver().registerContentObserver(android.provider.Settings.Secure.getUriFor("default_input_method"), false, smokeObs);
+        View decor = getWindow().getDecorView();
+        decor.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
+            WindowInsetsCompat insets = ViewCompat.getRootWindowInsets(decor);
+            int visible = insets != null && insets.isVisible(WindowInsetsCompat.Type.ime()) ? 1 : 0;
+            if (visible != smokeIme) {
+                smokeIme = visible;
+                smokeLog("KEYBOARD_VISIBLE=" + visible);
+            }
+        });
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (smokeT0 != 0) {
+            smokeLog("WINDOW_FOCUS=" + hasFocus);
+        }
+    }
     // Picks still being copied, in pick order: a send now would leave them behind, and a second pick would pass the cap
     private final ArrayList<TextMemoPhotos.Pick> pending = new ArrayList<>();
     // Picks of this batch that were left out (past the limit, refused, failed), told once when the last copy resolves
@@ -162,6 +199,7 @@ public class TextMemoActivity extends Activity {
         account = selected;
 
         backdrop = hasBackdrop();
+        smokeBegin();
         if (backdrop) {
             // No white flash if the wallpaper takes a moment
             window.setBackgroundDrawable(new ColorDrawable(Theme.getColor(Theme.key_windowBackgroundGray)));
@@ -502,9 +540,11 @@ public class TextMemoActivity extends Activity {
         // Not with the window: the card settles first, and an automation that swaps the keyboard per app (Tasker) gets
         // to switch it before it comes up, rather than the wrong one opening and then reopening. The floating card waits
         // longer: the switch lands later than behind the wallpaper, and 500 ms still opened the old keyboard first
+        smokeLog("REQUEST_FOCUS");
         field.requestFocus();
         field.postDelayed(() -> {
             if (!dismissing && !isFinishing()) {
+                smokeLog("SHOW_KEYBOARD_CALL");
                 AndroidUtilities.showKeyboard(field);
             }
         }, backdrop ? 500 : 1000);
@@ -1201,6 +1241,10 @@ public class TextMemoActivity extends Activity {
         TextMemoPhotos.discard(photos);
         photos.clear();
         NotificationCenter.getGlobalInstance().removeObserver(wallpaperObserver, NotificationCenter.didSetNewWallpapper);
+        if (smokeObs != null) {
+            smokeLog("END");
+            getContentResolver().unregisterContentObserver(smokeObs);
+        }
         super.onDestroy();
     }
 
