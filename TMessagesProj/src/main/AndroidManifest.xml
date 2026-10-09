@@ -620,6 +620,58 @@
             android:taskAffinity=""
             android:theme="@style/Theme.TMessages.TextMemoCard"
             android:windowSoftInputMode="adjustResize|stateHidden" />
+        <!-- NagramX: the memos for apps that list exported activities or CREATE_SHORTCUT entries instead of launcher shortcuts; MemoPickerActivity says what the aliases do. Exported on purpose: any app can start a memo, as with the launcher's own shortcuts, and the video memo's switch is its off button -->
+        <activity
+            android:name="com.dazewell.gram.videonote.MemoPickerActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay" />
+        <activity-alias
+            android:name="com.dazewell.gram.videonote.MemoPickerVideoFront"
+            android:exported="true"
+            android:icon="@drawable/shortcut_memo_video"
+            android:label="@string/VideoNoteShortcutLabelFrontLong"
+            android:targetActivity="com.dazewell.gram.videonote.MemoPickerActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.CREATE_SHORTCUT" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.dazewell.gram.videonote.MemoPickerVideoRear"
+            android:exported="true"
+            android:icon="@drawable/shortcut_memo_video"
+            android:label="@string/VideoNoteShortcutLabelRearLong"
+            android:targetActivity="com.dazewell.gram.videonote.MemoPickerActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.CREATE_SHORTCUT" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.dazewell.gram.videonote.MemoPickerTextFull"
+            android:exported="true"
+            android:icon="@drawable/shortcut_memo_text"
+            android:label="@string/TextMemoShortcutLabelFull"
+            android:targetActivity="com.dazewell.gram.videonote.MemoPickerActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.CREATE_SHORTCUT" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="com.dazewell.gram.videonote.MemoPickerTextCard"
+            android:exported="true"
+            android:icon="@drawable/shortcut_memo_text"
+            android:label="@string/TextMemoShortcutLabelCard"
+            android:targetActivity="com.dazewell.gram.videonote.MemoPickerActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.CREATE_SHORTCUT" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
         <!-- NagramX: launcher shortcuts pinned before the DwellGram package move store these old component names; the aliases keep them opening -->
         <activity-alias
             android:name="com.radolyn.ayugram.videonote.TextMemoActivity"
