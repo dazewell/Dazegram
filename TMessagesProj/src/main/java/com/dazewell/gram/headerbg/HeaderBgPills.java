@@ -57,14 +57,14 @@ final class HeaderBgPills {
                 float alpha = loc[2];
                 SimpleTextView title = container.getTitleTextView();
                 if (title != null && locate(title, bar)) {
-                    int start = title.getTextStartX();
+                    int start = textStart(title);
                     float width = Math.min(title.getWidth() - start, title.getTextWidth() + title.getRightDrawableWidth());
                     scratch.union(loc[0] + start, loc[1], loc[0] + start + width, loc[1] + title.getHeight());
                 }
                 View subtitle = container.getSubtitleTextView();
                 if (subtitle instanceof SimpleTextView && locate(subtitle, bar)) {
                     SimpleTextView s = (SimpleTextView) subtitle;
-                    int start = s.getTextStartX();
+                    int start = textStart(s);
                     float width = Math.min(s.getWidth() - start, s.getTextWidth());
                     scratch.union(loc[0] + start, loc[1], loc[0] + start + width, loc[1] + s.getHeight());
                 } else if (subtitle instanceof AnimatedTextView && locate(subtitle, bar)) {
@@ -123,7 +123,7 @@ final class HeaderBgPills {
                     lineLeft = Math.min(lineLeft, left);
                 } else if (child instanceof SimpleTextView) {
                     SimpleTextView t = (SimpleTextView) child;
-                    left += t.getTextStartX();
+                    left += textStart(t);
                     textWidth = Math.min(t.getWidth(), t.getTextWidth());
                 } else if (child instanceof NumberTextView) {
                     textWidth = ((NumberTextView) child).getTextWidth();
@@ -194,6 +194,11 @@ final class HeaderBgPills {
         scratch.circles[i + 1] = loc[1] + view.getHeight() / 2f;
         scratch.circles[i + 2] = radius;
         scratch.circles[i + 3] = loc[2];
+    }
+
+    // Where the text starts inside the view. getTextStartX() already adds the view's own position in its parent.
+    private static int textStart(SimpleTextView view) {
+        return view.getTextStartX() - (int) view.getX();
     }
 
     // Fills loc with the view's position and alpha relative to the ancestor. False when it is not under it,
