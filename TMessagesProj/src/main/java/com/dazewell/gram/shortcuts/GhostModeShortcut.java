@@ -53,8 +53,8 @@ public final class GhostModeShortcut {
             Intent intent = new Intent(ApplicationLoader.applicationContext, LaunchActivity.class);
             intent.setAction(ACTION);
             ShortcutInfoCompat shortcut = new ShortcutInfoCompat.Builder(ApplicationLoader.applicationContext, SHORTCUT_ID)
-                    .setShortLabel(LocaleController.getString(R.string.AyuModeShortcut))
-                    .setLongLabel(LocaleController.getString(R.string.AyuModeShortcut))
+                    .setShortLabel(com.dazewell.gram.helpers.ShortcutHelper.variantLabel(LocaleController.getString(R.string.AyuModeShortcut)))
+                    .setLongLabel(com.dazewell.gram.helpers.ShortcutHelper.variantLabel(LocaleController.getString(R.string.AyuModeShortcut)))
                     .setIcon(IconCompat.createWithBitmap(createIcon()))
                     .setRank(rank)
                     .setIntent(intent)

@@ -41,7 +41,7 @@ public final class TextMemoShortcut {
 
     /** One label for both lengths: a launcher picks by width, and two that differ read as two styles. */
     public static String getLabel(boolean card) {
-        return LocaleController.getString(card ? R.string.TextMemoShortcutLabelCard : R.string.TextMemoShortcutLabelFull);
+        return com.dazewell.gram.helpers.ShortcutHelper.variantLabel(LocaleController.getString(card ? R.string.TextMemoShortcutLabelCard : R.string.TextMemoShortcutLabelFull));
     }
 
     static void addShortcutId(List<String> wantedIds) {

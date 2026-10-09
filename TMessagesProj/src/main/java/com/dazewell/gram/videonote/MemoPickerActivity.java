@@ -32,7 +32,7 @@ public class MemoPickerActivity extends Activity {
             ComponentName alias = getComponentName();
             Intent result = new Intent();
             result.putExtra(Intent.EXTRA_SHORTCUT_INTENT, new Intent(Intent.ACTION_MAIN).setComponent(alias));
-            result.putExtra(Intent.EXTRA_SHORTCUT_NAME, org.telegram.messenger.LocaleController.getString(labelOf(alias.getClassName())));
+            result.putExtra(Intent.EXTRA_SHORTCUT_NAME, com.dazewell.gram.helpers.ShortcutHelper.variantLabel(org.telegram.messenger.LocaleController.getString(labelOf(alias.getClassName()))));
             result.putExtra(Intent.EXTRA_SHORTCUT_ICON_RESOURCE, Intent.ShortcutIconResource.fromContext(this, iconOf(alias.getClassName())));
             setResult(RESULT_OK, result);
         } else {

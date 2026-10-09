@@ -13,6 +13,14 @@ object ShortcutHelper {
     // The id MediaDataController.buildShortcuts() gives the "New conversation" shortcut.
     private const val COMPOSE_SHORTCUT_ID = "compose"
 
+    // A launcher label for the fork's own shortcuts. Both package variants sit side by side on one phone and a pinned
+    // copy or a shortcut picker lists them under the same name, so the Unofficial one (any package that isn't the
+    // `.beta` Official, the same test build.gradle uses) leads with an X. Leading, because launchers cut a long label
+    // at the end. The manifest's picker entries do the same through the memoLabelPrefix placeholder.
+    @JvmStatic
+    fun variantLabel(label: String): String =
+        if (ApplicationLoader.applicationContext.packageName.endsWith(".beta")) label else "X $label"
+
     @JvmStatic
     fun isComposeShortcutEnabled(): Boolean = NaConfig.newConversationShortcut.Bool()
 

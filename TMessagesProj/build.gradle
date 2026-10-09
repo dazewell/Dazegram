@@ -123,7 +123,9 @@ android {
         // populates manifestPlaceholders (e.g. applicationId) for the 11+ manifest sites that use it.
         manifestPlaceholders += [
                 fixedAppIcon     : APP_PACKAGE.endsWith('.beta') ? '@mipmap/ic_launcher_nagram_blue' : '@mipmap/ic_launcher_nagram_ribbon_amber',
-                fixedAppIconRound: APP_PACKAGE.endsWith('.beta') ? '@mipmap/ic_launcher_nagram_blue_round' : '@mipmap/ic_launcher_nagram_ribbon_amber_round'
+                fixedAppIconRound: APP_PACKAGE.endsWith('.beta') ? '@mipmap/ic_launcher_nagram_blue_round' : '@mipmap/ic_launcher_nagram_ribbon_amber_round',
+                // NagramX: leads the memo picker labels in the manifest, which can't run code; ShortcutHelper.variantLabel does the same at runtime (#shortcut-variant-prefix)
+                memoLabelPrefix  : APP_PACKAGE.endsWith('.beta') ? '' : 'X '
         ]
 
         // account type and contact mime types must track applicationId so the two package variants don't collide
