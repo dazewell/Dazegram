@@ -1075,12 +1075,6 @@ object NaConfig {
             ConfigItem.configTypeBool,
             false
         )
-    val videoMessagesHalSmoothZoom =
-        addConfig(
-            "VideoMessagesHalSmoothZoom",
-            ConfigItem.configTypeBool,
-            false
-        )
     val videoMessagesCamera2 =
         addConfig(
             "VideoMessagesCamera2",
