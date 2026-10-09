@@ -64,10 +64,7 @@ public final class TextMemoShortcut {
     private static void publish(boolean card, boolean recreate, List<String> existingIds, int rank) {
         String id = card ? SHORTCUT_ID_CARD : SHORTCUT_ID;
         try {
-            // The window theme can't change once an activity is open, so the card is its own activity
-            Intent intent = new Intent(ApplicationLoader.applicationContext, card ? TextMemoCardActivity.class : TextMemoActivity.class);
-            intent.setAction(ACTION);
-            intent.putExtra(EXTRA_HASH, SharedConfig.directShareHash);
+            Intent intent = createIntent(card);
             ShortcutInfoCompat shortcut = new ShortcutInfoCompat.Builder(ApplicationLoader.applicationContext, id)
                     .setShortLabel(getLabel(card))
                     .setLongLabel(getLabel(card))
@@ -85,6 +82,15 @@ public final class TextMemoShortcut {
         } catch (Throwable e) {
             FileLog.e(e);
         }
+    }
+
+    /** The intent a launcher shortcut or MemoPickerActivity starts, carrying the current hash. */
+    static Intent createIntent(boolean card) {
+        // The window theme can't change once an activity is open, so the card is its own activity
+        Intent intent = new Intent(ApplicationLoader.applicationContext, card ? TextMemoCardActivity.class : TextMemoActivity.class);
+        intent.setAction(ACTION);
+        intent.putExtra(EXTRA_HASH, SharedConfig.directShareHash);
+        return intent;
     }
 
     // The video memo's disc with a pencil, so the two read as a pair
