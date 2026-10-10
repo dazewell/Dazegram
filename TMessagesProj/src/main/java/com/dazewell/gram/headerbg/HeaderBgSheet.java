@@ -249,10 +249,11 @@ public final class HeaderBgSheet {
             });
             syncs.add(() -> gradientCell.setTextAndValueAndCheck(getString(R.string.HeaderBackgroundGradient), getString(R.string.HeaderBackgroundGradientInfo), s.gradient, true, false));
             gradient.addView(gradientCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-            TextSettingsCell fromCell = choice(gradient, () -> s.gradient, () -> s.gradientFrom = (s.gradientFrom + 1) % 3);
+            TextSettingsCell fromCell = choice(gradient, () -> s.gradient, () -> s.gradientFrom = (s.gradientFrom + 1) % (HeaderBgSettings.FROM_CENTER + 1));
             TextSettingsCell curveCell = choice(gradient, () -> s.gradient, () -> s.gradientCurve = (s.gradientCurve + 1) % (HeaderBgSettings.CURVE_SMOOTH + 1));
             View gradientStrength = slider(gradient, R.string.HeaderBackgroundGradientStrength, 0, 100, () -> s.gradientStrength, v -> s.gradientStrength = v, false);
-            View fadeRange = rangeSlider(gradient);
+            View fadeRange = rangeSlider(gradient, R.string.HeaderBackgroundGradientRange, R.string.HeaderBackgroundGradientStart,
+                    R.string.HeaderBackgroundGradientEnd, () -> s.gradientStart, () -> s.gradientEnd, v -> s.gradientStart = v, v -> s.gradientEnd = v);
             syncs.add(() -> {
                 fromCell.setTextAndValue(getString(R.string.HeaderBackgroundGradientFrom), fromName(s.gradientFrom), true);
                 curveCell.setTextAndValue(getString(R.string.HeaderBackgroundGradientCurve), curveName(s.gradientCurve), false);
@@ -260,6 +261,43 @@ public final class HeaderBgSheet {
                 setRowEnabled(curveCell, s.gradient);
                 setRowEnabled(gradientStrength, s.gradient);
                 setRowEnabled(fadeRange, s.gradient);
+            });
+            addSpacer(content, 8);
+
+            GateLayout scrim = section(content, R.string.HeaderBackgroundScrim, false,
+                    () -> s.scrim ? s.scrimStrength + "% · " + fromName(s.scrimFrom) + " · " + scrimSummary()
+                            : getString(R.string.HeaderBackgroundGradientOff));
+            TextCheckCell scrimCell = new TextCheckCell(context, 21, false, rp);
+            scrimCell.setBackground(Theme.getSelectorDrawable(false, rp));
+            scrimCell.setOnClickListener(v -> {
+                s.scrim = !s.scrim;
+                changed(true);
+            });
+            syncs.add(() -> scrimCell.setTextAndValueAndCheck(getString(R.string.HeaderBackgroundScrim), getString(R.string.HeaderBackgroundScrimInfo), s.scrim, true, false));
+            scrim.addView(scrimCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            TextSettingsCell scrimFromCell = choice(scrim, () -> s.scrim, () -> s.scrimFrom = (s.scrimFrom + 1) % (HeaderBgSettings.FROM_CENTER + 1));
+            TextSettingsCell scrimColorCell = choice(scrim, () -> s.scrim, () -> s.scrimColor = (s.scrimColor + 1) % (HeaderBgSettings.SCRIM_WHITE + 1));
+            // Only while Auto, which is the one choice whose result depends on another row.
+            TextInfoPrivacyCell scrimAutoInfo = new TextInfoPrivacyCell(context, 21, rp);
+            scrim.addView(scrimAutoInfo, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            TextSettingsCell scrimCurveCell = choice(scrim, () -> s.scrim, () -> s.scrimCurve = (s.scrimCurve + 1) % (HeaderBgSettings.CURVE_SMOOTH + 1));
+            View scrimStrength = slider(scrim, R.string.HeaderBackgroundScrimStrength, 0, 100, () -> s.scrimStrength, v -> s.scrimStrength = v, false);
+            View scrimRange = rangeSlider(scrim, R.string.HeaderBackgroundScrimRange, R.string.HeaderBackgroundScrimStart,
+                    R.string.HeaderBackgroundScrimEnd, () -> s.scrimStart, () -> s.scrimEnd, v -> s.scrimStart = v, v -> s.scrimEnd = v);
+            syncs.add(() -> {
+                scrimFromCell.setTextAndValue(getString(R.string.HeaderBackgroundScrimFrom), fromName(s.scrimFrom), true);
+                scrimColorCell.setTextAndValue(getString(R.string.HeaderBackgroundScrimColor), scrimName(s.scrimColor), true);
+                scrimCurveCell.setTextAndValue(getString(R.string.HeaderBackgroundGradientCurve), curveName(s.scrimCurve), false);
+                boolean auto = s.scrimColor == HeaderBgSettings.SCRIM_AUTO;
+                scrimAutoInfo.setVisibility(auto ? View.VISIBLE : View.GONE);
+                if (auto) {
+                    scrimAutoInfo.setText(getString(scrimDark() ? R.string.HeaderBackgroundScrimAutoLight : R.string.HeaderBackgroundScrimAutoDark));
+                }
+                setRowEnabled(scrimFromCell, s.scrim);
+                setRowEnabled(scrimColorCell, s.scrim);
+                setRowEnabled(scrimCurveCell, s.scrim);
+                setRowEnabled(scrimStrength, s.scrim);
+                setRowEnabled(scrimRange, s.scrim);
             });
 
             LinearLayout buttons = newButtons(content, rp);
@@ -334,17 +372,18 @@ public final class HeaderBgSheet {
             return cell;
         }
 
-        private View rangeSlider(LinearLayout parent) {
+        private View rangeSlider(LinearLayout parent, int title, int startName, int endName, IntSupplier getStart, IntSupplier getEnd,
+                                 IntConsumer setStart, IntConsumer setEnd) {
             GateLayout row = new GateLayout(context);
             row.setOrientation(LinearLayout.VERTICAL);
-            TextView valueView = sliderHeader(row, R.string.HeaderBackgroundGradientRange);
+            TextView valueView = sliderHeader(row, title);
             RangeSeekBar bar = new RangeSeekBar(context, 100, HeaderBgSettings.MIN_FADE_SPAN, rp);
-            Runnable label = () -> valueView.setText(s.gradientStart + "% – " + s.gradientEnd + "%");
+            Runnable label = () -> valueView.setText(getStart.getAsInt() + "% – " + getEnd.getAsInt() + "%");
             bar.setDelegate(new RangeSeekBar.Delegate() {
                 @Override
                 public void onRangeChanged(int start, int end, boolean stop) {
-                    s.gradientStart = start;
-                    s.gradientEnd = end;
+                    setStart.accept(start);
+                    setEnd.accept(end);
                     label.run();
                     push();
                     if (stop) {
@@ -354,18 +393,32 @@ public final class HeaderBgSheet {
 
                 @Override
                 public CharSequence describe(boolean endHandle, int value) {
-                    return getString(endHandle ? R.string.HeaderBackgroundGradientEnd : R.string.HeaderBackgroundGradientStart) + ", " + value + "%";
+                    return getString(endHandle ? endName : startName) + ", " + value + "%";
                 }
             });
             row.addView(bar, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, 13, 0, 13, 0));
             syncs.add(() -> {
                 label.run();
                 if (!bar.isDragging()) {
-                    bar.setRange(s.gradientStart, s.gradientEnd);
+                    bar.setRange(getStart.getAsInt(), getEnd.getAsInt());
                 }
             });
             parent.addView(row, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
             return row;
+        }
+
+        // Whether the scrim comes out dark, as the drawer resolves it; dark when there is no drawer to ask.
+        private boolean scrimDark() {
+            HeaderBgDrawer drawer = HeaderBgDrawer.obtain(fragment);
+            return drawer == null || drawer.scrimColor() == 0xff000000;
+        }
+
+        private String scrimSummary() {
+            if (s.scrimColor != HeaderBgSettings.SCRIM_AUTO) {
+                return scrimName(s.scrimColor);
+            }
+            return getString(R.string.HeaderBackgroundTintAuto) + " ("
+                    + getString(scrimDark() ? R.string.HeaderBackgroundScrimBlack : R.string.HeaderBackgroundScrimWhite).toLowerCase() + ")";
         }
 
         // The title on the left and the live value on the right, above a slider; returns the value view.
@@ -577,6 +630,12 @@ public final class HeaderBgSheet {
         if (from == HeaderBgSettings.FROM_BOTTOM) {
             return getString(R.string.HeaderBackgroundFromBottom);
         }
+        if (from == HeaderBgSettings.FROM_EDGES) {
+            return getString(R.string.HeaderBackgroundFromEdges);
+        }
+        if (from == HeaderBgSettings.FROM_CENTER) {
+            return getString(R.string.HeaderBackgroundFromCenter);
+        }
         return getString(R.string.HeaderBackgroundFromTitle);
     }
 
@@ -588,6 +647,16 @@ public final class HeaderBgSheet {
             return getString(R.string.HeaderBackgroundTextDark);
         }
         return getString(R.string.HeaderBackgroundTintTheme);
+    }
+
+    private static String scrimName(int color) {
+        if (color == HeaderBgSettings.SCRIM_BLACK) {
+            return getString(R.string.HeaderBackgroundScrimBlack);
+        }
+        if (color == HeaderBgSettings.SCRIM_WHITE) {
+            return getString(R.string.HeaderBackgroundScrimWhite);
+        }
+        return getString(R.string.HeaderBackgroundTintAuto);
     }
 
     private static String curveName(int curve) {

@@ -15,6 +15,9 @@ public final class HeaderBgSettings {
     public static final int FROM_TITLE = 0;
     public static final int FROM_TOP = 1;
     public static final int FROM_BOTTOM = 2;
+    /** Stripes: solid at the top and bottom edges, or in a band across the middle, clearing toward the rest. */
+    public static final int FROM_EDGES = 3;
+    public static final int FROM_CENTER = 4;
 
     /** How the fade's opacity falls from its start to its end. */
     public static final int CURVE_LINEAR = 0;
@@ -33,7 +36,13 @@ public final class HeaderBgSettings {
     public static final int TEXT_LIGHT = 1;
     public static final int TEXT_DARK = 2;
 
+    /** The scrim's colour: the opposite of the header text, or a fixed black or white. */
+    public static final int SCRIM_AUTO = 0;
+    public static final int SCRIM_BLACK = 1;
+    public static final int SCRIM_WHITE = 2;
+
     private static final int DEF_ZOOM = 100;
+    private static final int DEF_SCRIM_STRENGTH = 50;
     private static final int DEF_OPACITY = 55;
     private static final int DEF_TINT_STRENGTH = 40;
     private static final int DEF_GRADIENT_STRENGTH = 70;
@@ -60,6 +69,15 @@ public final class HeaderBgSettings {
     // Header and pinned bar text, each remembered separately for the light and the dark theme.
     // Index: 0 header light, 1 header dark, 2 pinned light, 3 pinned dark.
     private final int[] text = new int[4];
+    /** A darkening or lightening over part of the photo, from a side or as a stripe, under the title and icons. */
+    public boolean scrim;
+    public int scrimFrom = FROM_TOP;
+    public int scrimColor = SCRIM_AUTO;
+    public int scrimCurve = CURVE_SMOOTH;
+    public int scrimStrength = DEF_SCRIM_STRENGTH;
+    /** Where the scrim starts clearing and where it is gone, in percent of its run; the same span as the gradient's. */
+    public int scrimStart = 0;
+    public int scrimEnd = 100;
 
     public int text(boolean pin, boolean dark) {
         return text[(pin ? 2 : 0) + (dark ? 1 : 0)];
@@ -88,6 +106,13 @@ public final class HeaderBgSettings {
         blur = 0;
         desaturate = 0;
         java.util.Arrays.fill(text, TEXT_AUTO);
+        scrim = false;
+        scrimFrom = FROM_TOP;
+        scrimColor = SCRIM_AUTO;
+        scrimCurve = CURVE_SMOOTH;
+        scrimStrength = DEF_SCRIM_STRENGTH;
+        scrimStart = 0;
+        scrimEnd = 100;
     }
 
     public void copyFrom(HeaderBgSettings o) {
@@ -108,6 +133,13 @@ public final class HeaderBgSettings {
         blur = o.blur;
         desaturate = o.desaturate;
         System.arraycopy(o.text, 0, text, 0, text.length);
+        scrim = o.scrim;
+        scrimFrom = o.scrimFrom;
+        scrimColor = o.scrimColor;
+        scrimCurve = o.scrimCurve;
+        scrimStrength = o.scrimStrength;
+        scrimStart = o.scrimStart;
+        scrimEnd = o.scrimEnd;
     }
 
     /** Every field the drawer paints from, so a cache checked against it notices any change; keep in step with the fields. */
@@ -117,7 +149,9 @@ public final class HeaderBgSettings {
                 && gradientStrength == o.gradientStrength && gradientFrom == o.gradientFrom && extendPanel == o.extendPanel
                 && gradientCurve == o.gradientCurve && gradientStart == o.gradientStart && gradientEnd == o.gradientEnd
                 && blur == o.blur && desaturate == o.desaturate
-                && java.util.Arrays.equals(text, o.text);
+                && java.util.Arrays.equals(text, o.text)
+                && scrim == o.scrim && scrimFrom == o.scrimFrom && scrimColor == o.scrimColor && scrimCurve == o.scrimCurve
+                && scrimStrength == o.scrimStrength && scrimStart == o.scrimStart && scrimEnd == o.scrimEnd;
     }
 
     private boolean isDefaultLook() {
@@ -126,7 +160,9 @@ public final class HeaderBgSettings {
                 && gradientStrength == DEF_GRADIENT_STRENGTH && gradientFrom == FROM_TITLE && extendPanel
                 && gradientCurve == CURVE_LINEAR && gradientStart == 0 && gradientEnd == 100
                 && blur == 0 && desaturate == 0
-                && text[0] == TEXT_AUTO && text[1] == TEXT_AUTO && text[2] == TEXT_AUTO && text[3] == TEXT_AUTO;
+                && text[0] == TEXT_AUTO && text[1] == TEXT_AUTO && text[2] == TEXT_AUTO && text[3] == TEXT_AUTO
+                && !scrim && scrimFrom == FROM_TOP && scrimColor == SCRIM_AUTO && scrimCurve == CURVE_SMOOTH && scrimStrength == DEF_SCRIM_STRENGTH
+                && scrimStart == 0 && scrimEnd == 100;
     }
 
     private static SharedPreferences prefs(int account) {
@@ -154,7 +190,7 @@ public final class HeaderBgSettings {
         s.tintStrength = parse(f, 6, 0, 100, DEF_TINT_STRENGTH);
         s.gradient = !"0".equals(field(f, 7));
         s.gradientStrength = parse(f, 8, 0, 100, DEF_GRADIENT_STRENGTH);
-        s.gradientFrom = parse(f, 9, FROM_TITLE, FROM_BOTTOM, FROM_TITLE);
+        s.gradientFrom = parse(f, 9, FROM_TITLE, FROM_CENTER, FROM_TITLE);
         s.extendPanel = !"0".equals(field(f, 10));
         s.gradientCurve = parse(f, 11, CURVE_LINEAR, CURVE_SMOOTH, CURVE_LINEAR);
         s.gradientStart = parse(f, 12, 0, 100 - MIN_FADE_SPAN, 0);
@@ -162,10 +198,17 @@ public final class HeaderBgSettings {
         s.gradientEnd = Math.max(s.gradientEnd, s.gradientStart + MIN_FADE_SPAN);
         s.blur = parse(f, 14, 0, 100, 0);
         s.desaturate = parse(f, 15, 0, 100, 0);
-        // Slot 16 held the retired Alternate color; it is never read, and the next new field goes on slot 21.
+        // Slot 16 held the retired Alternate color; it is never read, and the next new field goes on slot 28.
         for (int i = 0; i < s.text.length; i++) {
             s.text[i] = parse(f, 17 + i, TEXT_AUTO, TEXT_DARK, TEXT_AUTO);
         }
+        s.scrim = "1".equals(field(f, 21));
+        s.scrimColor = parse(f, 22, SCRIM_AUTO, SCRIM_WHITE, SCRIM_AUTO);
+        s.scrimCurve = parse(f, 23, CURVE_LINEAR, CURVE_SMOOTH, CURVE_SMOOTH);
+        s.scrimStrength = parse(f, 24, 0, 100, DEF_SCRIM_STRENGTH);
+        s.scrimStart = parse(f, 25, 0, 100 - MIN_FADE_SPAN, 0);
+        s.scrimEnd = Math.max(parse(f, 26, MIN_FADE_SPAN, 100, 100), s.scrimStart + MIN_FADE_SPAN);
+        s.scrimFrom = parse(f, 27, FROM_TITLE, FROM_CENTER, FROM_TOP);
         return s;
     }
 
@@ -178,7 +221,8 @@ public final class HeaderBgSettings {
             editor.putString(key, (enabled ? "1" : "0") + "|" + offsetX + "|" + offsetY + "|" + zoom + "|" + opacity + "|"
                     + tintHue + "|" + tintStrength + "|" + (gradient ? "1" : "0") + "|" + gradientStrength + "|" + gradientFrom
                     + "|" + (extendPanel ? "1" : "0") + "|" + gradientCurve + "|" + gradientStart + "|" + gradientEnd
-                    + "|" + blur + "|" + desaturate + "|0|" + text[0] + "|" + text[1] + "|" + text[2] + "|" + text[3]);
+                    + "|" + blur + "|" + desaturate + "|0|" + text[0] + "|" + text[1] + "|" + text[2] + "|" + text[3]
+                    + "|" + (scrim ? "1" : "0") + "|" + scrimColor + "|" + scrimCurve + "|" + scrimStrength + "|" + scrimStart + "|" + scrimEnd + "|" + scrimFrom);
         }
         editor.apply();
     }

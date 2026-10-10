@@ -65,6 +65,7 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
     private ChatActivityTopPanelLayout panel;
     private final Fade headerFade = new Fade();
     private final Fade panelFade = new Fade();
+    private final Fade scrimFade = new Fade();
     private int filterHue = Integer.MIN_VALUE, filterColor, filterStrength, filterDesaturate;
     // Shared by the receiver and the blurred copy so the two paths never tint differently.
     private ColorFilter photoFilter;
@@ -84,7 +85,7 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
     private Boolean statusLight;
     private WeakReference<Bitmap> statusSource;
     private final HeaderBgSettings statusLook = new HeaderBgSettings();
-    private int statusSurface, statusWidth, statusHeight, statusBarHeight;
+    private int statusSurface, statusWidth, statusHeight, statusBarHeight, statusScrim;
     private boolean statusRtl;
     private ColorFilter statusFilter;
     // What the chat composites behind the status bar (its header surface over the wallpaper), handed over
@@ -273,6 +274,41 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         canvas.restore();
     }
 
+    // Over the whole framed picture like the gradient, so with the panel extension it runs on under the pinned bar.
+    // The header and the panel share the one shader, since nothing in it differs between them. Null when there is none.
+    private Paint scrim(int width, int cover) {
+        if (!settings.scrim || settings.scrimStrength <= 0) {
+            return null;
+        }
+        return scrimFade.update(width, cover, settings.scrimFrom, scrimColor(), settings.scrimStrength,
+                settings.scrimCurve, settings.scrimStart, settings.scrimEnd);
+    }
+
+    /**
+     * The scrim's opaque colour. Auto goes against the header text the current theme shows, read from the setting
+     * rather than the status bar probe, so the probe, which includes the scrim, never chases its own result.
+     */
+    public int scrimColor() {
+        if (settings.scrimColor == HeaderBgSettings.SCRIM_BLACK) {
+            return 0xff000000;
+        }
+        if (settings.scrimColor == HeaderBgSettings.SCRIM_WHITE) {
+            return 0xffffffff;
+        }
+        int text = settings.text(false, isDark());
+        boolean lightText;
+        if (text == HeaderBgSettings.TEXT_LIGHT) {
+            lightText = true;
+        } else if (text == HeaderBgSettings.TEXT_DARK) {
+            lightText = false;
+        } else {
+            int title = InterfaceStyleSolidHeader.chatHeaderColor(Theme.key_actionBarDefaultTitle,
+                    Theme.getColor(Theme.key_actionBarDefaultTitle, resourcesProvider));
+            lightText = AndroidUtilities.computePerceivedBrightness(title) > 0.5f;
+        }
+        return lightText ? 0xff000000 : 0xffffffff;
+    }
+
     /**
      * The same photo in the header's coordinates, clipped to the panel's background, so the header
      * and the strips under it read as one picture.
@@ -345,6 +381,11 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
             paint.setAlpha((int) (255 * alpha));
             canvas.drawPaint(paint);
         }
+        Paint scrim = scrim(width, cover);
+        if (scrim != null) {
+            scrim.setAlpha((int) (255 * alpha));
+            canvas.drawPaint(scrim);
+        }
     }
 
     /** From the chat each time it recomputes the colour behind its status bar. */
@@ -382,7 +423,9 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         } else {
             // The chat's composite when it has handed one over, otherwise the opaque surface alone.
             int surface = hasStatusBase ? ColorUtils.setAlphaComponent(statusBase, 255) : surfaceColor(true);
-            if (statusSource != null && statusSource.get() == source && statusLook.sameAs(settings) && statusSurface == surface
+            // Auto's colour follows the theme without any setting changing, so it is compared on its own.
+            int scrim = settings.scrim ? scrimColor() : 0;
+            if (statusScrim == scrim && statusSource != null && statusSource.get() == source && statusLook.sameAs(settings) && statusSurface == surface
                     && statusWidth == width && statusHeight == height && statusBarHeight == AndroidUtilities.statusBarHeight
                     && statusRtl == LocaleController.isRTL && statusFilter == photoFilter) {
                 light = statusLight;
@@ -395,6 +438,7 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
                 statusBarHeight = AndroidUtilities.statusBarHeight;
                 statusRtl = LocaleController.isRTL;
                 statusFilter = photoFilter;
+                statusScrim = scrim;
                 light = probeStatusBar(source, width, height, surface);
             }
         }
@@ -464,6 +508,11 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
                 Paint fade = headerFade.update(width, cover, settings, surface);
                 fade.setAlpha(255);
                 c.drawPaint(fade);
+            }
+            Paint scrim = scrim(width, cover);
+            if (scrim != null) {
+                scrim.setAlpha(255);
+                c.drawPaint(scrim);
             }
             int[] pixels = new int[probeWidth * probeHeight];
             probe.getPixels(pixels, 0, probeWidth, 0, 0, probeWidth, probeHeight);
@@ -585,24 +634,52 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         final Paint paint = new Paint();
         private final int[] colors = new int[STOPS];
         private final float[] positions = new float[STOPS];
+        // The two stripe shapes run the fade twice, mirrored about the middle.
+        private final int[] stripeColors = new int[STOPS * 2];
+        private final float[] stripePositions = new float[STOPS * 2];
         private int w, h, from = -1, color, strength, curve, start, end;
         private boolean rtl;
 
         Paint update(int width, int height, HeaderBgSettings s, int surface) {
+            return update(width, height, s.gradientFrom, surface, s.gradientStrength, s.gradientCurve, s.gradientStart, s.gradientEnd);
+        }
+
+        Paint update(int width, int height, int fromSide, int opaque, int fadeStrength, int fadeCurve, int fadeStart, int fadeEnd) {
             boolean isRtl = LocaleController.isRTL;
-            if (width == w && height == h && s.gradientFrom == from && surface == color && s.gradientStrength == strength
-                    && s.gradientCurve == curve && s.gradientStart == start && s.gradientEnd == end && isRtl == rtl) {
+            if (width == w && height == h && fromSide == from && opaque == color && fadeStrength == strength
+                    && fadeCurve == curve && fadeStart == start && fadeEnd == end && isRtl == rtl) {
                 return paint;
             }
             w = width;
             h = height;
-            from = s.gradientFrom;
-            color = surface;
-            strength = s.gradientStrength;
-            curve = s.gradientCurve;
-            start = s.gradientStart;
-            end = s.gradientEnd;
+            from = fromSide;
+            color = opaque;
+            strength = fadeStrength;
+            curve = fadeCurve;
+            start = fadeStart;
+            end = fadeEnd;
             rtl = isRtl;
+            // Settings keep the ends apart already; this only keeps the stops strictly increasing.
+            float a = start / 100f;
+            float b = Math.max(end, start + HeaderBgSettings.MIN_FADE_SPAN) / 100f;
+            if (from == HeaderBgSettings.FROM_EDGES || from == HeaderBgSettings.FROM_CENTER) {
+                // Each half runs the fade over half the height: from both edges in, or from the middle out.
+                boolean edges = from == HeaderBgSettings.FROM_EDGES;
+                for (int i = 0; i < STOPS; i++) {
+                    int upper = edges ? i : STOPS - 1 - i;
+                    float t = upper / (STOPS - 1f);
+                    float half = (a + (b - a) * t) / 2f;
+                    stripePositions[i] = edges ? half : 0.5f - half;
+                    stripeColors[i] = fadeColor(t);
+                    int lower = edges ? STOPS - 1 - i : i;
+                    float u = lower / (STOPS - 1f);
+                    float halfLower = (a + (b - a) * u) / 2f;
+                    stripePositions[STOPS + i] = edges ? 1f - halfLower : 0.5f + halfLower;
+                    stripeColors[STOPS + i] = fadeColor(u);
+                }
+                paint.setShader(new LinearGradient(0, 0, 0, height, stripeColors, stripePositions, Shader.TileMode.CLAMP));
+                return paint;
+            }
             float x0 = 0, y0 = 0, x1 = 0, y1 = 0;
             if (from == HeaderBgSettings.FROM_TOP) {
                 y1 = height;
@@ -613,17 +690,18 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
             } else {
                 x1 = width;
             }
-            // Settings keep the ends apart already; this only keeps the stops strictly increasing.
-            float a = start / 100f;
-            float b = Math.max(end, start + HeaderBgSettings.MIN_FADE_SPAN) / 100f;
             for (int i = 0; i < STOPS; i++) {
                 float t = i / (STOPS - 1f);
                 positions[i] = a + (b - a) * t;
-                colors[i] = ColorUtils.setAlphaComponent(color, Math.round(255 * strength / 100f * (1f - ease(curve, t))));
+                colors[i] = fadeColor(t);
             }
             // CLAMP holds the solid first stop before the start and the clear last one after the end.
             paint.setShader(new LinearGradient(x0, y0, x1, y1, colors, positions, Shader.TileMode.CLAMP));
             return paint;
+        }
+
+        private int fadeColor(float t) {
+            return ColorUtils.setAlphaComponent(color, Math.round(255 * strength / 100f * (1f - ease(curve, t))));
         }
 
         // How far the fade has cleared at t of its run, from 0 to 1.
