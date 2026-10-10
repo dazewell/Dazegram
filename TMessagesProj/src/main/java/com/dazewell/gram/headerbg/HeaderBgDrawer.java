@@ -424,7 +424,7 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
             // The chat's composite when it has handed one over, otherwise the opaque surface alone.
             int surface = hasStatusBase ? ColorUtils.setAlphaComponent(statusBase, 255) : surfaceColor(true);
             // Auto's colour follows the theme without any setting changing, so it is compared on its own.
-            int scrim = scrimColor();
+            int scrim = settings.scrim ? scrimColor() : 0;
             if (statusScrim == scrim && statusSource != null && statusSource.get() == source && statusLook.sameAs(settings) && statusSurface == surface
                     && statusWidth == width && statusHeight == height && statusBarHeight == AndroidUtilities.statusBarHeight
                     && statusRtl == LocaleController.isRTL && statusFilter == photoFilter) {
