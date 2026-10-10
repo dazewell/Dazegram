@@ -51,7 +51,9 @@ public final class NotificationTimerDialog {
         // the sheet reads a start in hour 24 as 23:59, so start an hour later than that
         if (initial / 60 == 24) initial += 60;
         AlertsCreator.createTimePickerDialog(activity, LocaleController.getString(R.string.NaxNotifTimerUntil), initial, nowMinute + 1, nowMinute + 24 * 60, minutes -> {
-            Calendar until = Calendar.getInstance();
+            // anchored to the day the sheet opened: its minutes count from that midnight, and a sheet left open past
+            // midnight would otherwise push every pick a day later
+            Calendar until = (Calendar) now.clone();
             until.set(Calendar.SECOND, 0);
             until.set(Calendar.MILLISECOND, 0);
             // lenient calendar: an hour past 23 rolls into tomorrow in wall-clock terms, so DST days stay right
