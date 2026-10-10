@@ -52,7 +52,8 @@ public final class NotificationProfilePicker {
             clock.setImageResource(R.drawable.msg_mute_period);
             clock.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon, resourcesProvider), PorterDuff.Mode.MULTIPLY));
             clock.setBackground(Theme.getSelectorDrawable(false));
-            clock.setContentDescription(LocaleController.getString(R.string.NaxNotifTimer));
+            // names the profile: three identical "Apply for a time…" buttons are indistinguishable to TalkBack
+            clock.setContentDescription(LocaleController.formatString(R.string.NaxNotifTimerFor, LocaleController.getString(NotificationProfiles.labelRes(profile))));
             clock.setOnClickListener(v -> {
                 builder.getDismissRunnable().run();
                 NotificationTimerDialog.show(activity, account, dialogId, resourcesProvider, profile, onChanged);

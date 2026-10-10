@@ -828,7 +828,6 @@
     <string name="NaxNotifProfilePassiveInfo">Sits in the notification shade only. No icon, sound, vibration, lock screen or watch.</string>
     <string name="NaxNotifProfileQuietAlertChannel">Quiet (new messages)</string>
     <string name="NaxNotifProfileWatchOff">Off in Passive profile</string>
-    <string name="NaxNotifTimer">Apply for a time…</string>
     <string name="NaxNotifTimerUntil">Until…</string>
     <string name="NaxNotifTimerFor">%1$s for…</string>
     <string name="NaxNotifTimerActive">%1$s until %2$s</string>
