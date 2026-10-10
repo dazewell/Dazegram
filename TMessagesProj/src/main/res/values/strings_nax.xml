@@ -857,6 +857,8 @@
     <string name="HeaderBackgroundFromTitle">Title side</string>
     <string name="HeaderBackgroundFromTop">Top</string>
     <string name="HeaderBackgroundFromBottom">Bottom</string>
+    <string name="HeaderBackgroundFromEdges">Top and bottom</string>
+    <string name="HeaderBackgroundFromCenter">Center</string>
     <string name="HeaderBackgroundGradientStart">Fade starts at</string>
     <string name="HeaderBackgroundGradientEnd">Fade ends at</string>
     <string name="HeaderBackgroundGradientCurve">Curve</string>

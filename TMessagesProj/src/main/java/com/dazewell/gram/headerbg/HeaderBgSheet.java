@@ -249,7 +249,7 @@ public final class HeaderBgSheet {
             });
             syncs.add(() -> gradientCell.setTextAndValueAndCheck(getString(R.string.HeaderBackgroundGradient), getString(R.string.HeaderBackgroundGradientInfo), s.gradient, true, false));
             gradient.addView(gradientCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-            TextSettingsCell fromCell = choice(gradient, () -> s.gradient, () -> s.gradientFrom = (s.gradientFrom + 1) % 3);
+            TextSettingsCell fromCell = choice(gradient, () -> s.gradient, () -> s.gradientFrom = (s.gradientFrom + 1) % (HeaderBgSettings.FROM_CENTER + 1));
             TextSettingsCell curveCell = choice(gradient, () -> s.gradient, () -> s.gradientCurve = (s.gradientCurve + 1) % (HeaderBgSettings.CURVE_SMOOTH + 1));
             View gradientStrength = slider(gradient, R.string.HeaderBackgroundGradientStrength, 0, 100, () -> s.gradientStrength, v -> s.gradientStrength = v, false);
             View fadeRange = rangeSlider(gradient, R.string.HeaderBackgroundGradientRange, R.string.HeaderBackgroundGradientStart,
@@ -275,7 +275,7 @@ public final class HeaderBgSheet {
             });
             syncs.add(() -> scrimCell.setTextAndValueAndCheck(getString(R.string.HeaderBackgroundScrim), getString(R.string.HeaderBackgroundScrimInfo), s.scrim, true, false));
             scrim.addView(scrimCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-            TextSettingsCell scrimFromCell = choice(scrim, () -> s.scrim, () -> s.scrimFrom = (s.scrimFrom + 1) % 3);
+            TextSettingsCell scrimFromCell = choice(scrim, () -> s.scrim, () -> s.scrimFrom = (s.scrimFrom + 1) % (HeaderBgSettings.FROM_CENTER + 1));
             TextSettingsCell scrimColorCell = choice(scrim, () -> s.scrim, () -> s.scrimColor = (s.scrimColor + 1) % (HeaderBgSettings.SCRIM_WHITE + 1));
             // Only while Auto, which is the one choice whose result depends on another row.
             TextInfoPrivacyCell scrimAutoInfo = new TextInfoPrivacyCell(context, 21, rp);
@@ -629,6 +629,12 @@ public final class HeaderBgSheet {
         }
         if (from == HeaderBgSettings.FROM_BOTTOM) {
             return getString(R.string.HeaderBackgroundFromBottom);
+        }
+        if (from == HeaderBgSettings.FROM_EDGES) {
+            return getString(R.string.HeaderBackgroundFromEdges);
+        }
+        if (from == HeaderBgSettings.FROM_CENTER) {
+            return getString(R.string.HeaderBackgroundFromCenter);
         }
         return getString(R.string.HeaderBackgroundFromTitle);
     }

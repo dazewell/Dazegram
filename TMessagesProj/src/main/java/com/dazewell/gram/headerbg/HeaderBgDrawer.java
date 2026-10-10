@@ -634,6 +634,9 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         final Paint paint = new Paint();
         private final int[] colors = new int[STOPS];
         private final float[] positions = new float[STOPS];
+        // The two stripe shapes run the fade twice, mirrored about the middle.
+        private final int[] stripeColors = new int[STOPS * 2];
+        private final float[] stripePositions = new float[STOPS * 2];
         private int w, h, from = -1, color, strength, curve, start, end;
         private boolean rtl;
 
@@ -656,6 +659,27 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
             start = fadeStart;
             end = fadeEnd;
             rtl = isRtl;
+            // Settings keep the ends apart already; this only keeps the stops strictly increasing.
+            float a = start / 100f;
+            float b = Math.max(end, start + HeaderBgSettings.MIN_FADE_SPAN) / 100f;
+            if (from == HeaderBgSettings.FROM_EDGES || from == HeaderBgSettings.FROM_CENTER) {
+                // Each half runs the fade over half the height: from both edges in, or from the middle out.
+                boolean edges = from == HeaderBgSettings.FROM_EDGES;
+                for (int i = 0; i < STOPS; i++) {
+                    int upper = edges ? i : STOPS - 1 - i;
+                    float t = upper / (STOPS - 1f);
+                    float half = (a + (b - a) * t) / 2f;
+                    stripePositions[i] = edges ? half : 0.5f - half;
+                    stripeColors[i] = fadeColor(t);
+                    int lower = edges ? STOPS - 1 - i : i;
+                    float u = lower / (STOPS - 1f);
+                    float halfLower = (a + (b - a) * u) / 2f;
+                    stripePositions[STOPS + i] = edges ? 1f - halfLower : 0.5f + halfLower;
+                    stripeColors[STOPS + i] = fadeColor(u);
+                }
+                paint.setShader(new LinearGradient(0, 0, 0, height, stripeColors, stripePositions, Shader.TileMode.CLAMP));
+                return paint;
+            }
             float x0 = 0, y0 = 0, x1 = 0, y1 = 0;
             if (from == HeaderBgSettings.FROM_TOP) {
                 y1 = height;
@@ -666,17 +690,18 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
             } else {
                 x1 = width;
             }
-            // Settings keep the ends apart already; this only keeps the stops strictly increasing.
-            float a = start / 100f;
-            float b = Math.max(end, start + HeaderBgSettings.MIN_FADE_SPAN) / 100f;
             for (int i = 0; i < STOPS; i++) {
                 float t = i / (STOPS - 1f);
                 positions[i] = a + (b - a) * t;
-                colors[i] = ColorUtils.setAlphaComponent(color, Math.round(255 * strength / 100f * (1f - ease(curve, t))));
+                colors[i] = fadeColor(t);
             }
             // CLAMP holds the solid first stop before the start and the clear last one after the end.
             paint.setShader(new LinearGradient(x0, y0, x1, y1, colors, positions, Shader.TileMode.CLAMP));
             return paint;
+        }
+
+        private int fadeColor(float t) {
+            return ColorUtils.setAlphaComponent(color, Math.round(255 * strength / 100f * (1f - ease(curve, t))));
         }
 
         // How far the fade has cleared at t of its run, from 0 to 1.

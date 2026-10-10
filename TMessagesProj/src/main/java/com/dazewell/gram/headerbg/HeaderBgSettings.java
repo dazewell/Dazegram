@@ -15,6 +15,9 @@ public final class HeaderBgSettings {
     public static final int FROM_TITLE = 0;
     public static final int FROM_TOP = 1;
     public static final int FROM_BOTTOM = 2;
+    /** Stripes: solid at the top and bottom edges, or in a band across the middle, clearing toward the rest. */
+    public static final int FROM_EDGES = 3;
+    public static final int FROM_CENTER = 4;
 
     /** How the fade's opacity falls from its start to its end. */
     public static final int CURVE_LINEAR = 0;
@@ -187,7 +190,7 @@ public final class HeaderBgSettings {
         s.tintStrength = parse(f, 6, 0, 100, DEF_TINT_STRENGTH);
         s.gradient = !"0".equals(field(f, 7));
         s.gradientStrength = parse(f, 8, 0, 100, DEF_GRADIENT_STRENGTH);
-        s.gradientFrom = parse(f, 9, FROM_TITLE, FROM_BOTTOM, FROM_TITLE);
+        s.gradientFrom = parse(f, 9, FROM_TITLE, FROM_CENTER, FROM_TITLE);
         s.extendPanel = !"0".equals(field(f, 10));
         s.gradientCurve = parse(f, 11, CURVE_LINEAR, CURVE_SMOOTH, CURVE_LINEAR);
         s.gradientStart = parse(f, 12, 0, 100 - MIN_FADE_SPAN, 0);
@@ -205,7 +208,7 @@ public final class HeaderBgSettings {
         s.scrimStrength = parse(f, 24, 0, 100, DEF_SCRIM_STRENGTH);
         s.scrimStart = parse(f, 25, 0, 100 - MIN_FADE_SPAN, 0);
         s.scrimEnd = Math.max(parse(f, 26, MIN_FADE_SPAN, 100, 100), s.scrimStart + MIN_FADE_SPAN);
-        s.scrimFrom = parse(f, 27, FROM_TITLE, FROM_BOTTOM, FROM_TOP);
+        s.scrimFrom = parse(f, 27, FROM_TITLE, FROM_CENTER, FROM_TOP);
         return s;
     }
 
