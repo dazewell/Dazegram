@@ -69,7 +69,7 @@ public final class HeaderBgSettings {
     // Header and pinned bar text, each remembered separately for the light and the dark theme.
     // Index: 0 header light, 1 header dark, 2 pinned light, 3 pinned dark.
     private final int[] text = new int[4];
-    /** A darkening or lightening that runs in from one side of the photo, under the title and icons. */
+    /** A darkening or lightening over part of the photo, from a side or as a stripe, under the title and icons. */
     public boolean scrim;
     public int scrimFrom = FROM_TOP;
     public int scrimColor = SCRIM_AUTO;

@@ -864,7 +864,7 @@
     <string name="HeaderBackgroundGradientCurve">Curve</string>
     <string name="HeaderBackgroundGradientRange">Fade range</string>
     <string name="HeaderBackgroundScrim">Scrim</string>
-    <string name="HeaderBackgroundScrimInfo">Darkens or lightens the photo from one side so the title and icons stay readable</string>
+    <string name="HeaderBackgroundScrimInfo">Darkens or lightens part of the photo so the title and icons stay readable</string>
     <string name="HeaderBackgroundScrimFrom">Scrim from</string>
     <string name="HeaderBackgroundScrimColor">Scrim color</string>
     <string name="HeaderBackgroundScrimBlack">Black</string>
