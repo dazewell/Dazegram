@@ -44,6 +44,9 @@ public final class NotificationProfiles {
     // Strings, so they can't collide with the int key above (a dialog id never starts with a letter).
     private static final String SCHEDULE_KEY = "nax_np_s_";
     private static final String OVERRIDE_KEY = "nax_np_o_";
+    // "<profile>:<setAtMs>:<untilMs>": a timed pick that outranks the schedule until it runs out.
+    private static final String TIMER_KEY = "nax_np_t_";
+    public static final long MAX_TIMER_MS = 7L * 24 * 60 * 60 * 1000;
     private static final String CHANNEL_VERSION = "v1";
 
     private NotificationProfiles() {
@@ -69,13 +72,60 @@ public final class NotificationProfiles {
 
     // Loud removes the key, so a Loud chat stores nothing. On a chat with a schedule the choice is an override instead
     // (profile + the time it was set) and the stored base value is left alone; it lapses at the next schedule boundary.
+    // Any explicit pick also ends a running timer, which would otherwise keep outranking it.
     public static void set(int account, long dialogId, int profile) {
         if (dialogId == 0) return;
+        clearTimer(account, dialogId);
         if (rules(account, dialogId).isEmpty()) {
             setBase(account, dialogId, profile);
             return;
         }
         prefs(account).edit().putString(OVERRIDE_KEY + dialogId, clamp(profile) + ":" + System.currentTimeMillis()).apply();
+    }
+
+    // Applies the profile until the given time (capped at MAX_TIMER_MS from now), on top of any schedule. The schedule
+    // and the stored base are left alone and take over again once the time passes. Expiry is lazy: nothing fires when
+    // it passes, effective() just stops returning it.
+    public static void setTimer(int account, long dialogId, int profile, long untilMs) {
+        if (dialogId == 0) return;
+        long now = System.currentTimeMillis();
+        untilMs = Math.min(untilMs, now + MAX_TIMER_MS);
+        if (untilMs <= now) return;
+        prefs(account).edit().putString(TIMER_KEY + dialogId, clamp(profile) + ":" + now + ":" + untilMs).apply();
+    }
+
+    public static void clearTimer(int account, long dialogId) {
+        if (dialogId == 0) return;
+        prefs(account).edit().remove(TIMER_KEY + dialogId).apply();
+    }
+
+    // When the running timer ends, else 0.
+    public static long timerUntil(int account, long dialogId) {
+        long[] timer = liveTimer(account, dialogId, System.currentTimeMillis());
+        return timer == null ? 0 : timer[1];
+    }
+
+    // {profile, until} while the timer is in force, else null. A value stamped in the future (clock moved back), already
+    // past, longer than the cap or unparseable counts as no timer.
+    private static long[] liveTimer(int account, long dialogId, long now) {
+        if (dialogId == 0) return null;
+        String value;
+        try {
+            value = prefs(account).getString(TIMER_KEY + dialogId, null);
+        } catch (ClassCastException e) {
+            return null;
+        }
+        if (value == null) return null;
+        try {
+            String[] parts = value.split(":");
+            if (parts.length != 3) return null;
+            long setAt = Long.parseLong(parts[1]);
+            long until = Long.parseLong(parts[2]);
+            if (setAt > now || until <= now || until - setAt > MAX_TIMER_MS) return null;
+            return new long[]{clamp(Integer.parseInt(parts[0])), until};
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     // The stored profile itself: all there is on a chat without a schedule, and what applies outside every window on
@@ -136,8 +186,11 @@ public final class NotificationProfiles {
         }
     }
 
-    // What the chat actually does right now: a live override, else the open schedule window, else the stored base.
+    // What the chat actually does right now: a running timer, else a live override, else the open schedule window, else
+    // the stored base. The timer is checked first so it also works on a chat with no schedule.
     public static int effective(int account, long dialogId) {
+        long[] timer = liveTimer(account, dialogId, System.currentTimeMillis());
+        if (timer != null) return (int) timer[0];
         List<NotificationSchedule.Rule> rules = rules(account, dialogId);
         if (rules.isEmpty()) return get(account, dialogId);
         long now = System.currentTimeMillis();
@@ -150,6 +203,7 @@ public final class NotificationProfiles {
 
     // True while a schedule window, not the user's own choice, decides the profile.
     public static boolean isScheduleDeciding(int account, long dialogId) {
+        if (liveTimer(account, dialogId, System.currentTimeMillis()) != null) return false;
         List<NotificationSchedule.Rule> rules = rules(account, dialogId);
         if (rules.isEmpty()) return false;
         long now = System.currentTimeMillis();

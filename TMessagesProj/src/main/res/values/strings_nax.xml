@@ -828,6 +828,12 @@
     <string name="NaxNotifProfilePassiveInfo">Sits in the notification shade only. No icon, sound, vibration, lock screen or watch.</string>
     <string name="NaxNotifProfileQuietAlertChannel">Quiet (new messages)</string>
     <string name="NaxNotifProfileWatchOff">Off in Passive profile</string>
+    <string name="NaxNotifTimer">Apply for a time…</string>
+    <string name="NaxNotifTimerUntil">Until…</string>
+    <string name="NaxNotifTimerConfirm">Use %1$s until %2$s?</string>
+    <string name="NaxNotifTimerActive">%1$s until %2$s</string>
+    <string name="NaxNotifTimerCancel">Cancel timer</string>
+    <string name="NaxNotifProfileMenuUntil">Alerts: %1$s (until %2$s)</string>
     <string name="EditorMuteHintSilentVideo">Sound is now muted, so the video will loop like a GIF. Tap the quality button to send it as a silent video instead.</string>
     <string name="AccDescrVideoGifState">Video quality, GIF. Tap to send as a silent video</string>
     <string name="AccDescrVideoSilentState">Video quality, silent video</string>

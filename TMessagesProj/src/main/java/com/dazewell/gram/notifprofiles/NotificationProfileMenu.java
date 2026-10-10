@@ -110,8 +110,12 @@ public final class NotificationProfileMenu {
         return LocaleController.formatString(R.string.NaxNotifProfileMenu, LocaleController.getString(NotificationProfiles.labelRes(profile)));
     }
 
-    // "(scheduled)" while a schedule window, not the user's own choice, is what decides.
+    // "(until 4:00 PM)" while a timer runs, "(scheduled)" while a schedule window, not the user's own choice, is what decides.
     private static CharSequence text(int account, long dialogId, int profile) {
+        long timerUntil = NotificationProfiles.timerUntil(account, dialogId);
+        if (timerUntil > 0) {
+            return LocaleController.formatString(R.string.NaxNotifProfileMenuUntil, LocaleController.getString(NotificationProfiles.labelRes(profile)), NotificationTimerDialog.untilText(timerUntil));
+        }
         if (!NotificationProfiles.isScheduleDeciding(account, dialogId)) return text(profile);
         return LocaleController.formatString(R.string.NaxNotifProfileMenuScheduled, LocaleController.getString(NotificationProfiles.labelRes(profile)));
     }

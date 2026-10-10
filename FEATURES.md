@@ -98,6 +98,10 @@ N-Settings → Chats → Chat menu, or a long-press on ⋮ in a chat, places eac
 
 Give a chat's notification profile a schedule: in the profile picker (long-press the header bell, ⋮ Alerts, or the Notifications screen) tap **Schedule…** and add rules with days, start, end and a profile. The rule that started last wins. A manual pick lasts until the next rule starts or ends; **Outside schedule** sets the profile between rules. A clock on the bell shows a schedule is in charge.
 
+### Timed notification profile <!-- #notif-profile-timer -->
+
+In the profile picker (long-press the header bell, ⋮ Alerts, or the Notifications screen) tap **Apply for a time…**, pick a profile, then a duration from 15 minutes to 8 hours or **Until…** a time of day. The profile overrides any schedule until it ends, then the schedule resumes. Picking another profile or **Cancel timer** ends it early.
+
 ### Swipe to next channel within the folder <!-- #next-channel-in-folder -->
 
 Swiping up at the end of a channel normally jumps to the next unread channel, and once the current folder runs out it moves on to other folders and the archive. N-Settings → Chat → Channels → *Swipe to Next Within Folder* keeps it in the folder you opened the channel from. Off by default.
