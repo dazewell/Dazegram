@@ -84,14 +84,16 @@ public final class NotificationProfiles {
     }
 
     // Applies the profile until the given time (capped at MAX_TIMER_MS from now), on top of any schedule. The schedule
-    // and the stored base are left alone and take over again once the time passes. Expiry is lazy: nothing fires when
-    // it passes, effective() just stops returning it.
-    public static void setTimer(int account, long dialogId, int profile, long untilMs) {
-        if (dialogId == 0) return;
+    // and the stored base are left alone and take over again once the time passes; an earlier manual pick goes too, or
+    // it would come back when the timer ends. Expiry is lazy: nothing fires when it passes, effective() just stops
+    // returning it. False when the time was already past, so nothing was stored.
+    public static boolean setTimer(int account, long dialogId, int profile, long untilMs) {
+        if (dialogId == 0) return false;
         long now = System.currentTimeMillis();
         untilMs = Math.min(untilMs, now + MAX_TIMER_MS);
-        if (untilMs <= now) return;
-        prefs(account).edit().putString(TIMER_KEY + dialogId, clamp(profile) + ":" + now + ":" + untilMs).apply();
+        if (untilMs <= now) return false;
+        prefs(account).edit().remove(OVERRIDE_KEY + dialogId).putString(TIMER_KEY + dialogId, clamp(profile) + ":" + now + ":" + untilMs).apply();
+        return true;
     }
 
     public static void clearTimer(int account, long dialogId) {

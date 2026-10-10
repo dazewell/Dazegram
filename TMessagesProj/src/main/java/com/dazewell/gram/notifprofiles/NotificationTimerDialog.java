@@ -67,7 +67,8 @@ public final class NotificationTimerDialog {
     }
 
     private static void apply(int account, long dialogId, int profile, long until, Runnable onApplied) {
-        NotificationProfiles.setTimer(account, dialogId, profile, until);
+        // a confirm left open past the chosen minute stores nothing, so don't report a change
+        if (!NotificationProfiles.setTimer(account, dialogId, profile, until)) return;
         NotificationProfiles.onChanged(account, dialogId);
         if (onApplied != null) onApplied.run();
     }
