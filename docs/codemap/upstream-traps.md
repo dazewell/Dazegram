@@ -2623,3 +2623,15 @@ is visual, from the device, not from logs.
 The memo finishes itself in `onStop` (`TextMemoActivity.java:1176` is the guard), so any screen opened over it ends it. Photos and videos (`#text-memo-photos`) use the system `ACTION_GET_CONTENT` picker, and `picking` skips that finish while it is up and saves the text as the draft instead. A picked uri is only readable while the memo lives, so each is copied to the cache at pick time and the memo holds paths. The copy is our own loop (`TextMemoPhotos.java:143`) because `MediaController.copyFileToCache` has no progress or cancel hook; it stops at the next chunk when its pick is cancelled. Media is never part of the chat's draft; leaving without sending deletes the copies, and a sent copy stays in the sharing cache until it is cleared, which a video makes costly (so videos are capped at 1 GB, and what removes them is Telegram's cache size limit, only if one is set (the default is none, `AutoDeleteMediaTask.java:142`): its age-based pass skips subfolders, `AutoDeleteMediaTask.java:84`, but the size pass recurses into them, `:158`).
 
 *(Established 2026-10-05, `#text-memo-photos`.)*
+
+## SimpleTextView.getTextStartX() is in the parent's coordinates
+
+`getTextStartX()` returns `(int) getX() + offsetX + textOffsetX`
+(`SimpleTextView.java:796`). That is where the text starts in the **parent's**
+coordinates, not inside the view. Code that walks up the hierarchy adding each
+view's `getX()` and then adds `getTextStartX()` counts the view's own position
+twice. The header pills attempt did exactly that: a backing behind the chat
+title drew about 55dp to the right of the name. Subtract `getX()` to get the
+offset inside the view.
+
+*(Established 2026-10-09, `#header-avatar-bg`.)*
