@@ -265,7 +265,7 @@ public final class HeaderBgSheet {
             addSpacer(content, 8);
 
             GateLayout scrim = section(content, R.string.HeaderBackgroundScrim, false,
-                    () -> s.scrim ? s.scrimStrength + "% · " + scrimSummary() + " · " + curveName(s.scrimCurve)
+                    () -> s.scrim ? s.scrimStrength + "% · " + fromName(s.scrimFrom) + " · " + scrimSummary()
                             : getString(R.string.HeaderBackgroundGradientOff));
             TextCheckCell scrimCell = new TextCheckCell(context, 21, false, rp);
             scrimCell.setBackground(Theme.getSelectorDrawable(false, rp));
@@ -275,6 +275,7 @@ public final class HeaderBgSheet {
             });
             syncs.add(() -> scrimCell.setTextAndValueAndCheck(getString(R.string.HeaderBackgroundScrim), getString(R.string.HeaderBackgroundScrimInfo), s.scrim, true, false));
             scrim.addView(scrimCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            TextSettingsCell scrimFromCell = choice(scrim, () -> s.scrim, () -> s.scrimFrom = (s.scrimFrom + 1) % 3);
             TextSettingsCell scrimColorCell = choice(scrim, () -> s.scrim, () -> s.scrimColor = (s.scrimColor + 1) % (HeaderBgSettings.SCRIM_WHITE + 1));
             // Only while Auto, which is the one choice whose result depends on another row.
             TextInfoPrivacyCell scrimAutoInfo = new TextInfoPrivacyCell(context, 21, rp);
@@ -284,6 +285,7 @@ public final class HeaderBgSheet {
             View scrimRange = rangeSlider(scrim, R.string.HeaderBackgroundScrimRange, R.string.HeaderBackgroundScrimStart,
                     R.string.HeaderBackgroundScrimEnd, () -> s.scrimStart, () -> s.scrimEnd, v -> s.scrimStart = v, v -> s.scrimEnd = v);
             syncs.add(() -> {
+                scrimFromCell.setTextAndValue(getString(R.string.HeaderBackgroundScrimFrom), fromName(s.scrimFrom), true);
                 scrimColorCell.setTextAndValue(getString(R.string.HeaderBackgroundScrimColor), scrimName(s.scrimColor), true);
                 scrimCurveCell.setTextAndValue(getString(R.string.HeaderBackgroundGradientCurve), curveName(s.scrimCurve), false);
                 boolean auto = s.scrimColor == HeaderBgSettings.SCRIM_AUTO;
@@ -291,6 +293,7 @@ public final class HeaderBgSheet {
                 if (auto) {
                     scrimAutoInfo.setText(getString(scrimDark() ? R.string.HeaderBackgroundScrimAutoLight : R.string.HeaderBackgroundScrimAutoDark));
                 }
+                setRowEnabled(scrimFromCell, s.scrim);
                 setRowEnabled(scrimColorCell, s.scrim);
                 setRowEnabled(scrimCurveCell, s.scrim);
                 setRowEnabled(scrimStrength, s.scrim);

@@ -271,21 +271,16 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
         canvas.save();
         canvas.clipRect(0, 0, width, height);
         paint(canvas, width, height, alpha, headerFade, surfaceColor(true));
-        Paint scrim = scrim(width, height);
-        if (scrim != null) {
-            scrim.setAlpha((int) (255 * alpha));
-            canvas.drawPaint(scrim);
-        }
         canvas.restore();
     }
 
-    // The scrim over the header alone, measured on its height without the pinned bar reserve, so turning the
-    // panel extension on or off never moves it. Null when there is none to draw.
-    private Paint scrim(int width, int height) {
+    // Over the whole framed picture like the gradient, so with the panel extension it runs on under the pinned bar.
+    // The header and the panel share the one shader, since nothing in it differs between them. Null when there is none.
+    private Paint scrim(int width, int cover) {
         if (!settings.scrim || settings.scrimStrength <= 0) {
             return null;
         }
-        return scrimFade.update(width, height, HeaderBgSettings.FROM_TOP, scrimColor(), settings.scrimStrength,
+        return scrimFade.update(width, cover, settings.scrimFrom, scrimColor(), settings.scrimStrength,
                 settings.scrimCurve, settings.scrimStart, settings.scrimEnd);
     }
 
@@ -385,6 +380,11 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
             Paint paint = fade.update(width, cover, settings, surface);
             paint.setAlpha((int) (255 * alpha));
             canvas.drawPaint(paint);
+        }
+        Paint scrim = scrim(width, cover);
+        if (scrim != null) {
+            scrim.setAlpha((int) (255 * alpha));
+            canvas.drawPaint(scrim);
         }
     }
 
@@ -509,7 +509,7 @@ public final class HeaderBgDrawer implements NotificationCenter.NotificationCent
                 fade.setAlpha(255);
                 c.drawPaint(fade);
             }
-            Paint scrim = scrim(width, height);
+            Paint scrim = scrim(width, cover);
             if (scrim != null) {
                 scrim.setAlpha(255);
                 c.drawPaint(scrim);
