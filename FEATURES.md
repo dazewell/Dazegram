@@ -100,7 +100,7 @@ Give a chat's notification profile a schedule: in the profile picker (long-press
 
 ### Timed notification profile <!-- #notif-profile-timer -->
 
-In the profile picker (long-press the header bell, ⋮ Alerts, or the Notifications screen) tap **Apply for a time…**, pick a profile, then a duration from 15 minutes to 8 hours or **Until…** a time of day. The profile overrides any schedule until it ends, then the schedule resumes. Picking another profile or **Cancel timer** ends it early.
+In the profile picker (long-press the header bell, ⋮ Alerts, or the Notifications screen) tap the clock beside a profile, then pick a duration from 15 minutes to 8 hours or **Until…** a time in the next 24 hours. The profile overrides any schedule until it ends, then the schedule resumes. Picking another profile or **Cancel timer** ends it early.
 
 ### Swipe to next channel within the folder <!-- #next-channel-in-folder -->
 

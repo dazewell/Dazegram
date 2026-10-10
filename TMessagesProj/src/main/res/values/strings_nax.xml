@@ -830,7 +830,7 @@
     <string name="NaxNotifProfileWatchOff">Off in Passive profile</string>
     <string name="NaxNotifTimer">Apply for a time…</string>
     <string name="NaxNotifTimerUntil">Until…</string>
-    <string name="NaxNotifTimerConfirm">Use %1$s until %2$s?</string>
+    <string name="NaxNotifTimerFor">%1$s for…</string>
     <string name="NaxNotifTimerActive">%1$s until %2$s</string>
     <string name="NaxNotifTimerCancel">Cancel timer</string>
     <string name="NaxNotifProfileMenuUntil">Alerts: %1$s (until %2$s)</string>

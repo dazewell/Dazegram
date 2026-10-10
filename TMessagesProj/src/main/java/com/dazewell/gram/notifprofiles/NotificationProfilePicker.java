@@ -2,7 +2,12 @@ package com.dazewell.gram.notifprofiles;
 
 import android.app.Activity;
 import android.app.Dialog;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
+
+import com.dazewell.gram.ui.components.PopupRowDivider;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
@@ -11,6 +16,7 @@ import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.RadioColorCell;
 import org.telegram.ui.Cells.TextSettingsCell;
+import org.telegram.ui.Components.LayoutHelper;
 
 // NagramX: the single-choice sheet behind the per-chat "Notification profile" row. Each option carries its one-line
 // description, which is why this isn't AlertsCreator.createSingleChoiceDialog (names only).
@@ -27,7 +33,6 @@ public final class NotificationProfilePicker {
         int[] profiles = {NotificationProfiles.LOUD, NotificationProfiles.QUIET, NotificationProfiles.PASSIVE};
         for (int profile : profiles) {
             RadioColorCell cell = radioCell(activity, resourcesProvider, profile, selected == profile);
-            layout.addView(cell);
             cell.setOnClickListener(v -> {
                 builder.getDismissRunnable().run();
                 NotificationProfiles.set(account, dialogId, profile);
@@ -36,6 +41,24 @@ public final class NotificationProfilePicker {
                     onChanged.run();
                 }
             });
+            // The same two tap zones as a Privacy Profiles row: the label picks the profile, the clock opens the
+            // duration list for it. A row wrapper keeps the cell's own layout (it measures its text to the full width).
+            LinearLayout row = new LinearLayout(activity);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.addView(cell, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f));
+            PopupRowDivider.addTo(row, resourcesProvider, 0, 0);
+            ImageView clock = new ImageView(activity);
+            clock.setScaleType(ImageView.ScaleType.CENTER);
+            clock.setImageResource(R.drawable.msg_mute_period);
+            clock.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon, resourcesProvider), PorterDuff.Mode.MULTIPLY));
+            clock.setBackground(Theme.getSelectorDrawable(false));
+            clock.setContentDescription(LocaleController.getString(R.string.NaxNotifTimer));
+            clock.setOnClickListener(v -> {
+                builder.getDismissRunnable().run();
+                NotificationTimerDialog.show(activity, account, dialogId, resourcesProvider, profile, onChanged);
+            });
+            row.addView(clock, LayoutHelper.createLinear(48, LayoutHelper.MATCH_PARENT));
+            layout.addView(row);
         }
         TextSettingsCell schedule = new TextSettingsCell(activity, resourcesProvider);
         schedule.setBackground(Theme.getSelectorDrawable(false));
@@ -46,14 +69,6 @@ public final class NotificationProfilePicker {
             NotificationScheduleDialog.show(activity, account, dialogId, resourcesProvider, onChanged);
         });
         layout.addView(schedule);
-        TextSettingsCell timer = new TextSettingsCell(activity, resourcesProvider);
-        timer.setBackground(Theme.getSelectorDrawable(false));
-        timer.setText(LocaleController.getString(R.string.NaxNotifTimer), false);
-        timer.setOnClickListener(v -> {
-            builder.getDismissRunnable().run();
-            NotificationTimerDialog.show(activity, account, dialogId, resourcesProvider, onChanged);
-        });
-        layout.addView(timer);
         long timerUntil = NotificationProfiles.timerUntil(account, dialogId);
         if (timerUntil > 0) {
             // what is running, and a way to end it without picking another profile
