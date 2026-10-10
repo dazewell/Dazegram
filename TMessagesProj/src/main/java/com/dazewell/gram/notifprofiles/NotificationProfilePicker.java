@@ -45,8 +45,6 @@ public final class NotificationProfilePicker {
             // duration list for it. A row wrapper keeps the cell's own layout (it measures its text to the full width).
             LinearLayout row = new LinearLayout(activity);
             row.setOrientation(LinearLayout.HORIZONTAL);
-            row.addView(cell, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f));
-            PopupRowDivider.addTo(row, resourcesProvider, 0, 0);
             ImageView clock = new ImageView(activity);
             clock.setScaleType(ImageView.ScaleType.CENTER);
             clock.setImageResource(R.drawable.msg_mute_period);
@@ -58,7 +56,17 @@ public final class NotificationProfilePicker {
                 builder.getDismissRunnable().run();
                 NotificationTimerDialog.show(activity, account, dialogId, resourcesProvider, profile, onChanged);
             });
-            row.addView(clock, LayoutHelper.createLinear(48, LayoutHelper.MATCH_PARENT));
+            // the app doesn't mirror layouts (supportsRtl is off) but RadioColorCell puts its radio and text on the right in
+            // RTL, so the clock goes on the left there
+            if (LocaleController.isRTL) {
+                row.addView(clock, LayoutHelper.createLinear(48, LayoutHelper.MATCH_PARENT));
+                PopupRowDivider.addTo(row, resourcesProvider, 0, 0);
+                row.addView(cell, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f));
+            } else {
+                row.addView(cell, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f));
+                PopupRowDivider.addTo(row, resourcesProvider, 0, 0);
+                row.addView(clock, LayoutHelper.createLinear(48, LayoutHelper.MATCH_PARENT));
+            }
             layout.addView(row);
         }
         TextSettingsCell schedule = new TextSettingsCell(activity, resourcesProvider);
